@@ -21,7 +21,10 @@
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftSpline.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/math/BoundingBox.h"
+#include "horizon/math/RTree.h"
 #include "horizon/math/Vec2.h"
+#include "horizon/math/Vec3.h"
 
 namespace hz::model {
 
@@ -192,15 +195,41 @@ static std::optional<Vec2> segmentsMeet(const Vec2& a, const Vec2& b, const Vec2
     return a + r * lo;
 }
 
+/// The box of segment ab, grown by twice @p tolerance: two segments that
+/// segmentsMeet finds meeting meet at a point within the tolerance of both,
+/// so their boxes so grown overlap.
+static math::BoundingBox segmentReach(const Vec2& a, const Vec2& b, double tolerance) {
+    const double grow = 2.0 * tolerance;
+    return math::BoundingBox(math::Vec3(std::min(a.x, b.x) - grow, std::min(a.y, b.y) - grow, 0.0),
+                             math::Vec3(std::max(a.x, b.x) + grow, std::max(a.y, b.y) + grow, 0.0));
+}
+
+/// The segments of a closed loop (i from loop[i] to the point after it), by
+/// where they are: a loop is checked against a loop, or itself, in time
+/// near its length, where every pair was tried, and a profile of 20,000
+/// points took seconds to validate.
+static math::RTree<size_t> segmentIndex(const std::vector<Vec2>& loop, double tolerance) {
+    math::RTree<size_t> index;
+    for (size_t i = 0; i < loop.size(); ++i) {
+        index.insert(i, segmentReach(loop[i], loop[(i + 1) % loop.size()], tolerance));
+    }
+    return index;
+}
+
 /// Where the loop crosses or touches itself, if it does: a figure-eight, or a
-/// boundary folded back onto itself, bounds no single region to extrude.
+/// boundary folded back onto itself, bounds no single region to extrude. The
+/// first pair (i, j) in order that meets, as the pairs were tried.
 static std::optional<Vec2> selfCrossing(const std::vector<Vec2>& loop, double tolerance) {
     const size_t n = loop.size();
     if (n < 4) return std::nullopt;
+    const math::RTree<size_t> index = segmentIndex(loop, tolerance);
     for (size_t i = 0; i < n; ++i) {
         const Vec2& a = loop[i];
         const Vec2& b = loop[(i + 1) % n];
-        for (size_t j = i + 2; j < n; ++j) {
+        std::vector<size_t> near = index.query(segmentReach(a, b, tolerance));
+        std::sort(near.begin(), near.end());
+        for (const size_t j : near) {
+            if (j < i + 2) continue;
             if (i == 0 && j == n - 1) continue;  // the closing segment meets the first
             const Vec2& c = loop[j];
             const Vec2& d = loop[(j + 1) % n];
@@ -366,13 +395,25 @@ std::vector<Vec2> circlePolygon(const draft::DraftCircle& circle) {
     return points;
 }
 
-/// Where two loops' outlines meet, if they do.
+/// The box of a loop's points.
+math::BoundingBox loopBox(const std::vector<Vec2>& loop) {
+    math::BoundingBox box;
+    for (const Vec2& p : loop) box.expand(math::Vec3(p.x, p.y, 0.0));
+    return box;
+}
+
+/// Where two loops' outlines meet, if they do: the first pair (i, j) in
+/// order that meets.
 std::optional<Vec2> loopsMeet(const std::vector<Vec2>& a, const std::vector<Vec2>& b,
                               double tolerance) {
+    const math::RTree<size_t> index = segmentIndex(b, tolerance);
     for (size_t i = 0; i < a.size(); ++i) {
-        for (size_t j = 0; j < b.size(); ++j) {
-            if (auto where = segmentsMeet(a[i], a[(i + 1) % a.size()], b[j], b[(j + 1) % b.size()],
-                                          tolerance)) {
+        const Vec2& p = a[i];
+        const Vec2& q = a[(i + 1) % a.size()];
+        std::vector<size_t> near = index.query(segmentReach(p, q, tolerance));
+        std::sort(near.begin(), near.end());
+        for (const size_t j : near) {
+            if (auto where = segmentsMeet(p, q, b[j], b[(j + 1) % b.size()], tolerance)) {
                 return where;
             }
         }
@@ -395,6 +436,16 @@ ProfileRegions ProfileValidator::regions(
 
     std::vector<FoundLoop> loops;
     std::vector<bool> used(all.size(), false);
+    // Each curve by its two ends, for the chaining below to find the curve
+    // that goes on from a point without trying every curve.
+    math::RTree<size_t> ends;
+    for (size_t k = 0; k < all.size(); ++k) {
+        const EndpointPair ep = getEndpoints(all[k]);
+        if (!ep.valid) continue;
+        for (const Vec2& p : {ep.start, ep.end}) {
+            ends.insert(k, math::BoundingBox(math::Vec3(p.x, p.y, 0.0), math::Vec3(p.x, p.y, 0.0)));
+        }
+    }
     for (size_t i = 0; i < all.size(); ++i) {
         if (used[i]) continue;
         const auto* circle = dynamic_cast<const draft::DraftCircle*>(all[i].get());
@@ -425,7 +476,15 @@ ProfileRegions ProfileValidator::regions(
         Vec2 chainEnd = first.end;
         while (!pointsMatch(chainEnd, chainStart, tolerance)) {
             bool extended = false;
-            for (size_t k = 0; k < all.size() && !extended; ++k) {
+            // The curves with an end near the chain's, first in order, as
+            // every curve was tried in order; the rest cannot match.
+            std::vector<size_t> near = ends.query(
+                math::BoundingBox(math::Vec3(chainEnd.x - tolerance, chainEnd.y - tolerance, 0.0),
+                                  math::Vec3(chainEnd.x + tolerance, chainEnd.y + tolerance, 0.0)));
+            std::sort(near.begin(), near.end());
+            near.erase(std::unique(near.begin(), near.end()), near.end());
+            for (size_t k : near) {
+                if (extended) break;
                 if (used[k]) continue;
                 const EndpointPair ep = getEndpoints(all[k]);
                 if (!ep.valid) continue;
@@ -462,9 +521,20 @@ ProfileRegions ProfileValidator::regions(
     }
 
     // Loops may nest, but not cross or touch: that bounds no region cleanly.
+    // Loops whose boxes are apart cannot meet, nor one lie inside the other:
+    // a plate of a thousand holes is not checked hole against every hole.
+    std::vector<math::BoundingBox> boxes;
+    boxes.reserve(loops.size());
+    for (const auto& loop : loops) boxes.push_back(loopBox(loop.polygon));
+    const auto apart = [&boxes, tolerance](size_t i, size_t j) {
+        const double grow = 2.0 * tolerance;
+        const math::Vec3 g(grow, grow, 0.0);
+        return !math::BoundingBox(boxes[i].min() - g, boxes[i].max() + g).intersects(boxes[j]);
+    };
     for (size_t i = 0; i < loops.size(); ++i) {
         loops[i].area = polygonArea(loops[i].polygon);
         for (size_t j = i + 1; j < loops.size(); ++j) {
+            if (apart(i, j)) continue;
             if (const auto where = loopsMeet(loops[i].polygon, loops[j].polygon, tolerance)) {
                 result.errorMessage = "two loops of the profile meet at " + describePoint(*where) +
                                       "; loops must be apart, or one wholly inside another";
@@ -474,7 +544,9 @@ ProfileRegions ProfileValidator::regions(
     }
     for (size_t i = 0; i < loops.size(); ++i) {
         for (size_t j = 0; j < loops.size(); ++j) {
-            if (i == j || !inside(loops[i].polygon.front(), loops[j].polygon)) continue;
+            if (i == j || apart(i, j) || !inside(loops[i].polygon.front(), loops[j].polygon)) {
+                continue;
+            }
             ++loops[i].depth;
             if (loops[i].parent < 0 ||
                 loops[j].area < loops[static_cast<size_t>(loops[i].parent)].area) {

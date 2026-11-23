@@ -1,6 +1,7 @@
 #include "horizon/modeling/Pattern.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -12,6 +13,7 @@
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
+#include "horizon/math/RTree.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Faceting.h"
 #include "horizon/topology/Queries.h"
@@ -282,9 +284,43 @@ int findRoot(std::vector<int>& parent, int i) {
     return i;
 }
 
+/// Whether @p a and @p b move a point to the same place, to the last few
+/// digits: the same copy twice.
+bool samePlace(const Mat4& a, const Mat4& b) {
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            const double x = a.m[r][c];
+            const double y = b.m[r][c];
+            if (std::abs(x - y) > 1e-12 * std::max({1.0, std::abs(x), std::abs(y)})) return false;
+        }
+    }
+    return true;
+}
+
 std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector<Mat4>& transforms,
-                                          const std::vector<int>& suppressed, NamingScheme naming) {
+                                          const std::vector<int>& suppressed, NamingScheme naming,
+                                          bool together, std::string* reason) {
+    // Its joins share one budget: 10,000 copies that all overlap, each join
+    // well within its own limits, took hours.
+    const BooleanSeries series;
     std::unordered_set<int> skip(suppressed.begin(), suppressed.end());
+    if (together) {
+        // A copy where another already is adds nothing to their union: a
+        // pattern of no spacing, of thousands of copies, joined thousands
+        // of times one body to the same body.
+        std::vector<size_t> kept;
+        for (size_t k = 0; k < transforms.size(); ++k) {
+            if (skip.count(static_cast<int>(k))) continue;
+            const bool again = std::any_of(kept.begin(), kept.end(), [&](size_t j) {
+                return samePlace(transforms[j], transforms[k]);
+            });
+            if (again) {
+                skip.insert(static_cast<int>(k));
+            } else if (kept.size() < 64) {
+                kept.push_back(k);  // a repeat is found among the first few
+            }
+        }
+    }
 
     // Each instance as its own solid, so overlapping ones can be merged.
     std::vector<std::unique_ptr<Solid>> instances;
@@ -319,16 +355,66 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
     // Union each group in instance order.  A group the Boolean cannot merge
     // is refused rather than returned as overlapping shells.
     std::vector<std::unique_ptr<Solid>> bodies(n);
-    for (size_t i = 0; i < n; ++i) {
-        const auto root = static_cast<size_t>(findRoot(parent, static_cast<int>(i)));
-        if (!bodies[root]) {
-            bodies[root] = std::move(instances[i]);
-            continue;
+    if (together) {
+        // In rounds: each takes every instance left whose box is clear of
+        // the others it takes, as one tool of separate skins, and joins them
+        // to the group at once. One instance at a time, each join remade all
+        // the group had grown to: a grid of 40 overlapping cylinders of
+        // 4,096 facets took 37 minutes. A grid whose copies overlap their
+        // neighbours takes four rounds; copies that all overlap take one
+        // each, as before.
+        std::vector<std::vector<size_t>> members(n);
+        for (size_t i = 0; i < n; ++i) {
+            members[static_cast<size_t>(findRoot(parent, static_cast<int>(i)))].push_back(i);
         }
-        auto merged =
-            BooleanOp::execute(*bodies[root], *instances[i], BooleanType::Union, nullptr, naming);
-        if (!merged) return nullptr;
-        bodies[root] = std::move(merged);
+        for (size_t root = 0; root < n; ++root) {
+            if (members[root].empty()) continue;
+            std::unique_ptr<Solid> group = std::move(instances[members[root].front()]);
+            std::vector<size_t> left(members[root].begin() + 1, members[root].end());
+            while (!left.empty()) {
+                math::RTree<size_t> taken;
+                std::vector<size_t> round;
+                std::vector<size_t> later;
+                for (const size_t i : left) {
+                    const Vec3 span = bounds[i].max() - bounds[i].min();
+                    const double pad = 1e-9 * std::max(1.0, span.length());
+                    const BoundingBox grown(bounds[i].min() - Vec3(pad, pad, pad),
+                                            bounds[i].max() + Vec3(pad, pad, pad));
+                    if (taken.query(grown).empty()) {
+                        taken.insert(i, grown);
+                        round.push_back(i);
+                    } else {
+                        later.push_back(i);
+                    }
+                }
+                std::unique_ptr<Solid> tool;
+                if (round.size() == 1) {
+                    tool = std::move(instances[round.front()]);
+                } else {
+                    tool = std::make_unique<Solid>();
+                    for (const size_t i : round) {
+                        cloneInto(*tool, *instances[i], Mat4::identity(), 0, nullptr, true);
+                    }
+                }
+                auto merged = BooleanOp::execute(*group, *tool, BooleanType::Union, reason, naming);
+                if (!merged) return nullptr;
+                group = std::move(merged);
+                left = std::move(later);
+            }
+            bodies[root] = std::move(group);
+        }
+    } else {
+        for (size_t i = 0; i < n; ++i) {
+            const auto root = static_cast<size_t>(findRoot(parent, static_cast<int>(i)));
+            if (!bodies[root]) {
+                bodies[root] = std::move(instances[i]);
+                continue;
+            }
+            auto merged = BooleanOp::execute(*bodies[root], *instances[i], BooleanType::Union,
+                                             reason, naming);
+            if (!merged) return nullptr;
+            bodies[root] = std::move(merged);
+        }
     }
 
     auto result = std::make_unique<Solid>();
@@ -343,7 +429,8 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
 std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Vec3& direction,
                                              double spacing, int count,
                                              const std::vector<int>& suppressed,
-                                             NamingScheme naming) {
+                                             NamingScheme naming, bool together,
+                                             std::string* reason) {
     if (count < 1) return nullptr;
     Vec3 dir = direction.normalized();
     std::vector<Mat4> transforms;
@@ -351,7 +438,26 @@ std::unique_ptr<topo::Solid> Pattern::linear(const topo::Solid& source, const Ve
     for (int k = 0; k < count; ++k) {
         transforms.push_back(Mat4::translation(dir * (spacing * k)));
     }
-    return buildPattern(source, transforms, suppressed, naming);
+    return buildPattern(source, transforms, suppressed, naming, together, reason);
+}
+
+std::unique_ptr<topo::Solid> Pattern::grid(const topo::Solid& source, const Vec3& direction,
+                                           double spacing, int count, const Vec3& direction2,
+                                           double spacing2, int count2,
+                                           const std::vector<int>& suppressed, NamingScheme naming,
+                                           bool together, std::string* reason) {
+    if (count < 1 || count2 < 1) return nullptr;
+    const Vec3 dir = direction.normalized();
+    const Vec3 dir2 = direction2.normalized();
+    std::vector<Mat4> transforms;
+    transforms.reserve(static_cast<size_t>(count) * static_cast<size_t>(count2));
+    for (int row = 0; row < count2; ++row) {
+        for (int column = 0; column < count; ++column) {
+            transforms.push_back(
+                Mat4::translation(dir * (spacing * column) + dir2 * (spacing2 * row)));
+        }
+    }
+    return buildPattern(source, transforms, suppressed, naming, together, reason);
 }
 
 std::unique_ptr<topo::Solid> Pattern::collect(const topo::Solid& a, const topo::Solid& b) {
@@ -455,7 +561,8 @@ std::unique_ptr<topo::Solid> Pattern::transformed(const topo::Solid& source, con
 std::unique_ptr<topo::Solid> Pattern::circular(const topo::Solid& source, const Vec3& axisPoint,
                                                const Vec3& axisDir, double angleStepRad, int count,
                                                const std::vector<int>& suppressed,
-                                               NamingScheme naming) {
+                                               NamingScheme naming, bool together,
+                                               std::string* reason) {
     if (count < 1) return nullptr;
     Vec3 axis = axisDir.normalized();
     std::vector<Mat4> transforms;
@@ -466,7 +573,7 @@ std::unique_ptr<topo::Solid> Pattern::circular(const topo::Solid& source, const 
         Mat4 rot = Mat4::rotation(Quaternion::fromAxisAngle(axis, angleStepRad * k));
         transforms.push_back(fromOrigin * rot * toOrigin);
     }
-    return buildPattern(source, transforms, suppressed, naming);
+    return buildPattern(source, transforms, suppressed, naming, together, reason);
 }
 
 }  // namespace hz::model

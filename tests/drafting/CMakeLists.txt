@@ -9,6 +9,7 @@ add_executable(hz_drafting_tests
     test_SketchPlane.cpp
     test_SketchPlaneEdgeCases.cpp
     test_DraftDocument.cpp
+    test_Duplicates.cpp
 )
 
 target_link_libraries(hz_drafting_tests

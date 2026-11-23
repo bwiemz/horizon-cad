@@ -539,15 +539,26 @@ void ViewportRenderer::renderTextToImage(QImage& image, const render::Camera& ca
     // --- Dimension + text entity text ---
     if (!m_drawing.texts().empty() && doc) {
         const auto& style = doc->activeDrawing().dimensionStyle();
-        double pxPerWorld = 1.0 / pixelToWorldScale;
-        int defaultFontSize =
-            std::max(8, std::min(48, static_cast<int>(style.textHeight * pxPerWorld * 0.4)));
+        const double pxPerWorld = 1.0 / pixelToWorldScale;
+        // A text is drawn at its size in the view, as the lines around it
+        // are: held to 8 points at least and 200 at most, a drawing zoomed
+        // out was covered in text that had shrunk with nothing else, and one
+        // zoomed in had text smaller than its own dimension lines. Text too
+        // small to make out is left out, as a line under a pixel is; text so
+        // large it would only fill the view is drawn at the largest size.
+        // (The size is worked out before it is made a whole number: a cast
+        // of one out of range is undefined.)
+        const double kLargestPoints = 1000.0;
+        const auto pointsFor = [pxPerWorld, kLargestPoints](double height) -> int {
+            const double points = height * pxPerWorld * 0.4;
+            if (!(points >= 1.0)) return 0;  // too small, or not a number
+            return static_cast<int>(std::min(points, kLargestPoints));
+        };
+        const int defaultFontSize = pointsFor(style.textHeight);
 
         for (const auto& dt : m_drawing.texts()) {
-            int fs = defaultFontSize;
-            if (dt.height > 0.0) {
-                fs = std::max(8, std::min(200, static_cast<int>(dt.height * pxPerWorld * 0.4)));
-            }
+            const int fs = dt.height > 0.0 ? pointsFor(dt.height) : defaultFontSize;
+            if (fs <= 0) continue;
             drawItem({dt.position, dt.text, dt.color, fs, false, dt.rotation, dt.alignment});
         }
     }

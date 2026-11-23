@@ -39,26 +39,45 @@ out vec4 FragColor;
 uniform mat4 uViewProj;
 uniform float uNear;
 uniform float uFar;
+uniform int uPerspective;
 
-// Draw grid lines on the XY plane (Z = 0).
-vec4 grid(vec3 fragPos3D, float scale) {
-    vec2 coord = fragPos3D.xy * scale;
-    vec2 derivative = fwidth(coord);
-    vec2 grid = abs(fract(coord - 0.5) - 0.5) / derivative;
-    float lineVal = min(grid.x, grid.y);
-    float minimumz = min(derivative.y, 1.0);
-    float minimumx = min(derivative.x, 1.0);
-    vec4 color = vec4(0.35, 0.35, 0.35, 1.0 - min(lineVal, 1.0));
+// How strongly the lines a distance `spacing` apart are drawn here: 1 on a
+// line, falling to 0 a pixel away. `pixel` is how much of the plane a pixel
+// covers along each axis.
+float lines(vec2 p, vec2 pixel, float spacing) {
+    vec2 coord = p / spacing;
+    vec2 derivative = pixel / spacing;
+    vec2 g = abs(fract(coord - 0.5) - 0.5) / derivative;
+    return 1.0 - min(min(g.x, g.y), 1.0);
+}
 
-    // Highlight X axis (red)
-    if (fragPos3D.y > -minimumz * 0.5 && fragPos3D.y < minimumz * 0.5) {
-        color = vec4(0.8, 0.2, 0.2, 1.0 - min(lineVal, 1.0));
-        color.a = max(color.a, 0.5);
+// The grid on the XY plane (Z = 0), in powers of ten that suit the zoom:
+// lines are never drawn closer together than kMinPixels, so a view zoomed far
+// out shows a coarser grid instead of a plane solid with lines, and one
+// zoomed far in a finer grid instead of none. The finest level shown fades
+// out as the view zooms out towards the next.
+vec4 grid(vec3 fragPos3D) {
+    const float kMinPixels = 8.0;
+    vec2 pixel = max(fwidth(fragPos3D.xy), vec2(1e-30));
+    float lod = log(max(pixel.x, pixel.y) * kMinPixels) / log(10.0);
+    float fine = pow(10.0, floor(lod) + 1.0);
+    // Full strength down to three times the closest spacing, then fading out
+    // as the view zooms out to it, where the next level takes over.
+    float spacingPixels = fine / max(pixel.x, pixel.y);
+    float fade = clamp((spacingPixels - kMinPixels) / (2.0 * kMinPixels), 0.0, 1.0);
+
+    // Every tenth line is drawn, and every hundredth drawn brighter.
+    float a = max(lines(fragPos3D.xy, pixel, fine) * fade,
+                  lines(fragPos3D.xy, pixel, fine * 10.0));
+    float major = lines(fragPos3D.xy, pixel, fine * 100.0);
+    vec4 color = vec4(mix(vec3(0.35), vec3(0.5), major), a);
+
+    // The axes, two pixels wide at any zoom.
+    if (abs(fragPos3D.y) < pixel.y) {
+        color = vec4(0.8, 0.2, 0.2, max(a, 0.5));
     }
-    // Highlight Y axis (green)
-    if (fragPos3D.x > -minimumx * 0.5 && fragPos3D.x < minimumx * 0.5) {
-        color = vec4(0.2, 0.8, 0.2, 1.0 - min(lineVal, 1.0));
-        color.a = max(color.a, 0.5);
+    if (abs(fragPos3D.x) < pixel.x) {
+        color = vec4(0.2, 0.8, 0.2, max(a, 0.5));
     }
     return color;
 }
@@ -80,7 +99,8 @@ float computeLinearDepth(vec3 pos) {
 void main() {
     // Find where the ray from near to far intersects the XY plane (Z = 0)
     float denom = vFarPoint.z - vNearPoint.z;
-    if (abs(denom) < 1e-7) discard;  // Camera parallel to XY plane.
+    // Parallel to the plane, at any scale.
+    if (abs(denom) <= 1e-7 * max(abs(vFarPoint.z), abs(vNearPoint.z))) discard;
     float t = -vNearPoint.z / denom;
 
     // Discard fragments that don't intersect the plane
@@ -91,19 +111,12 @@ void main() {
     // Write correct depth
     gl_FragDepth = computeDepth(fragPos3D);
 
-    float linearDepth = computeLinearDepth(fragPos3D);
-    float fadeFactor = max(0.0, 1.0 - linearDepth);
+    // A perspective view fades the grid out towards the far plane; an
+    // orthographic one has no distance to fade it by.
+    float fadeFactor = 1.0;
+    if (uPerspective != 0) fadeFactor = max(0.0, 1.0 - computeLinearDepth(fragPos3D));
 
-    // Two scales of grid: 1m and 10m
-    vec4 gridSmall = grid(fragPos3D, 1.0);
-    vec4 gridLarge = grid(fragPos3D, 0.1);
-
-    // Blend the two grids
-    FragColor = gridSmall;
-    FragColor.a *= fadeFactor;
-
-    // Add large grid on top
-    FragColor = mix(FragColor, gridLarge, gridLarge.a * 0.6);
+    FragColor = grid(fragPos3D);
     FragColor.a *= fadeFactor;
 
     if (FragColor.a < 0.01) discard;
@@ -141,8 +154,12 @@ void Grid::render(QOpenGLExtraFunctions* gl, const Camera& camera) {
     m_shader.bind();
     m_shader.setUniform("uViewProj", vp);
     m_shader.setUniform("uInvViewProj", invVP);
-    m_shader.setUniform("uNear", static_cast<float>(0.1));
-    m_shader.setUniform("uFar", static_cast<float>(10000.0));
+    // The planes the camera projects with: the grid fades towards its far
+    // plane, wherever the view places it.
+    const bool perspective = camera.projectionType() == ProjectionType::Perspective;
+    m_shader.setUniform("uNear", static_cast<float>(perspective ? camera.nearPlane() : 0.1));
+    m_shader.setUniform("uFar", static_cast<float>(perspective ? camera.farPlane() : 10000.0));
+    m_shader.setUniform("uPerspective", perspective ? 1 : 0);
 
     gl->glEnable(GL_BLEND);
     gl->glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

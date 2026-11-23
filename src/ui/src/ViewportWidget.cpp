@@ -43,8 +43,10 @@ ViewportWidget::ViewportWidget(QWidget* parent) : QOpenGLWidget(parent) {
         tr("The drawing or the model, as it is drawn. Work in it from "
            "the menus, the ribbon and the keyboard shortcuts."));
 
-    // Default camera looking at origin from an isometric-ish angle.
+    // Default camera looking at origin from an isometric-ish angle, with
+    // clip planes that follow it (applyProjection).
     m_camera.setIsometricView();
+    m_camera.setAutoClipPlanes(true);
 }
 
 ViewportWidget::~ViewportWidget() {
@@ -543,6 +545,10 @@ void ViewportWidget::resizeGL(int w, int h) {
 
 void ViewportWidget::applyProjection(int w, int h) {
     const double aspect = (h > 0) ? static_cast<double>(w) / static_cast<double>(h) : 1.0;
+    // The clip planes follow the view: fixed ones at 0.1 and 10,000 hid a
+    // part larger than ten metres, or smaller than a tenth of a millimetre,
+    // as soon as it was fitted, and the drawing when zoomed far out.
+    m_camera.setAutoClipPlanes(true);
     if (!m_orthographic) {
         m_camera.setPerspective(45.0, aspect, 0.1, 10000.0);
         return;

@@ -31,7 +31,7 @@ part, Keep the intersection, or New body. A feature that would leave nothing
 | **Fillet** (**Ctrl+Shift+F**), **Chamfer** (**Ctrl+Shift+C**) | The radius or distance, and the edges. |
 | **Shell** (**Ctrl+Shift+H**) | The wall thickness, and the faces to leave open: one or more (a closed hollow is not made yet). |
 | **Draft** | The pull direction, the neutral plane, and the angle. |
-| **Linear Pattern** | The direction, the spacing and the number of instances, and the features to repeat (none repeats the whole part). |
+| **Linear Pattern** | The direction, the spacing and the number of instances, and the features to repeat (none repeats the whole part). A second direction, with its own spacing and number, repeats each row along it, for a grid: a plate of holes is one hole and one pattern. One instance along it is none. |
 | **Circular Pattern** | The axis, the number of instances, and the angle they span. A full turn spaces them evenly. |
 | **Mirror** | The plane (YZ, ZX, XY, or a flat face), and the features to mirror (none mirrors the whole part). |
 | **Union, Subtract, Intersect** | No form: they combine the part's bodies (made with Result: New body). Subtract cuts every later body from the first. |

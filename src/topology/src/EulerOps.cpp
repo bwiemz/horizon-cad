@@ -142,11 +142,12 @@ MEVResult makeEdgeVertex(Solid& solid, HalfEdge* he, Face* face, const math::Vec
 // makeEdgeFace (MEF)
 // ---------------------------------------------------------------------------
 
-MEFResult makeEdgeFace(Solid& solid, HalfEdge* he1, HalfEdge* he2) {
-    assert(he1 != nullptr && he2 != nullptr);
-    assert(he1->face == he2->face);
+namespace {
 
-    Face* oldFace = he1->face;
+/// makeEdgeFace, on @p oldFace, telling the new face's half-edges their face
+/// when @p labelNewLoop.
+MEFResult splitFace(Solid& solid, Face* oldFace, HalfEdge* he1, HalfEdge* he2, bool labelNewLoop) {
+    assert(he1 != nullptr && he2 != nullptr);
     assert(oldFace != nullptr);
 
     // Allocate new entities.
@@ -188,7 +189,7 @@ MEFResult makeEdgeFace(Solid& solid, HalfEdge* he1, HalfEdge* he2) {
     // Assign the new face to all half-edges in its loop.
     heNew1->face = oldFace;
     heNew2->face = newFace;
-    {
+    if (labelNewLoop) {
         HalfEdge* cur = heNew2->next;
         while (cur != heNew2) {
             cur->face = newFace;
@@ -210,6 +211,30 @@ MEFResult makeEdgeFace(Solid& solid, HalfEdge* he1, HalfEdge* he2) {
     }
 
     return {edge, newFace};
+}
+
+}  // namespace
+
+MEFResult makeEdgeFace(Solid& solid, HalfEdge* he1, HalfEdge* he2) {
+    assert(he1 != nullptr && he2 != nullptr);
+    assert(he1->face == he2->face);
+    return splitFace(solid, he1->face, he1, he2, true);
+}
+
+MEFResult makeEdgeFaceUnlabelled(Solid& solid, Face* face, HalfEdge* he1, HalfEdge* he2) {
+    return splitFace(solid, face, he1, he2, false);
+}
+
+void labelLoop(Face* face) {
+    if (face == nullptr || face->outerLoop == nullptr || face->outerLoop->halfEdge == nullptr) {
+        return;
+    }
+    HalfEdge* start = face->outerLoop->halfEdge;
+    HalfEdge* cur = start;
+    do {
+        cur->face = face;
+        cur = cur->next;
+    } while (cur != start);
 }
 
 // ---------------------------------------------------------------------------

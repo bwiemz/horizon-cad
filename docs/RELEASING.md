@@ -98,7 +98,7 @@ still packages everything, and the release notes say what is not signed.
   uses, the platform and the style, its icon,
   and the documents it opens. The licences are in its `Contents/Resources/doc`.
   The disk image holds it beside a link to Applications. It runs on the
-  macOS it was built on (14, Sonoma) or later.
+  macOS it was built on (15, Sequoia) or later.
 - On Linux:
   - in the AppImage, the libraries linuxdeploy bundles;
   - in the tarball, the desktop entry, AppStream metadata and icons.
