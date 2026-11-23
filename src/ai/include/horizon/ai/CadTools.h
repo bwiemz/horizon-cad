@@ -34,6 +34,9 @@ struct AssemblyToolHooks {
     /// Its components, their placements, its mates or its patterns changed
     /// (and the mates were solved): the view is drawn again.
     std::function<void()> assemblyChanged;
+    /// A change is about to be made: a component being dragged in the view
+    /// is put back first, or the drag's release would record over it.
+    std::function<void()> beforeChange;
 };
 
 /// Add the assembly tools, acting on @p assembly, to @p registry: what it

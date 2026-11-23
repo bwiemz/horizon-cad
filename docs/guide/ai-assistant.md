@@ -97,10 +97,12 @@ It works on the active part, drawing or assembly. In a part or a drawing:
 
 In an assembly:
 
-- **Components**: it places part and assembly files (by name, from the
-  assembly's folder, once it is saved), moves and turns them, renames,
-  suppresses and removes them, and repeats them in linear and circular
-  patterns.
+- **Components**: it places part and assembly files, moves and turns them,
+  renames, suppresses and removes them, and repeats them in linear and
+  circular patterns. It takes files only from the assembly's folder (or a
+  folder in it), so save the assembly beside its parts first; it never reads
+  a file elsewhere on your computer. Insert any other part yourself, with
+  **Assembly ▸ Insert Component**.
 - **Mates**: fixed, coincident, concentric, distance, angle, parallel,
   perpendicular and tangent, between faces, edges and datums it names, or
   the faces you select. Each is solved as it is added; one the others cannot

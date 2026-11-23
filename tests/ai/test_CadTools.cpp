@@ -153,6 +153,11 @@ TEST_F(CadToolsTest, CutThroughAll) {
 // all", again and again. With a distance it is the plate the model means.
 TEST_F(CadToolsTest, AFirstExtrudeThroughAllIsBlind) {
     const auto sketch = rectangleSketch(60, 40);
+    box(10, 10, 10, json::array({100, 0, 0}));
+    EXPECT_NE(fails("add_hole", {{"face", "top"}, {"position", {105, 5, 10}}, {"diameter", 2}})
+                  .find("\"through_all\": true"),
+              std::string::npos);
+    ok("delete_feature", {{"index", 0}});
     const std::string missing =
         fails("extrude", {{"sketch_id", sketch}, {"extent", "through_all"}});
     EXPECT_NE(missing.find("give \"distance\""), std::string::npos) << missing;

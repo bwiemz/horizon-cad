@@ -267,7 +267,8 @@ MainWindow::MainWindow(QWidget* parent)
                             // and with it the assembly tree.
                             rebuildScene();
                             updateWindowTitle();
-                        }});
+                        },
+                        [this] { m_viewport->cancelComponentDrag(); }});
     m_aiPanel->setDocument(m_document, tr("Drawing 1"));
     m_propertyPanel->raise();
 

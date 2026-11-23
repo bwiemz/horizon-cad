@@ -54,6 +54,9 @@ public:
         /// An assembly tool changed the assembly (its mates solved): the
         /// view and the assembly tree are shown again.
         std::function<void()> assemblyChanged;
+        /// An assembly tool is about to change the assembly: a drag in the
+        /// view is put back first.
+        std::function<void()> beforeAssemblyChange;
     };
     void setHost(Host host) { m_host = std::move(host); }
 

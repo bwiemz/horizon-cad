@@ -246,6 +246,8 @@ TEST(AiAssistantTest, WorksOnAnAssembly) {
     newAssembly->trigger();
     hz::doc::AssemblyDocument* assembly = window.activeAssembly();
     ASSERT_NE(assembly, nullptr);
+    // Saved beside its part: the assistant inserts parts from its folder.
+    assembly->setFilePath(dir.filePath(QStringLiteral("rig.hzasm")).toStdString());
 
     transport.replies.push_back(
         toolCall("c1", "insert_component",

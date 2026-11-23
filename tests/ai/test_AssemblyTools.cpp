@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "horizon/ai/CadTools.h"
 #include "horizon/document/AssemblyDocument.h"
@@ -78,7 +79,9 @@ protected:
             run(t, "add_primitive", {{"shape", "cylinder"}, {"radius", 4}, {"height", 20}});
         });
         assembly.setFilePath((dir / "rig.hzasm").string());
-        ai::registerAssemblyTools(tools, assembly, backing, documents, {[this] { ++changes; }});
+        ai::AssemblyToolHooks hooks;
+        hooks.assemblyChanged = [this] { ++changes; };
+        ai::registerAssemblyTools(tools, assembly, backing, documents, std::move(hooks));
     }
 
     void TearDown() override {
@@ -177,11 +180,50 @@ TEST_F(AssemblyToolsTest, InsertSaysWhatIsWrongWithAFile) {
               std::string::npos);
     EXPECT_EQ(steps(), 0u);
 
-    // Unsaved, a name has no folder; a full path still works.
-    assembly.setFilePath({});
-    EXPECT_NE(fails("insert_component", {{"file", "plate.hzpart"}}).find("full path"),
-              std::string::npos);
+    // A full path in the folder, or below it, is in it.
+    fs::create_directories(dir / "parts");
+    fs::copy_file(dir / "pin.hzpart", dir / "parts" / "spare.hzpart");
     insert((dir / "plate.hzpart").string());
+    insert("parts/spare.hzpart");
+}
+
+// What a model reads into the assembly it sends its provider: a request
+// planted in a document cannot reach a part elsewhere on the disk.
+TEST_F(AssemblyToolsTest, InsertKeepsToTheAssemblysFolder) {
+    const fs::path elsewhere = dir.parent_path() / (dir.filename().string() + "_elsewhere");
+    fs::remove_all(elsewhere);
+    fs::create_directories(elsewhere);
+    fs::copy_file(dir / "pin.hzpart", elsewhere / "secret.hzpart");
+    const std::string outside = (elsewhere / "secret.hzpart").string();
+
+    EXPECT_NE(fails("insert_component", {{"file", outside}}).find("not in the assembly's folder"),
+              std::string::npos);
+    EXPECT_NE(fails("insert_component",
+                    {{"file", "../" + elsewhere.filename().string() + "/secret.hzpart"}})
+                  .find("not in the assembly's folder"),
+              std::string::npos);
+    // Nor through a link in the folder.
+    std::error_code linked;
+    fs::create_symlink(elsewhere / "secret.hzpart", dir / "link.hzpart", linked);
+    if (!linked) {
+        EXPECT_NE(fails("insert_component", {{"file", "link.hzpart"}}).find("not in"),
+                  std::string::npos);
+    }
+    EXPECT_EQ(steps(), 0u);
+
+    // Unsaved, it has no folder: nothing is read, and saving is the way.
+    assembly.setFilePath({});
+    EXPECT_NE(fails("insert_component", {{"file", (dir / "plate.hzpart").string()}}).find("save"),
+              std::string::npos);
+    EXPECT_NE(ok("get_assembly_info").value("note", "").find("saved"), std::string::npos);
+
+    // Another of a part it places already is no new file.
+    assembly.setFilePath((dir / "rig.hzasm").string());
+    insert("plate.hzpart");
+    assembly.setFilePath({});
+    insert((dir / "plate.hzpart").string());
+    EXPECT_EQ(assembly.components().size(), 2u);
+    fs::remove_all(elsewhere);
 }
 
 TEST_F(AssemblyToolsTest, MatesAPinIntoTheHole) {
@@ -203,6 +245,11 @@ TEST_F(AssemblyToolsTest, MatesAPinIntoTheHole) {
     EXPECT_NEAR((box["min"][0].get<double>() + box["max"][0].get<double>()) / 2.0, 20.0, 1e-3);
     EXPECT_NEAR((box["min"][1].get<double>() + box["max"][1].get<double>()) / 2.0, 20.0, 1e-3);
     EXPECT_EQ(ok("get_assembly_info")["mates"].size(), 3u);
+
+    // Held by its fixed mate, the plate is not moved (as the Assembly menu).
+    EXPECT_NE(
+        fails("place_component", {{"component", plate}, {"move_by", {1, 0, 0}}}).find("fixed mate"),
+        std::string::npos);
 
     // Moved, a mated pin goes back where its mates hold it.
     const json moved = ok("place_component", {{"component", pin}, {"move_by", {0, 0, 50}}});
@@ -259,6 +306,9 @@ TEST_F(AssemblyToolsTest, PlacesAndTurnsAFreeComponent) {
     EXPECT_NEAR(placed["bounding_box"]["max"][2].get<double>(), 7.0, 1e-6);
     EXPECT_NEAR(placed["bounding_box"]["min"][2].get<double>(), -13.0, 1e-6);
 
+    // Named in bytes that are not UTF-8 (a file name the user's disk
+    // allows): the change is made and reported, not reported as failed.
+    assembly.component(pin)->name = "pin\xff";
     ok("place_component", {{"component", pin}, {"move_by", {0, 0, 13}}});
     EXPECT_NEAR(component(pin)["bounding_box"]["min"][2].get<double>(), 0.0, 1e-6);
     ok("place_component",
@@ -285,6 +335,15 @@ TEST_F(AssemblyToolsTest, InterferenceBillOfMaterialsAndPatterns) {
     EXPECT_EQ(bom["lines"][0]["part"], "plate");
     EXPECT_EQ(bom["lines"][1]["quantity"], 3);
     EXPECT_EQ(bom["total_quantity"], 4);
+    // An instance is suppressed with its seed: refused, not an empty step.
+    std::uint64_t instance = 0;
+    for (const auto& comp : assembly.components()) {
+        if (comp.isPatternInstance()) instance = comp.id;
+    }
+    const std::size_t before = steps();
+    EXPECT_NE(fails("suppress_component", {{"component", instance}}).find("seed"),
+              std::string::npos);
+    EXPECT_EQ(steps(), before);
 
     ok("suppress_component", {{"component", plate}});
     EXPECT_EQ(ok("get_bill_of_materials")["total_quantity"], 3);
@@ -297,4 +356,34 @@ TEST_F(AssemblyToolsTest, InterferenceBillOfMaterialsAndPatterns) {
               std::string::npos);
     ok("delete_component", {{"component", pin}});
     EXPECT_EQ(assembly.patterns().size(), 0u);  // its pattern went with its seed
+}
+
+TEST_F(AssemblyToolsTest, ADistanceMateHoldsAGapAndIsEdited) {
+    const auto low = insert("plate.hzpart");
+    const auto high = insert("plate.hzpart", {{"position", {3, 4, 50}}});
+    ok("add_mate", {{"type", "fixed"}, {"a", {{"component", low}}}});
+    const json made = ok("add_mate", {{"type", "distance"},
+                                      {"a", {{"component", low}, {"geometry", "top"}}},
+                                      {"b", {{"component", high}, {"geometry", "bottom"}}},
+                                      {"distance", 5}});
+    const auto gap = [&] {
+        return std::abs(component(high)["bounding_box"]["min"][2].get<double>() - 10.0);
+    };
+    EXPECT_NEAR(gap(), 5.0, 1e-6);
+    const auto mate = made["mate"]["id"].get<std::uint64_t>();
+    EXPECT_EQ(made["mate"]["distance"], 5.0);
+
+    ok("edit_mate", {{"mate", mate}, {"distance", 8}});
+    EXPECT_NEAR(gap(), 8.0, 1e-6);
+    // Nothing to change: no undo step.
+    const std::size_t before = steps();
+    EXPECT_TRUE(ok("edit_mate", {{"mate", mate}, {"distance", 8}})["unchanged"].get<bool>());
+    EXPECT_EQ(steps(), before);
+    EXPECT_NE(fails("edit_mate", {{"mate", 1}, {"distance", 3}}).find("distance or an angle"),
+              std::string::npos);
+
+    ok("delete_mate", {{"mate", mate}});
+    EXPECT_EQ(assembly.mates().size(), 1u);
+    backing.undoStack().undo();
+    EXPECT_EQ(assembly.mates().size(), 2u);
 }

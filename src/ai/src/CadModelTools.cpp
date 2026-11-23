@@ -149,8 +149,10 @@ ToolResult extrude(const CadContext& context, const json& in) {
     // extrude, with a distance, it is a plate of that thickness the model
     // means (seen in small local models, which ask it again and again): it is
     // made so, and said.
+    // No part yet: no feature (a part that has some but no solid, unbuilt or
+    // failed, is not made blind behind the model's back).
     if ((extent == "through_all" || extent == "through_all_both") &&
-        context.document.solid() == nullptr) {
+        context.document.featureTree().featureCount() == 0 && context.document.solid() == nullptr) {
         if (!has(in, "distance")) {
             throw ArgError("there is no part yet for \"" + extent +
                            "\" to go through: a first extrude is blind, so give \"distance\" "
@@ -319,6 +321,9 @@ ToolResult addHole(const CadContext& context, const json& in) {
     const Vec3 position = vec3(in, "position");
     const double diameter = positive(in, "diameter");
     const bool through = boolean(in, "through_all", false);
+    if (!through && !has(in, "depth")) {
+        throw ArgError("give \"depth\" (how deep, in mm) or \"through_all\": true");
+    }
     const double depth = through ? positive(in, "depth", 1.0) : positive(in, "depth");
     auto feature = doc::HoleFeature::make(face, position, diameter, depth);
     const std::string type =

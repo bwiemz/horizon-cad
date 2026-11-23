@@ -86,7 +86,8 @@ json rotationJson(const Mat4& t) {
     const double trace = t.at(0, 0) + t.at(1, 1) + t.at(2, 2);
     const double angle = std::acos(std::clamp((trace - 1.0) / 2.0, -1.0, 1.0));
     Vec3 axis(0.0, 0.0, 1.0);
-    if (angle > 1e-9) {
+    if (angle <= 1e-6) return {{"axis", toJson(axis)}, {"angle", 0.0}};  // not turned
+    {
         const double s = std::sin(angle);
         if (s > 1e-6) {
             axis = Vec3(t.at(2, 1) - t.at(1, 2), t.at(0, 2) - t.at(2, 0), t.at(1, 0) - t.at(0, 1)) *
@@ -476,6 +477,9 @@ json solveNote(const AssemblyContext& c, const doc::MatePlacement& placement) {
 /// was and the reason is the error.
 ToolResult editAssembly(const AssemblyContext& c, const std::string& verb,
                         const std::function<json()>& edit) {
+    // Not under a drag in the view: it is put back first, or its release
+    // would record over this edit (as the Assembly menu's commands do).
+    if (c.hooks.beforeChange) c.hooks.beforeChange();
     const bool wasDirty = c.assembly.isDirty();
     doc::AssemblyState before = c.assembly.snapshot();
     const auto putBack = [&] {
@@ -506,6 +510,13 @@ ToolResult editAssembly(const AssemblyContext& c, const std::string& verb,
     if (!report.is_object()) report = json::object();
     report["mates"] = solveNote(c, placement);
     return ToolResult::ok(report, true);
+}
+
+/// @p value as the model reads it, a name that is not UTF-8 replaced rather
+/// than thrown over: what adds to a report after its change is committed
+/// must not turn it into a failure (the model would make it again).
+std::string dumped(const json& value) {
+    return value.dump(-1, ' ', false, json::error_handler_t::replace);
 }
 
 /// Where component @p id is now, for a report after a change.
@@ -555,7 +566,9 @@ ToolResult getAssemblyInfo(const AssemblyContext& c, const json& /*in*/) {
     const std::string folder = folderOf(a);
     if (folder.empty()) {
         out["folder"] = nullptr;
-        out["note"] = "The assembly is not saved yet: insert parts by their full paths.";
+        out["note"] =
+            "The assembly is not saved yet. Parts are inserted from its folder, so it must be "
+            "saved beside them first.";
     } else {
         out["folder"] = folder;
         std::vector<std::string> files = filesNear(folder);
@@ -639,22 +652,57 @@ ToolResult billOfMaterials(const AssemblyContext& c, const json& in) {
 
 // --- The changes ---------------------------------------------------------------
 
+/// Whether @p path is in @p folder or below it, its links followed: a link
+/// in the folder to a file elsewhere is not in it.
+bool inFolder(const std::string& folder, const fs::path& path) {
+    if (folder.empty()) return false;
+    std::error_code ec;
+    const fs::path root = fs::weakly_canonical(folder, ec);
+    if (ec) return false;
+    const fs::path real = fs::weakly_canonical(path, ec);
+    if (ec) return false;
+    const fs::path inside = real.lexically_relative(root);
+    return !inside.empty() && inside.is_relative() && *inside.begin() != ".." &&
+           inside != fs::path(".");
+}
+
+/// Whether the assembly places the file at @p path already.
+bool placedAlready(const AssemblyContext& c, const fs::path& path) {
+    const std::string folder = folderOf(c.assembly);
+    for (const auto& comp : c.assembly.components()) {
+        fs::path file(comp.partPath);
+        if (file.is_relative() && !folder.empty()) file = fs::path(folder) / file;
+        if (doc::DocumentManager::samePath(file.string(), path.string())) return true;
+    }
+    return false;
+}
+
 ToolResult insertComponent(const AssemblyContext& c, const json& in) {
     const std::string given = text(in, "file");
     if (given.empty()) throw ArgError("\"file\" must name a part (.hzpart) or assembly (.hzasm)");
     const std::string folder = folderOf(c.assembly);
     fs::path path(given);
-    if (!path.is_absolute()) {
-        if (folder.empty()) {
-            throw ArgError("the assembly is not saved, so \"" + given +
-                           "\" has no folder to be in: give its full path");
-        }
-        path = fs::path(folder) / path;
-    }
+    if (!path.is_absolute() && !folder.empty()) path = fs::path(folder) / path;
     path = path.lexically_normal();
     const std::string ext = lower(path.extension().string());
     if (ext != ".hzpart" && ext != ".hzasm") {
         throw ArgError("\"" + given + "\" is not a part (.hzpart) or an assembly (.hzasm)");
+    }
+    // What a model may read into the assembly, and so send its provider: the
+    // files in the assembly's folder (or below it), and those it places
+    // already. A request planted in a document cannot reach the rest of the
+    // disk; the user inserts any other file with Assembly > Insert Component.
+    if (!inFolder(folder, path) && !(path.is_absolute() && placedAlready(c, path))) {
+        if (folder.empty()) {
+            throw ArgError(
+                "the assembly is not saved: the assistant inserts parts from the "
+                "assembly's folder, so save it beside its parts first (or insert this "
+                "one with Assembly > Insert Component)");
+        }
+        throw ArgError("\"" + given +
+                       "\" is not in the assembly's folder: the assistant inserts parts from it "
+                       "(or below it); the user can insert others with Assembly > Insert "
+                       "Component");
     }
     std::error_code ec;
     if (!fs::is_regular_file(path, ec)) {
@@ -707,7 +755,7 @@ ToolResult insertComponent(const AssemblyContext& c, const json& in) {
         report["next"] =
             "Place it with mates (add_mate; list_component_geometry names its faces) or move it "
             "(place_component).";
-        result.content = report.dump();
+        result.content = dumped(report);
     }
     return result;
 }
@@ -720,6 +768,15 @@ ToolResult placeComponent(const AssemblyContext& c, const json& in) {
     const bool any =
         has(in, "position") || has(in, "rotation") || has(in, "move_by") || has(in, "rotate_by");
     if (!any) throw ArgError("give position, rotation, move_by or rotate_by");
+    // A Fixed mate holds it where it is: moved, it would be held there
+    // instead (the Assembly menu refuses too).
+    const auto& mates = c.assembly.mates();
+    if (std::any_of(mates.begin(), mates.end(), [&target](const doc::Mate& m) {
+            return m.type == doc::MateType::Fixed && m.a.componentId == target.id;
+        })) {
+        throw ArgError(labelOf(target) +
+                       " is held by a fixed mate: delete that mate (delete_mate) to move it");
+    }
     const uint64_t id = target.id;
     Mat4 placed = target.transform;
     if (has(in, "position") || has(in, "rotation")) {
@@ -754,7 +811,7 @@ ToolResult placeComponent(const AssemblyContext& c, const json& in) {
                 "Its mates moved it from where it was asked to go: change or delete them to "
                 "place it freely.";
         }
-        result.content = report.dump();
+        result.content = dumped(report);
     }
     return result;
 }
@@ -815,7 +872,7 @@ ToolResult addMate(const AssemblyContext& c, const json& in) {
         json report = json::parse(result.content);
         if (const doc::Mate* made = c.assembly.mate(added)) report["mate"] = mateJson(*made);
         report["moved"] = placementOf(c, fixed ? mate.a.componentId : mate.b.componentId);
-        result.content = report.dump();
+        result.content = dumped(report);
     }
     return result;
 }
@@ -849,6 +906,10 @@ ToolResult editMate(const AssemblyContext& c, const json& in) {
     if (changed.minimum && changed.maximum && *changed.minimum > *changed.maximum) {
         throw ArgError("\"minimum\" is more than \"maximum\"");
     }
+    if (changed.value == mate.value && changed.minimum == mate.minimum &&
+        changed.maximum == mate.maximum) {
+        return ToolResult::ok(json{{"unchanged", true}, {"mate", mateJson(mate)}});
+    }
     const uint64_t id = changed.id;
     ToolResult result = editAssembly(c, "Edit Mate", [&] {
         *c.assembly.mate(id) = changed;
@@ -857,7 +918,7 @@ ToolResult editMate(const AssemblyContext& c, const json& in) {
     if (!result.isError) {
         json report = json::parse(result.content);
         if (const doc::Mate* now = c.assembly.mate(id)) report["mate"] = mateJson(*now);
-        result.content = report.dump();
+        result.content = dumped(report);
     }
     return result;
 }
@@ -887,6 +948,11 @@ ToolResult deleteComponent(const AssemblyContext& c, const json& in) {
 
 ToolResult suppressComponent(const AssemblyContext& c, const json& in) {
     doc::ComponentInstance& comp = componentOf(c, in, "component");
+    if (comp.isPatternInstance()) {
+        throw ArgError(labelOf(comp) +
+                       " is placed by its pattern and suppressed with its seed: suppress the "
+                       "seed, or leave the instance out of the pattern");
+    }
     const bool suppress = boolean(in, "suppressed", true);
     if (comp.suppressed == suppress) {
         return ToolResult::ok(json{{"unchanged", true}, {"suppressed", suppress}});
@@ -957,7 +1023,7 @@ ToolResult patternComponents(const AssemblyContext& c, const json& in) {
             if (comp.patternId == added) ++instances;
         }
         report["instances_made"] = instances;
-        result.content = report.dump();
+        result.content = dumped(report);
     }
     return result;
 }
@@ -1042,9 +1108,9 @@ void registerAssemblyTools(ToolRegistry& registry, doc::AssemblyDocument& assemb
         ToolAccess::Read, &billOfMaterials);
 
     add({"insert_component",
-         "Place a part (.hzpart) or a subassembly (.hzasm) in the assembly, from its file: a "
-         "name in the assembly's folder (get_assembly_info lists them) or a full path. Without "
-         "a position it goes beside the others. Then mate it.",
+         "Place a part (.hzpart) or a subassembly (.hzasm) in the assembly, from its file in "
+         "the assembly's folder or below it (get_assembly_info lists them), by name or path. "
+         "Without a position it goes beside the others. Then mate it.",
          object({{"file", stringSchema("the part or assembly file")},
                  {"name", stringSchema("what to call it (default: the file's name)")},
                  {"position", pointSchema("where its part's origin goes")},

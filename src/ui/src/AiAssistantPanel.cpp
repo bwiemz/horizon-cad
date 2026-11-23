@@ -373,6 +373,9 @@ void AiAssistantPanel::rebindTools() {
         assemblyHooks.assemblyChanged = [this] {
             if (m_host.assemblyChanged) m_host.assemblyChanged();
         };
+        assemblyHooks.beforeChange = [this] {
+            if (m_host.beforeAssemblyChange) m_host.beforeAssemblyChange();
+        };
         ai::registerAssemblyTools(m_tools, *m_assembly, *m_document, *m_documents,
                                   std::move(assemblyHooks));
     } else {
