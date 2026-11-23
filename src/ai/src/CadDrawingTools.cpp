@@ -23,11 +23,12 @@ constexpr std::size_t kMaxField = 120;
 constexpr double kMinScale = 0.001;
 constexpr double kMaxScale = 1000.0;
 
-/// A scale as a model gives it: "1:2", "2:1", "1", or a number. 0 when none.
-double scaleOf(const json& in) {
-    if (!has(in, "scale")) return 0.0;
+}  // namespace
+
+double drawingScale(const json& in, const char* key) {
+    if (!has(in, key)) return 0.0;
     double scale = 0.0;
-    const json& given = in["scale"];
+    const json& given = in[key];
     if (given.is_number()) {
         scale = given.get<double>();
     } else if (given.is_string()) {
@@ -51,14 +52,14 @@ double scaleOf(const json& in) {
         }
     }
     if (!std::isfinite(scale) || scale < kMinScale || scale > kMaxScale) {
-        throw ArgError(
-            "\"scale\" must be a drawing scale such as \"1:2\", \"1:1\" or \"2:1\" (sheet:model), "
-            "or leave it out for the largest standard scale that fits");
+        throw ArgError(std::string("\"") + key +
+                       "\" must be a drawing scale such as \"1:2\", \"1:1\" or \"2:1\" "
+                       "(sheet:model), or leave it out for the largest standard scale that fits");
     }
     return scale;
 }
 
-std::string field(const json& in, const char* key) {
+std::string titleBlockField(const json& in, const char* key) {
     std::string value = text(in, key, "");
     if (value.size() > kMaxField) {
         throw ArgError(std::string("\"") + key + "\" is longer than a title block holds (" +
@@ -66,6 +67,8 @@ std::string field(const json& in, const char* key) {
     }
     return value;
 }
+
+namespace {
 
 ToolResult makeDrawing(const MakeDrawing& make, const DrawingSource& source, const json& in) {
     const std::string& what = source.what;
@@ -90,14 +93,14 @@ ToolResult makeDrawing(const MakeDrawing& make, const DrawingSource& source, con
     request.paper = paper;
     request.portrait = choice(in, "orientation", {"landscape", "portrait"},
                               std::string("landscape")) == "portrait";
-    request.scale = scaleOf(in);
-    request.title = field(in, "title");
-    request.partNumber = field(in, "part_number");
-    request.revision = field(in, "revision");
-    request.drawnBy = field(in, "drawn_by");
-    request.date = field(in, "date");
-    request.material = field(in, "material");
-    request.company = field(in, "company");
+    request.scale = drawingScale(in, "scale");
+    request.title = titleBlockField(in, "title");
+    request.partNumber = titleBlockField(in, "part_number");
+    request.revision = titleBlockField(in, "revision");
+    request.drawnBy = titleBlockField(in, "drawn_by");
+    request.date = titleBlockField(in, "date");
+    request.material = titleBlockField(in, "material");
+    request.company = titleBlockField(in, "company");
 
     const DrawingMade made = make(request);
     if (!made.error.empty()) return ToolResult::error(made.error);

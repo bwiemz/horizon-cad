@@ -133,8 +133,15 @@ right and isometric views over a title block, on the paper, at the scale and
 with the title block it is told (or works out from what you asked). The
 sheet opens in a tab of its own, beside the part's, and is not saved: switch
 to it to look at it, and save it. The part or assembly must have been saved
-once, since the sheet refers to its file. It cannot yet change a sheet once
-made; edit it with the Drawing menu.
+once, since the sheet refers to its file.
+
+**Changing a sheet.** On a drawing sheet's tab the assistant works on the
+sheet: ask it to fill in the title block, change the paper or the scale,
+move or remove a view, show or hide a view's hidden edges, tangent edges or
+centre lines, or dimension edges ("dimension the width and the holes"). Each
+change is one step for **Edit ▸ Undo**, as the Drawing menu's are, and
+**Undo response** takes back everything one request changed. It does not add
+section or detail views yet; the Drawing menu does.
 
 It cannot open, save or export files.
 

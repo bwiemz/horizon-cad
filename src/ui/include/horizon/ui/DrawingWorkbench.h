@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -87,6 +88,42 @@ public:
     void shown(doc::Document& document);
     /// Sheets of the part at @p path: drawn again from it (it changed).
     void refreshDrawingsOf(const std::string& path);
+
+    // --- Changes from values rather than forms and clicks (the AI assistant's) ---
+    // Each makes the change its Drawing menu command makes to the sheet
+    // @p document shows, as one undo step (none when it changes nothing).
+    // False, with why in @p error and nothing changed, when it cannot be made.
+
+    /// The sheet @p document shows, as its spec has it; null for a document
+    /// that is not a sheet.
+    const io::DrawingDocumentSpec* specOf(const doc::Document* document) const;
+    /// Its views as last drawn; null for a document that is not a sheet.
+    const model::Drawing* drawnViews(const doc::Document* document) const;
+    /// What it is drawn from: its part's solid, or its assembly's gathered,
+    /// for naming and measuring edges. Null, with why.
+    const topo::Solid* solidOf(doc::Document& document, std::string* error);
+    /// Its title block and paper. On new paper its views are laid out again;
+    /// @p fits false when some found no room.
+    bool setTitleBlock(doc::Document& document, const model::TitleBlock& block,
+                       const model::Sheet& paper, bool* fits, std::string* error);
+    /// Its scale, its views laid out again at it (0: the largest that fits).
+    bool setScale(doc::Document& document, double scale, bool* fits, std::string* error);
+    /// View @p view moved by @p by, in sheet millimetres.
+    bool moveView(doc::Document& document, std::size_t view, const math::Vec2& by,
+                  std::string* error);
+    /// View @p view removed, and the views taken from it, @p taken of them.
+    bool removeView(doc::Document& document, std::size_t view, int* taken, std::string* error);
+    /// Whether view @p view shows its hidden edges, tangent edges and centre
+    /// lines.
+    bool setViewSwitches(doc::Document& document, std::size_t view, bool hidden, bool tangent,
+                         bool centreLines, std::string* error);
+    /// The model edge named @p edge dimensioned in view @p view, measured
+    /// from the part: a circle's diameter, an arc's radius, else its length.
+    bool addEdgeDimension(doc::Document& document, std::size_t view, const std::string& edge,
+                          std::string* error);
+    /// The dimensions of the edge named @p edge in view @p view removed.
+    bool removeEdgeDimensions(doc::Document& document, std::size_t view, const std::string& edge,
+                              std::string* error);
 
 private:
     friend class SheetEditCommand;
@@ -187,8 +224,12 @@ private:
     /// given). False, with the reason.
     bool drawAgain(Sheet& sheet, std::string* error, Carried* carried = nullptr);
     /// Draw the active sheet again after its spec changed, as one step on its
-    /// undo stack.
-    void redraw(Sheet& sheet, const QString& verb);
+    /// undo stack. False, said in the status bar and in @p error, when it
+    /// cannot be drawn: the spec is put back as it was drawn.
+    bool redraw(Sheet& sheet, const QString& verb, std::string* error = nullptr);
+    /// @p sheet's views listed in its spec: the automatic layout's, as drawn,
+    /// when it lists none.
+    static void listViews(Sheet& sheet);
     /// Draw the sheet showing @p document as @p spec has it (an undo or a
     /// redo of a change), moving what the change carried by @p sign times
     /// how far it went: just that, not what lies where the views are now.

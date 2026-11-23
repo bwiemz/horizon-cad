@@ -23,6 +23,7 @@
 #include <QTextDocument>
 #include <QTimer>
 #include <QUrl>
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -35,7 +36,10 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/modeling/DrawingProjection.h"
+#include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AiAssistantPanel.h"
@@ -347,6 +351,142 @@ TEST(AiAssistantTest, MakesADrawingOfThePartBehindItsTab) {
     EXPECT_TRUE(titleBlock.contains(QStringLiteral("Mounting plate")))
         << titleBlock.join(QLatin1Char('|')).toStdString();
     EXPECT_GT(sheet->draftDocument().entities().size(), 20u);
+}
+
+TEST(AiAssistantTest, ChangesADrawingSheetOneUndoStepAtATime) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("plate.hzpart"));
+    std::string edge;  // one the front view shows, by its name
+    {
+        hz::doc::Document part;
+        part.setType(hz::doc::DocumentType::Part);
+        part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(80, 40, 6));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), part));
+        const auto front =
+            hz::model::DrawingGenerator::makeView(*part.solid(), hz::model::StandardView::Front);
+        for (const auto& e : front.edges) {
+            if (e.visibility != hz::model::ProjectedEdge::Visibility::Visible) continue;
+            edge = hz::model::logicalEdge(e.sourceEdge.tag());
+            if (!edge.empty()) break;
+        }
+        ASSERT_FALSE(edge.empty());
+    }
+    MainWindow window;
+    ASSERT_TRUE(window.openPath(path));
+    ASSERT_TRUE(waitFor([&window] { return !window.backgroundWorkRunning(); }, 10000));
+    window.findChild<QAction*>(QStringLiteral("action_new_drawing_from_part"))->trigger();
+    hz::doc::Document* sheet = window.activeDocument();
+    ASSERT_NE(sheet, nullptr);
+    ASSERT_EQ(sheet->type(), hz::doc::DocumentType::Drawing);
+    const auto titleBlock = [sheet] {
+        QStringList lines;
+        for (const auto& entity : sheet->draftDocument().entities()) {
+            if (entity->layer() != "TitleBlock") continue;
+            if (const auto* t = dynamic_cast<const hz::draft::DraftText*>(entity.get())) {
+                lines << QString::fromStdString(t->text());
+            }
+        }
+        return lines.join(QLatin1Char('|'));
+    };
+    const auto dimensions = [sheet] {
+        int count = 0;
+        for (const auto& entity : sheet->draftDocument().entities()) {
+            if (entity->layer() == "Dimensions") ++count;
+        }
+        return count;
+    };
+    const QString titleWas = titleBlock();
+    ASSERT_EQ(dimensions(), 0);
+
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    transport.replies.push_back(toolCall("c1", "get_sheet_info", json::object()));
+    transport.replies.push_back(
+        toolCall("c2", "set_title_block", {{"title", "Mounting plate"}, {"material", "6061-T6"}}));
+    transport.replies.push_back(toolCall("c3", "set_sheet_scale", {{"scale", "1:1"}}));
+    transport.replies.push_back(toolCall("c4", "add_dimension", {{"view", 0}, {"edge", edge}}));
+    transport.replies.push_back(text("Titled, at 1:1, with the width dimensioned."));
+    ASSERT_TRUE(panel->submit(QStringLiteral("title it, 1:1, and dimension the width")));
+    EXPECT_FALSE(panel->busy());
+
+    // Only the sheet tools on a sheet; the model read the sheet first.
+    const json first = transport.body(0);
+    std::vector<std::string> names;
+    for (const json& tool : first["tools"]) names.push_back(tool["function"]["name"]);
+    EXPECT_NE(std::find(names.begin(), names.end(), "add_dimension"), names.end());
+    EXPECT_EQ(std::find(names.begin(), names.end(), "add_primitive"), names.end());
+    const json second = transport.body(1);
+    const std::string read = second["messages"].back().value("content", "");
+    EXPECT_NE(read.find("\"paper\":\"a3\""), std::string::npos) << read;
+    EXPECT_NE(read.find("\"isometric\""), std::string::npos) << read;
+
+    const QString shown = panel->transcriptText();
+    EXPECT_FALSE(shown.contains(QStringLiteral("✗"))) << shown.toStdString();
+    EXPECT_TRUE(titleBlock().contains(QStringLiteral("Mounting plate")))
+        << titleBlock().toStdString();
+    EXPECT_TRUE(titleBlock().contains(QStringLiteral("6061-T6")));
+    EXPECT_TRUE(titleBlock().contains(QStringLiteral("SCALE: 1:1")));
+    EXPECT_GT(dimensions(), 0);
+    EXPECT_EQ(sheet->undoStack().undoCount(), 3u) << "one step each";
+
+    // The response taken back at once, as a part's is.
+    ASSERT_TRUE(panel->undoLastResponse());
+    EXPECT_EQ(sheet->undoStack().undoCount(), 0u);
+    EXPECT_EQ(titleBlock(), titleWas);
+    EXPECT_EQ(dimensions(), 0);
+}
+
+// A change the sheet refuses (an edge it does not show, a dimension it does
+// not have) leaves it as it was: no step, and a sheet laid out by itself is
+// still laid out by itself.
+TEST(AiAssistantTest, ARefusedSheetChangeLeavesTheSheetAsItWas) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("plate.hzpart"));
+    std::string edge;
+    {
+        hz::doc::Document part;
+        part.setType(hz::doc::DocumentType::Part);
+        part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(80, 40, 6));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), part));
+        const auto front =
+            hz::model::DrawingGenerator::makeView(*part.solid(), hz::model::StandardView::Front);
+        ASSERT_FALSE(front.edges.empty());
+        edge = hz::model::logicalEdge(front.edges.front().sourceEdge.tag());
+    }
+    MainWindow window;
+    ASSERT_TRUE(window.openPath(path));
+    ASSERT_TRUE(waitFor([&window] { return !window.backgroundWorkRunning(); }, 10000));
+    window.findChild<QAction*>(QStringLiteral("action_new_drawing_from_part"))->trigger();
+    hz::doc::Document* sheet = window.activeDocument();
+    ASSERT_NE(sheet, nullptr);
+
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    transport.replies.push_back(
+        toolCall("c1", "add_dimension", {{"view", 0}, {"edge", "no-such-edge"}}));
+    transport.replies.push_back(toolCall("c2", "remove_dimension", {{"view", 0}, {"edge", edge}}));
+    transport.replies.push_back(toolCall("c3", "move_view", {{"view", 1}, {"by", {0, 0}}}));
+    transport.replies.push_back(text("Nothing to do."));
+    ASSERT_TRUE(panel->submit(QStringLiteral("dimension it")));
+    EXPECT_EQ(sheet->undoStack().undoCount(), 0u);
+    const json second = transport.body(1);
+    EXPECT_NE(second["messages"].back().value("content", "").find("no edge named"),
+              std::string::npos);
+
+    const QString file = dir.filePath(QStringLiteral("plate.hzdwg"));
+    {
+        hz::test::FilePicker picker(file);
+        window.findChild<QAction*>(QStringLiteral("action_save"))->trigger();
+    }
+    hz::io::DrawingDocumentSpec saved;
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::readSpec(file.toStdString(), saved));
+    EXPECT_TRUE(saved.views.empty()) << "still laid out by itself";
 }
 
 TEST(AiAssistantTest, TheModelSeesWhatItMade) {
