@@ -24,7 +24,6 @@ using hz::draft::DraftLine;
 using hz::draft::DraftText;
 using hz::io::GeometricToleranceRenderer;
 using hz::math::Vec2;
-using hz::model::DatumFeature;
 using hz::model::DrawingGenerator;
 using hz::model::DrawingView;
 using hz::model::FeatureControlFrame;

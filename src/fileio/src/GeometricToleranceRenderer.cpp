@@ -78,8 +78,9 @@ void text(Entities& out, const Vec2& at, const std::string& s, double height,
 
 /// Characters, not bytes: "⌀" is three bytes of UTF-8 and one character wide.
 std::size_t characters(const std::string& s) {
-    return static_cast<std::size_t>(std::count_if(
-        s.begin(), s.end(), [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; }));
+    return static_cast<std::size_t>(std::count_if(s.begin(), s.end(), [](char c) {
+        return (static_cast<unsigned>(static_cast<unsigned char>(c)) & 0xC0U) != 0x80U;
+    }));
 }
 
 double widthOf(const std::string& s, double height) {
@@ -443,7 +444,7 @@ std::vector<std::shared_ptr<draft::DraftEntity>> GeometricToleranceRenderer::ren
         }
         // Datums along the edge, clear of its frames' leader at its middle.
         for (std::size_t i = firstDatum; i < datums[k].size(); ++i) {
-            const double n = static_cast<double>(i - firstDatum);
+            const auto n = static_cast<double>(i - firstDatum);
             const Anchor anchor =
                 shape->circle
                     ? around(*shape, kDatumAngle + 30.0 * n)
