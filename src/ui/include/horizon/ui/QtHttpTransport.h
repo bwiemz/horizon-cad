@@ -5,6 +5,7 @@
 #include <QPointer>
 #include <QSet>
 #include <functional>
+#include <string_view>
 
 #include "horizon/ai/Http.h"
 
@@ -29,6 +30,10 @@ public:
 
     RequestId send(const ai::HttpRequest& request,
                    std::function<void(ai::HttpResponse)> done) override;
+    bool streams() const override { return true; }
+    RequestId sendStreaming(const ai::HttpRequest& request,
+                            std::function<void(std::string_view)> part,
+                            std::function<void(ai::HttpResponse)> done) override;
     void cancel(RequestId id) override;
     /// Abandon every request in flight.
     void cancelAll();
@@ -37,6 +42,9 @@ public:
     static bool supportsTls();
 
 private:
+    RequestId start(const ai::HttpRequest& request, std::function<void(std::string_view)> part,
+                    std::function<void(ai::HttpResponse)> done);
+
     QNetworkAccessManager* m_manager;
     QHash<RequestId, QPointer<QNetworkReply>> m_replies;
     QSet<RequestId> m_failing;  ///< refused before sending: answered next pass

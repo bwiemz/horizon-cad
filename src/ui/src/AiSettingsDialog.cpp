@@ -99,6 +99,12 @@ AiSettingsDialog::AiSettingsDialog(const AiSettings& settings, QWidget* parent)
         tr("The assistant can look at a drawn view of the part to check its work. The AI "
            "model must read images: the cloud providers' models do; a local model may not."));
     form->addRow(QString(), m_images);
+    m_stream = new QCheckBox(tr("Show replies as they are written"), this);
+    m_stream->setObjectName(QStringLiteral("aiStream"));
+    m_stream->setToolTip(
+        tr("Ask for each reply as it is written, so its text appears as it comes. Turn it off "
+           "for a server that does not stream replies well."));
+    form->addRow(QString(), m_stream);
 
     m_maxSteps = new QSpinBox(this);
     m_maxSteps->setObjectName(QStringLiteral("aiMaxSteps"));
@@ -158,6 +164,7 @@ void AiSettingsDialog::showProvider(ai::ProviderKind kind) {
         std::max(0, m_effort->findData(QString::fromStdString(config.effort))));
     m_fallback->setChecked(config.serverFallback);
     m_images->setChecked(config.images);
+    m_stream->setChecked(config.stream);
     m_anthropicOnly->setVisible(kind == ai::ProviderKind::Anthropic);
 
     m_key->clear();
@@ -212,6 +219,7 @@ void AiSettingsDialog::takeEdits() {
     config.effort = m_effort->currentData().toString().toStdString();
     config.serverFallback = m_fallback->isChecked();
     config.images = m_images->isChecked();
+    config.stream = m_stream->isChecked();
     if (m_key->isEnabled()) {
         // A key typed is saved; one typed and erased again is not (an
         // untouched field leaves the saved key as it is).

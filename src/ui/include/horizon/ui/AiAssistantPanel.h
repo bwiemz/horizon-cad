@@ -114,7 +114,16 @@ private:
     bool askConsent();
 
     void appendUser(const QString& text);
+    /// The reply's text, all of it: in place of what came of it as it was
+    /// written, when that is shown.
     void appendAssistant(const QString& markdown);
+    /// More of the reply's text as it is written, shown plain until it is
+    /// all in.
+    void appendAssistantPart(const QString& text);
+    /// Take back what came of the reply as it was written.
+    void withdrawAssistantPart();
+    /// What is shown next is not more of the reply being written.
+    void closeLiveReply();
     void appendToolCall(const QString& name, const QString& summary);
     void appendToolResult(const QString& summary, bool error);
     /// A picture a tool showed the model, small, in the transcript.
@@ -135,6 +144,10 @@ private:
     QString m_documentName;
     QString m_unavailable;
     int m_images = 0;  ///< pictures shown in the transcript, each its own name
+    /// Where the reply being written starts in the transcript (before its
+    /// line break), and where its text starts; -1 when none is.
+    int m_liveFrom = -1;
+    int m_liveTextFrom = -1;
 
     std::unique_ptr<QtHttpTransport> m_network;
     ai::HttpTransport* m_transport = nullptr;

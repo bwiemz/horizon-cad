@@ -19,6 +19,19 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **The assistant's replies appear as they are written.** The panel showed
+  nothing until a whole round trip was over, so a model thinking for a
+  minute, or a local model writing slowly, looked like a hang. Replies now
+  stream from Anthropic, OpenAI, Gemini and OpenAI-compatible servers
+  (server-sent events), and the text shows as it comes; it is shown as
+  Markdown once the reply is in. Each provider's stream is put back together
+  as the reply it would have sent whole and read by the same code, so tool
+  calls, thinking sent back with its signature, Anthropic's server-side
+  fallback and refusals mean what they did. Text a model writes before
+  declining is taken back; a stream cut off part-way is an error, not a
+  reply. A server that ignores the request to stream still works, and
+  **Show replies as they are written** in the settings turns it off.
+
 - **A DXF ellipse over more than a turn is read whole.** An ELLIPSE whose
   end parameter was 60 million radians (found by the DXF fuzzer) was drawn
   as a polyline of 600 million points, asking for 9.8 GB. Parameters more

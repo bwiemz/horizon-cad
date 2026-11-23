@@ -99,12 +99,12 @@
 <context>
     <name>hz::ui::AiAssistantPanel</name>
     <message>
-        <location filename="../src/ui/src/AiAssistantPanel.cpp" line="+75"/>
+        <location filename="../src/ui/src/AiAssistantPanel.cpp" line="+80"/>
         <source>Done</source>
         <translation type="unfinished">Terminer</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+15"/>
         <source>Added %1</source>
         <translation type="unfinished">Ajouté : %1</translation>
     </message>
@@ -124,12 +124,12 @@
         <translation type="unfinished">Supprimé : %1</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+7"/>
         <source>Set the variables</source>
         <translation type="unfinished">Variables définies</translation>
     </message>
     <message numerus="yes">
-        <location line="-46"/>
+        <location line="-54"/>
         <source>list of %n</source>
         <translation type="unfinished">
             <numerusform>%n élément</numerusform>
@@ -137,7 +137,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location line="+43"/>
+        <location line="+52"/>
         <source>Shapes drawn: %n</source>
         <translation type="unfinished">
             <numerusform>%n forme dessinée</numerusform>
@@ -145,7 +145,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location line="+5"/>
+        <location line="+6"/>
         <source>Edges read: %n</source>
         <translation type="unfinished">
             <numerusform>%n arête examinée</numerusform>
@@ -153,7 +153,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Faces read: %n</source>
         <translation type="unfinished">
             <numerusform>%n face examinée</numerusform>
@@ -189,7 +189,7 @@
         <translation type="unfinished">la fonction %1 échoue</translation>
     </message>
     <message>
-        <location line="+28"/>
+        <location line="+35"/>
         <source>%1 tokens in, %2 out</source>
         <translation type="unfinished">%1 jetons en entrée, %2 en sortie</translation>
     </message>
@@ -251,7 +251,7 @@
         <translation type="unfinished">Conversation</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+11"/>
         <source>Working</source>
         <translation type="unfinished">Traitement en cours</translation>
     </message>
@@ -262,12 +262,12 @@
     </message>
     <message>
         <location line="+2"/>
-        <location line="+154"/>
+        <location line="+206"/>
         <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
         <translation type="unfinished">Décrivez une pièce ou une modification… (Entrée envoie, Maj+Entrée : nouvelle ligne)</translation>
     </message>
     <message>
-        <location line="-148"/>
+        <location line="-200"/>
         <source>Undo This Response</source>
         <translation type="unfinished">Annuler cette réponse</translation>
     </message>
@@ -292,12 +292,12 @@
         <translation type="unfinished">Arrêté : le fournisseur ou le serveur a changé. Renvoyez la demande.</translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+40"/>
         <source>Stopped: the document changed.</source>
         <translation type="unfinished">Arrêté : le document a changé.</translation>
     </message>
     <message>
-        <location line="+39"/>
+        <location line="+73"/>
         <source>choose a model in Settings</source>
         <translation type="unfinished">choisissez un modèle dans les Paramètres</translation>
     </message>
@@ -366,16 +366,18 @@ Y envoyer les demandes ?</translation>
         <translation type="unfinished">La clé API n&apos;a pas pu être enregistrée : %1</translation>
     </message>
     <message>
-        <location line="+47"/>
+        <location line="+48"/>
         <source>You</source>
         <translation type="unfinished">Vous</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+18"/>
+        <location line="+17"/>
         <source>Assistant</source>
         <translation type="unfinished">Assistant</translation>
     </message>
     <message>
+        <location line="-559"/>
         <source>Looked at the %1 view</source>
         <translation type="unfinished">Vue %1 examinée</translation>
     </message>
@@ -503,7 +505,17 @@ Y envoyer les demandes ?</translation>
         <translation type="unfinished">Longueur maximale de la réponse :</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+8"/>
+        <source>Show replies as they are written</source>
+        <translation type="unfinished">Afficher les réponses au fur et à mesure de leur rédaction</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Ask for each reply as it is written, so its text appears as it comes. Turn it off for a server that does not stream replies well.</source>
+        <translation type="unfinished">Demande chaque réponse au fur et à mesure de sa rédaction, pour que son texte s&apos;affiche à mesure qu&apos;il arrive. Désactivez cette option pour un serveur qui ne diffuse pas bien les réponses.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
         <source>Steps per request</source>
         <translation type="unfinished">Étapes par demande</translation>
     </message>
@@ -518,7 +530,7 @@ Y envoyer les demandes ?</translation>
         <translation type="unfinished">Étapes par demande :</translation>
     </message>
     <message>
-        <location line="+60"/>
+        <location line="+62"/>
         <source>Set by %1</source>
         <translation type="unfinished">Définie par %1</translation>
     </message>
@@ -573,7 +585,7 @@ Y envoyer les demandes ?</translation>
         <translation type="unfinished">Un modèle sur cet ordinateur, ou tout serveur doté de l&apos;API de chat d&apos;OpenAI. Ollama : http://localhost:11434/v1. LM Studio : http://localhost:1234/v1. llama.cpp : http://localhost:8080/v1. Choisissez un modèle capable d&apos;appeler des outils (fonctions).</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location line="+44"/>
         <source>Asking the server for its models…</source>
         <translation type="unfinished">Demande de la liste des modèles au serveur…</translation>
     </message>
@@ -586,10 +598,12 @@ Y envoyer les demandes ?</translation>
         </translation>
     </message>
     <message>
+        <location line="-173"/>
         <source>Let the AI see pictures of the part</source>
         <translation type="unfinished">Laisser l&apos;IA voir des images de la pièce</translation>
     </message>
     <message>
+        <location line="+3"/>
         <source>The assistant can look at a drawn view of the part to check its work. The AI model must read images: the cloud providers&apos; models do; a local model may not.</source>
         <translation type="unfinished">L&apos;assistant peut regarder une vue dessinée de la pièce pour vérifier son travail. Le modèle d&apos;IA doit savoir lire des images : ceux des fournisseurs cloud le peuvent ; un modèle local peut-être pas.</translation>
     </message>
@@ -877,7 +891,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Composant inséré.</translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+9"/>
         <source>Mates solved (%1 iterations)</source>
         <translation type="unfinished">Contraintes d&apos;assemblage résolues (%1 itérations)</translation>
     </message>
@@ -897,7 +911,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Échec de la résolution des contraintes d&apos;assemblage : %1</translation>
     </message>
     <message>
-        <location line="+66"/>
+        <location line="+70"/>
         <source>%1 is placed by its pattern: drag its seed</source>
         <translation type="unfinished">%1 est placé par sa répétition : faites glisser son composant source</translation>
     </message>
@@ -937,7 +951,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Déplacement annulé : tout est revenu à sa place</translation>
     </message>
     <message>
-        <location line="+65"/>
+        <location line="+21"/>
         <source>Check Interference is only available in an assembly document</source>
         <translation type="unfinished">Vérifier les interférences n&apos;est disponible que dans un document d&apos;assemblage</translation>
     </message>
@@ -1727,7 +1741,7 @@ Les détails figurent dans le journal :
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+132"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+152"/>
         <source>Nothing to purge: every layer and block is in use.</source>
         <translation type="unfinished">Rien à purger : tous les calques et blocs sont utilisés.</translation>
     </message>
@@ -1758,7 +1772,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Aucun doublon dans la sélection.</translation>
     </message>
     <message numerus="yes">
-        <location line="+19"/>
+        <location line="+10"/>
         <source>Deleted %n duplicate(s).</source>
         <translation type="unfinished">
             <numerusform>%n doublon effacé.</numerusform>
@@ -3032,7 +3046,7 @@ commencer à construire votre pièce.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+373"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+445"/>
         <source>&amp;File</source>
         <translation>&amp;Fichier</translation>
     </message>
@@ -3068,12 +3082,12 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">une face courbe de %1 facettes, autour de %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-234"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-280"/>
         <source>Close %1</source>
         <translation type="unfinished">Fermer %1</translation>
     </message>
     <message>
-        <location line="+805"/>
+        <location line="+880"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3272,19 +3286,20 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Dans la face</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-755"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-830"/>
         <location line="+1"/>
-        <location line="+1108"/>
+        <location line="+38"/>
+        <location line="+1159"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dessin 1</translation>
     </message>
     <message>
-        <location line="-1041"/>
+        <location line="-1105"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Palette de commandes…</translation>
     </message>
     <message>
-        <location line="+83"/>
+        <location line="+122"/>
         <source>New &amp;Part</source>
         <translation type="unfinished">Nouvelle &amp;pièce</translation>
     </message>
@@ -4294,6 +4309,7 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+3"/>
         <location line="+9"/>
+        <location line="+0"/>
         <location line="+13"/>
         <location line="+61"/>
         <source>Modify</source>
@@ -4399,7 +4415,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Cotes</translation>
     </message>
     <message numerus="yes">
-        <location line="+1413"/>
+        <location line="+1430"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>Fichier enregistré ; %n calque sous un nom que DXF accepte.</numerusform>
@@ -4407,12 +4423,12 @@ commencer à construire votre pièce.</translation>
         </translation>
     </message>
     <message>
-        <location line="+317"/>
+        <location line="-1111"/>
         <source>The assistant works on parts and drawings, not drawing sheets</source>
         <translation type="unfinished">L&apos;assistant travaille sur les pièces et les dessins, pas sur les mises en plan</translation>
     </message>
     <message>
-        <location line="+435"/>
+        <location line="+1546"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">Rien de sélectionné pour zoomer : Tout afficher (F) montre tout</translation>
     </message>
@@ -4463,7 +4479,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.</translation>
     </message>
     <message>
-        <location line="-2551"/>
+        <location line="-2568"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
@@ -4688,7 +4704,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+988"/>
+        <location line="+1005"/>
         <location line="+488"/>
         <location line="+936"/>
         <location line="+593"/>
@@ -4697,7 +4713,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-3088"/>
+        <location line="-3105"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -4718,17 +4734,17 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2736"/>
+        <location line="+2753"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-2730"/>
+        <location line="-2747"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
     <message>
-        <location line="+313"/>
+        <location line="+327"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (récupéré)</translation>
     </message>
@@ -5834,7 +5850,7 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-3104"/>
+        <location line="-3121"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>
@@ -6119,12 +6135,12 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     </message>
     <message>
         <location line="-155"/>
-        <location line="+438"/>
+        <location line="+436"/>
         <source>Goes:</source>
         <translation type="unfinished">Étendue :</translation>
     </message>
     <message>
-        <location line="-437"/>
+        <location line="-435"/>
         <source>To the distance</source>
         <translation type="unfinished">Jusqu&apos;à la distance</translation>
     </message>
@@ -6135,23 +6151,23 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     </message>
     <message>
         <location line="+0"/>
-        <location line="+438"/>
+        <location line="+436"/>
         <source>Through all</source>
         <translation type="unfinished">À travers tout</translation>
     </message>
     <message>
-        <location line="-437"/>
+        <location line="-435"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">À travers tout, des deux côtés</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+437"/>
+        <location line="+435"/>
         <source>Up to a face</source>
         <translation type="unfinished">Jusqu&apos;à une face</translation>
     </message>
     <message>
-        <location line="-433"/>
+        <location line="-431"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(aucune face plane de la pièce n&apos;est parallèle à l&apos;esquisse)</translation>
     </message>
@@ -6310,17 +6326,17 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     </message>
     <message>
         <location line="+2"/>
-        <location line="+48"/>
+        <location line="+46"/>
         <source>Instances:</source>
         <translation type="unfinished">Occurrences :</translation>
     </message>
     <message>
-        <location line="-44"/>
+        <location line="-43"/>
         <source>Second direction:</source>
         <translation type="unfinished">Seconde direction :</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>Second spacing:</source>
         <translation type="unfinished">Second espacement :</translation>
     </message>
@@ -6331,22 +6347,22 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     </message>
     <message>
         <location line="+7"/>
-        <location line="+41"/>
+        <location line="+39"/>
         <source>%1 not added: a feature it repeats is gone</source>
         <translation type="unfinished">Fonction %1 non ajoutée : une fonction qu&apos;elle répète n&apos;existe plus</translation>
     </message>
     <message>
-        <location line="-35"/>
+        <location line="-34"/>
         <source>%1 not added: its second direction runs along its first</source>
         <translation type="unfinished">%1 non ajouté : sa seconde direction suit la première</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
         <source>%1 not added: more than %2 instances in all</source>
         <translation type="unfinished">%1 non ajouté : plus de %2 occurrences au total</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+15"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">Répétition circulaire</translation>
     </message>
