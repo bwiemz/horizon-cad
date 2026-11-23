@@ -1392,25 +1392,39 @@ std::shared_ptr<draft::DraftEntity> ellipseEntity(const std::vector<DxfPair>& gr
     const math::Vec2 major(toDouble(findGroup(groups, 11)), toDouble(findGroup(groups, 21)));
     const double ratio = toDouble(findGroup(groups, 40, "1.0"));
     const double semiMajor = major.length();
-    if (semiMajor < 1e-12 || !(ratio > 0.0)) return nullptr;
-    const double start = toDouble(findGroup(groups, 41, "0"));
+    // Each number is finite (toDouble); an axis long enough to overflow is not.
+    if (!(semiMajor >= 1e-12) || !(ratio > 0.0) || !std::isfinite(semiMajor * ratio)) {
+        return nullptr;
+    }
+    double start = toDouble(findGroup(groups, 41, "0"));
     const std::string endText = findGroup(groups, 42);
-    double end = endText.empty() ? math::kTwoPi : toDouble(endText);
-    if (end <= start) end += math::kTwoPi;
+    const double end = endText.empty() ? math::kTwoPi : toDouble(endText);
+    double sweep = end - start;
+    if (sweep <= 0.0) sweep += math::kTwoPi;
     // A whole turn, to the six decimals many programs write reals with
-    // (2 pi as 6.283185, at start and end both): within a millionth.
-    if (std::abs(end - start - math::kTwoPi) < 1e-6) {
+    // (2 pi as 6.283185, at start and end both): within a millionth. More
+    // than a turn, or parameters so far apart their difference is not a
+    // number, is the whole ellipse too: a fuzzed file's end parameter of 60
+    // million radians asked for 600 million points (9.8 GB).
+    const bool overTurn = !(sweep > 0.0 && sweep < math::kTwoPi + 1e-6);
+    if (overTurn || std::abs(sweep - math::kTwoPi) < 1e-6) {
+        if (overTurn) {
+            ++im.notes
+                  .approximated[{"ELLIPSE", "parameters more than a turn apart, brought in whole"}];
+        }
         return std::make_shared<draft::DraftEllipse>(c, semiMajor, semiMajor * ratio,
                                                      std::atan2(major.y, major.x));
     }
+    // Within a turn of 0, where cos and sin keep their precision.
+    start = std::fmod(start, math::kTwoPi);
     // The minor axis follows the extrusion: N x major, scaled.
     const double nz = toDouble(findGroup(groups, 230, "1")) < 0.0 ? -1.0 : 1.0;
     const math::Vec2 minor = math::Vec2(-nz * major.y, nz * major.x) * ratio;
-    const int steps = std::max(8, static_cast<int>(std::ceil(64.0 * (end - start) / math::kTwoPi)));
+    const int steps = std::max(8, static_cast<int>(std::ceil(64.0 * sweep / math::kTwoPi)));
     std::vector<math::Vec2> pts;
     pts.reserve(static_cast<size_t>(steps) + 1);
     for (int k = 0; k <= steps; ++k) {
-        const double t = start + (end - start) * k / steps;
+        const double t = start + sweep * k / steps;
         pts.push_back(c + major * std::cos(t) + minor * std::sin(t));
     }
     ++im.notes.approximated[{"ELLIPSE", "partial, brought in as a polyline"}];
