@@ -61,6 +61,9 @@ public:
         /// Make a drawing sheet of the part or assembly (make_drawing), in
         /// a tab behind this one. Unset: no such tool.
         ai::MakeDrawing makeDrawing;
+        /// The sheet tools' hooks for the drawing sheet @p sheet. Unset: the
+        /// assistant does not work on sheets.
+        std::function<ai::SheetToolHooks(std::shared_ptr<doc::Document> sheet)> sheetTools;
     };
     void setHost(Host host) { m_host = std::move(host); }
 
@@ -68,6 +71,9 @@ public:
     /// with @p why shown. A request under way is stopped.
     void setDocument(std::shared_ptr<doc::Document> document, const QString& name,
                      const QString& why = {});
+    /// Work on the drawing sheet @p sheet, called @p name: the sheet tools
+    /// take the part and drawing tools' place.
+    void setSheet(std::shared_ptr<doc::Document> sheet, const QString& name);
     /// Work on the assembly @p assembly, called @p name: its tab's document
     /// @p backing carries its undo steps, and @p documents reads its parts.
     /// The assembly tools take the part and drawing tools' place.
@@ -110,7 +116,7 @@ private:
     /// or a drawing.
     void bind(std::shared_ptr<doc::Document> document,
               std::shared_ptr<doc::AssemblyDocument> assembly, doc::DocumentManager* documents,
-              const QString& name, const QString& why);
+              const QString& name, const QString& why, bool sheet = false);
     void rebindTools();
     void applyConfig();
     void updateState();
@@ -142,6 +148,7 @@ private:
     /// The assembly worked on, when the tab shows one (m_document then its
     /// tab's document), and what reads its parts.
     std::shared_ptr<doc::AssemblyDocument> m_assembly;
+    bool m_sheet = false;  ///< m_document is a drawing sheet
     doc::DocumentManager* m_documents = nullptr;
     /// The document the conversation last worked on: compared, never used.
     const doc::Document* m_conversationDocument = nullptr;

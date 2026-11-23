@@ -10,6 +10,7 @@ add_library(hz_ai STATIC
     src/CadDraftTools.cpp
     src/CadModelTools.cpp
     src/CadQueryTools.cpp
+    src/CadSheetTools.cpp
     src/CadTools.cpp
     src/Conversation.cpp
     src/GeminiAdapter.cpp

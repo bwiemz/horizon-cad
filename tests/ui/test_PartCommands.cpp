@@ -5,7 +5,9 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QFile>
 #include <QStatusBar>
+#include <QTemporaryDir>
 #include <QTreeWidget>
 #include <cmath>
 #include <numbers>
@@ -14,6 +16,7 @@
 #include "UiTestSupport.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/fileio/DxfFormat.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
@@ -345,4 +348,58 @@ TEST(PartCommandsTest, AShellOpensTwoFacesOfAPartWithAHole) {
     const double part = 20.0 * 20.0 * 10.0 - section(2.0) * 10.0;
     const double cavity = 18.0 * 19.0 * 9.0 - section(3.0) * 9.0;
     EXPECT_NEAR(partVolume(doc), part - cavity, 1e-6);
+}
+
+// Sheet metal: an L of two lines folded into a base flange from its form, a
+// feature edited like any other, and its flat pattern exported for cutting.
+TEST(PartCommandsTest, ABaseFlangeIsFoldedAndItsFlatPatternExported) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& doc = *w.activeDocument();
+    trigger(w, "action_sketch_xy");
+    trigger(w, "tool_line");
+    drive.click(Vec2(0, 0));
+    drive.click(Vec2(50, 0));
+    drive.click(Vec2(50, 30));
+    drive.key(Qt::Key_Return);
+
+    run(w, "action_base-flange", QStringLiteral("Base Flange"),
+        FormAnswers()
+            .number(QStringLiteral("thickness"), 2.0)
+            .number(QStringLiteral("bendRadius"), 1.0)
+            .number(QStringLiteral("width"), 20.0));
+    ASSERT_EQ(doc.featureTree().featureCount(), 1u)
+        << w.statusBar()->currentMessage().toStdString();
+    const auto* flange =
+        dynamic_cast<const hz::doc::SheetMetalFeature*>(doc.featureTree().feature(0));
+    ASSERT_NE(flange, nullptr);
+    // Flats 47 and 27 (each line less a setback of 3), 2 thick, 20 wide,
+    // and the bend's ring cut into 8 chords.
+    const double ring = 0.5 * 8 * std::sin(3.14159265358979323846 / 2 / 8) * (9.0 - 1.0);
+    EXPECT_NEAR(partVolume(doc), 20.0 * ((47.0 + 27.0) * 2.0 + ring), 1e-6);
+
+    // Edited from the tree: its K-factor is a plain number.
+    selectFeature(w, 0);
+    {
+        FormFiller filler(QStringLiteral("Edit Base Flange"),
+                          FormAnswers().number(QStringLiteral("kFactor"), 0.3));
+        trigger(*w.findChild<hz::ui::FeatureTreePanel*>(), "editFeature");
+        ASSERT_TRUE(filler.seen());
+    }
+    EXPECT_NEAR(flange->params().kFactor, 0.3, 1e-9);
+
+    QTemporaryDir dir;
+    const QString file = dir.filePath(QStringLiteral("bracket-flat.dxf"));
+    {
+        hz::test::FilePicker picker(file);
+        trigger(w, "action_flat-pattern");
+    }
+    ASSERT_TRUE(QFile::exists(file)) << w.statusBar()->currentMessage().toStdString();
+    hz::doc::Document read;
+    ASSERT_TRUE(hz::io::DxfFormat::load(file.toStdString(), read));
+    int outline = 0;
+    for (const auto& entity : read.draftDocument().entities()) {
+        if (entity->layer() == "Flat Pattern") ++outline;
+    }
+    EXPECT_EQ(outline, 4);
 }

@@ -182,6 +182,9 @@ QIcon IconGenerator::icon(const QString& name, int size) {
         {"pattern-circular", drawPatternCircular},
         {"mirror-3d", drawMirror3d},
         {"hole", drawHole},
+        // 3D — sheet metal
+        {"base-flange", drawBaseFlange},
+        {"flat-pattern", drawFlatPattern},
         // The AI assistant
         {"assistant", drawAssistant},
     };
@@ -1768,6 +1771,43 @@ QIcon IconGenerator::drawHole(int s) {
                               QPointF(14, 20), QPointF(22, 20), QPointF(22, 5)}));
     p.setPen(dashedPen(kSecondary, 1.0));
     p.drawLine(QPointF(12, 2), QPointF(12, 22));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawBaseFlange(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // A sheet bent into an L, seen end on: its two faces round the bend.
+    p.setPen(primaryPen(1.6));
+    p.setBrush(Qt::NoBrush);
+    QPainterPath sheet;
+    sheet.moveTo(4, 3);
+    sheet.lineTo(4, 15);
+    sheet.quadTo(4, 21, 10, 21);
+    sheet.lineTo(21, 21);
+    sheet.lineTo(21, 17);
+    sheet.lineTo(10, 17);
+    sheet.quadTo(8, 17, 8, 15);
+    sheet.lineTo(8, 3);
+    sheet.closeSubpath();
+    p.drawPath(sheet);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawFlatPattern(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // The blank, unbent: an outline with its bend lines across it.
+    p.setPen(primaryPen(1.6));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(QRectF(3, 6, 18, 12));
+    p.setPen(dashedPen(kSecondary, 1.0));
+    p.drawLine(QPointF(9, 6), QPointF(9, 18));
+    p.drawLine(QPointF(15, 6), QPointF(15, 18));
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }

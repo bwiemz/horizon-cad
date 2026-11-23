@@ -40,6 +40,8 @@ const char* kindName(doc::Feature::ParameterKind kind) {
             return "count";
         case doc::Feature::ParameterKind::Choice:
             return "choice";
+        case doc::Feature::ParameterKind::Number:
+            return "number";
     }
     return "length";
 }
@@ -168,6 +170,7 @@ json describeFeature(const doc::Document& document, const doc::Feature& feature,
                 break;
             }
             case doc::Feature::ParameterKind::Length:
+            case doc::Feature::ParameterKind::Number:
                 entry["value"] = round6(value);
                 break;
         }

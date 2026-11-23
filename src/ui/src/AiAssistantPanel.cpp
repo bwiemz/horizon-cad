@@ -347,6 +347,10 @@ void AiAssistantPanel::setDocument(std::shared_ptr<doc::Document> document, cons
     bind(std::move(document), nullptr, nullptr, name, why);
 }
 
+void AiAssistantPanel::setSheet(std::shared_ptr<doc::Document> sheet, const QString& name) {
+    bind(std::move(sheet), nullptr, nullptr, name, {}, true);
+}
+
 void AiAssistantPanel::setAssembly(std::shared_ptr<doc::Document> backing,
                                    std::shared_ptr<doc::AssemblyDocument> assembly,
                                    doc::DocumentManager& documents, const QString& name) {
@@ -356,9 +360,9 @@ void AiAssistantPanel::setAssembly(std::shared_ptr<doc::Document> backing,
 void AiAssistantPanel::bind(std::shared_ptr<doc::Document> document,
                             std::shared_ptr<doc::AssemblyDocument> assembly,
                             doc::DocumentManager* documents, const QString& name,
-                            const QString& why) {
+                            const QString& why, bool sheet) {
     if (document == m_document && assembly == m_assembly && documents == m_documents &&
-        name == m_documentName && why == m_unavailable) {
+        name == m_documentName && why == m_unavailable && sheet == m_sheet) {
         return;
     }
     // The conversation was about another document (even with an assembly,
@@ -370,6 +374,7 @@ void AiAssistantPanel::bind(std::shared_ptr<doc::Document> document,
         appendNote(tr("Stopped: the document changed."));
     }
     m_document = std::move(document);
+    m_sheet = m_document != nullptr && sheet;
     m_assembly = m_document ? std::move(assembly) : nullptr;
     m_documents = m_assembly ? documents : nullptr;
     if (m_document) m_conversationDocument = m_document.get();
@@ -389,6 +394,12 @@ void AiAssistantPanel::bind(std::shared_ptr<doc::Document> document,
 void AiAssistantPanel::rebindTools() {
     m_tools.clear();
     if (!m_document) return;
+    if (m_sheet) {
+        // A sheet: its views, title block, scale and dimensions, nothing of a
+        // part's.
+        if (m_host.sheetTools) ai::registerSheetTools(m_tools, m_host.sheetTools(m_document));
+        return;
+    }
     ai::CadToolHooks hooks;
     hooks.modelChanged = [this] {
         if (m_host.modelChanged) m_host.modelChanged();

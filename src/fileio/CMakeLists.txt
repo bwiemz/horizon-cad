@@ -36,6 +36,7 @@ add_library(hz_fileio STATIC
     src/StlExport.cpp
     src/DxfFormat.cpp
     src/DxfCodec.cpp
+    src/FlatPattern.cpp
     src/SvgExport.cpp
     src/DrawingExport.cpp
     src/DrawingDocumentIO.cpp

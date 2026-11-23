@@ -87,6 +87,7 @@
 #include "horizon/render/SceneGraph.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AiAssistantPanel.h"
+#include "horizon/ui/AiSheetTools.h"
 #include "horizon/ui/AngularDimensionTool.h"
 #include "horizon/ui/Application.h"
 #include "horizon/ui/ArcTool.h"
@@ -277,7 +278,10 @@ MainWindow::MainWindow(QWidget* parent)
              updateWindowTitle();
          },
          [this] { m_viewport->cancelComponentDrag(); },
-         [this](const ai::DrawingRequest& request) { return makeDrawingForAssistant(request); }});
+         [this](const ai::DrawingRequest& request) { return makeDrawingForAssistant(request); },
+         [this](std::shared_ptr<doc::Document> sheet) {
+             return sheetToolHooks(*m_drawings, std::move(sheet));
+         }});
     m_aiPanel->setDocument(m_document, tr("Drawing 1"));
     m_propertyPanel->raise();
 
@@ -505,6 +509,9 @@ void MainWindow::createMenus() {
         exportMenu->addAction(tr("&PDF..."), this, [this] { m_exchange->onExportPlot(true); });
     QAction* exportSvg =
         exportMenu->addAction(tr("S&VG..."), this, [this] { m_exchange->onExportPlot(false); });
+    QAction* exportFlat = exportMenu->addAction(tr("&Flat Pattern (DXF)..."), this,
+                                                [this] { m_exchange->onExportFlatPattern(); });
+    exportFlat->setObjectName(QStringLiteral("export_flat_pattern"));
     exportPdf->setObjectName(QStringLiteral("export_pdf"));
     exportSvg->setObjectName(QStringLiteral("export_svg"));
     exportStep->setObjectName(QStringLiteral("export_step"));
@@ -1090,6 +1097,11 @@ void MainWindow::createRibbonBar() {
     addAction(g, "revolve", tr("Revolve"), m_part.get(), &PartCommands::onRevolveSketch);
     addAction(g, "hole", tr("Hole"), m_part.get(), &PartCommands::onHole);
 
+    g = group(tr("3D"), tr("Sheet Metal"));
+    addAction(g, "base-flange", tr("Base Flange"), m_part.get(), &PartCommands::onBaseFlange);
+    addAction(g, "flat-pattern", tr("Flat Pattern"), m_exchange.get(),
+              &ExchangeCommands::onExportFlatPattern);
+
     g = group(tr("3D"), tr("Combine Bodies"));
     addAction(g, "boolean-union", tr("Union"), m_part.get(), &PartCommands::onBooleanUnion);
     addAction(g, "boolean-subtract", tr("Subtract"), m_part.get(),
@@ -1364,11 +1376,9 @@ void MainWindow::activateTabDocument() {
             // Its tab's document carries its undo steps.
             m_aiPanel->setAssembly(m_document, m_assembly, documents(), tab->title);
         } else if (m_drawings && m_drawings->isSheet(m_document.get())) {
-            // A sheet keeps its views and annotations, not features: what
-            // the assistant would add to it would not be saved.
-            m_aiPanel->setDocument(
-                nullptr, tab->title,
-                tr("The assistant works on parts and drawings, not drawing sheets"));
+            // A sheet keeps its views and annotations, not features: the
+            // sheet tools take the part tools' place.
+            m_aiPanel->setSheet(m_document, tab->title);
         } else {
             m_aiPanel->setDocument(m_document, tab->title);
         }
@@ -1393,15 +1403,7 @@ ai::DrawingMade MainWindow::makeDrawingForAssistant(const ai::DrawingRequest& re
     }
     io::DrawingDocumentSpec spec;
     spec.partPath = request.source;
-    static const std::map<std::string, model::PaperSize> kPapers = {
-        {"a0", model::PaperSize::A0},        {"a1", model::PaperSize::A1},
-        {"a2", model::PaperSize::A2},        {"a3", model::PaperSize::A3},
-        {"a4", model::PaperSize::A4},        {"ansi_a", model::PaperSize::AnsiA},
-        {"ansi_b", model::PaperSize::AnsiB}, {"ansi_c", model::PaperSize::AnsiC},
-        {"ansi_d", model::PaperSize::AnsiD}};
-    if (const auto paper = kPapers.find(request.paper); paper != kPapers.end()) {
-        spec.sheet.size = paper->second;
-    }
+    if (const auto paper = paperSizeNamed(request.paper)) spec.sheet.size = *paper;
     spec.sheet.orientation =
         request.portrait ? model::Orientation::Portrait : model::Orientation::Landscape;
     spec.scale = request.scale;
@@ -3975,6 +3977,14 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
                                 [choice, shown = choice->currentIndex()] {
                                     return choice->currentIndex() != shown;
                                 },
+                                nullptr};
+                break;
+            }
+            case Kind::Number: {
+                auto* spin = form.number(key, parameterLabel(name) + QStringLiteral(":"), value,
+                                         -1e9, 1e9, 4);
+                fields[name] = {[spin] { return spin->value(); },
+                                [spin, shown = spin->value()] { return spin->value() != shown; },
                                 nullptr};
                 break;
             }

@@ -53,6 +53,8 @@ public:
     void onExportStl();
     void onExportGltf();
     void onExportDxf();
+    /// The part's base flange unfolded: its flat pattern, a DXF for cutting.
+    void onExportFlatPattern();
     /// The drawing plotted to a PDF (@p pdf) or an SVG, on a paper, scale and
     /// colours chosen in a form.
     void onExportPlot(bool pdf);
