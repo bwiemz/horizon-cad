@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QImage>
 #include <QLineEdit>
+#include <QList>
 #include <QMessageBox>
 #include <QSettings>
 #include <QStringList>
@@ -23,6 +24,9 @@
 #include <QTimer>
 #include <QUrl>
 #include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "../ai/FakeTransport.h"
 #include "UiTestSupport.h"
@@ -408,6 +412,96 @@ TEST(AiAssistantTest, StopLeavesThePanelReady) {
     EXPECT_EQ(transport.pending(), 0u);
 }
 
+namespace {
+
+/// An OpenAI-format stream of @p words in pieces, ending with @p finish.
+HttpResponse streamed(const std::vector<std::string>& words, const std::string& finish = "stop") {
+    std::vector<json> events;
+    for (const auto& word : words) {
+        events.push_back(
+            {{"data", {{"choices", {{{"index", 0}, {"delta", {{"content", word}}}}}}}}});
+    }
+    events.push_back(
+        {{"data",
+          {{"choices", {{{"index", 0}, {"delta", json::object()}, {"finish_reason", finish}}}}}}});
+    events.push_back({{"data", "[DONE]"}});
+    return {200, hz::ai::test::sse(events), {}};
+}
+
+}  // namespace
+
+TEST(AiAssistantTest, AReplyIsShownAsItIsWrittenThenAsMarkdown) {
+    MainWindow window;
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    transport.streaming = true;
+    transport.piece = 64;
+    std::vector<QString> seen;
+    transport.afterPiece = [&seen, panel] { seen.push_back(panel->transcriptText()); };
+    transport.replies.push_back(streamed({"A **plate**", " with ", "four holes."}));
+
+    ASSERT_TRUE(panel->submit(QStringLiteral("a plate")));
+    EXPECT_EQ(transport.body(0)["stream"], true);
+    // Plain as it came: the half-written Markdown is shown as it is.
+    ASSERT_GT(seen.size(), 2u);
+    bool partShown = false;
+    for (const QString& shown : seen) {
+        if (shown.contains(QStringLiteral("A **plate**")) &&
+            !shown.contains(QStringLiteral("four holes."))) {
+            partShown = true;
+        }
+    }
+    EXPECT_TRUE(partShown);
+    // Then the whole, once, as Markdown.
+    const QString shown = panel->transcriptText();
+    EXPECT_TRUE(shown.contains(QStringLiteral("A plate with four holes."))) << shown.toStdString();
+    EXPECT_FALSE(shown.contains(QStringLiteral("**"))) << shown.toStdString();
+    EXPECT_EQ(shown.count(QStringLiteral("Assistant")), 1) << shown.toStdString();
+    EXPECT_FALSE(panel->busy());
+}
+
+TEST(AiAssistantTest, WhatCameOfADeclinedReplyIsTakenBack) {
+    MainWindow window;
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    transport.streaming = true;
+    transport.replies.push_back(streamed({"The first ", "step is"}, "content_filter"));
+    ASSERT_TRUE(panel->submit(QStringLiteral("something")));
+    const QString shown = panel->transcriptText();
+    EXPECT_FALSE(shown.contains(QStringLiteral("The first"))) << shown.toStdString();
+    EXPECT_FALSE(shown.contains(QStringLiteral("Assistant"))) << shown.toStdString();
+    EXPECT_TRUE(shown.contains(QStringLiteral("declined"))) << shown.toStdString();
+    EXPECT_TRUE(shown.contains(QStringLiteral("something"))) << shown.toStdString();
+}
+
+TEST(AiAssistantTest, AReplyCutOffKeepsWhatCameAndSaysSo) {
+    MainWindow window;
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    transport.streaming = true;
+    // Two pieces of text, and the connection closed before the end.
+    HttpResponse cut = streamed({"Half of ", "it"});
+    const std::string end = "data: {\"choices\":[{\"delta\":{},\"finish_reason\"";
+    ASSERT_NE(cut.body.find(end), std::string::npos) << cut.body;
+    cut.body.resize(cut.body.find(end));
+    cut.networkError = "the server closed the connection";
+    transport.replies.push_back(cut);
+    transport.replies.push_back(streamed({"Next reply."}));
+    ASSERT_TRUE(panel->submit(QStringLiteral("go")));
+    QString shown = panel->transcriptText();
+    EXPECT_TRUE(shown.contains(QStringLiteral("Half of it"))) << shown.toStdString();
+    EXPECT_TRUE(shown.contains(QStringLiteral("stopped before it was complete")))
+        << shown.toStdString();
+    // The next reply is an entry of its own, not more of the last.
+    ASSERT_TRUE(panel->submit(QStringLiteral("again")));
+    shown = panel->transcriptText();
+    EXPECT_EQ(shown.count(QStringLiteral("Assistant")), 2) << shown.toStdString();
+    EXPECT_LT(shown.indexOf(QStringLiteral("again")), shown.indexOf(QStringLiteral("Next reply.")));
+}
+
 TEST(AiAssistantTest, ChangingTheServerStopsARequest) {
     MainWindow window;
     FakeTransport transport;
@@ -491,6 +585,8 @@ TEST(AiSettingsTest, RoundTrip) {
     EXPECT_TRUE(settings.configs[ProviderKind::Gemini].images);
     settings.configs[ProviderKind::OpenAICompatible].images = true;
     settings.configs[ProviderKind::Gemini].images = false;
+    EXPECT_TRUE(settings.configs[ProviderKind::Gemini].stream);
+    settings.configs[ProviderKind::OpenAICompatible].stream = false;
     settings.save();
     const AiSettings read = AiSettings::load();
     EXPECT_EQ(read.provider, ProviderKind::Gemini);
@@ -501,6 +597,8 @@ TEST(AiSettingsTest, RoundTrip) {
     EXPECT_EQ(read.configs.at(ProviderKind::OpenAICompatible).baseUrl, "http://localhost:1234/v1");
     EXPECT_TRUE(read.configs.at(ProviderKind::OpenAICompatible).images);
     EXPECT_FALSE(read.configs.at(ProviderKind::Gemini).images);
+    EXPECT_FALSE(read.configs.at(ProviderKind::OpenAICompatible).stream);
+    EXPECT_TRUE(read.configs.at(ProviderKind::Gemini).stream);
     EXPECT_FALSE(read.isRemote(ProviderKind::OpenAICompatible));
     EXPECT_TRUE(read.isRemote(ProviderKind::Gemini));
     AiSettings::defaults().save();
@@ -731,4 +829,116 @@ TEST(QtHttpTransportTest, NoKeyFollowsARedirectToAnotherHost) {
     waitFor([] { return false; }, 200);
     EXPECT_TRUE(elsewhere.received.isEmpty()) << elsewhere.received.toStdString();
     EXPECT_NE(reply->status, 200);
+}
+
+namespace {
+
+/// A server that sends a stream's events one at a time, @p gapMs apart,
+/// then closes; with @p cut, it closes before the last (its length said
+/// more was coming).
+class TrickleServer {
+public:
+    TrickleServer(QList<QByteArray> events, int gapMs, bool cut = false)
+        : m_events(std::move(events)), m_gapMs(gapMs), m_cut(cut) {
+        m_server.listen(QHostAddress::LocalHost, 0);
+        QObject::connect(&m_server, &QTcpServer::newConnection, [this] {
+            QTcpSocket* socket = m_server.nextPendingConnection();
+            QObject::connect(socket, &QTcpSocket::readyRead, [this, socket] {
+                m_received += socket->readAll();
+                if (m_started || !m_received.contains("\r\n\r\n")) return;
+                m_started = true;
+                QByteArray all;
+                for (const auto& event : m_events) all += event;
+                socket->write(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+                    "Content-Length: " +
+                    QByteArray::number(all.size()) + "\r\nConnection: close\r\n\r\n");
+                sendNext(socket, 0);
+            });
+        });
+    }
+    QString url() const {
+        return QStringLiteral("http://127.0.0.1:%1/v1/chat/completions").arg(m_server.serverPort());
+    }
+
+private:
+    void sendNext(QTcpSocket* socket, qsizetype index) {
+        const qsizetype last = m_events.size() - (m_cut ? 1 : 0);
+        if (index >= last) {
+            socket->flush();
+            socket->disconnectFromHost();
+            return;
+        }
+        socket->write(m_events[index]);
+        socket->flush();
+        QTimer::singleShot(m_gapMs, socket, [this, socket, index] { sendNext(socket, index + 1); });
+    }
+
+    QTcpServer m_server;
+    QList<QByteArray> m_events;
+    int m_gapMs;
+    bool m_cut;
+    bool m_started = false;
+    QByteArray m_received;
+};
+
+}  // namespace
+
+TEST(QtHttpTransportTest, AStreamArrivesInPiecesBeforeItEnds) {
+    const QList<QByteArray> events = {"data: {\"n\":1}\n\n", "data: {\"n\":2}\n\n",
+                                      "data: [DONE]\n\n"};
+    TrickleServer server(events, 150);
+    hz::ui::QtHttpTransport transport;
+    EXPECT_TRUE(transport.streams());
+    hz::ai::HttpRequest request;
+    request.url = server.url().toStdString();
+    std::vector<std::string> order;
+    std::string parts;
+    std::optional<HttpResponse> reply;
+    transport.sendStreaming(
+        request,
+        [&](std::string_view bytes) {
+            parts.append(bytes);
+            order.emplace_back("part");
+        },
+        [&](HttpResponse r) {
+            reply = std::move(r);
+            order.emplace_back("done");
+        });
+    ASSERT_TRUE(waitFor([&reply] { return reply.has_value(); }));
+    const std::string all = (events[0] + events[1] + events[2]).toStdString();
+    EXPECT_EQ(parts, all);
+    EXPECT_EQ(reply->body, all);  // the whole body, still
+    EXPECT_EQ(reply->status, 200);
+    EXPECT_TRUE(reply->networkError.empty()) << reply->networkError;
+    ASSERT_GE(order.size(), 3u);  // came as it was sent, not at the end
+    EXPECT_EQ(order.back(), "done");
+}
+
+TEST(QtHttpTransportTest, AStreamCutShortSaysSoAndAnErrorIsNoStream) {
+    TrickleServer server({"data: {\"n\":1}\n\n", "data: [DONE]\n\n"}, 50, true);
+    hz::ui::QtHttpTransport transport;
+    hz::ai::HttpRequest request;
+    request.url = server.url().toStdString();
+    std::string parts;
+    std::optional<HttpResponse> reply;
+    transport.sendStreaming(
+        request, [&parts](std::string_view bytes) { parts.append(bytes); },
+        [&reply](HttpResponse r) { reply = std::move(r); });
+    ASSERT_TRUE(waitFor([&reply] { return reply.has_value(); }));
+    EXPECT_EQ(parts, "data: {\"n\":1}\n\n");
+    EXPECT_FALSE(reply->networkError.empty());
+
+    // An error's body is not handed over in pieces: it is read whole.
+    OneShotServer refused(401, R"({"error":{"message":"bad key"}})");
+    request.url = refused.url().toStdString();
+    std::string errorParts;
+    std::optional<HttpResponse> error;
+    transport.sendStreaming(
+        request, [&errorParts](std::string_view bytes) { errorParts.append(bytes); },
+        [&error](HttpResponse r) { error = std::move(r); });
+    ASSERT_TRUE(waitFor([&error] { return error.has_value(); }));
+    EXPECT_TRUE(errorParts.empty());
+    EXPECT_EQ(error->status, 401);
+    EXPECT_NE(error->body.find("bad key"), std::string::npos);
 }

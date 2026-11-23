@@ -41,6 +41,9 @@ struct ProviderConfig {
     /// reads images. On for the cloud providers' models, which all do; off
     /// for a compatible server, whose model may not.
     bool images = true;
+    /// Ask for the reply as it is written (server-sent events), so its text
+    /// shows as it comes. Off for a server that streams badly.
+    bool stream = true;
 };
 
 /// The settings a new user starts from for @p kind.
@@ -56,6 +59,25 @@ const char* providerTitle(ProviderKind kind);
 /// read; none for OpenAICompatible.
 std::vector<std::string> apiKeyEnvironment(ProviderKind kind);
 
+/// Reads one streamed reply (server-sent events) as it arrives. Made by the
+/// adapter that built the request; one per request. Never throws.
+class StreamReader {
+public:
+    virtual ~StreamReader();
+
+    /// The next bytes of the body. Returns the text of the reply they add,
+    /// to show as it comes ("" for none): the model's words only, never its
+    /// thinking or a tool call.
+    virtual std::string feed(std::string_view bytes) = 0;
+    /// The reply, once @p http has finished: what the adapter's
+    /// parseResponse() gives for the same reply sent whole. A failed status
+    /// is read from @p http's body as parseResponse() reads it, and so is a
+    /// body that is not a stream (a server that answered whole); its body
+    /// need not have been fed. A stream that ended before its end is an
+    /// error.
+    virtual ChatResponse finish(const HttpResponse& http) = 0;
+};
+
 /// One provider's wire format. Pure: it builds requests and reads replies,
 /// and sends nothing. Never throws.
 class ProviderAdapter {
@@ -65,6 +87,12 @@ public:
     virtual HttpRequest buildRequest(const ChatRequest& request,
                                      const ProviderConfig& config) const = 0;
     virtual ChatResponse parseResponse(const HttpResponse& response) const = 0;
+
+    /// buildRequest()'s request, asking for the reply as it is written.
+    virtual HttpRequest buildStreamingRequest(const ChatRequest& request,
+                                              const ProviderConfig& config) const = 0;
+    /// A reader for the reply to one such request.
+    virtual std::unique_ptr<StreamReader> makeStreamReader() const = 0;
 
     /// The request for the models the account can use, and their ids from
     /// its reply (empty, and why in @p error, when it failed).

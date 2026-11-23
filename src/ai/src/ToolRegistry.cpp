@@ -11,6 +11,17 @@ namespace hz::ai {
 
 HttpTransport::~HttpTransport() = default;
 
+HttpTransport::RequestId HttpTransport::sendStreaming(const HttpRequest& request,
+                                                      std::function<void(std::string_view)> part,
+                                                      std::function<void(HttpResponse)> done) {
+    return send(request, [part = std::move(part), done = std::move(done)](HttpResponse response) {
+        if (response.status >= 200 && response.status < 300 && !response.body.empty()) {
+            part(response.body);
+        }
+        done(std::move(response));
+    });
+}
+
 std::string HttpRequest::header(const std::string& name) const {
     const auto lower = [](std::string s) {
         std::transform(s.begin(), s.end(), s.begin(),

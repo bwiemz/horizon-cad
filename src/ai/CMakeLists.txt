@@ -17,6 +17,7 @@ add_library(hz_ai STATIC
     src/OpenAIAdapter.cpp
     src/ProfileBuilder.cpp
     src/Provider.cpp
+    src/ServerSentEvents.cpp
     src/SystemPrompt.cpp
     src/ToolRegistry.cpp
     src/ViewImage.cpp

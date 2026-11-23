@@ -66,6 +66,7 @@ private:
     QComboBox* m_effort = nullptr;
     QCheckBox* m_fallback = nullptr;
     QCheckBox* m_images = nullptr;
+    QCheckBox* m_stream = nullptr;
     QSpinBox* m_maxTokens = nullptr;
     QSpinBox* m_maxSteps = nullptr;
     QLabel* m_hint = nullptr;

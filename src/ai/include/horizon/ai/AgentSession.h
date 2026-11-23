@@ -20,7 +20,16 @@ namespace hz::ai {
 class AgentObserver {
 public:
     virtual ~AgentObserver();
+    /// The reply's text, all of it, once the reply is in.
     virtual void onAssistantText(const std::string& text) { (void)text; }
+    /// More of the reply's text, as it is written (when replies stream).
+    /// onAssistantText() follows with all of it, which is the text to keep;
+    /// or, when what came is not the answer (the model declined part-way),
+    /// onAssistantTextWithdrawn().
+    virtual void onAssistantTextPart(const std::string& text) { (void)text; }
+    /// Take back the text given by onAssistantTextPart() since the last
+    /// onAssistantText(): it is not the answer.
+    virtual void onAssistantTextWithdrawn() {}
     virtual void onToolCall(const std::string& name, const nlohmann::json& input) {
         (void)name;
         (void)input;
@@ -102,7 +111,7 @@ public:
 
 private:
     void requestNext();
-    void onReply(std::uint64_t generation, const HttpResponse& http);
+    void onReply(std::uint64_t generation, const HttpResponse& http, StreamReader* reader);
     void runTools(const Message& message, std::uint64_t generation);
     void finish();
     void fail(const std::string& message);
@@ -126,6 +135,7 @@ private:
     HttpTransport::RequestId m_inflight = 0;
     ProviderKind m_requestKind = ProviderKind::Anthropic;  ///< of the request in flight
     std::uint64_t m_requestSerial = 0;
+    bool m_shownPart = false;  ///< text of the reply in flight has been shown as it came
 
     // The last request's changes to the document.
     int m_aiSteps = 0;  ///< undo steps its tools added

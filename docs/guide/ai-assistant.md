@@ -121,6 +121,12 @@ Turn it on or off with **Let the AI see pictures of the part** in its
 settings. Each picture is sent to the provider like the rest of the
 conversation, and only the last three go with each request.
 
+**Replies as they are written.** The assistant's words appear as the model
+writes them, and become formatted text when the reply is in. A model that
+declines part-way takes back what it wrote. If a server on your computer
+shows nothing until the end, or stops part-way, turn off **Show replies as
+they are written** in the settings: replies then come whole.
+
 **Drawings.** Ask it for a drawing of the part or the assembly, and it makes
 one as **Drawing ▸ New Drawing from Part or Assembly** does: front, top,
 right and isometric views over a title block, on the paper, at the scale and
