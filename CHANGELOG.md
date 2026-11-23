@@ -19,6 +19,20 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **An AI assistant's core (`hz::ai`).** A model can build and edit parts
+  and drawings through 27 tools: sketches on planes or faces, extrude,
+  revolve, primitives, fillet, chamfer, shell, hole, patterns and mirror,
+  feature edits, design variables, 2D shapes and layers, and queries of the
+  document, the feature tree, the solid's faces and edges with their geometry,
+  and its mass. Every change is one undo step through the window's own
+  commands; a feature that fails to build is withdrawn and its reason given
+  back to the model. Providers: Anthropic Claude (API version 2026-10-21,
+  thinking blocks replayed, refusals handled, server-side fallback), OpenAI
+  GPT, Google Gemini (thought signatures replayed), and any OpenAI-compatible
+  server, local or hosted. "Undo this response" takes back all of a request's
+  changes at once, and never the user's. The library has no network code; the
+  window's assistant panel follows.
+
 - **A surface's normal at a pole or an apex is the one it comes to.** Where
   a surface comes to a point, as a sphere does at its poles and a cone at its
   apex, its two tangents vanish or lie along each other and give no normal,
