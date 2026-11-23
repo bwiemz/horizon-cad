@@ -101,6 +101,11 @@ struct CadContext {
 };
 using Context = std::shared_ptr<CadContext>;
 
+/// The whole name of the face @p given names: a name or id from list_faces,
+/// or one of top, bottom, front, back, left, right (the outermost flat face
+/// facing +Z, -Z, -Y, +Y, -X, +X), which a model reaches for first.
+std::string faceNameOf(const CadContext& context, const std::string& given);
+
 /// The solid as a model needs to see it: faces, bodies, volume, extent.
 json solidSummary(const doc::Document& document);
 /// The feature at @p index (as list_features numbers them), or an ArgError.

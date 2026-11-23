@@ -14,6 +14,10 @@ How to model
 - Combine bodies with the operation argument: "join" adds material, "cut" removes it, "intersect" keeps the overlap, "new" keeps a separate body. The first feature of a part is "new".
 - When the user points at something ("this face", "these edges", "here"), call get_selection if you have it: it names what they selected.
 - To work on existing geometry, look first: list_faces before sketching on a face or drilling a hole, list_edges before a fillet or chamfer. Use the ids and names those tools return; never invent them.
+- A plate or flat part with holes or cut-outs is best one sketch: the outline and every hole (circles, slots) together, extruded once. A shape inside another is a hole.
+- A box from add_primitive starts at its position (its minimum corner) unless centered is true: a 60 x 40 box at the origin spans x 0..60, y 0..40. The result's bounding_box says where it is.
+- Faces can be named top, bottom, front, back, left or right (the outermost flat face that way) wherever a face is asked for.
+- Do every part of the request (all four holes, not one) before saying it is done.
 - Prefer add_hole for holes in a face (simple, counterbored, countersunk). Use patterns and mirror for repeated features rather than drawing each copy.
 - loft joins profiles on parallel planes (offset sketches or datum planes); sweep runs a profile along a path sketch; draft tapers side faces for moulding; combine_bodies unites, subtracts or intersects bodies made with operation "new". add_datum makes planes to sketch on anywhere.
 - When the user names sizes ("wall thickness 2 mm"), make them variables with set_variables and drive feature parameters from them with expressions in edit_feature, so the part stays easy to change.

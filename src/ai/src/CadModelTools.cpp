@@ -88,7 +88,7 @@ ToolResult createSketch(const CadContext& context, const json& in) {
     draft::SketchPlane plane;
     std::string face;
     if (has(in, "face")) {
-        face = model::wholeFaceName(text(in, "face"));
+        face = faceNameOf(context, text(in, "face"));
         std::string why;
         const auto found = model::planeOfFace(solidOf(context), face, &why);
         if (!found) {
@@ -287,7 +287,7 @@ ToolResult shell(const CadContext& context, const json& in) {
 // --- add_hole -----------------------------------------------------------------
 
 ToolResult addHole(const CadContext& context, const json& in) {
-    const std::string face = model::wholeFaceName(text(in, "face"));
+    const std::string face = faceNameOf(context, text(in, "face"));
     std::string why;
     const auto plane = model::planeOfFace(solidOf(context), face, &why);
     if (!plane) {
@@ -358,7 +358,7 @@ ToolResult mirror(const CadContext& context, const json& in) {
     Vec3 normal = Vec3::UnitX;
     std::string face;
     if (has(in, "face")) {
-        face = model::wholeFaceName(text(in, "face"));
+        face = faceNameOf(context, text(in, "face"));
         std::string why;
         const auto plane = model::planeOfFace(solid, face, &why);
         if (!plane) throw ArgError("face \"" + face + "\" " + (why.empty() ? "is not flat" : why));
@@ -655,7 +655,8 @@ void registerModelTools(ToolRegistry& registry, const Context& context) {
          object({{"entities", arraySchema(entitySchema(false), "the shapes")},
                  {"plane", enumSchema({"XY", "XZ", "YZ"}, "a standard plane (default XY)")},
                  {"offset", numberSchema("move the standard plane along its normal, mm")},
-                 {"face", stringSchema("sketch on this flat face (a name from list_faces)")},
+                 {"face", stringSchema("sketch on this flat face: a name from list_faces, or top, "
+                                       "bottom, front, back, left, right")},
                  {"datum", integerSchema("sketch on this datum plane (its feature index)")},
                  {"origin", pointSchema("custom plane: a point on it [x,y,z]")},
                  {"normal", pointSchema("custom plane: its normal [x,y,z]")},
@@ -737,7 +738,8 @@ void registerModelTools(ToolRegistry& registry, const Context& context) {
          "Drill a hole into a flat face (name from list_faces) at a point on it: simple, "
          "counterbore or countersink, to a depth or through all. Point the hole at the face's "
          "centre or offset from it along the face.",
-         object({{"face", stringSchema("a flat face's name from list_faces")},
+         object({{"face", stringSchema("a flat face: its name from list_faces, or top, bottom, "
+                                       "front, back, left, right")},
                  {"position", pointSchema("world point on the face [x,y,z]")},
                  {"diameter", numberSchema("mm")},
                  {"depth", numberSchema("mm (not needed with through_all)")},

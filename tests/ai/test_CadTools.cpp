@@ -267,6 +267,31 @@ TEST_F(CadToolsTest, HoleThroughAFace) {
     EXPECT_EQ(features.back()["parameters"]["type"]["choice"], "Counterbore");
 }
 
+TEST_F(CadToolsTest, FacesByTheirSide) {
+    box(60, 40, 5);
+    // A hole in "Top", as a model first asks for it.
+    ok("add_hole",
+       {{"face", "Top"}, {"position", {8, 8, 5}}, {"diameter", 6}, {"through_all", true}});
+    EXPECT_NEAR(volume(), 60.0 * 40.0 * 5.0 - kPi * 9.0 * 5.0, 2.0);
+    const json sketch =
+        ok("create_sketch",
+           {{"face", "front"},
+            {"entities", json::array({{{"type", "circle"}, {"center", {0, 0}}, {"radius", 1}}})}});
+    EXPECT_EQ(sketch["plane"]["normal"], json::array({0.0, -1.0, 0.0}));
+    const json thickness =
+        ok("measure", {{"from", {{"face", "top"}}}, {"to", {{"face", "bottom"}}}});
+    EXPECT_NEAR(thickness["distance"].get<double>(), 5.0, 1e-9);
+    // A side the part has no flat face on.
+    doc::Document round;
+    ToolRegistry tools2;
+    ai::registerCadTools(tools2, round);
+    tools2.run("add_primitive", {{"shape", "sphere"}, {"radius", 5}});
+    EXPECT_TRUE(tools2
+                    .run("add_hole",
+                         {{"face", "top"}, {"position", {0, 0, 5}}, {"diameter", 1}, {"depth", 1}})
+                    .isError);
+}
+
 TEST_F(CadToolsTest, LinearAndCircularPattern) {
     box(10, 10, 10);
     ok("linear_pattern", {{"direction", {1, 0, 0}}, {"spacing", 20}, {"count", 3}});

@@ -145,7 +145,7 @@ Target targetOf(const CadContext& context, const json& in, const char* key) {
     }
     const topo::Solid& solid = solidOf(context);
     if (has(spec, "face")) {
-        const std::string name = text(spec, "face");
+        const std::string name = faceNameOf(context, text(spec, "face"));
         const double outward = model::outwardSign(solid);
         for (const auto& face : solid.faces()) {
             if (!face.alive || !face.topoId.isValid()) continue;
@@ -245,7 +245,8 @@ ToolResult measure(const CadContext& context, const json& in) {
 json targetSchema(const std::string& description) {
     json schema = object({{"point", pointSchema("[x,y,z]")},
                           {"edge", stringSchema("a straight edge's id from list_edges")},
-                          {"face", stringSchema("a flat face's id or name from list_faces")}});
+                          {"face", stringSchema("a flat face: id or name from list_faces, or top, "
+                                                "bottom, front, back, left, right")}});
     schema["description"] = description;
     return schema;
 }
