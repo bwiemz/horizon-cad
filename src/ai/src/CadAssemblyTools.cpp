@@ -360,9 +360,16 @@ doc::ComponentInstance& componentOf(const AssemblyContext& c, const json& in, co
     if (!has(in, key)) throw ArgError(std::string("\"") + key + "\" is required");
     const json& v = in[key];
     doc::ComponentInstance* found = nullptr;
-    if (v.is_string() && !v.get<std::string>().empty() &&
-        !std::all_of(v.get<std::string>().begin(), v.get<std::string>().end(),
-                     [](char ch) { return ch >= '0' && ch <= '9'; })) {
+    // The string itself, not a copy: get<std::string>() makes a new one each
+    // time, and all_of over the start of one and the end of another read
+    // past both (MSVC's debug build stopped there: "string iterators in
+    // range are from different containers").
+    const auto digitsOnly = [](const std::string& text) {
+        return std::all_of(text.begin(), text.end(),
+                           [](char ch) { return ch >= '0' && ch <= '9'; });
+    };
+    if (v.is_string() && !v.get_ref<const std::string&>().empty() &&
+        !digitsOnly(v.get_ref<const std::string&>())) {
         const std::string name = lower(v.get<std::string>());
         for (auto& comp : c.assembly.components()) {
             if (lower(comp.name) != name) continue;

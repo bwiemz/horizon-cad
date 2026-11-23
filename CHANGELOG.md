@@ -19,6 +19,12 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **The assistant names an assembly's components safely.** Telling a
+  component's name from its id read the characters from the start of one
+  copy of the name to the end of another: undefined on every platform, and
+  Windows's debug build stopped two of the assembly tools' tests there. It
+  reads the name itself.
+
 - **The AI assistant works on assemblies.** In an assembly's tab it has
   assembly tools instead of the part's: what the assembly holds (components,
   mates, patterns, the part files in its folder), inserting a part or a
