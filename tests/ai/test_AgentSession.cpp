@@ -435,3 +435,78 @@ TEST(SystemPromptTest, IsFixedAndNamesTheUnits) {
     EXPECT_NE(prompt.find("degrees"), std::string::npos);
     EXPECT_NE(prompt.find("list_edges"), std::string::npos);
 }
+
+// A picture costs as much as a page of text each time it is sent, and every
+// request carries the whole conversation: only the newest three go, the
+// rest said to have been left out. The conversation itself keeps them all.
+TEST_F(AgentSessionTest, OnlyTheNewestImagesAreSentAgain) {
+    tools.add(spec("view"), ToolAccess::Read, [](const json&) {
+        ToolResult result = ToolResult::ok(json{{"view", "iso"}});
+        result.images.push_back({"image/png", "AAAA"});
+        return result;
+    });
+    for (int i = 0; i < 5; ++i) {
+        transport.replies.push_back(
+            anthropicReply("Looking.", {call("v" + std::to_string(i), "view")}));
+    }
+    transport.replies.push_back(anthropicReply("Done."));
+    ASSERT_TRUE(session.send("Look five times"));
+    ASSERT_EQ(transport.requests.size(), 6u);
+
+    const auto imagesIn = [](const json& body) {
+        int images = 0;
+        int dropped = 0;
+        for (const auto& message : body["messages"]) {
+            if (!message["content"].is_array()) continue;
+            for (const auto& block : message["content"]) {
+                if (block.value("type", "") != "tool_result") continue;
+                const json& content = block["content"];
+                const auto said = [&dropped](const std::string& text) {
+                    if (text.find("not sent again") != std::string::npos) ++dropped;
+                };
+                if (content.is_string()) {  // its images all left out: text alone
+                    said(content.get<std::string>());
+                    continue;
+                }
+                for (const auto& part : content) {
+                    if (part["type"] == "image") ++images;
+                    if (part["type"] == "text") said(part["text"].get<std::string>());
+                }
+            }
+        }
+        return std::pair{images, dropped};
+    };
+    EXPECT_EQ(imagesIn(transport.body(1)), (std::pair{1, 0}));
+    EXPECT_EQ(imagesIn(transport.body(3)), (std::pair{3, 0}));
+    EXPECT_EQ(imagesIn(transport.body(5)), (std::pair{3, 2}));  // two of five left out
+    // Kept whole in the conversation.
+    int kept = 0;
+    for (const auto& message : session.messages()) {
+        for (const auto& block : message.blocks) kept += static_cast<int>(block.images.size());
+    }
+    EXPECT_EQ(kept, 5);
+}
+
+// Images turned off (or a model that reads none chosen) after some were
+// shown: none goes with the next request, which that model would refuse.
+TEST_F(AgentSessionTest, NoImageIsSentToAModelNotSentImages) {
+    tools.add(spec("view"), ToolAccess::Read, [](const json&) {
+        ToolResult result = ToolResult::ok(json{{"view", "iso"}});
+        result.images.push_back({"image/png", "AAAA"});
+        return result;
+    });
+    transport.replies.push_back(anthropicReply("Looking.", {call("v1", "view")}));
+    transport.replies.push_back(anthropicReply("Seen."));
+    ASSERT_TRUE(session.send("look"));
+    ASSERT_NE(transport.requests[1].body.find("\"image\""), std::string::npos);
+
+    ProviderConfig config = defaultConfig(ProviderKind::Anthropic);
+    config.apiKey = "k";
+    config.images = false;
+    session.setConfig(config);
+    transport.replies.push_back(anthropicReply("Ok."));
+    ASSERT_TRUE(session.send("and now?"));
+    const std::string sent = transport.requests[2].body;
+    EXPECT_EQ(sent.find("\"image\""), std::string::npos);
+    EXPECT_NE(sent.find("not sent again"), std::string::npos);
+}

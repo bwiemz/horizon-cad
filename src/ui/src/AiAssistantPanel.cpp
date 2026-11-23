@@ -1,8 +1,10 @@
 #include "horizon/ui/AiAssistantPanel.h"
 
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QHBoxLayout>
+#include <QImage>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLocale>
@@ -15,14 +17,17 @@
 #include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTextImageFormat>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QVariant>
 #include <algorithm>
 
 #include "horizon/ai/AgentSession.h"
 #include "horizon/ai/CadTools.h"
 #include "horizon/ai/SystemPrompt.h"
+#include "horizon/ai/ViewImage.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/ui/AiSettingsDialog.h"
@@ -79,6 +84,10 @@ QString summariseResult(const ai::ToolResult& result) {
         return value.contains(key) && value[key].type() == type;
     };
     QString summary;
+    if (!result.images.empty() && has("view", json::value_t::string)) {
+        return QCoreApplication::translate("hz::ui::AiAssistantPanel", "Looked at the %1 view")
+            .arg(QString::fromStdString(value["view"].get<std::string>()));
+    }
     if (has("added", json::value_t::string)) {
         summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Added %1")
                       .arg(QString::fromStdString(value["added"].get<std::string>()));
@@ -138,6 +147,8 @@ public:
     }
     void onToolResult(const std::string& /*name*/, const ai::ToolResult& result) override {
         m_panel.appendToolResult(summariseResult(result), result.isError);
+        // What the model was shown, shown to the user too.
+        for (const auto& image : result.images) m_panel.appendImage(image);
     }
     void onError(const std::string& message) override {
         m_panel.appendNote(QString::fromStdString(message), true);
@@ -289,7 +300,7 @@ void AiAssistantPanel::setTransport(ai::HttpTransport* transport) {
     };
     m_session->setUndoHooks(std::move(hooks));
     applyConfig();
-    m_transcript->clear();
+    clearTranscript();
     updateState();
 }
 
@@ -305,6 +316,8 @@ void AiAssistantPanel::setSettings(const AiSettings& settings) {
     }
     m_settings = settings;
     applyConfig();
+    // Whether the model is shown pictures decides whether it has the tool.
+    if (before.images != after.images) rebindTools();
     updateState();
 }
 
@@ -380,6 +393,14 @@ void AiAssistantPanel::rebindTools() {
                                   std::move(assemblyHooks));
     } else {
         ai::registerCadTools(m_tools, *m_document, std::move(hooks));
+    }
+    // Pictures of the model, for a model that reads them (the settings say).
+    if (m_settings.activeConfig().images) {
+        if (m_assembly && m_documents) {
+            ai::registerViewTool(m_tools, *m_assembly);
+        } else {
+            ai::registerViewTool(m_tools, *m_document);
+        }
     }
     if (m_host.selection) {
         m_tools.add({"get_selection",
@@ -509,7 +530,7 @@ bool AiAssistantPanel::undoLastResponse() {
 void AiAssistantPanel::newConversation() {
     if (busy()) m_session->cancel();
     m_session->reset();
-    m_transcript->clear();
+    clearTranscript();
     m_status->clear();
     updateState();
 }
@@ -607,6 +628,38 @@ void AiAssistantPanel::appendToolResult(const QString& summary, bool error) {
     QTextCursor cursor = endOf(m_transcript);
     cursor.insertText((error ? QStringLiteral("    ✗ ") : QStringLiteral("    ✓ ")) + summary,
                       formatOf(error ? QColor(220, 100, 100) : QColor(140, 140, 140)));
+    scrollToEnd(m_transcript);
+}
+
+void AiAssistantPanel::clearTranscript() {
+    // The pictures shown are the document's resources, which clearing its
+    // text keeps: each is let go too.
+    for (int n = 1; n <= m_images; ++n) {
+        m_transcript->document()->addResource(
+            QTextDocument::ImageResource, QUrl(QStringLiteral("hzview://%1").arg(n)), QVariant());
+    }
+    m_images = 0;
+    m_transcript->clear();
+}
+
+void AiAssistantPanel::appendImage(const ai::Image& image) {
+    QImage picture;
+    if (!picture.loadFromData(QByteArray::fromBase64(QByteArray::fromStdString(image.base64)))) {
+        return;
+    }
+    // Small, in the transcript: the user sees what the model saw.
+    constexpr int kThumbnail = 320;
+    if (picture.width() > kThumbnail) {
+        picture = picture.scaledToWidth(kThumbnail, Qt::SmoothTransformation);
+    }
+    const QUrl name(QStringLiteral("hzview://%1").arg(++m_images));
+    m_transcript->document()->addResource(QTextDocument::ImageResource, name, picture);
+    QTextCursor cursor = endOf(m_transcript);
+    QTextImageFormat format;
+    format.setName(name.toString());
+    format.setWidth(picture.width());
+    format.setHeight(picture.height());
+    cursor.insertImage(format);
     scrollToEnd(m_transcript);
 }
 

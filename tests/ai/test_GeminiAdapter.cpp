@@ -198,3 +198,23 @@ TEST(GeminiAdapter, ParsesModelListFiltersGenerateContent) {
                                  &error);
     EXPECT_EQ(models, (std::vector<std::string>{"gemini-4-argon"}));
 }
+
+// A tool's picture goes beside its function response, in the same turn.
+TEST(GeminiAdapter, AToolsImageGoesBesideItsResponse) {
+    const auto adapter = makeAdapter(ProviderKind::Gemini);
+    ChatRequest chat;
+    chat.model = "gemini-4-argon";
+    chat.messages.push_back({Role::User, {ContentBlock::makeText("look")}});
+    chat.messages.push_back(
+        {Role::Assistant, {ContentBlock::makeToolCall("fc-1", "get_view_image", json::object())}});
+    chat.messages.push_back(
+        {Role::User,
+         {ContentBlock::makeToolResult("fc-1", "get_view_image", "{\"view\":\"iso\"}", false,
+                                       {{"image/png", "iVBORw0KGgo="}})}});
+    const json body = json::parse(adapter->buildRequest(chat, config()).body);
+    const json& parts = body["contents"][2]["parts"];
+    ASSERT_EQ(parts.size(), 2u);
+    EXPECT_TRUE(parts[0].contains("functionResponse"));
+    EXPECT_EQ(parts[1],
+              (json{{"inlineData", {{"mimeType", "image/png"}, {"data", "iVBORw0KGgo="}}}}));
+}

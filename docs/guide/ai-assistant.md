@@ -112,6 +112,15 @@ In an assembly:
 
 Each of these is one undo step, as the Assembly menu's commands are.
 
+**Seeing what it made.** The assistant can look at a picture of the part or
+the assembly, from any side or in iso, to check its work against what you
+asked. You see each picture it looks at in the panel. This needs a model that
+reads images: the cloud providers' models do, and it is on for them. Many
+local models read none, so for a server on your computer it starts off.
+Turn it on or off with **Let the AI see pictures of the part** in its
+settings. Each picture is sent to the provider like the rest of the
+conversation, and only the last three go with each request.
+
 It does not work on drawing sheets yet. It cannot open, save or export files.
 
 ## Automating from outside

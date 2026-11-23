@@ -18,6 +18,7 @@ add_library(hz_ai STATIC
     src/Provider.cpp
     src/SystemPrompt.cpp
     src/ToolRegistry.cpp
+    src/ViewImage.cpp
 )
 
 target_include_directories(hz_ai
@@ -26,10 +27,15 @@ target_include_directories(hz_ai
         $<INSTALL_INTERFACE:include>
 )
 
+# PNG images of a view, compressed with zlib (get_view_image).
+find_package(ZLIB REQUIRED)
+
 target_link_libraries(hz_ai
     PUBLIC
         nlohmann_json::nlohmann_json
     PRIVATE
+        ZLIB::ZLIB
+        Horizon::Geometry
         Horizon::Document
         Horizon::Drafting
         Horizon::Modeling

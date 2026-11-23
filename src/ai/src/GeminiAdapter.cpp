@@ -123,6 +123,12 @@ public:
                             reply["id"] = block.id;
                         }
                         parts.push_back({{"functionResponse", std::move(reply)}});
+                        // Its images beside it, in the same turn.
+                        for (const auto& image : block.images) {
+                            parts.push_back(
+                                {{"inlineData",
+                                  {{"mimeType", image.mediaType}, {"data", image.base64}}}});
+                        }
                         break;
                     }
                     case ContentBlock::Kind::Opaque:

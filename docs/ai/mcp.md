@@ -86,6 +86,11 @@ schemas. The file tools are:
 
 Lengths are millimetres and angles degrees.
 
+`get_view_image` returns a picture of the part or assembly as MCP image
+content, from a side or in iso. Clients that show images, such as Claude
+Desktop, show it, and a model that reads images can check its work with it.
+It is drawn in software, so no GPU or window is needed.
+
 **Assemblies.** An assembly places part files. To build one, make and save
 each part in the folder, start a `new_document` of type `assembly`, insert
 the parts with `insert_component`, and mate them with `add_mate`. Save it as

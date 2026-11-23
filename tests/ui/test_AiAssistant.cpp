@@ -9,13 +9,17 @@
 #include <QComboBox>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QImage>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QSettings>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QTextBrowser>
+#include <QTextDocument>
 #include <QTimer>
+#include <QUrl>
 #include <optional>
 
 #include "../ai/FakeTransport.h"
@@ -274,6 +278,58 @@ TEST(AiAssistantTest, WorksOnAnAssembly) {
     EXPECT_TRUE(assembly->components().empty());
 }
 
+// With pictures on, the model can look at the part, the picture is sent as
+// the provider takes images, and the user sees it in the transcript. Off (a
+// compatible server's default: its model may read no images), there is no
+// such tool.
+TEST(AiAssistantTest, TheModelSeesWhatItMade) {
+    MainWindow window;
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    const auto offered = [&transport](std::size_t request) {
+        const json body = transport.body(request);  // held: the loop is over a part of it
+        for (const auto& tool : body["tools"]) {
+            if (tool["function"]["name"] == "get_view_image") return true;
+        }
+        return false;
+    };
+    transport.replies.push_back(text("Hello."));
+    ASSERT_TRUE(panel->submit(QStringLiteral("hi")));
+    EXPECT_FALSE(offered(0));
+
+    AiSettings settings = panel->settings();
+    settings.configs[ProviderKind::OpenAICompatible].images = true;
+    panel->setSettings(settings);
+    transport.replies.push_back(toolCall("c1", "add_primitive", kBox));
+    transport.replies.push_back(toolCall("c2", "get_view_image", {{"view", "iso"}}));
+    transport.replies.push_back(text("It is a cube."));
+    ASSERT_TRUE(panel->submit(QStringLiteral("a cube, and check it")));
+    ASSERT_EQ(transport.requests.size(), 4u);
+    EXPECT_TRUE(offered(1));
+    const QString shown = panel->transcriptText();
+    EXPECT_TRUE(shown.contains(QStringLiteral("Looked at the iso view"))) << shown.toStdString();
+    // Sent after the tool's result, as a compatible server takes an image.
+    const json last = transport.body(3)["messages"].back();
+    EXPECT_EQ(last["role"], "user");
+    ASSERT_TRUE(last["content"].is_array());
+    EXPECT_EQ(last["content"][1]["image_url"]["url"].get<std::string>().rfind(
+                  "data:image/png;base64,iVBORw0KGgo", 0),
+              0u);
+    // And in the transcript, for the user.
+    auto* transcript = panel->findChild<QTextBrowser*>();
+    ASSERT_NE(transcript, nullptr);
+    const QVariant picture =
+        transcript->document()->resource(QTextDocument::ImageResource, QUrl("hzview://1"));
+    ASSERT_TRUE(picture.isValid());
+    EXPECT_LE(picture.value<QImage>().width(), 320);
+    // A new conversation lets the pictures go with the text.
+    panel->newConversation();
+    EXPECT_FALSE(transcript->document()
+                     ->resource(QTextDocument::ImageResource, QUrl("hzview://1"))
+                     .isValid());
+}
+
 TEST(AiAssistantTest, StopLeavesThePanelReady) {
     MainWindow window;
     FakeTransport transport;
@@ -368,6 +424,10 @@ TEST(AiSettingsTest, RoundTrip) {
     settings.configs[ProviderKind::Anthropic].effort = "high";
     settings.configs[ProviderKind::Anthropic].serverFallback = false;
     settings.configs[ProviderKind::OpenAICompatible].baseUrl = "http://localhost:1234/v1";
+    EXPECT_FALSE(settings.configs[ProviderKind::OpenAICompatible].images);  // may read none
+    EXPECT_TRUE(settings.configs[ProviderKind::Gemini].images);
+    settings.configs[ProviderKind::OpenAICompatible].images = true;
+    settings.configs[ProviderKind::Gemini].images = false;
     settings.save();
     const AiSettings read = AiSettings::load();
     EXPECT_EQ(read.provider, ProviderKind::Gemini);
@@ -376,6 +436,8 @@ TEST(AiSettingsTest, RoundTrip) {
     EXPECT_EQ(read.configs.at(ProviderKind::Anthropic).effort, "high");
     EXPECT_FALSE(read.configs.at(ProviderKind::Anthropic).serverFallback);
     EXPECT_EQ(read.configs.at(ProviderKind::OpenAICompatible).baseUrl, "http://localhost:1234/v1");
+    EXPECT_TRUE(read.configs.at(ProviderKind::OpenAICompatible).images);
+    EXPECT_FALSE(read.configs.at(ProviderKind::Gemini).images);
     EXPECT_FALSE(read.isRemote(ProviderKind::OpenAICompatible));
     EXPECT_TRUE(read.isRemote(ProviderKind::Gemini));
     AiSettings::defaults().save();

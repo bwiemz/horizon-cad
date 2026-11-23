@@ -10,6 +10,7 @@
 
 #include "horizon/ai/CadTools.h"
 #include "horizon/ai/SystemPrompt.h"
+#include "horizon/ai/ViewImage.h"
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/AssemblyMates.h"
 #include "horizon/document/Document.h"
@@ -251,8 +252,10 @@ void McpSession::bind() {
         hooks.unsavedFolder = m_root.string();
         ai::registerAssemblyTools(m_tools, *m_assembly, *m_document, *m_documents,
                                   std::move(hooks));
+        ai::registerViewTool(m_tools, *m_assembly);
     } else {
         ai::registerCadTools(m_tools, *m_document);
+        ai::registerViewTool(m_tools, *m_document);
     }
     registerDocumentTools();
 }
