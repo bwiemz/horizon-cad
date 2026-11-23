@@ -221,6 +221,10 @@ protected:
 
 private:
     struct Call {
+        // json's constructor is not noexcept; said so, as clang-tidy's
+        // bugprone-exception-escape asks of a defaulted one.
+        Call() noexcept(false) = default;
+
         std::string id;
         std::string name;
         std::string arguments;  ///< the JSON text, as it came
