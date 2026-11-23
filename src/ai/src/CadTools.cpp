@@ -26,6 +26,10 @@ void registerCadTools(ToolRegistry& registry, doc::Document& document, CadToolHo
     detail::registerModelTools(registry, context);
     detail::registerDraftTools(registry, context);
     detail::registerAdvancedTools(registry, context);
+    detail::registerDrawingTool(registry, context->hooks.makeDrawing, [&document] {
+        return detail::DrawingSource{"part", document.filePath(), document.isDirty(),
+                                     document.solid() == nullptr};
+    });
 }
 
 namespace detail {

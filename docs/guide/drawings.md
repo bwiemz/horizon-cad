@@ -12,6 +12,9 @@ A3 landscape with four views: front, top, right and isometric, at the
 largest standard scale that fits. A sheet of an assembly has a parts list
 and numbered balloons.
 
+The AI assistant makes one too, when asked for a drawing: see
+[the AI assistant](ai-assistant.md).
+
 ## The sheet
 
 - **Title Block...** fills in the title, part number, revision, author,

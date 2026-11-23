@@ -127,7 +127,16 @@ declines part-way takes back what it wrote. If a server on your computer
 shows nothing until the end, or stops part-way, turn off **Show replies as
 they are written** in the settings: replies then come whole.
 
-It does not work on drawing sheets yet. It cannot open, save or export files.
+**Drawings.** Ask it for a drawing of the part or the assembly, and it makes
+one as **Drawing ▸ New Drawing from Part or Assembly** does: front, top,
+right and isometric views over a title block, on the paper, at the scale and
+with the title block it is told (or works out from what you asked). The
+sheet opens in a tab of its own, beside the part's, and is not saved: switch
+to it to look at it, and save it. The part or assembly must have been saved
+once, since the sheet refers to its file. It cannot yet change a sheet once
+made; edit it with the Drawing menu.
+
+It cannot open, save or export files.
 
 ## Automating from outside
 

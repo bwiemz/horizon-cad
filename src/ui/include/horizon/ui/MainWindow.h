@@ -39,6 +39,11 @@ class QProgressBar;
 class QToolButton;
 class QMessageBox;
 
+namespace hz::ai {
+struct DrawingMade;
+struct DrawingRequest;
+}  // namespace hz::ai
+
 namespace hz::doc {
 class Command;
 }  // namespace hz::doc
@@ -409,11 +414,16 @@ private:
     bool onWorker(bool large) override;
     void backgroundWorkChanged() override;
     void addTab(std::shared_ptr<doc::Document> document, const QString& title) override;
+    void addTabBehind(std::shared_ptr<doc::Document> document, const QString& title) override;
     void runTool(std::unique_ptr<Tool> tool) override;
     void endTool() override;
 
+    /// Made the active tab unless @p behind.
     int addDocumentTab(std::shared_ptr<doc::Document> document,
-                       std::shared_ptr<doc::AssemblyDocument> assembly, const QString& title);
+                       std::shared_ptr<doc::AssemblyDocument> assembly, const QString& title,
+                       bool behind = false);
+    /// The AI assistant's make_drawing: a sheet, in a tab behind the active one.
+    ai::DrawingMade makeDrawingForAssistant(const ai::DrawingRequest& request);
     void activateTabDocument();
     void rebuildScene() override;
     void refreshAllPanels();

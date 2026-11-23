@@ -70,6 +70,10 @@ public:
     /// Show @p document, made by the workbench, in a new tab titled @p title,
     /// and make it the active one.
     virtual void addTab(std::shared_ptr<doc::Document> document, const QString& title) = 0;
+    /// Show @p document in a new tab titled @p title, behind the active one:
+    /// for what the AI assistant makes while it works, whose request a
+    /// switch of tab would stop.
+    virtual void addTabBehind(std::shared_ptr<doc::Document> document, const QString& title) = 0;
     /// Tell the user a file could not be read or written, and why.
     virtual void reportFileError(const QString& summary, const std::string& path,
                                  const std::string& reason) = 0;

@@ -404,9 +404,11 @@ void AiAssistantPanel::rebindTools() {
         assemblyHooks.beforeChange = [this] {
             if (m_host.beforeAssemblyChange) m_host.beforeAssemblyChange();
         };
+        assemblyHooks.makeDrawing = m_host.makeDrawing;
         ai::registerAssemblyTools(m_tools, *m_assembly, *m_document, *m_documents,
                                   std::move(assemblyHooks));
     } else {
+        hooks.makeDrawing = m_host.makeDrawing;
         ai::registerCadTools(m_tools, *m_document, std::move(hooks));
     }
     // Pictures of the model, for a model that reads them (the settings say).

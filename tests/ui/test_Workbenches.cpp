@@ -109,6 +109,9 @@ public:
     void addTab(std::shared_ptr<hz::doc::Document> document, const QString& title) override {
         tabs.emplace_back(std::move(document), title);
     }
+    void addTabBehind(std::shared_ptr<hz::doc::Document> document, const QString& title) override {
+        tabs.emplace_back(std::move(document), title);
+    }
     void runTool(std::unique_ptr<hz::ui::Tool> given) override { tool = std::move(given); }
     void endTool() override { ++toolsEnded; }
     void reportFileError(const QString& /*summary*/, const std::string& path,
