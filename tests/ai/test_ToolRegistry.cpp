@@ -53,6 +53,7 @@ TEST(ToolRegistry, MissingRequiredIsAnError) {
     EXPECT_TRUE(result.isError);
     EXPECT_NE(result.content.find("\"x\""), std::string::npos);
     EXPECT_FALSE(ran);
+    EXPECT_NE(registry.run("needs_x", json{{"y", 1}}).content.find("given: y"), std::string::npos);
     // A null counts as missing.
     EXPECT_TRUE(registry.run("needs_x", json{{"x", nullptr}}).isError);
 }

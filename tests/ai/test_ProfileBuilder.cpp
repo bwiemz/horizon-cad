@@ -188,3 +188,17 @@ TEST(ProfileBuilder, SchemaListsTheTypes) {
     EXPECT_EQ(schema["properties"]["type"]["enum"].size(), 7u);
     EXPECT_EQ(entitySchema(true)["properties"]["type"]["enum"].size(), 8u);
 }
+
+TEST(ProfileBuilder, GarbledNumbersAndMissingKeysAreSaidPlainly) {
+    // What a small local model sent: a garbled width, and no height.
+    const std::string garbled = errorOf(json::array(
+        {{{"type", "rectangle"}, {"corner", {0, 0}}, {"width", 6e15}, {"height", 40}}}));
+    EXPECT_NE(garbled.find("beyond"), std::string::npos) << garbled;
+    const std::string missing =
+        errorOf(json::array({{{"type", "rectangle"}, {"corner", {0, 0}}, {"width", 60}}}));
+    EXPECT_NE(missing.find("\"height\" is required"), std::string::npos) << missing;
+    EXPECT_NE(missing.find("it has: corner, type, width"), std::string::npos) << missing;
+    EXPECT_NE(errorOf(json::array({{{"type", "circle"}, {"center", {1e9, 0}}, {"radius", 1}}}))
+                  .find("beyond"),
+              std::string::npos);
+}

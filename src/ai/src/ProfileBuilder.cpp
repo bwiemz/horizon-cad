@@ -34,14 +34,33 @@ struct Reader {
 
     [[noreturn]] void fail(const std::string& what) const { throw ArgError(who + ": " + what); }
 
+    /// The keys it was given, to say alongside what is missing: a model
+    /// corrects itself sooner when it sees what it sent.
+    std::string given() const {
+        std::string keys;
+        if (in.is_object()) {
+            for (auto it = in.begin(); it != in.end(); ++it) {
+                keys += (keys.empty() ? "" : ", ") + it.key();
+            }
+        }
+        return " (it has: " + (keys.empty() ? std::string("nothing") : keys) + ")";
+    }
+    [[noreturn]] void missing(const char* key) const {
+        fail(std::string("\"") + key + "\" is required" + given());
+    }
+
     bool has(const char* key) const { return in.contains(key) && !in[key].is_null(); }
 
     double number(const char* key) const {
-        if (!has(key)) fail(std::string("\"") + key + "\" is required");
+        if (!has(key)) missing(key);
         const json& v = in[key];
         if (!v.is_number()) fail(std::string("\"") + key + "\" must be a number");
         const double d = v.get<double>();
         if (!std::isfinite(d)) fail(std::string("\"") + key + "\" must be finite");
+        if (std::abs(d) > detail::kMaxMagnitude) {
+            fail(std::string("\"") + key + "\" is " + json(d).dump() +
+                 ", beyond 1000000: coordinates and sizes are in mm");
+        }
         return d;
     }
     double number(const char* key, double otherwise) const {
@@ -53,7 +72,7 @@ struct Reader {
         return d;
     }
     Vec2 point(const char* key) const {
-        if (!has(key)) fail(std::string("\"") + key + "\" is required");
+        if (!has(key)) missing(key);
         return pointOf(in[key], key);
     }
     Vec2 pointOf(const json& v, const std::string& name) const {
@@ -70,6 +89,9 @@ struct Reader {
             fail("\"" + name + "\" must be a point [x, y]");
         }
         if (!std::isfinite(x) || !std::isfinite(y)) fail("\"" + name + "\" must be finite");
+        if (std::abs(x) > detail::kMaxMagnitude || std::abs(y) > detail::kMaxMagnitude) {
+            fail("\"" + name + "\" is beyond 1000000: coordinates are in mm");
+        }
         return {x, y};
     }
 };

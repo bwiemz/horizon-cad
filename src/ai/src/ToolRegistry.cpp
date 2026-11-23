@@ -89,7 +89,13 @@ ToolResult ToolRegistry::run(const std::string& name, const nlohmann::json& inpu
             if (!property.is_string()) continue;
             const auto key = property.get<std::string>();
             if (!args.contains(key) || args[key].is_null()) {
-                return ToolResult::error(name + ": the argument \"" + key + "\" is required.");
+                std::string given;
+                for (auto it = args.begin(); it != args.end(); ++it) {
+                    given += (given.empty() ? "" : ", ") + it.key();
+                }
+                return ToolResult::error(name + ": the argument \"" + key +
+                                         "\" is required (given: " +
+                                         (given.empty() ? std::string("nothing") : given) + ").");
             }
         }
     }

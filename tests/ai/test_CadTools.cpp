@@ -718,6 +718,8 @@ TEST_F(CadToolsTest, BadArgumentsAreErrorsNotCrashes) {
         {"get_mass_properties", {{"density_kg_m3", -5}}},
         {"set_variables", json::object()},
         {"set_variables", {{"remove", json::array({"never_was"})}}},
+        {"add_primitive", {{"shape", "sphere"}, {"radius", 6e15}}},
+        {"extrude", {{"sketch_id", 1}, {"distance", 1e12}}},
     };
     const std::size_t features = document.featureTree().featureCount();
     const std::size_t steps = document.undoStack().undoCount();

@@ -62,6 +62,12 @@ double number(const json& in, const char* key) {
         throw ArgError(quoted(key) + " must be a number");
     }
     if (!std::isfinite(value)) throw ArgError(quoted(key) + " must be finite");
+    if (std::abs(value) > kMaxMagnitude) {
+        throw ArgError(quoted(key) + " is " + json(value).dump() + ", beyond " +
+                       json(kMaxMagnitude).dump() +
+                       ": lengths are in mm (a part is not a kilometre "
+                       "across)");
+    }
     return value;
 }
 

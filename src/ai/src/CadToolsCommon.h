@@ -43,6 +43,10 @@ struct ArgError : std::invalid_argument {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kDegree = kPi / 180.0;
+/// No length, coordinate or angle a model gives is beyond this: 1 km in mm.
+/// Past it is a garbled number, not a part (and past the kernel's tested
+/// range).
+constexpr double kMaxMagnitude = 1e6;
 
 // --- Arguments ----------------------------------------------------------------
 
