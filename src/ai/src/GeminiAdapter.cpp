@@ -156,10 +156,13 @@ public:
     ChatResponse parseResponse(const HttpResponse& http) const override {
         if (http.status == 0) return failed(httpErrorMessage("Gemini", http, {}));
         const auto parsed = parseJson(http.body);
-        if (succeeded(http.status) && !parsed) {
-            return failed("Gemini sent a reply that is not JSON: " + snippet(http.body));
-        }
-        if (!succeeded(http.status) || !parsed->is_object() || parsed->contains("error")) {
+        // Bound once, the optional tested before every use (CI's clang-tidy
+        // checks it).
+        if (!parsed || !succeeded(http.status) || !parsed->is_object() ||
+            parsed->contains("error")) {
+            if (!parsed && succeeded(http.status)) {
+                return failed("Gemini sent a reply that is not JSON: " + snippet(http.body));
+            }
             HttpResponse shown = http;
             if (succeeded(shown.status)) shown.status = 500;
             return failed(httpErrorMessage("Gemini", shown, parsed ? errorMessageOf(*parsed) : ""));

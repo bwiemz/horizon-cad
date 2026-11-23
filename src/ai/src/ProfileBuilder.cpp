@@ -136,6 +136,7 @@ void addPolygon(const Reader& r, Entities& out) {
     }
     const double start = r.number("angle", 90.0) * kDegree;  // a vertex at the top by default
     std::vector<Vec2> points;
+    points.reserve(static_cast<std::size_t>(sides));
     for (long long i = 0; i < sides; ++i) {
         const double a = start + 2.0 * kPi * static_cast<double>(i) / static_cast<double>(sides);
         points.emplace_back(c.x + radius * std::cos(a), c.y + radius * std::sin(a));
@@ -149,6 +150,7 @@ void addPolyline(const Reader& r, Entities& out) {
     const json& list = r.in["points"];
     if (list.size() > kMaxPoints) r.fail("too many points");
     std::vector<Vec2> points;
+    points.reserve(list.size());
     for (std::size_t i = 0; i < list.size(); ++i) {
         points.push_back(r.pointOf(list[i], "points[" + std::to_string(i) + "]"));
     }

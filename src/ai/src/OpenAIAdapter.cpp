@@ -115,11 +115,14 @@ public:
         const char* who = m_official ? "OpenAI" : "The model server";
         if (http.status == 0) return failed(httpErrorMessage(who, http, {}));
         const auto parsed = parseJson(http.body);
-        if (succeeded(http.status) && !parsed) {
-            return failed(std::string(who) +
-                          " sent a reply that is not JSON: " + snippet(http.body));
-        }
-        if (!succeeded(http.status) || !parsed->is_object() || parsed->contains("error")) {
+        // Bound once, the optional tested before every use (CI's clang-tidy
+        // checks it).
+        if (!parsed || !succeeded(http.status) || !parsed->is_object() ||
+            parsed->contains("error")) {
+            if (!parsed && succeeded(http.status)) {
+                return failed(std::string(who) +
+                              " sent a reply that is not JSON: " + snippet(http.body));
+            }
             HttpResponse shown = http;
             if (succeeded(shown.status)) shown.status = 500;
             return failed(httpErrorMessage(who, shown, parsed ? errorMessageOf(*parsed) : ""));

@@ -36,18 +36,21 @@ namespace {
 
 using math::Vec3;
 
-const std::vector<std::string> kOperations = {"new", "join", "cut", "intersect"};
+const std::vector<std::string>& operations() {
+    static const std::vector<std::string> names = {"new", "join", "cut", "intersect"};
+    return names;
+}
 
 /// The body operation asked for; by default join when there is a part to
 /// join, else a new body.
 doc::BodyOperation operationOf(const CadContext& context, const json& in) {
     const std::string fallback = context.document.solid() != nullptr ? "join" : "new";
-    const std::string name = choice(in, "operation", kOperations, fallback);
+    const std::string name = choice(in, "operation", operations(), fallback);
     return doc::bodyOperationFromName(name).value_or(doc::BodyOperation::NewBody);
 }
 
 json operationSchema() {
-    return enumSchema(kOperations,
+    return enumSchema(operations(),
                       "how the new body combines with the part: join (add), cut (remove), "
                       "intersect, new (separate body). Default: join if there is a part, else new");
 }
@@ -412,7 +415,9 @@ std::size_t choiceCode(const std::vector<std::string>& choices, const std::strin
 ToolResult editFeature(const CadContext& context, const json& in) {
     doc::Document& document = context.document;
     doc::Feature& feature = featureAt(document, in, "index");
-    const auto index = static_cast<int>(*document.featureTree().indexOf(&feature));
+    const auto found = document.featureTree().indexOf(&feature);
+    if (!found) throw ArgError("the feature is not in the part");
+    const auto index = static_cast<int>(*found);
     const auto current = feature.parameters();
     const auto currentVectors = feature.vectors();
     const auto names = [](const auto& map) {
@@ -486,7 +491,7 @@ ToolResult editFeature(const CadContext& context, const json& in) {
     std::optional<doc::BodyOperation> operation;
     if (has(in, "operation")) {
         if (!feature.createsNewBody()) throw ArgError("this feature has no body operation");
-        operation = doc::bodyOperationFromName(choice(in, "operation", kOperations));
+        operation = doc::bodyOperationFromName(choice(in, "operation", operations()));
     }
     if (parameters.empty() && vectors.empty() && expressions.empty() && !operation) {
         throw ArgError("nothing to change: give parameters, expressions, vectors or operation");
