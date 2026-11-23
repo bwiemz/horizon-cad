@@ -280,6 +280,7 @@ MainWindow::MainWindow(QWidget* parent)
          [this] { m_viewport->cancelComponentDrag(); },
          [this](const ai::DrawingRequest& request) { return makeDrawingForAssistant(request); },
          [this](std::shared_ptr<doc::Document> sheet) {
+             // Held weakly: a weak_ptr is made from the shared one, not moved.
              return sheetToolHooks(*m_drawings, sheet);
          }});
     m_aiPanel->setDocument(m_document, tr("Drawing 1"));
