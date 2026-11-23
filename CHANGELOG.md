@@ -19,6 +19,16 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Changes to a drawing sheet can be undone.** A sheet's title block,
+  paper, scale, views (added, moved, removed, their settings) and
+  dimensions were changed outside the undo stack: Undo did nothing, and the
+  guide said so. Each change is now one undo step, made by the same command
+  whatever made the change. Undone back to where the sheet was saved, it is
+  no longer marked modified. Notes drawn by hand inside a view, which move
+  with it, go back exactly as far as they went, and a note lying where the
+  view went is left where it is. This is what the AI assistant's sheet
+  tools will build on.
+
 - **The AI assistant makes drawings.** Asked for a drawing of the part or the
   assembly, it makes the sheet the Drawing menu makes (front, top, right and
   isometric views over a title block) with the paper, orientation, scale and

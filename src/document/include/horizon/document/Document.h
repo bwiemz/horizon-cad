@@ -206,6 +206,15 @@ public:
     /// stack; it stays set until the next setDirty(false).
     void setDirty(bool dirty);
 
+    /// Whether a change outside the undo stack is marked (setDirty(true), or
+    /// an entity added or removed directly), the undo stack's state aside.
+    bool changedOutsideUndo() const { return m_dirty; }
+    /// Put that mark back as it was, the undo stack's saved state untouched:
+    /// around a change that leaves the document as saved (a drawing sheet
+    /// drawn again from its part), which may run inside an undo or redo,
+    /// where setDirty() would move the saved state.
+    void restoreChangedOutsideUndo(bool changed) { m_dirty = changed; }
+
     /// Called whenever the modified state may have changed: after every undo
     /// stack change and every setDirty() call. Replaces the undo stack's own
     /// change callback.
