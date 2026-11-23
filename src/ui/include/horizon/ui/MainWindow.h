@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <vector>
 
@@ -168,6 +169,8 @@ private slots:
     void onCommandPalette();
     /// Show the AI assistant and put the cursor in its request box.
     void showAssistant();
+    /// What is selected, for the assistant's get_selection tool.
+    nlohmann::json assistantSelection() const;
     void onNewFile();
     void onNewPart();
     void onNewAssembly();

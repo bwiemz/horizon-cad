@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <utility>
 
 #include "CadToolsCommon.h"
@@ -12,6 +13,7 @@
 #include "horizon/document/ModelCommands.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/topology/Solid.h"
 
@@ -23,6 +25,7 @@ void registerCadTools(ToolRegistry& registry, doc::Document& document, CadToolHo
     detail::registerQueryTools(registry, context);
     detail::registerModelTools(registry, context);
     detail::registerDraftTools(registry, context);
+    detail::registerAdvancedTools(registry, context);
 }
 
 namespace detail {
@@ -61,6 +64,12 @@ double number(const json& in, const char* key) {
         throw ArgError(quoted(key) + " must be a number");
     }
     if (!std::isfinite(value)) throw ArgError(quoted(key) + " must be finite");
+    if (std::abs(value) > kMaxMagnitude) {
+        throw ArgError(quoted(key) + " is " + json(value).dump() + ", beyond " +
+                       json(kMaxMagnitude).dump() +
+                       ": lengths are in mm (a part is not a kilometre "
+                       "across)");
+    }
     return value;
 }
 
@@ -281,6 +290,35 @@ void CadContext::modelChanged() const {
 
 void CadContext::drawingChanged() const {
     if (hooks.drawingChanged) hooks.drawingChanged();
+}
+
+std::string faceNameOf(const CadContext& context, const std::string& given) {
+    std::string word = given;
+    std::transform(word.begin(), word.end(), word.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    static const std::map<std::string, math::Vec3> sides = {
+        {"top", {0, 0, 1}},  {"bottom", {0, 0, -1}}, {"front", {0, -1, 0}},
+        {"back", {0, 1, 0}}, {"right", {1, 0, 0}},   {"left", {-1, 0, 0}}};
+    const auto side = sides.find(word);
+    const topo::Solid* solid = context.document.solid();
+    if (side == sides.end() || solid == nullptr) return model::wholeFaceName(given);
+    const double outward = model::outwardSign(*solid);
+    std::string best;
+    double bestReach = -std::numeric_limits<double>::max();
+    for (const auto& face : solid->faces()) {
+        if (!face.alive || !face.topoId.isValid()) continue;
+        const auto plane = model::planeOf(face, outward);
+        if (!plane || plane->normal.dot(side->second) < std::cos(2.0 * kDegree)) continue;
+        const double reach = plane->origin.dot(side->second);
+        if (reach > bestReach) {
+            bestReach = reach;
+            best = model::wholeFaceName(face.topoId.tag());
+        }
+    }
+    if (best.empty()) {
+        throw ArgError("the part has no flat face facing " + word + "; use a name from list_faces");
+    }
+    return best;
 }
 
 json solidSummary(const doc::Document& document) {

@@ -34,14 +34,33 @@ struct Reader {
 
     [[noreturn]] void fail(const std::string& what) const { throw ArgError(who + ": " + what); }
 
+    /// The keys it was given, to say alongside what is missing: a model
+    /// corrects itself sooner when it sees what it sent.
+    std::string given() const {
+        std::string keys;
+        if (in.is_object()) {
+            for (auto it = in.begin(); it != in.end(); ++it) {
+                keys += (keys.empty() ? "" : ", ") + it.key();
+            }
+        }
+        return " (it has: " + (keys.empty() ? std::string("nothing") : keys) + ")";
+    }
+    [[noreturn]] void missing(const char* key) const {
+        fail(std::string("\"") + key + "\" is required" + given());
+    }
+
     bool has(const char* key) const { return in.contains(key) && !in[key].is_null(); }
 
     double number(const char* key) const {
-        if (!has(key)) fail(std::string("\"") + key + "\" is required");
+        if (!has(key)) missing(key);
         const json& v = in[key];
         if (!v.is_number()) fail(std::string("\"") + key + "\" must be a number");
         const double d = v.get<double>();
         if (!std::isfinite(d)) fail(std::string("\"") + key + "\" must be finite");
+        if (std::abs(d) > detail::kMaxMagnitude) {
+            fail(std::string("\"") + key + "\" is " + json(d).dump() +
+                 ", beyond 1000000: coordinates and sizes are in mm");
+        }
         return d;
     }
     double number(const char* key, double otherwise) const {
@@ -53,7 +72,7 @@ struct Reader {
         return d;
     }
     Vec2 point(const char* key) const {
-        if (!has(key)) fail(std::string("\"") + key + "\" is required");
+        if (!has(key)) missing(key);
         return pointOf(in[key], key);
     }
     Vec2 pointOf(const json& v, const std::string& name) const {
@@ -70,6 +89,9 @@ struct Reader {
             fail("\"" + name + "\" must be a point [x, y]");
         }
         if (!std::isfinite(x) || !std::isfinite(y)) fail("\"" + name + "\" must be finite");
+        if (std::abs(x) > detail::kMaxMagnitude || std::abs(y) > detail::kMaxMagnitude) {
+            fail("\"" + name + "\" is beyond 1000000: coordinates are in mm");
+        }
         return {x, y};
     }
 };
@@ -83,13 +105,36 @@ Vec2 rotated(const Vec2& v, double angle) {
 using Entities = std::vector<std::shared_ptr<draft::DraftEntity>>;
 
 void addRectangle(const Reader& r, Entities& out) {
-    const double w = r.positive("width");
-    const double h = r.positive("height");
+    // Taken in the forms models write it: width and height (or "length" for
+    // the height), "size": [w, h], or two opposite corners; from a corner
+    // (the origin when none is given) or its centre.
     const double angle = r.number("angle", 0.0) * kDegree;
+    if (r.has("from") && r.has("to") && angle == 0.0) {
+        const Vec2 a = r.point("from");
+        const Vec2 b = r.point("to");
+        if (std::abs(b.x - a.x) < 1e-9 || std::abs(b.y - a.y) < 1e-9) {
+            r.fail("its two corners do not span an area");
+        }
+        out.push_back(
+            std::make_shared<draft::DraftRectangle>(Vec2(std::min(a.x, b.x), std::min(a.y, b.y)),
+                                                    Vec2(std::max(a.x, b.x), std::max(a.y, b.y))));
+        return;
+    }
+    double w = 0.0;
+    double h = 0.0;
+    if (r.has("size")) {
+        const Vec2 size = r.point("size");
+        w = size.x;
+        h = size.y;
+        if (!(w > 0.0) || !(h > 0.0)) r.fail("\"size\" must be two sizes greater than 0");
+    } else {
+        w = r.positive("width");
+        h = r.has("height") || !r.has("length") ? r.positive("height") : r.positive("length");
+    }
     Vec2 corner;
     if (r.has("center")) {
         corner = r.point("center") - rotated(Vec2(w / 2.0, h / 2.0), angle);
-    } else {
+    } else if (r.has("corner")) {
         corner = r.point("corner");
     }
     if (angle == 0.0) {
@@ -251,6 +296,10 @@ json entitySchema(bool allowText) {
         {"center", point},
         {"width",
          {{"type", "number"}, {"description", "rectangle width; slot width (its diameter)"}}},
+        {"size",
+         {{"type", "array"},
+          {"items", {{"type", "number"}}},
+          {"description", "rectangle: [width, height], instead of width and height"}}},
         {"height", {{"type", "number"}, {"description", "rectangle height; text height"}}},
         {"radius",
          {{"type", "number"}, {"description", "circle, arc; polygon: centre to a vertex"}}},
@@ -269,16 +318,16 @@ json entitySchema(bool allowText) {
         properties["position"] = point;
         properties["text"] = {{"type", "string"}};
     }
-    return {
-        {"type", "object"},
-        {"description",
-         "A shape. line: from, to. polyline: points, closed. rectangle: corner (lower left) or "
-         "center, width, height, angle. circle: center, radius or diameter. arc: center, radius, "
-         "start_angle, end_angle. slot: center, length, width, angle. polygon: center, sides, "
-         "radius, angle." +
-             std::string(allowText ? " text: position, text, height." : "")},
-        {"properties", std::move(properties)},
-        {"required", {"type"}}};
+    return {{"type", "object"},
+            {"description",
+             "A shape. line: from, to. polyline: points, closed. rectangle: width and height (or "
+             "size [w, h]) from corner (lower left, default the origin) or center, angle. circle: "
+             "center, radius or diameter. arc: center, radius, "
+             "start_angle, end_angle. slot: center, length, width, angle. polygon: center, sides, "
+             "radius, angle." +
+                 std::string(allowText ? " text: position, text, height." : "")},
+            {"properties", std::move(properties)},
+            {"required", {"type"}}};
 }
 
 }  // namespace hz::ai

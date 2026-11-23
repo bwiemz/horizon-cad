@@ -43,6 +43,10 @@ struct ArgError : std::invalid_argument {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kDegree = kPi / 180.0;
+/// No length, coordinate or angle a model gives is beyond this: 1 km in mm.
+/// Past it is a garbled number, not a part (and past the kernel's tested
+/// range).
+constexpr double kMaxMagnitude = 1e6;
 
 // --- Arguments ----------------------------------------------------------------
 
@@ -97,6 +101,11 @@ struct CadContext {
 };
 using Context = std::shared_ptr<CadContext>;
 
+/// The whole name of the face @p given names: a name or id from list_faces,
+/// or one of top, bottom, front, back, left, right (the outermost flat face
+/// facing +Z, -Z, -Y, +Y, -X, +X), which a model reaches for first.
+std::string faceNameOf(const CadContext& context, const std::string& given);
+
 /// The solid as a model needs to see it: faces, bodies, volume, extent.
 json solidSummary(const doc::Document& document);
 /// The feature at @p index (as list_features numbers them), or an ArgError.
@@ -128,5 +137,6 @@ json describeEntity(const draft::DraftEntity& entity);
 void registerQueryTools(ToolRegistry& registry, const Context& context);
 void registerModelTools(ToolRegistry& registry, const Context& context);
 void registerDraftTools(ToolRegistry& registry, const Context& context);
+void registerAdvancedTools(ToolRegistry& registry, const Context& context);
 
 }  // namespace hz::ai::detail
