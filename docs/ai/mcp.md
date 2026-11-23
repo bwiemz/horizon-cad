@@ -13,8 +13,9 @@ It runs headless (no window) and speaks MCP over standard input and output.
 
 ## Running it
 
-`horizon-mcp` is installed next to `horizon` on Windows and Linux. On macOS,
-build it from source: it is the `horizon-mcp` target.
+`horizon-mcp` is installed next to `horizon` on Windows and Linux. On macOS
+it is inside the application:
+`/Applications/HorizonCAD.app/Contents/MacOS/horizon-mcp`.
 
 ```text
 horizon-mcp [--root DIR] [--open FILE] [--drawing]
@@ -52,8 +53,10 @@ Add this to `claude_desktop_config.json` (Settings ▸ Developer ▸ Edit Config
 }
 ```
 
-On Linux, use the path of `horizon-mcp` in your installation. To start on a
-file, add `"--open", "/path/to/part.hzpart"` to `args`.
+On macOS, `command` is
+`/Applications/HorizonCAD.app/Contents/MacOS/horizon-mcp`; on Linux, the path
+of `horizon-mcp` in your installation. To start on a file, add
+`"--open", "/path/to/part.hzpart"` to `args`.
 
 ## Claude Code
 

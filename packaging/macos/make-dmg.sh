@@ -28,6 +28,7 @@ stage="${work}/stage"
 cmake --install "${build}" --prefix "${stage}"
 app="${stage}/HorizonCAD.app"
 test -x "${app}/Contents/MacOS/HorizonCAD"
+test -x "${app}/Contents/MacOS/horizon-mcp"
 
 # A link to nothing (a package manager's link, copied as a link) leaves the
 # bundle without the file. A framework's own links point inside it.
@@ -72,11 +73,12 @@ for binary in "${binaries[@]}"; do
 done
 if [[ "${outside}" -ne 0 ]]; then exit 1; fi
 
-# Signed inside out: each library and plugin, each framework, then the bundle.
+# Signed inside out: each library, plugin and helper program (horizon-mcp),
+# each framework, then the bundle, which signs its main executable.
 sign=(codesign --force --sign "${identity:--}")
 if [[ -n "${identity}" ]]; then sign+=(--options runtime --timestamp); fi
 for binary in "${binaries[@]}"; do
-    if [[ "${binary}" != "${app}/Contents/MacOS/"* ]]; then "${sign[@]}" "${binary}"; fi
+    if [[ "${binary}" != "${app}/Contents/MacOS/HorizonCAD" ]]; then "${sign[@]}" "${binary}"; fi
 done
 if [[ -d "${app}/Contents/Frameworks" ]]; then
     while IFS= read -r -d '' framework; do
