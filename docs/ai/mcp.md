@@ -1,0 +1,89 @@
+# Driving Horizon CAD from an AI client (MCP)
+
+`horizon-mcp` serves Horizon CAD's CAD tools over the
+[Model Context Protocol](https://modelcontextprotocol.io). Any MCP client can
+then build and change parts and drawings: Claude Desktop, Claude Code,
+ChatGPT's desktop app, Cursor, VS Code, and agents you write yourself. These
+are the same tools the AI assistant uses in the window: sketches, features,
+variables, faces and edges, mass, and 2D drafting. Five more tools handle the
+document's files.
+
+It runs headless (no window) and speaks MCP over standard input and output.
+
+## Running it
+
+`horizon-mcp` is installed next to `horizon` on Windows and Linux. On macOS,
+build it from source: it is the `horizon-mcp` target.
+
+```text
+horizon-mcp [--open FILE] [--drawing]
+
+  --open FILE   start with FILE (.hzpart, .hcad or .dxf)
+  --drawing     start with an empty 2D drawing (default: an empty part)
+```
+
+It works on one document at a time, and saves nothing unless asked.
+
+## Claude Desktop
+
+Add this to `claude_desktop_config.json` (Settings ▸ Developer ▸ Edit Config):
+
+```json
+{
+  "mcpServers": {
+    "horizon-cad": {
+      "command": "C:\\Program Files\\Horizon CAD\\bin\\horizon-mcp.exe",
+      "args": []
+    }
+  }
+}
+```
+
+On Linux, use the path of `horizon-mcp` in your installation. To start on a
+file, add `"--open", "/path/to/part.hzpart"` to `args`.
+
+## Claude Code
+
+```sh
+claude mcp add horizon-cad -- /path/to/horizon-mcp
+```
+
+Then ask, for example: *"Make a 60 × 40 × 5 mm plate with four 5 mm holes 8 mm
+in from the corners, fillet its top edges by 1 mm, save it as plate.hzpart and
+export a STEP."*
+
+## Other clients
+
+Any client that starts an MCP server as a subprocess over stdio works. Give
+it the path to `horizon-mcp` as the command.
+
+## The tools
+
+The CAD tools are those of the in-app assistant. See
+[the user guide's page](../guide/ai-assistant.md), and `tools/list` for their
+schemas. The file tools are:
+
+| Tool | Does |
+|------|------|
+| `get_session_info` | The document: part or drawing, its file, unsaved changes, any build error |
+| `new_document` | Start an empty part or drawing in its place |
+| `open_document` | Open a `.hzpart`, `.hcad` or `.dxf` file in its place |
+| `save_document` | Save as `.hzpart` (a part) or `.hcad` (a drawing) |
+| `export_document` | Write the solid as STEP, STL or glTF (`.glb`), or the drawing as DXF |
+
+Lengths are millimetres and angles degrees. `tools/list` marks each tool with
+hints: `readOnlyHint` for the queries, and `openWorldHint` for the tools that
+read or write files. A client can use these to decide what to confirm with
+you.
+
+## Protocol
+
+- JSON-RPC 2.0 over stdio, one message per line.
+- Protocol versions 2025-06-18, 2025-03-26 and 2024-11-05. It answers a
+  newer request with 2025-06-18.
+- Methods: `initialize`, `ping`, `tools/list`, `tools/call`.
+- A tool's failure, such as a bad argument or a feature that does not build,
+  comes back as a result with `isError: true` and a reason the model can act
+  on. A feature that fails is not added.
+- Diagnostics go to standard error. Standard output carries only the
+  protocol.
