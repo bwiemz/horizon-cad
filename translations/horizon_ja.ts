@@ -4,7 +4,7 @@
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../src/ui/src/ConstraintTool.cpp" line="+295"/>
+        <location filename="../src/ui/src/ConstraintTool.cpp" line="+326"/>
         <source>Distance Constraint</source>
         <translation type="unfinished">距離拘束</translation>
     </message>
@@ -94,6 +94,481 @@
         <location line="+1"/>
         <source>Enter text:</source>
         <translation type="unfinished">テキストを入力:</translation>
+    </message>
+</context>
+<context>
+    <name>hz::ui::AiAssistantPanel</name>
+    <message>
+        <location filename="../src/ui/src/AiAssistantPanel.cpp" line="+75"/>
+        <source>Done</source>
+        <translation type="unfinished">完了</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Added %1</source>
+        <translation type="unfinished">%1 を追加しました</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Made a sketch</source>
+        <translation type="unfinished">スケッチを作成しました</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Edited a feature</source>
+        <translation type="unfinished">フィーチャーを編集しました</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Deleted %1</source>
+        <translation type="unfinished">%1 を削除しました</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Set the variables</source>
+        <translation type="unfinished">変数を設定しました</translation>
+    </message>
+    <message numerus="yes">
+        <location line="-48"/>
+        <source>list of %n</source>
+        <translation type="unfinished">
+            <numerusform>%n 個の項目</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+45"/>
+        <source>Shapes drawn: %n</source>
+        <translation type="unfinished">
+            <numerusform>図形を %n 個描画しました</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+5"/>
+        <source>Edges read: %n</source>
+        <translation type="unfinished">
+            <numerusform>エッジを %n 本調べました</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>Faces read: %n</source>
+        <translation type="unfinished">
+            <numerusform>面を %n 個調べました</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>Features read: %n</source>
+        <translation type="unfinished">
+            <numerusform>フィーチャーを %n 個調べました</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Measured the mass</source>
+        <translation type="unfinished">質量を計測しました</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Changed the document</source>
+        <translation type="unfinished">ドキュメントを変更しました</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Looked at the document</source>
+        <translation type="unfinished">ドキュメントを調べました</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>feature %1 fails</source>
+        <translation type="unfinished">フィーチャー %1 が失敗しています</translation>
+    </message>
+    <message>
+        <location line="+28"/>
+        <source>%1 tokens in, %2 out</source>
+        <translation type="unfinished">入力 %1 トークン、出力 %2 トークン</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>AI Assistant</source>
+        <translation type="unfinished">AI アシスタント</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>New</source>
+        <translation type="unfinished">新規</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Start a new conversation</source>
+        <translation type="unfinished">新しい会話を開始します</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>New conversation</source>
+        <translation type="unfinished">新しい会話</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Settings…</source>
+        <translation type="unfinished">設定…</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Choose the provider, model and API key</source>
+        <translation type="unfinished">プロバイダー、モデル、API キーを選択します</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Assistant settings</source>
+        <translation type="unfinished">アシスタントの設定</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Describe a part or a change, and the assistant builds it from ordinary features you can edit and undo. For example:
+
+• A 60 × 40 × 5 mm plate with a 5 mm hole 8 mm in from each corner
+• Fillet the top edges of the part by 1 mm
+• Make the plate&apos;s thickness a variable called wall
+• What does this part weigh in aluminium?
+• Draw a 100 × 70 mm border on a layer called FRAME</source>
+        <translation type="unfinished">部品や変更内容を説明すると、アシスタントが、編集したり元に戻したりできる通常のフィーチャーで作成します。例:
+
+• 60 × 40 × 5 mm のプレート、各コーナーから 8 mm 内側に 5 mm の穴
+• 部品の上側のエッジに 1 mm のフィレットを付ける
+• プレートの厚さを wall という変数にする
+• この部品をアルミニウムで作ると重さは？
+• FRAME という画層に 100 × 70 mm の枠を描く</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Conversation</source>
+        <translation type="unfinished">会話</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Working</source>
+        <translation type="unfinished">処理中</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Request to the assistant</source>
+        <translation type="unfinished">アシスタントへのリクエスト</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <location line="+141"/>
+        <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
+        <translation type="unfinished">部品や変更内容を説明… (Enter で送信、Shift+Enter で改行)</translation>
+    </message>
+    <message>
+        <location line="-135"/>
+        <source>Undo This Response</source>
+        <translation type="unfinished">この応答を元に戻す</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Undo every change the last request made</source>
+        <translation type="unfinished">直前のリクエストによるすべての変更を元に戻します</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Stop</source>
+        <translation type="unfinished">停止</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Send</source>
+        <translation type="unfinished">送信</translation>
+    </message>
+    <message>
+        <location line="+67"/>
+        <source>Stopped: the document changed.</source>
+        <translation type="unfinished">停止しました: ドキュメントが変更されました。</translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>choose a model in Settings</source>
+        <translation type="unfinished">設定でモデルを選択してください</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>add an API key in Settings</source>
+        <translation type="unfinished">設定で API キーを追加してください</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>Open a part or a drawing</source>
+        <translation type="unfinished">部品または図面を開いてください</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Send to %1?</source>
+        <translation type="unfinished">%1 に送信しますか？</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The assistant sends your requests, and what it reads of the open document (its features, sketches, faces, edges and drawing), to %1. That provider&apos;s terms and privacy policy apply to what it receives.
+
+Send requests there?</source>
+        <translation type="unfinished">アシスタントは、リクエストと、開いているドキュメントから読み取った内容 (フィーチャー、スケッチ、面、エッジ、図面) を %1 に送信します。送信された内容には、そのプロバイダーの利用規約とプライバシー ポリシーが適用されます。
+
+リクエストを送信しますか？</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Open a part or a drawing first.</source>
+        <translation type="unfinished">先に部品または図面を開いてください。</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Choose a model in the assistant&apos;s Settings first.</source>
+        <translation type="unfinished">先にアシスタントの設定でモデルを選択してください。</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Add your %1 API key in the assistant&apos;s Settings first.</source>
+        <translation type="unfinished">先にアシスタントの設定で %1 の API キーを追加してください。</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Working…</source>
+        <translation type="unfinished">処理中…</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Stopped. Changes already made stay; Undo This Response takes them back.</source>
+        <translation type="unfinished">停止しました。既に行われた変更は残ります。[この応答を元に戻す] で取り消せます。</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>The last response&apos;s changes cannot be undone here: the document has changed since. Use Edit ▸ Undo.</source>
+        <translation type="unfinished">直前の応答の変更はここでは元に戻せません: その後ドキュメントが変更されています。[編集] ▸ [元に戻す] を使用してください。</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Undid the last response&apos;s changes.</source>
+        <translation type="unfinished">直前の応答の変更を元に戻しました。</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>The API key could not be saved: %1</source>
+        <translation type="unfinished">API キーを保存できませんでした: %1</translation>
+    </message>
+    <message>
+        <location line="+48"/>
+        <source>You</source>
+        <translation type="unfinished">あなた</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Assistant</source>
+        <translation type="unfinished">アシスタント</translation>
+    </message>
+</context>
+<context>
+    <name>hz::ui::AiSettingsDialog</name>
+    <message>
+        <location filename="../src/ui/src/AiSettingsDialog.cpp" line="+21"/>
+        <source>AI Assistant Settings</source>
+        <translation type="unfinished">AI アシスタントの設定</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Provider</source>
+        <translation type="unfinished">プロバイダー</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Provider:</source>
+        <translation type="unfinished">プロバイダー:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Server address</source>
+        <translation type="unfinished">サーバー アドレス</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Server:</source>
+        <translation type="unfinished">サーバー:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Model</source>
+        <translation type="unfinished">モデル</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Fetch Models</source>
+        <translation type="unfinished">モデルの取得</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>List the models this server and key can use</source>
+        <translation type="unfinished">このサーバーとキーで使用できるモデルを一覧表示します</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Model:</source>
+        <translation type="unfinished">モデル:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>API key</source>
+        <translation type="unfinished">API キー</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>API key:</source>
+        <translation type="unfinished">API キー:</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Effort</source>
+        <translation type="unfinished">エフォート</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Model default</source>
+        <translation type="unfinished">モデルの既定値</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Low (quick)</source>
+        <translation type="unfinished">低 (高速)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Medium</source>
+        <translation type="unfinished">中</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>High</source>
+        <translation type="unfinished">高</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Extra high</source>
+        <translation type="unfinished">超高</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Max (slow)</source>
+        <translation type="unfinished">最大 (低速)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Effort:</source>
+        <translation type="unfinished">エフォート:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Retry a declined request on Anthropic&apos;s fallback model</source>
+        <translation type="unfinished">拒否されたリクエストを Anthropic のフォールバック モデルで再試行する</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>When a safety classifier declines a request, Anthropic re-runs it on its recommended fallback model (for the models that offer it).</source>
+        <translation type="unfinished">安全性分類器がリクエストを拒否した場合、Anthropic は推奨のフォールバック モデルで再実行します (フォールバック モデルがあるモデルのみ)。</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Longest reply</source>
+        <translation type="unfinished">最大応答長</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source> tokens</source>
+        <translation type="unfinished"> トークン</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Longest reply:</source>
+        <translation type="unfinished">最大応答長:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Steps per request</source>
+        <translation type="unfinished">リクエストあたりのステップ数</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>How many rounds of tool calls one request may take</source>
+        <translation type="unfinished">1 回のリクエストで実行できるツール呼び出しのラウンド数</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Steps per request:</source>
+        <translation type="unfinished">リクエストあたりのステップ数:</translation>
+    </message>
+    <message>
+        <location line="+56"/>
+        <source>Set by %1</source>
+        <translation type="unfinished">%1 で設定済み</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The key comes from the environment variable %1.</source>
+        <translation type="unfinished">キーは環境変数 %1 から取得されます。</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Not needed for a local server</source>
+        <translation type="unfinished">ローカル サーバーには不要です</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Saved only on this computer, readable only by you.</source>
+        <translation type="unfinished">このコンピューターにのみ保存され、あなただけが読み取れます。</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Paste your API key</source>
+        <translation type="unfinished">API キーを貼り付けてください</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Saved (type to replace)</source>
+        <translation type="unfinished">保存済み (入力すると置き換えます)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Saved only on this computer, readable only by you, in %1. Or set %2 in the environment.</source>
+        <translation type="unfinished">このコンピューターの %1 にのみ保存され、あなただけが読み取れます。または、環境変数 %2 を設定してください。</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Claude models from Anthropic. Get a key at console.anthropic.com.</source>
+        <translation type="unfinished">Anthropic の Claude モデル。キーは console.anthropic.com で取得できます。</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>GPT models from OpenAI. Get a key at platform.openai.com.</source>
+        <translation type="unfinished">OpenAI の GPT モデル。キーは platform.openai.com で取得できます。</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Gemini models from Google. Get a key at aistudio.google.com.</source>
+        <translation type="unfinished">Google の Gemini モデル。キーは aistudio.google.com で取得できます。</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>A model on this computer, or any server with OpenAI&apos;s chat API. Ollama: http://localhost:11434/v1. LM Studio: http://localhost:1234/v1. llama.cpp: http://localhost:8080/v1. Choose a model that can call tools (functions).</source>
+        <translation type="unfinished">このコンピューター上のモデル、または OpenAI のチャット API に対応した任意のサーバー。Ollama: http://localhost:11434/v1、LM Studio: http://localhost:1234/v1、llama.cpp: http://localhost:8080/v1。ツール (関数) を呼び出せるモデルを選択してください。</translation>
+    </message>
+    <message>
+        <location line="+34"/>
+        <source>Asking the server for its models…</source>
+        <translation type="unfinished">サーバーにモデルを問い合わせています…</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+20"/>
+        <source>Models listed: %n</source>
+        <translation type="unfinished">
+            <numerusform>%n 個のモデルを一覧表示しました。</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -1227,7 +1702,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+212"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+211"/>
         <source>Dimension Style</source>
         <translation type="unfinished">寸法スタイル</translation>
     </message>
@@ -2454,7 +2929,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+372"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+396"/>
         <source>&amp;File</source>
         <translation>ファイル(&amp;F)</translation>
     </message>
@@ -2490,12 +2965,12 @@ begin building your part.</source>
         <translation type="unfinished">%1 個のファセットからなる曲面 (中心 %2)</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-210"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-234"/>
         <source>Close %1</source>
         <translation type="unfinished">%1 を閉じる</translation>
     </message>
     <message>
-        <location line="+767"/>
+        <location line="+796"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -2679,19 +3154,20 @@ begin building your part.</source>
         <translation type="unfinished">穴あけ面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-717"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-746"/>
         <location line="+1"/>
-        <location line="+1068"/>
+        <location line="+31"/>
+        <location line="+1074"/>
         <source>Drawing 1</source>
         <translation type="unfinished">図面 1</translation>
     </message>
     <message>
-        <location line="-1001"/>
+        <location line="-1020"/>
         <source>Command Palette…</source>
         <translation type="unfinished">コマンド パレット…</translation>
     </message>
     <message>
-        <location line="+77"/>
+        <location line="+83"/>
         <source>New &amp;Part</source>
         <translation type="unfinished">新規部品(&amp;P)</translation>
     </message>
@@ -2916,7 +3392,7 @@ begin building your part.</source>
         <translation type="unfinished">切断面なし(&amp;N)</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+11"/>
         <source>&amp;Model</source>
         <translation type="unfinished">モデル(&amp;M)</translation>
     </message>
@@ -3491,11 +3967,12 @@ begin building your part.</source>
         <location line="+5"/>
         <location line="+10"/>
         <location line="+6"/>
+        <location line="+4"/>
         <source>Home</source>
         <translation type="unfinished">ホーム</translation>
     </message>
     <message>
-        <location line="-21"/>
+        <location line="-25"/>
         <source>File</source>
         <translation type="unfinished">ファイル</translation>
     </message>
@@ -3558,6 +4035,16 @@ begin building your part.</source>
         <location line="+2"/>
         <source>Ungroup</source>
         <translation type="unfinished">グループ解除</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Assistant</source>
+        <translation type="unfinished">アシスタント</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>AI Assistant</source>
+        <translation type="unfinished">AI アシスタント</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -3746,7 +4233,12 @@ begin building your part.</source>
         <translation type="unfinished">寸法</translation>
     </message>
     <message>
-        <location line="+2487"/>
+        <location line="+311"/>
+        <source>The assistant works on parts and drawings, not assemblies</source>
+        <translation type="unfinished">アシスタントは部品と図面で使用でき、アセンブリでは使用できません</translation>
+    </message>
+    <message>
+        <location line="+2187"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -3790,7 +4282,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 誤差は推定されていません: 細分化せず一度だけ測定しました。</translation>
     </message>
     <message>
-        <location line="-2511"/>
+        <location line="-2522"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -4015,7 +4507,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+986"/>
+        <location line="+997"/>
         <location line="+478"/>
         <location line="+908"/>
         <location line="+593"/>
@@ -4024,7 +4516,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-3048"/>
+        <location line="-3059"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -4045,17 +4537,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2696"/>
+        <location line="+2707"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-2690"/>
+        <location line="-2701"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
     <message>
-        <location line="+311"/>
+        <location line="+319"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (復元)</translation>
     </message>
@@ -4080,7 +4572,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">閉じる前に保存しますか?</translation>
     </message>
     <message>
-        <location line="+38"/>
+        <location line="+41"/>
         <source>Autosave off</source>
         <translation type="unfinished">自動保存オフ</translation>
     </message>
@@ -5156,7 +5648,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-3064"/>
+        <location line="-3075"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>

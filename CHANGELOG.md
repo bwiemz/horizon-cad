@@ -19,6 +19,22 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **The AI Assistant panel.** Home ▸ AI Assistant (Ctrl+Shift+A) opens a
+  chat beside Properties and Layers that builds and changes the active part or
+  drawing. Settings choose the provider (Anthropic, OpenAI, Gemini, or a local
+  or OpenAI-compatible server), the server, the model (Fetch Models lists the
+  server's), the key, and for Anthropic the effort and the fallback on
+  refusal. Keys come from the environment or a file only their user can read,
+  never QSettings or a document; the first request to a provider on the
+  internet asks first. Every step the assistant takes is listed as it goes;
+  Stop ends a request and Undo This Response takes back its changes, never the
+  user's. Requests follow same-origin redirects only, so a key never reaches a
+  host the user did not choose. The panel follows the active tab, and stays
+  out of assemblies. Qt Network joins the build (vcpkg: `network`, with
+  OpenSSL on Linux; Schannel on Windows; the TLS plugin is deployed in each
+  package). A user-guide page, *The AI assistant*, and translations of its
+  strings in all six languages (machine translations, marked for review).
+
 - **An AI assistant's core (`hz::ai`).** A model can build and edit parts
   and drawings through 27 tools: sketches on planes or faces, extrude,
   revolve, primitives, fillet, chamfer, shell, hole, patterns and mirror,

@@ -8,6 +8,7 @@ On macOS, **Ctrl** is **Cmd**, and the guide is **Cmd+?** rather than F1.
 |---|---|
 | **F1** | This guide |
 | **Ctrl+K** | Command palette |
+| **Ctrl+Shift+A** | AI assistant |
 | **Ctrl+N** | New drawing |
 | **Ctrl+O** | Open |
 | **Ctrl+S** | Save |
