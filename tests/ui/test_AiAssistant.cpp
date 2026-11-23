@@ -234,6 +234,22 @@ TEST(AiAssistantTest, StopLeavesThePanelReady) {
     EXPECT_EQ(transport.pending(), 0u);
 }
 
+TEST(AiAssistantTest, ChangingTheServerStopsARequest) {
+    MainWindow window;
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    transport.hold = true;
+    transport.replies.push_back(toolCall("c1", "add_primitive", kBox));
+    ASSERT_TRUE(panel->submit(QStringLiteral("a box")));
+    AiSettings moved = panel->settings();
+    moved.configs[ProviderKind::OpenAICompatible].baseUrl = "http://elsewhere.example.com/v1";
+    panel->setSettings(moved);
+    EXPECT_FALSE(panel->busy());
+    EXPECT_TRUE(panel->transcriptText().contains(QStringLiteral("Stopped")));
+    EXPECT_EQ(transport.pending(), 0u);
+}
+
 TEST(AiAssistantTest, AFailedToolIsShownAndTheModelCarriesOn) {
     MainWindow window;
     FakeTransport transport;
@@ -329,6 +345,22 @@ TEST(AiSettingsDialogTest, EachProviderKeepsItsEditsAndTypedKeys) {
     dialog.accept();
     EXPECT_EQ(dialog.settings().configs.at(ProviderKind::Anthropic).model, "claude-haiku-5-5");
     EXPECT_EQ(dialog.typedKeys().at(ProviderKind::Anthropic), "sk-ant-typed");
+}
+
+TEST(AiSettingsDialogTest, AKeyTypedAndErasedIsNotSaved) {
+    qunsetenv("OPENAI_API_KEY");
+    hz::ui::AiSettingsDialog dialog(AiSettings::defaults());
+    auto* provider = dialog.findChild<QComboBox*>(QStringLiteral("aiProvider"));
+    auto* key = dialog.findChild<QLineEdit*>(QStringLiteral("aiApiKey"));
+    ASSERT_TRUE(provider && key);
+    provider->setCurrentIndex(provider->findData(static_cast<int>(ProviderKind::OpenAI)));
+    key->setText(QStringLiteral("sk-oops"));
+    provider->setCurrentIndex(provider->findData(static_cast<int>(ProviderKind::Gemini)));
+    provider->setCurrentIndex(provider->findData(static_cast<int>(ProviderKind::OpenAI)));
+    EXPECT_EQ(key->text(), QStringLiteral("sk-oops"));
+    key->clear();
+    dialog.accept();
+    EXPECT_EQ(dialog.typedKeys().count(ProviderKind::OpenAI), 0u);
 }
 
 TEST(AiSettingsDialogTest, FetchesTheServersModels) {

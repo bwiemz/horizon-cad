@@ -294,6 +294,15 @@ void AiAssistantPanel::setTransport(ai::HttpTransport* transport) {
 }
 
 void AiAssistantPanel::setSettings(const AiSettings& settings) {
+    // A request under way would carry on with the new provider or server,
+    // which the user has not agreed to send to: it stops first.
+    const ai::ProviderConfig before = m_settings.activeConfig();
+    const ai::ProviderConfig after = settings.activeConfig();
+    if (busy() && (before.kind != after.kind || before.baseUrl != after.baseUrl ||
+                   before.model != after.model)) {
+        m_session->cancel();
+        appendNote(tr("Stopped: the provider or server changed. Send the request again."));
+    }
     m_settings = settings;
     applyConfig();
     updateState();
@@ -480,10 +489,9 @@ void AiAssistantPanel::openSettings() {
             appendNote(tr("The API key could not be saved: %1").arg(error), true);
         }
     }
-    m_settings = dialog.settings();
-    m_settings.save();
-    applyConfig();
-    updateState();
+    const AiSettings chosen = dialog.settings();
+    chosen.save();
+    setSettings(chosen);
 }
 
 bool AiAssistantPanel::eventFilter(QObject* watched, QEvent* event) {

@@ -104,7 +104,7 @@
         <translation type="unfinished">完成</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+8"/>
         <source>Added %1</source>
         <translation type="unfinished">已添加 %1</translation>
     </message>
@@ -129,14 +129,14 @@
         <translation type="unfinished">已设置变量</translation>
     </message>
     <message numerus="yes">
-        <location line="-48"/>
+        <location line="-46"/>
         <source>list of %n</source>
         <translation type="unfinished">
             <numerusform>%n 项</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location line="+45"/>
+        <location line="+43"/>
         <source>Shapes drawn: %n</source>
         <translation type="unfinished">
             <numerusform>已绘制 %n 个图形</numerusform>
@@ -179,7 +179,7 @@
         <translation type="unfinished">已查看文档</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+10"/>
         <source>feature %1 fails</source>
         <translation type="unfinished">特征 %1 失败</translation>
     </message>
@@ -189,7 +189,7 @@
         <translation type="unfinished">输入 %1 个 token，输出 %2 个</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+14"/>
         <source>AI Assistant</source>
         <translation type="unfinished">AI 助手</translation>
     </message>
@@ -256,13 +256,13 @@
         <translation type="unfinished">发送给助手的请求</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <location line="+141"/>
+        <location line="+2"/>
+        <location line="+154"/>
         <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
         <translation type="unfinished">描述一个零件或一项更改…（Enter 发送，Shift+Enter 换行）</translation>
     </message>
     <message>
-        <location line="-135"/>
+        <location line="-148"/>
         <source>Undo This Response</source>
         <translation type="unfinished">撤销此回复</translation>
     </message>
@@ -282,12 +282,17 @@
         <translation type="unfinished">发送</translation>
     </message>
     <message>
-        <location line="+67"/>
+        <location line="+57"/>
+        <source>Stopped: the provider or server changed. Send the request again.</source>
+        <translation type="unfinished">已停止：提供商或服务器已更改。请重新发送请求。</translation>
+    </message>
+    <message>
+        <location line="+22"/>
         <source>Stopped: the document changed.</source>
         <translation type="unfinished">已停止：文档已更改。</translation>
     </message>
     <message>
-        <location line="+38"/>
+        <location line="+39"/>
         <source>choose a model in Settings</source>
         <translation type="unfinished">请在设置中选择模型</translation>
     </message>
@@ -316,7 +321,7 @@ Send requests there?</source>
 是否将请求发送给该提供商？</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+14"/>
         <source>Open a part or a drawing first.</source>
         <translation type="unfinished">请先打开零件或工程图。</translation>
     </message>
@@ -331,7 +336,7 @@ Send requests there?</source>
         <translation type="unfinished">请先在助手设置中添加您的 %1 API 密钥。</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+18"/>
         <source>Working…</source>
         <translation type="unfinished">正在处理…</translation>
     </message>
@@ -356,7 +361,7 @@ Send requests there?</source>
         <translation type="unfinished">无法保存 API 密钥：%1</translation>
     </message>
     <message>
-        <location line="+48"/>
+        <location line="+47"/>
         <source>You</source>
         <translation type="unfinished">您</translation>
     </message>
@@ -504,7 +509,7 @@ Send requests there?</source>
         <translation type="unfinished">每个请求的步数:</translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+60"/>
         <source>Set by %1</source>
         <translation type="unfinished">已由 %1 设置</translation>
     </message>
@@ -524,7 +529,7 @@ Send requests there?</source>
         <translation type="unfinished">仅保存在此计算机上，仅您本人可读取。</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>Paste your API key</source>
         <translation type="unfinished">粘贴您的 API 密钥</translation>
     </message>
@@ -539,7 +544,7 @@ Send requests there?</source>
         <translation type="unfinished">仅保存在此计算机上的 %1 中，仅您本人可读取。也可以在环境变量中设置 %2。</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>Claude models from Anthropic. Get a key at console.anthropic.com.</source>
         <translation type="unfinished">Anthropic 的 Claude 模型。请在 console.anthropic.com 获取密钥。</translation>
     </message>
@@ -559,7 +564,7 @@ Send requests there?</source>
         <translation type="unfinished">本机上的模型，或任何提供 OpenAI 聊天 API 的服务器。Ollama：http://localhost:11434/v1；LM Studio：http://localhost:1234/v1；llama.cpp：http://localhost:8080/v1。请选择能够调用工具（函数）的模型。</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+42"/>
         <source>Asking the server for its models…</source>
         <translation type="unfinished">正在向服务器获取模型列表…</translation>
     </message>
@@ -3157,12 +3162,12 @@ begin building your part.</source>
         <location filename="../src/ui/src/MainWindow.cpp" line="-746"/>
         <location line="+1"/>
         <location line="+31"/>
-        <location line="+1074"/>
+        <location line="+1080"/>
         <source>Drawing 1</source>
         <translation type="unfinished">工程图 1</translation>
     </message>
     <message>
-        <location line="-1020"/>
+        <location line="-1026"/>
         <source>Command Palette…</source>
         <translation type="unfinished">命令面板…</translation>
     </message>
@@ -4238,6 +4243,11 @@ begin building your part.</source>
         <translation type="unfinished">助手适用于零件和工程图，不适用于装配体</translation>
     </message>
     <message>
+        <location line="+6"/>
+        <source>The assistant works on parts and drawings, not drawing sheets</source>
+        <translation type="unfinished">助手适用于零件和工程图，不适用于工程图图纸</translation>
+    </message>
+    <message>
         <location line="+2187"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
@@ -4282,7 +4292,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 未估计其误差：只测量了一次，未细分。</translation>
     </message>
     <message>
-        <location line="-2522"/>
+        <location line="-2528"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -4507,7 +4517,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+997"/>
+        <location line="+1003"/>
         <location line="+478"/>
         <location line="+908"/>
         <location line="+593"/>
@@ -4516,7 +4526,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-3059"/>
+        <location line="-3065"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -4537,17 +4547,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2707"/>
+        <location line="+2713"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-2701"/>
+        <location line="-2707"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
     <message>
-        <location line="+319"/>
+        <location line="+325"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (已恢复)</translation>
     </message>
@@ -5648,7 +5658,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
     </message>
     <message>
-        <location line="-3075"/>
+        <location line="-3081"/>
         <source>0 selected</source>
         <translation>已选择 0 个</translation>
     </message>

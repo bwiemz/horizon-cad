@@ -104,7 +104,7 @@
         <translation type="unfinished">Fertig</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+8"/>
         <source>Added %1</source>
         <translation type="unfinished">%1 hinzugefügt</translation>
     </message>
@@ -129,7 +129,7 @@
         <translation type="unfinished">Variablen festgelegt</translation>
     </message>
     <message numerus="yes">
-        <location line="-48"/>
+        <location line="-46"/>
         <source>list of %n</source>
         <translation type="unfinished">
             <numerusform>%n Eintrag</numerusform>
@@ -137,7 +137,7 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location line="+45"/>
+        <location line="+43"/>
         <source>Shapes drawn: %n</source>
         <translation type="unfinished">
             <numerusform>%n Form gezeichnet</numerusform>
@@ -184,7 +184,7 @@
         <translation type="unfinished">Dokument angesehen</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+10"/>
         <source>feature %1 fails</source>
         <translation type="unfinished">Feature %1 schlägt fehl</translation>
     </message>
@@ -194,7 +194,7 @@
         <translation type="unfinished">%1 Tokens Eingabe, %2 Ausgabe</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+14"/>
         <source>AI Assistant</source>
         <translation type="unfinished">KI-Assistent</translation>
     </message>
@@ -261,13 +261,13 @@
         <translation type="unfinished">Anfrage an den Assistenten</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <location line="+141"/>
+        <location line="+2"/>
+        <location line="+154"/>
         <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
         <translation type="unfinished">Beschreiben Sie ein Teil oder eine Änderung… (Eingabe sendet, Umschalt+Eingabe: neue Zeile)</translation>
     </message>
     <message>
-        <location line="-135"/>
+        <location line="-148"/>
         <source>Undo This Response</source>
         <translation type="unfinished">Diese Antwort rückgängig machen</translation>
     </message>
@@ -287,12 +287,17 @@
         <translation type="unfinished">Senden</translation>
     </message>
     <message>
-        <location line="+67"/>
+        <location line="+57"/>
+        <source>Stopped: the provider or server changed. Send the request again.</source>
+        <translation type="unfinished">Angehalten: Anbieter oder Server wurde geändert. Senden Sie die Anfrage erneut.</translation>
+    </message>
+    <message>
+        <location line="+22"/>
         <source>Stopped: the document changed.</source>
         <translation type="unfinished">Angehalten: Das Dokument wurde geändert.</translation>
     </message>
     <message>
-        <location line="+38"/>
+        <location line="+39"/>
         <source>choose a model in Settings</source>
         <translation type="unfinished">Modell in den Einstellungen wählen</translation>
     </message>
@@ -321,7 +326,7 @@ Send requests there?</source>
 Anfragen dorthin senden?</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+14"/>
         <source>Open a part or a drawing first.</source>
         <translation type="unfinished">Öffnen Sie zuerst ein Teil oder eine Zeichnung.</translation>
     </message>
@@ -336,7 +341,7 @@ Anfragen dorthin senden?</translation>
         <translation type="unfinished">Fügen Sie zuerst Ihren %1-API-Schlüssel in den Einstellungen des Assistenten hinzu.</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+18"/>
         <source>Working…</source>
         <translation type="unfinished">In Arbeit…</translation>
     </message>
@@ -361,7 +366,7 @@ Anfragen dorthin senden?</translation>
         <translation type="unfinished">Der API-Schlüssel konnte nicht gespeichert werden: %1</translation>
     </message>
     <message>
-        <location line="+48"/>
+        <location line="+47"/>
         <source>You</source>
         <translation type="unfinished">Sie</translation>
     </message>
@@ -509,7 +514,7 @@ Anfragen dorthin senden?</translation>
         <translation type="unfinished">Schritte pro Anfrage:</translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+60"/>
         <source>Set by %1</source>
         <translation type="unfinished">Festgelegt durch %1</translation>
     </message>
@@ -529,7 +534,7 @@ Anfragen dorthin senden?</translation>
         <translation type="unfinished">Nur auf diesem Computer gespeichert, nur für Sie lesbar.</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>Paste your API key</source>
         <translation type="unfinished">Fügen Sie Ihren API-Schlüssel ein</translation>
     </message>
@@ -544,7 +549,7 @@ Anfragen dorthin senden?</translation>
         <translation type="unfinished">Nur auf diesem Computer gespeichert, nur für Sie lesbar, in %1. Oder setzen Sie %2 als Umgebungsvariable.</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>Claude models from Anthropic. Get a key at console.anthropic.com.</source>
         <translation type="unfinished">Claude-Modelle von Anthropic. Einen Schlüssel erhalten Sie unter console.anthropic.com.</translation>
     </message>
@@ -564,7 +569,7 @@ Anfragen dorthin senden?</translation>
         <translation type="unfinished">Ein Modell auf diesem Computer oder ein beliebiger Server mit der Chat-API von OpenAI. Ollama: http://localhost:11434/v1. LM Studio: http://localhost:1234/v1. llama.cpp: http://localhost:8080/v1. Wählen Sie ein Modell, das Werkzeuge (Funktionen) aufrufen kann.</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+42"/>
         <source>Asking the server for its models…</source>
         <translation type="unfinished">Modelle werden beim Server abgefragt…</translation>
     </message>
@@ -3172,12 +3177,12 @@ um Ihr Teil aufzubauen.</translation>
         <location filename="../src/ui/src/MainWindow.cpp" line="-746"/>
         <location line="+1"/>
         <location line="+31"/>
-        <location line="+1074"/>
+        <location line="+1080"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Zeichnung 1</translation>
     </message>
     <message>
-        <location line="-1020"/>
+        <location line="-1026"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Befehlspalette…</translation>
     </message>
@@ -4253,6 +4258,11 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Der Assistent arbeitet mit Teilen und Zeichnungen, nicht mit Baugruppen</translation>
     </message>
     <message>
+        <location line="+6"/>
+        <source>The assistant works on parts and drawings, not drawing sheets</source>
+        <translation type="unfinished">Der Assistent arbeitet mit Teilen und Zeichnungen, nicht mit Zeichnungsblättern</translation>
+    </message>
+    <message>
         <location line="+2187"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
@@ -4299,7 +4309,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</translation>
     </message>
     <message>
-        <location line="-2522"/>
+        <location line="-2528"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -4524,7 +4534,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+997"/>
+        <location line="+1003"/>
         <location line="+478"/>
         <location line="+908"/>
         <location line="+593"/>
@@ -4533,7 +4543,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-3059"/>
+        <location line="-3065"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -4554,17 +4564,17 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2707"/>
+        <location line="+2713"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-2701"/>
+        <location line="-2707"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
     <message>
-        <location line="+319"/>
+        <location line="+325"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (wiederhergestellt)</translation>
     </message>
@@ -5670,7 +5680,7 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
     </message>
     <message>
-        <location line="-3075"/>
+        <location line="-3081"/>
         <source>0 selected</source>
         <translation>0 ausgewählt</translation>
     </message>
