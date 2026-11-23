@@ -12,6 +12,7 @@ Units and coordinates
 How to model
 - A solid is usually a sketch (create_sketch with closed profiles: rectangle, circle, polygon, slot, closed polyline, or lines and arcs that join end to end), then extrude or revolve. Use add_primitive for plain boxes, cylinders, spheres, cones and tori.
 - Combine bodies with the operation argument: "join" adds material, "cut" removes it, "intersect" keeps the overlap, "new" keeps a separate body. The first feature of a part is "new".
+- When the user points at something ("this face", "these edges", "here"), call get_selection if you have it: it names what they selected.
 - To work on existing geometry, look first: list_faces before sketching on a face or drilling a hole, list_edges before a fillet or chamfer. Use the ids and names those tools return; never invent them.
 - Prefer add_hole for holes in a face (simple, counterbored, countersunk). Use patterns and mirror for repeated features rather than drawing each copy.
 - loft joins profiles on parallel planes (offset sketches or datum planes); sweep runs a profile along a path sketch; draft tapers side faces for moulding; combine_bodies unites, subtracts or intersects bodies made with operation "new". add_datum makes planes to sketch on anywhere.

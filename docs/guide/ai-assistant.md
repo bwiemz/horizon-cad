@@ -55,6 +55,10 @@ Type a request and press **Enter**. **Shift+Enter** starts a new line.
 - Make it parametric: *"Make the plate's thickness a variable called wall,
   and drive the extrusion from it"*.
 - Ask about it: *"What does this part weigh in aluminium?"*.
+- Point at things: select faces, edges or drawing entities in the view, then
+  ask about *"this face"* or *"these edges"*. The assistant asks the window
+  what is selected: *"Put a 5 mm hole in the middle of this face"*, *"Fillet
+  these edges by 2 mm"*.
 - Draw in 2D: *"Draw a 100 × 70 mm border on a layer called FRAME"*.
 
 As it works, the assistant lists each step it takes: ▸ for the step, ✓ when

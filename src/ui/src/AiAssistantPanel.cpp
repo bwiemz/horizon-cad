@@ -351,6 +351,17 @@ void AiAssistantPanel::rebindTools() {
         if (m_host.drawingChanged) m_host.drawingChanged();
     };
     ai::registerCadTools(m_tools, *m_document, std::move(hooks));
+    if (m_host.selection) {
+        m_tools.add({"get_selection",
+                     "What the user has selected in the window: faces and edges of the part (ids "
+                     "and names as list_faces and list_edges give them) and drawing entities "
+                     "(ids). Call it when the user says \"this\", \"these\", \"here\" or \"the "
+                     "selected...\".",
+                     json{{"type", "object"}, {"properties", json::object()}}},
+                    ai::ToolAccess::Read, [this](const json&) {
+                        return ai::ToolResult::ok(m_host.selection ? m_host.selection() : json());
+                    });
+    }
 }
 
 bool AiAssistantPanel::busy() const {
