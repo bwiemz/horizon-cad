@@ -81,7 +81,7 @@ json toJson(const math::Vec3& v);
 
 // --- Schemas ------------------------------------------------------------------
 
-json object(json properties, std::vector<std::string> required = {});
+json object(json properties, const std::vector<std::string>& required = {});
 json numberSchema(const std::string& description);
 json integerSchema(const std::string& description);
 json stringSchema(const std::string& description);
