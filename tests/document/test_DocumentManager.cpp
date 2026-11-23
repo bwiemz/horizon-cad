@@ -593,3 +593,41 @@ TEST(DocumentManagerTest, PlacesOnlyWalksAssembliesFromTheirFiles) {
         at(in, ("deep" + std::to_string(DocumentManager::kMaxPlacesDepth / 2) + ".hzasm").c_str()),
         inProject));
 }
+
+// Assemblies placing each other twice over, a few deep: read once each by
+// placesOnly, but resolved as a tree they would be read millions of times
+// (2^20 here). Resolving one component reads no more than the budget, and
+// says so.
+TEST(DocumentManagerTest, ResolvingASubassemblyKeepsToABudget) {
+    const fs::path in = fs::temp_directory_path() / "hz_budget";
+    constexpr int kLevels = 20;
+    std::size_t loads = 0;
+    DocumentManager mgr;
+    mgr.setAssemblyLoader([&](const std::string& path, AssemblyDocument& assembly) {
+        ++loads;
+        const std::string stem = fs::path(path).stem().string();
+        const int level = std::stoi(stem.substr(1));
+        if (level >= kLevels) return true;
+        for (int twice = 0; twice < 2; ++twice) {
+            ComponentInstance comp;
+            comp.partPath = (in / ("L" + std::to_string(level + 1) + ".hzasm")).string();
+            assembly.addComponent(comp);
+        }
+        return true;
+    });
+    ComponentInstance top;
+    top.partPath = (in / "L0.hzasm").string();
+    std::string why;
+    EXPECT_FALSE(mgr.resolveComponent(top, ComponentState::Lightweight, {}, &why));
+    EXPECT_LE(loads, DocumentManager::kMaxSubassemblyLoads + 1);
+    EXPECT_NE(why.find("too many subassemblies"), std::string::npos) << why;
+
+    // The budget is each component's own: the next starts afresh.
+    loads = 0;
+    ComponentInstance small;
+    small.partPath = (in / ("L" + std::to_string(kLevels - 3) + ".hzasm")).string();
+    why.clear();
+    mgr.resolveComponent(small, ComponentState::Lightweight, {}, &why);
+    EXPECT_EQ(loads, 15u) << "1 + 2 + 4 + 8 assemblies, all read";
+    EXPECT_EQ(why.find("too many"), std::string::npos) << why;
+}

@@ -335,6 +335,27 @@ bool DocumentManager::resolveSubassembly(ComponentInstance& instance, ComponentS
         if (why != nullptr) *why = nameOf(key) + " is an assembly, and none can be read here";
         return false;
     }
+    // A budget for the whole of one component's resolving: the count starts
+    // again at its top. Files that place each other twice over, a few deep,
+    // would be read and drawn millions of times.
+    struct Depth {
+        DocumentManager& manager;
+        explicit Depth(DocumentManager& m) : manager(m) {
+            if (manager.m_subassemblyDepth++ == 0) manager.m_subassemblyLoads = 0;
+        }
+        ~Depth() { --manager.m_subassemblyDepth; }
+        Depth(const Depth&) = delete;
+        Depth& operator=(const Depth&) = delete;
+    } depth(*this);
+    if (m_subassemblyDepth > kMaxPlacesDepth || ++m_subassemblyLoads > kMaxSubassemblyLoads) {
+        if (why != nullptr) {
+            *why = nameOf(key) + " places too many subassemblies (more than " +
+                   std::to_string(kMaxSubassemblyLoads) + " in all, or nested deeper than " +
+                   std::to_string(kMaxPlacesDepth) + ")";
+        }
+        *cycle = true;  // refused whole, as a cycle is: not drawn in part
+        return false;
+    }
     auto sub = std::make_shared<AssemblyDocument>();
     if (!m_assemblyLoader(fullPath, *sub)) {
         if (why != nullptr) *why = nameOf(key) + " could not be read";

@@ -148,6 +148,10 @@ public:
     bool placesOnly(const std::string& path,
                     const std::function<bool(const std::string&)>& allowed) const;
     static constexpr int kMaxPlacesDepth = 32;
+    /// No more subassemblies are read in resolving one component than this,
+    /// nor nested deeper than kMaxPlacesDepth: a few files placing each
+    /// other twice over would otherwise be read and drawn without end.
+    static constexpr std::size_t kMaxSubassemblyLoads = 10000;
 
     /// Whether @p a and @p b name the same file (canonically).
     static bool samePath(const std::string& a, const std::string& b);
@@ -211,6 +215,10 @@ private:
     std::map<std::string, std::filesystem::file_time_type> m_watchedFiles;
     /// The files components were resolved from: never unwatched.
     std::set<std::string> m_placedFiles;
+    /// In resolving one component: how deep in its subassemblies, and how
+    /// many of them have been read (kMaxSubassemblyLoads).
+    int m_subassemblyDepth = 0;
+    std::size_t m_subassemblyLoads = 0;
     struct SharedMesh {
         std::weak_ptr<const geo::MeshData> mesh;
         std::uint64_t version = 0;
