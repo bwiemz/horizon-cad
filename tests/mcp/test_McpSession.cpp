@@ -25,6 +25,10 @@ struct Fixture : ::testing::Test {
         std::random_device seed;
         dir = fs::temp_directory_path() / ("hz_mcp_" + std::to_string(seed()));
         fs::create_directories(dir);
+        // As the session names its files: macOS's temporary folder is under
+        // /var, a link to /private/var, and Windows's can be given in short
+        // names (RUNNER~1), and the paths it reported differed from these.
+        dir = fs::canonical(dir);
     }
     void TearDown() override {
         std::error_code ec;

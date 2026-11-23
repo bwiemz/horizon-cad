@@ -79,6 +79,9 @@ QString summariseResult(const ai::ToolResult& result) {
     if (!value.is_object()) {
         return QCoreApplication::translate("hz::ui::AiAssistantPanel", "Done");
     }
+    // A count is read before the translate() that takes it: lupdate 6.4 never
+    // finishes reading a translate() whose count is a call given a string, as
+    // count("ids") is, and CI's catalog check ran out of time on it.
     const auto count = [&value](const char* key) { return static_cast<int>(value[key].size()); };
     const auto has = [&value](const char* key, json::value_t type) {
         return value.contains(key) && value[key].type() == type;
@@ -99,19 +102,23 @@ QString summariseResult(const ai::ToolResult& result) {
         summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Deleted %1")
                       .arg(QString::fromStdString(value["deleted"].get<std::string>()));
     } else if (has("ids", json::value_t::array)) {
-        summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Shapes drawn: %n", "",
-                                              count("ids"));
+        const int drawn = count("ids");
+        summary =
+            QCoreApplication::translate("hz::ui::AiAssistantPanel", "Shapes drawn: %n", "", drawn);
     } else if (result.changedModel && value.contains("variables")) {
         summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Set the variables");
     } else if (has("edges", json::value_t::array)) {
-        summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Edges read: %n", "",
-                                              count("edges"));
+        const int edges = count("edges");
+        summary =
+            QCoreApplication::translate("hz::ui::AiAssistantPanel", "Edges read: %n", "", edges);
     } else if (has("faces", json::value_t::array)) {
-        summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Faces read: %n", "",
-                                              count("faces"));
+        const int faces = count("faces");
+        summary =
+            QCoreApplication::translate("hz::ui::AiAssistantPanel", "Faces read: %n", "", faces);
     } else if (has("features", json::value_t::array)) {
+        const int features = count("features");
         summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Features read: %n", "",
-                                              count("features"));
+                                              features);
     } else if (value.contains("mass_g")) {
         summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Measured the mass");
     } else if (result.changedModel) {
