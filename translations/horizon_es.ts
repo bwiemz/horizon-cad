@@ -1954,8 +1954,8 @@ Los detalles están en el registro:
         <translation type="unfinished">%1: no se pudo volver a generar el dibujo: %2</translation>
     </message>
     <message>
-        <location line="+131"/>
-        <location line="+442"/>
+        <location line="+138"/>
+        <location line="+470"/>
         <source>Title Block</source>
         <translation type="unfinished">Cuadro de rotulación</translation>
     </message>
@@ -2020,12 +2020,12 @@ Los detalles están en el registro:
         <translation type="unfinished">Vertical</translation>
     </message>
     <message>
-        <location line="-457"/>
+        <location line="-485"/>
         <location line="+18"/>
-        <location line="+118"/>
+        <location line="+125"/>
         <location line="+128"/>
-        <location line="+106"/>
-        <location line="+326"/>
+        <location line="+120"/>
+        <location line="+333"/>
         <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
@@ -2036,24 +2036,32 @@ Los detalles están en el registro:
         <translation type="unfinished">No todas las vistas caben en este papel: las que no caben están a su lado</translation>
     </message>
     <message>
-        <location line="-469"/>
-        <location line="+475"/>
+        <location line="-497"/>
+        <location line="+503"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">Escala del dibujo</translation>
     </message>
     <message>
-        <location line="-248"/>
+        <location line="-389"/>
+        <location line="+170"/>
+        <location line="+52"/>
+        <location line="+54"/>
+        <source>%1: that view holds %2 of them, as many as a view keeps</source>
+        <translation type="unfinished">%1: esa vista ya tiene %2, tantos como admite una vista</translation>
+    </message>
+    <message>
+        <location line="-156"/>
         <source>%1: frames still refer to datum %2, which the sheet no longer has</source>
         <translation type="unfinished">%1: hay marcos de tolerancia que aún se refieren a la referencia %2, que la hoja ya no tiene</translation>
     </message>
     <message>
         <location line="+11"/>
-        <location line="+736"/>
+        <location line="+757"/>
         <source>Add Geometric Tolerance</source>
         <translation type="unfinished">Añadir tolerancia geométrica</translation>
     </message>
     <message>
-        <location line="-714"/>
+        <location line="-735"/>
         <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
         <translation type="unfinished">%1: la hoja no tiene la referencia %2; Añadir elemento de referencia pone primero una en una arista</translation>
     </message>
@@ -2063,45 +2071,45 @@ Los detalles están en el registro:
         <translation type="unfinished">%1: esa arista es la propia referencia %2; un marco en ella se refiere a otras referencias</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+15"/>
         <source>%1: that edge has that frame already</source>
         <translation type="unfinished">%1: esa arista ya tiene ese marco</translation>
     </message>
     <message>
         <location line="+12"/>
-        <location line="+754"/>
+        <location line="+768"/>
         <source>Add Datum Feature</source>
         <translation type="unfinished">Añadir elemento de referencia</translation>
     </message>
     <message>
-        <location line="-734"/>
-        <location line="+746"/>
+        <location line="-748"/>
+        <location line="+760"/>
         <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
         <translation type="unfinished">%1: «%2» no es una letra de referencia: una o dos mayúsculas, ni I, ni O, ni Q</translation>
     </message>
     <message>
-        <location line="-739"/>
+        <location line="-753"/>
         <source>%1: the sheet has datum %2 already</source>
         <translation type="unfinished">%1: la hoja ya tiene la referencia %2</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+17"/>
         <source>%1: that edge is datum %2 already</source>
         <translation type="unfinished">%1: esa arista ya es la referencia %2</translation>
     </message>
     <message>
         <location line="+13"/>
-        <location line="+620"/>
+        <location line="+627"/>
         <source>Hole Callout</source>
         <translation type="unfinished">Indicación de taladro</translation>
     </message>
     <message>
-        <location line="-598"/>
+        <location line="-605"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: esa arista no es de un taladro (de una operación Taladro)</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+19"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: ese taladro ya tiene indicación; Quitar cota la quita</translation>
     </message>
@@ -2235,8 +2243,8 @@ Los detalles están en el registro:
         <translation type="unfinished">%1: el círculo no contiene nada de la vista</translation>
     </message>
     <message>
-        <location line="-770"/>
-        <location line="+791"/>
+        <location line="-798"/>
+        <location line="+819"/>
         <source>Move View</source>
         <translation type="unfinished">Mover vista</translation>
     </message>
@@ -2256,14 +2264,14 @@ Los detalles están en el registro:
         <translation type="unfinished">No está en el dibujo de la vista</translation>
     </message>
     <message>
-        <location line="-799"/>
-        <location line="+842"/>
+        <location line="-827"/>
+        <location line="+870"/>
         <source>Remove View</source>
         <translation type="unfinished">Eliminar vista</translation>
     </message>
     <message>
-        <location line="-826"/>
-        <location line="+831"/>
+        <location line="-854"/>
+        <location line="+859"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: una hoja conserva al menos una vista</translation>
     </message>
@@ -2274,12 +2282,12 @@ Los detalles están en el registro:
         <translation type="unfinished">Vista:</translation>
     </message>
     <message>
-        <location line="-1054"/>
+        <location line="-1082"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: las vistas derivadas de ella se eliminaron con ella (%2)</translation>
     </message>
     <message>
-        <location line="+863"/>
+        <location line="+891"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">Haga clic en una arista de una vista (Esc para terminar)</translation>
     </message>
@@ -2294,20 +2302,20 @@ Los detalles están en el registro:
         <translation type="unfinished">No hay ninguna arista ahí</translation>
     </message>
     <message>
-        <location line="-843"/>
-        <location line="+858"/>
+        <location line="-871"/>
+        <location line="+886"/>
         <source>Add Dimension</source>
         <translation type="unfinished">Añadir cota</translation>
     </message>
     <message>
-        <location line="-778"/>
-        <location line="+904"/>
+        <location line="-799"/>
+        <location line="+925"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">Eliminar cota</translation>
     </message>
     <message>
-        <location line="-981"/>
+        <location line="-1002"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: esa arista ya está acotada; Eliminar cota la elimina</translation>
     </message>
@@ -2324,13 +2332,13 @@ Los detalles están en el registro:
     <message>
         <location line="+17"/>
         <location line="+28"/>
-        <location line="+889"/>
+        <location line="+910"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: esa arista no tiene cota</translation>
     </message>
     <message>
-        <location line="-1008"/>
-        <location line="+1016"/>
+        <location line="-1036"/>
+        <location line="+1044"/>
         <source>View Properties</source>
         <translation type="unfinished">Propiedades de la vista</translation>
     </message>

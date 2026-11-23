@@ -1942,8 +1942,8 @@ Details are in the log:
         <translation type="unfinished">%1：工程图无法重新生成：%2</translation>
     </message>
     <message>
-        <location line="+131"/>
-        <location line="+442"/>
+        <location line="+138"/>
+        <location line="+470"/>
         <source>Title Block</source>
         <translation type="unfinished">标题栏</translation>
     </message>
@@ -2008,12 +2008,12 @@ Details are in the log:
         <translation type="unfinished">纵向</translation>
     </message>
     <message>
-        <location line="-457"/>
+        <location line="-485"/>
         <location line="+18"/>
-        <location line="+118"/>
+        <location line="+125"/>
         <location line="+128"/>
-        <location line="+106"/>
-        <location line="+326"/>
+        <location line="+120"/>
+        <location line="+333"/>
         <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1：%2</translation>
@@ -2024,24 +2024,32 @@ Details are in the log:
         <translation type="unfinished">并非所有视图都能放在此图幅内：放不下的视图位于图纸旁边</translation>
     </message>
     <message>
-        <location line="-469"/>
-        <location line="+475"/>
+        <location line="-497"/>
+        <location line="+503"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">工程图比例</translation>
     </message>
     <message>
-        <location line="-248"/>
+        <location line="-389"/>
+        <location line="+170"/>
+        <location line="+52"/>
+        <location line="+54"/>
+        <source>%1: that view holds %2 of them, as many as a view keeps</source>
+        <translation type="unfinished">%1：该视图已有 %2 个，已达视图上限</translation>
+    </message>
+    <message>
+        <location line="-156"/>
         <source>%1: frames still refer to datum %2, which the sheet no longer has</source>
         <translation type="unfinished">%1：仍有公差框格引用基准 %2，但图纸上已没有该基准</translation>
     </message>
     <message>
         <location line="+11"/>
-        <location line="+736"/>
+        <location line="+757"/>
         <source>Add Geometric Tolerance</source>
         <translation type="unfinished">添加几何公差</translation>
     </message>
     <message>
-        <location line="-714"/>
+        <location line="-735"/>
         <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
         <translation type="unfinished">%1：图纸上没有基准 %2；请先用“添加基准要素”将其放到一条边上</translation>
     </message>
@@ -2051,45 +2059,45 @@ Details are in the log:
         <translation type="unfinished">%1：该边本身就是基准 %2；其上的公差框格应引用其他基准</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+15"/>
         <source>%1: that edge has that frame already</source>
         <translation type="unfinished">%1：该边已有此公差框格</translation>
     </message>
     <message>
         <location line="+12"/>
-        <location line="+754"/>
+        <location line="+768"/>
         <source>Add Datum Feature</source>
         <translation type="unfinished">添加基准要素</translation>
     </message>
     <message>
-        <location line="-734"/>
-        <location line="+746"/>
+        <location line="-748"/>
+        <location line="+760"/>
         <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
         <translation type="unfinished">%1：“%2”不是基准字母：须为一或两个大写字母，且不能是 I、O 或 Q</translation>
     </message>
     <message>
-        <location line="-739"/>
+        <location line="-753"/>
         <source>%1: the sheet has datum %2 already</source>
         <translation type="unfinished">%1：图纸上已有基准 %2</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+17"/>
         <source>%1: that edge is datum %2 already</source>
         <translation type="unfinished">%1：该边已是基准 %2</translation>
     </message>
     <message>
         <location line="+13"/>
-        <location line="+620"/>
+        <location line="+627"/>
         <source>Hole Callout</source>
         <translation type="unfinished">孔标注</translation>
     </message>
     <message>
-        <location line="-598"/>
+        <location line="-605"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1：该边不属于孔（孔特征）</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+19"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1：该孔已有标注；“删除尺寸”可将其删除</translation>
     </message>
@@ -2223,8 +2231,8 @@ Details are in the log:
         <translation type="unfinished">%1：圆内不包含该视图的任何内容</translation>
     </message>
     <message>
-        <location line="-770"/>
-        <location line="+791"/>
+        <location line="-798"/>
+        <location line="+819"/>
         <source>Move View</source>
         <translation type="unfinished">移动视图</translation>
     </message>
@@ -2244,14 +2252,14 @@ Details are in the log:
         <translation type="unfinished">不在该视图所在的工程图上</translation>
     </message>
     <message>
-        <location line="-799"/>
-        <location line="+842"/>
+        <location line="-827"/>
+        <location line="+870"/>
         <source>Remove View</source>
         <translation type="unfinished">删除视图</translation>
     </message>
     <message>
-        <location line="-826"/>
-        <location line="+831"/>
+        <location line="-854"/>
+        <location line="+859"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1：图纸至少要保留一个视图</translation>
     </message>
@@ -2262,12 +2270,12 @@ Details are in the log:
         <translation type="unfinished">视图:</translation>
     </message>
     <message>
-        <location line="-1054"/>
+        <location line="-1082"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1：由其派生的视图也一并删除（%2）</translation>
     </message>
     <message>
-        <location line="+863"/>
+        <location line="+891"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">单击视图中的一条边（完成后按 Esc）</translation>
     </message>
@@ -2282,20 +2290,20 @@ Details are in the log:
         <translation type="unfinished">该处没有边</translation>
     </message>
     <message>
-        <location line="-843"/>
-        <location line="+858"/>
+        <location line="-871"/>
+        <location line="+886"/>
         <source>Add Dimension</source>
         <translation type="unfinished">添加尺寸</translation>
     </message>
     <message>
-        <location line="-778"/>
-        <location line="+904"/>
+        <location line="-799"/>
+        <location line="+925"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">删除尺寸</translation>
     </message>
     <message>
-        <location line="-981"/>
+        <location line="-1002"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1：该边已标注尺寸；可用删除尺寸将其删除</translation>
     </message>
@@ -2312,13 +2320,13 @@ Details are in the log:
     <message>
         <location line="+17"/>
         <location line="+28"/>
-        <location line="+889"/>
+        <location line="+910"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1：该边没有尺寸</translation>
     </message>
     <message>
-        <location line="-1008"/>
-        <location line="+1016"/>
+        <location line="-1036"/>
+        <location line="+1044"/>
         <source>View Properties</source>
         <translation type="unfinished">视图属性</translation>
     </message>

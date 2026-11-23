@@ -114,17 +114,18 @@ public:
 
     /// Why @p frame is not one the standard allows ("Flatness is a form
     /// tolerance: it refers to no datum"); empty when it is. Its tolerance is
-    /// more than 0 and at most kMaxTolerance; it refers to datums when its
+    /// from kMinTolerance to kMaxTolerance; it refers to datums when its
     /// characteristic needs one, never when it takes none, to at most three,
     /// each once and by a usable label; its modifier and zone are ones its
     /// characteristic takes.
     static std::string check(const FeatureControlFrame& frame);
-    /// No tolerance zone larger than this, in millimetres.
+    /// No tolerance zone larger than this, or smaller, in millimetres.
     static constexpr double kMaxTolerance = 1000.0;
+    static constexpr double kMinTolerance = 1e-6;
 
-    /// A tolerance as a frame states it: to at most four decimals, without
-    /// the zeros after the last digit that counts ("0.05", "1"), with a point
-    /// whatever the locale.
+    /// A tolerance as a frame states it: to at most four decimals (nine for
+    /// one smaller than 0.00005, so never "0"), without the zeros after the
+    /// last digit that counts ("0.05", "1"), with a point whatever the locale.
     static std::string formatValue(double value);
 };
 

@@ -1942,8 +1942,8 @@ Details are in the log:
         <translation type="unfinished">%1: 도면을 다시 그릴 수 없습니다: %2</translation>
     </message>
     <message>
-        <location line="+131"/>
-        <location line="+442"/>
+        <location line="+138"/>
+        <location line="+470"/>
         <source>Title Block</source>
         <translation type="unfinished">표제란</translation>
     </message>
@@ -2008,12 +2008,12 @@ Details are in the log:
         <translation type="unfinished">세로</translation>
     </message>
     <message>
-        <location line="-457"/>
+        <location line="-485"/>
         <location line="+18"/>
-        <location line="+118"/>
+        <location line="+125"/>
         <location line="+128"/>
-        <location line="+106"/>
-        <location line="+326"/>
+        <location line="+120"/>
+        <location line="+333"/>
         <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
@@ -2024,24 +2024,32 @@ Details are in the log:
         <translation type="unfinished">이 용지에는 모든 뷰를 배치할 공간이 없습니다: 공간이 없는 뷰는 용지 옆에 배치됩니다</translation>
     </message>
     <message>
-        <location line="-469"/>
-        <location line="+475"/>
+        <location line="-497"/>
+        <location line="+503"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">도면 축척</translation>
     </message>
     <message>
-        <location line="-248"/>
+        <location line="-389"/>
+        <location line="+170"/>
+        <location line="+52"/>
+        <location line="+54"/>
+        <source>%1: that view holds %2 of them, as many as a view keeps</source>
+        <translation type="unfinished">%1: 그 뷰에는 이미 %2개가 있으며, 뷰가 담을 수 있는 최대입니다</translation>
+    </message>
+    <message>
+        <location line="-156"/>
         <source>%1: frames still refer to datum %2, which the sheet no longer has</source>
         <translation type="unfinished">%1: 공차 기입 틀이 아직 데이텀 %2을(를) 참조하지만 시트에 더 이상 없습니다</translation>
     </message>
     <message>
         <location line="+11"/>
-        <location line="+736"/>
+        <location line="+757"/>
         <source>Add Geometric Tolerance</source>
         <translation type="unfinished">기하 공차 추가</translation>
     </message>
     <message>
-        <location line="-714"/>
+        <location line="-735"/>
         <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
         <translation type="unfinished">%1: 시트에 데이텀 %2이(가) 없습니다. 먼저 데이텀 형체 추가로 모서리에 지정하십시오</translation>
     </message>
@@ -2051,45 +2059,45 @@ Details are in the log:
         <translation type="unfinished">%1: 그 모서리 자체가 데이텀 %2입니다. 그 위의 공차 기입 틀은 다른 데이텀을 참조합니다</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+15"/>
         <source>%1: that edge has that frame already</source>
         <translation type="unfinished">%1: 그 모서리에는 이미 그 공차 기입 틀이 있습니다</translation>
     </message>
     <message>
         <location line="+12"/>
-        <location line="+754"/>
+        <location line="+768"/>
         <source>Add Datum Feature</source>
         <translation type="unfinished">데이텀 형체 추가</translation>
     </message>
     <message>
-        <location line="-734"/>
-        <location line="+746"/>
+        <location line="-748"/>
+        <location line="+760"/>
         <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
         <translation type="unfinished">%1: &quot;%2&quot;은(는) 데이텀 문자가 아닙니다. 대문자 한두 개이며 I, O, Q는 쓸 수 없습니다</translation>
     </message>
     <message>
-        <location line="-739"/>
+        <location line="-753"/>
         <source>%1: the sheet has datum %2 already</source>
         <translation type="unfinished">%1: 시트에 이미 데이텀 %2이(가) 있습니다</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+17"/>
         <source>%1: that edge is datum %2 already</source>
         <translation type="unfinished">%1: 그 모서리는 이미 데이텀 %2입니다</translation>
     </message>
     <message>
         <location line="+13"/>
-        <location line="+620"/>
+        <location line="+627"/>
         <source>Hole Callout</source>
         <translation type="unfinished">구멍 주석</translation>
     </message>
     <message>
-        <location line="-598"/>
+        <location line="-605"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: 그 모서리는 구멍(구멍 피처)의 것이 아닙니다</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+19"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: 그 구멍에는 이미 주석이 있습니다. 치수 제거로 제거할 수 있습니다</translation>
     </message>
@@ -2223,8 +2231,8 @@ Details are in the log:
         <translation type="unfinished">%1: 원 안에 뷰의 요소가 없습니다</translation>
     </message>
     <message>
-        <location line="-770"/>
-        <location line="+791"/>
+        <location line="-798"/>
+        <location line="+819"/>
         <source>Move View</source>
         <translation type="unfinished">뷰 이동</translation>
     </message>
@@ -2244,14 +2252,14 @@ Details are in the log:
         <translation type="unfinished">뷰가 있는 도면 위가 아닙니다</translation>
     </message>
     <message>
-        <location line="-799"/>
-        <location line="+842"/>
+        <location line="-827"/>
+        <location line="+870"/>
         <source>Remove View</source>
         <translation type="unfinished">뷰 제거</translation>
     </message>
     <message>
-        <location line="-826"/>
-        <location line="+831"/>
+        <location line="-854"/>
+        <location line="+859"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: 시트에는 뷰가 하나 이상 있어야 합니다</translation>
     </message>
@@ -2262,12 +2270,12 @@ Details are in the log:
         <translation type="unfinished">뷰:</translation>
     </message>
     <message>
-        <location line="-1054"/>
+        <location line="-1082"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: 이 뷰에서 파생된 뷰도 함께 제거되었습니다 (%2)</translation>
     </message>
     <message>
-        <location line="+863"/>
+        <location line="+891"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">뷰의 모서리를 클릭하십시오 (완료하면 Esc)</translation>
     </message>
@@ -2282,20 +2290,20 @@ Details are in the log:
         <translation type="unfinished">해당 위치에 모서리가 없습니다</translation>
     </message>
     <message>
-        <location line="-843"/>
-        <location line="+858"/>
+        <location line="-871"/>
+        <location line="+886"/>
         <source>Add Dimension</source>
         <translation type="unfinished">치수 추가</translation>
     </message>
     <message>
-        <location line="-778"/>
-        <location line="+904"/>
+        <location line="-799"/>
+        <location line="+925"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">치수 제거</translation>
     </message>
     <message>
-        <location line="-981"/>
+        <location line="-1002"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: 이 모서리에는 이미 치수가 있습니다. 치수 제거로 제거할 수 있습니다</translation>
     </message>
@@ -2312,13 +2320,13 @@ Details are in the log:
     <message>
         <location line="+17"/>
         <location line="+28"/>
-        <location line="+889"/>
+        <location line="+910"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: 이 모서리에는 치수가 없습니다</translation>
     </message>
     <message>
-        <location line="-1008"/>
-        <location line="+1016"/>
+        <location line="-1036"/>
+        <location line="+1044"/>
         <source>View Properties</source>
         <translation type="unfinished">뷰 속성</translation>
     </message>

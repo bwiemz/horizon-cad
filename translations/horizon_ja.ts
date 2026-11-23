@@ -1942,8 +1942,8 @@ Details are in the log:
         <translation type="unfinished">%1: 図面を再作成できませんでした: %2</translation>
     </message>
     <message>
-        <location line="+131"/>
-        <location line="+442"/>
+        <location line="+138"/>
+        <location line="+470"/>
         <source>Title Block</source>
         <translation type="unfinished">表題欄</translation>
     </message>
@@ -2008,12 +2008,12 @@ Details are in the log:
         <translation type="unfinished">縦</translation>
     </message>
     <message>
-        <location line="-457"/>
+        <location line="-485"/>
         <location line="+18"/>
-        <location line="+118"/>
+        <location line="+125"/>
         <location line="+128"/>
-        <location line="+106"/>
-        <location line="+326"/>
+        <location line="+120"/>
+        <location line="+333"/>
         <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
@@ -2024,24 +2024,32 @@ Details are in the log:
         <translation type="unfinished">この用紙にはすべてのビューが収まりません: 収まらないビューは用紙の横に配置されます</translation>
     </message>
     <message>
-        <location line="-469"/>
-        <location line="+475"/>
+        <location line="-497"/>
+        <location line="+503"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">図面の尺度</translation>
     </message>
     <message>
-        <location line="-248"/>
+        <location line="-389"/>
+        <location line="+170"/>
+        <location line="+52"/>
+        <location line="+54"/>
+        <source>%1: that view holds %2 of them, as many as a view keeps</source>
+        <translation type="unfinished">%1: そのビューにはすでに %2 個あり、これがビューの上限です</translation>
+    </message>
+    <message>
+        <location line="-156"/>
         <source>%1: frames still refer to datum %2, which the sheet no longer has</source>
         <translation type="unfinished">%1: 公差記入枠がまだデータム %2 を参照していますが、シートにはもうありません</translation>
     </message>
     <message>
         <location line="+11"/>
-        <location line="+736"/>
+        <location line="+757"/>
         <source>Add Geometric Tolerance</source>
         <translation type="unfinished">幾何公差の追加</translation>
     </message>
     <message>
-        <location line="-714"/>
+        <location line="-735"/>
         <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
         <translation type="unfinished">%1: シートにデータム %2 がありません。先にデータム形体の追加でエッジに設定してください</translation>
     </message>
@@ -2051,45 +2059,45 @@ Details are in the log:
         <translation type="unfinished">%1: そのエッジ自体がデータム %2 です。その上の公差記入枠は他のデータムを参照します</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+15"/>
         <source>%1: that edge has that frame already</source>
         <translation type="unfinished">%1: そのエッジにはすでにその公差記入枠があります</translation>
     </message>
     <message>
         <location line="+12"/>
-        <location line="+754"/>
+        <location line="+768"/>
         <source>Add Datum Feature</source>
         <translation type="unfinished">データム形体の追加</translation>
     </message>
     <message>
-        <location line="-734"/>
-        <location line="+746"/>
+        <location line="-748"/>
+        <location line="+760"/>
         <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
         <translation type="unfinished">%1: 「%2」はデータム文字ではありません。大文字 1～2 文字で、I、O、Q は使えません</translation>
     </message>
     <message>
-        <location line="-739"/>
+        <location line="-753"/>
         <source>%1: the sheet has datum %2 already</source>
         <translation type="unfinished">%1: シートにはすでにデータム %2 があります</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+17"/>
         <source>%1: that edge is datum %2 already</source>
         <translation type="unfinished">%1: そのエッジはすでにデータム %2 です</translation>
     </message>
     <message>
         <location line="+13"/>
-        <location line="+620"/>
+        <location line="+627"/>
         <source>Hole Callout</source>
         <translation type="unfinished">穴の注記</translation>
     </message>
     <message>
-        <location line="-598"/>
+        <location line="-605"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: そのエッジは穴 (穴フィーチャー) のものではありません</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+19"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: その穴にはすでに注記があります。寸法の削除で削除できます</translation>
     </message>
@@ -2223,8 +2231,8 @@ Details are in the log:
         <translation type="unfinished">%1: 円内にビューの要素がありません</translation>
     </message>
     <message>
-        <location line="-770"/>
-        <location line="+791"/>
+        <location line="-798"/>
+        <location line="+819"/>
         <source>Move View</source>
         <translation type="unfinished">ビューの移動</translation>
     </message>
@@ -2244,14 +2252,14 @@ Details are in the log:
         <translation type="unfinished">ビューがある図面上ではありません</translation>
     </message>
     <message>
-        <location line="-799"/>
-        <location line="+842"/>
+        <location line="-827"/>
+        <location line="+870"/>
         <source>Remove View</source>
         <translation type="unfinished">ビューの削除</translation>
     </message>
     <message>
-        <location line="-826"/>
-        <location line="+831"/>
+        <location line="-854"/>
+        <location line="+859"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: シートには少なくとも 1 つのビューが必要です</translation>
     </message>
@@ -2262,12 +2270,12 @@ Details are in the log:
         <translation type="unfinished">ビュー:</translation>
     </message>
     <message>
-        <location line="-1054"/>
+        <location line="-1082"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: このビューから作成されたビューも削除されました (%2)</translation>
     </message>
     <message>
-        <location line="+863"/>
+        <location line="+891"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">ビューのエッジをクリックしてください (完了したら Esc)</translation>
     </message>
@@ -2282,20 +2290,20 @@ Details are in the log:
         <translation type="unfinished">そこにはエッジがありません</translation>
     </message>
     <message>
-        <location line="-843"/>
-        <location line="+858"/>
+        <location line="-871"/>
+        <location line="+886"/>
         <source>Add Dimension</source>
         <translation type="unfinished">寸法の追加</translation>
     </message>
     <message>
-        <location line="-778"/>
-        <location line="+904"/>
+        <location line="-799"/>
+        <location line="+925"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">寸法の削除</translation>
     </message>
     <message>
-        <location line="-981"/>
+        <location line="-1002"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: そのエッジには既に寸法があります。「寸法の削除」で削除できます</translation>
     </message>
@@ -2312,13 +2320,13 @@ Details are in the log:
     <message>
         <location line="+17"/>
         <location line="+28"/>
-        <location line="+889"/>
+        <location line="+910"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: そのエッジには寸法がありません</translation>
     </message>
     <message>
-        <location line="-1008"/>
-        <location line="+1016"/>
+        <location line="-1036"/>
+        <location line="+1044"/>
         <source>View Properties</source>
         <translation type="unfinished">ビューのプロパティ</translation>
     </message>

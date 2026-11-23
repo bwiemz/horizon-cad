@@ -443,12 +443,11 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                     view.showCentreLines = flag(v, "centreLines", true);
                     // Each is measured again from the part when the sheet is
                     // drawn: as many as a view has room for, no more.
-                    constexpr std::size_t kMaxDimensions = 256;
                     const auto dims = v.find("dimensions");
                     if (dims != v.end() && dims->is_array()) {
-                        if (dims->size() > kMaxDimensions) {
+                        if (dims->size() > kMaxPerView) {
                             return fail(at + " has " + std::to_string(dims->size()) +
-                                        " dimensions; at most " + std::to_string(kMaxDimensions) +
+                                        " dimensions; at most " + std::to_string(kMaxPerView) +
                                         " are read");
                         }
                         std::size_t dimensionIndex = 0;
@@ -474,10 +473,10 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                     // Version 4: the holes called out, each by an edge of it.
                     const auto callouts = v.find("holeCallouts");
                     if (callouts != v.end() && callouts->is_array()) {
-                        if (callouts->size() > kMaxDimensions) {
+                        if (callouts->size() > kMaxPerView) {
                             return fail(at + " has " + std::to_string(callouts->size()) +
-                                        " hole callouts; at most " +
-                                        std::to_string(kMaxDimensions) + " are read");
+                                        " hole callouts; at most " + std::to_string(kMaxPerView) +
+                                        " are read");
                         }
                         std::size_t calloutIndex = 0;
                         for (const auto& c : *callouts) {
@@ -495,9 +494,9 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                     // symbols. One the standard does not allow is left out.
                     const auto frames = v.find("tolerances");
                     if (frames != v.end() && frames->is_array()) {
-                        if (frames->size() > kMaxDimensions) {
+                        if (frames->size() > kMaxPerView) {
                             return fail(at + " has " + std::to_string(frames->size()) +
-                                        " tolerances; at most " + std::to_string(kMaxDimensions) +
+                                        " tolerances; at most " + std::to_string(kMaxPerView) +
                                         " are read");
                         }
                         std::size_t frameIndex = 0;
@@ -557,9 +556,9 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                     }
                     const auto datums = v.find("datums");
                     if (datums != v.end() && datums->is_array()) {
-                        if (datums->size() > kMaxDimensions) {
+                        if (datums->size() > kMaxPerView) {
                             return fail(at + " has " + std::to_string(datums->size()) +
-                                        " datums; at most " + std::to_string(kMaxDimensions) +
+                                        " datums; at most " + std::to_string(kMaxPerView) +
                                         " are read");
                         }
                         std::size_t datumIndex = 0;

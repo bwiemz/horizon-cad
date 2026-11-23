@@ -1,6 +1,7 @@
 #include "horizon/modeling/GeometricTolerance.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <iomanip>
 #include <locale>
@@ -240,6 +241,10 @@ std::string Gdt::check(const FeatureControlFrame& frame) {
         return "its tolerance must be more than 0 and at most " + formatValue(kMaxTolerance) +
                " mm";
     }
+    if (frame.tolerance < kMinTolerance) {
+        return "its tolerance must be at least " + formatValue(kMinTolerance) +
+               " mm: no gauge measures less";
+    }
     if (!takesDatums(frame.characteristic) && !frame.datumRefs.empty()) {
         return what + " is a form tolerance: it refers to no datum";
     }
@@ -275,7 +280,10 @@ std::string Gdt::check(const FeatureControlFrame& frame) {
 std::string Gdt::formatValue(double value) {
     std::ostringstream out;
     out.imbue(std::locale::classic());
-    out << std::fixed << std::setprecision(4) << value;
+    // Four decimals, or as many as a smaller one needs: a tolerance written
+    // "0" would say another thing (a zero tolerance at MMC).
+    const bool small = value != 0.0 && std::abs(value) < 0.00005;
+    out << std::fixed << std::setprecision(small ? 9 : 4) << value;
     std::string text = out.str();
     if (text.find('.') != std::string::npos) {
         while (!text.empty() && text.back() == '0') text.pop_back();

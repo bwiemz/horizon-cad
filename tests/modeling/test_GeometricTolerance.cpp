@@ -181,7 +181,7 @@ TEST(GeometricToleranceTest, ChecksFrames) {
         std::string::npos);
     EXPECT_NE(Gdt::check(frame(GeometricCharacteristic::Position, 0.2, {"I"})).find("letter"),
               std::string::npos);
-    for (double bad : {0.0, -0.1, 1000.5, std::nan(""), HUGE_VAL}) {
+    for (double bad : {0.0, -0.1, 1e-7, 1000.5, std::nan(""), HUGE_VAL}) {
         EXPECT_NE(Gdt::check(frame(GeometricCharacteristic::Flatness, bad, {})), "") << bad;
     }
     FeatureControlFrame flatAtMmc = frame(GeometricCharacteristic::Flatness, 0.05, {});
@@ -210,4 +210,8 @@ TEST(GeometricToleranceTest, FormatsDiameterZoneAndValues) {
     EXPECT_EQ(Gdt::formatValue(1.0), "1");
     EXPECT_EQ(Gdt::formatValue(10.0), "10");
     EXPECT_EQ(Gdt::formatValue(2.5), "2.5");
+    // Smaller than four decimals hold: all its digits, never "0".
+    EXPECT_EQ(Gdt::formatValue(0.00002), "0.00002");
+    EXPECT_EQ(Gdt::formatValue(0.000001), "0.000001");
+    EXPECT_EQ(Gdt::formatValue(0.0), "0");
 }

@@ -211,3 +211,26 @@ TEST(GdtOnSheetsTest, BuiltOnTheEdgesTheViewShows) {
     EXPECT_EQ(view.datums[0].label, "A");
     EXPECT_EQ(lost, (std::vector<std::string>{"view 1: a tolerance frame", "view 1: datum B"}));
 }
+
+// As many as a view's entry is read with is what the workbench lets a view
+// hold: a sheet with that many reads back; one more is refused.
+TEST(GdtOnSheetsTest, AViewHoldsAsManyAsItIsReadWith) {
+    DrawingDocumentSpec spec = sheet();
+    for (std::size_t i = 0; i < DrawingDocumentIO::kMaxPerView; ++i) {
+        DrawingToleranceSpec t = position("edge:a");
+        t.frame.tolerance = 0.001 * static_cast<double>(i + 1);
+        spec.views[0].tolerances.push_back(t);
+    }
+    const std::string path = temp("hz_test_gdt_full.hzdwg");
+    ASSERT_TRUE(DrawingDocumentIO::save(path, spec));
+    DrawingDocumentSpec back;
+    std::string why;
+    ASSERT_TRUE(DrawingDocumentIO::readSpec(path, back, &why)) << why;
+    EXPECT_EQ(back.views[0].tolerances.size(), DrawingDocumentIO::kMaxPerView);
+
+    spec.views[0].tolerances.push_back(position("edge:b"));
+    ASSERT_TRUE(DrawingDocumentIO::save(path, spec));
+    EXPECT_FALSE(DrawingDocumentIO::readSpec(path, back, &why));
+    EXPECT_NE(why.find("tolerances"), std::string::npos) << why;
+    std::filesystem::remove(path);
+}

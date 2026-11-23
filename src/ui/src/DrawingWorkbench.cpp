@@ -848,6 +848,13 @@ std::string noView(std::size_t view) {
     return "the sheet has no view " + std::to_string(view) + " (get_sheet_info lists them)";
 }
 
+/// Whether @p held has as many as a view's entry is read with: one more and
+/// the sheet would be saved but never open again.
+template <typename T>
+bool full(const std::vector<T>& held) {
+    return held.size() >= io::DrawingDocumentIO::kMaxPerView;
+}
+
 /// The datum letters @p spec's views have, in order.
 std::vector<std::string> datumLabels(const io::DrawingDocumentSpec& spec) {
     std::vector<std::string> labels;
@@ -1048,6 +1055,13 @@ bool DrawingWorkbench::addEdgeDimension(doc::Document& document, std::size_t vie
                        error);
     }
     auto& dimensions = sheet->spec.views[view].dimensions;
+    if (full(dimensions)) {
+        return refused(m_host,
+                       tr("%1: that view holds %2 of them, as many as a view keeps")
+                           .arg(verb)
+                           .arg(io::DrawingDocumentIO::kMaxPerView),
+                       error);
+    }
     if (std::any_of(dimensions.begin(), dimensions.end(),
                     [&](const auto& d) { return d.edge == tag; })) {
         return refused(
@@ -1211,6 +1225,13 @@ bool DrawingWorkbench::addTolerance(doc::Document& document, std::size_t view,
                            error);
         }
     }
+    if (full(shown.tolerances)) {
+        return refused(m_host,
+                       tr("%1: that view holds %2 of them, as many as a view keeps")
+                           .arg(verb)
+                           .arg(io::DrawingDocumentIO::kMaxPerView),
+                       error);
+    }
     if (std::any_of(shown.tolerances.begin(), shown.tolerances.end(),
                     [&](const auto& t) { return t.edge == named && sameFrame(t.frame, frame); })) {
         return refused(m_host, tr("%1: that edge has that frame already").arg(verb), error);
@@ -1256,6 +1277,13 @@ bool DrawingWorkbench::addDatum(doc::Document& document, std::size_t view, const
             error);
     }
     io::DrawingViewSpec& shown = sheet->spec.views[view];
+    if (full(shown.datums)) {
+        return refused(m_host,
+                       tr("%1: that view holds %2 of them, as many as a view keeps")
+                           .arg(verb)
+                           .arg(io::DrawingDocumentIO::kMaxPerView),
+                       error);
+    }
     const auto same = std::find_if(shown.datums.begin(), shown.datums.end(), [&](const auto& d) {
         return model::withoutPiece(model::logicalEdge(d.edge)) == named;
     });
@@ -1303,6 +1331,13 @@ bool DrawingWorkbench::addHoleCallout(doc::Document& document, std::size_t view,
     // One callout a hole in a view: each states all of its copies, from
     // whichever edge of whichever copy.
     auto& callouts = sheet->spec.views[view].holeCallouts;
+    if (full(callouts)) {
+        return refused(m_host,
+                       tr("%1: that view holds %2 of them, as many as a view keeps")
+                           .arg(verb)
+                           .arg(io::DrawingDocumentIO::kMaxPerView),
+                       error);
+    }
     if (std::any_of(callouts.begin(), callouts.end(), [&](const std::string& c) {
             return io::DrawingDocumentIO::holeOfEdge(
                        source->holes, model::withoutPiece(model::logicalEdge(c))) == hole;

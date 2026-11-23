@@ -180,6 +180,10 @@ public:
 
     /// The most characters a view's label has: a caption shows a few.
     static constexpr std::size_t kMaxLabel = 8;
+    /// The most dimensions, hole callouts, tolerances or datums a view's
+    /// entry is read with (each kind): a sheet with more is refused, so no
+    /// change makes more.
+    static constexpr std::size_t kMaxPerView = 256;
 
     /// @p label, typed or read from a file, as a view's label: no line
     /// breaks, and at most kMaxLabel characters, counted by code point and

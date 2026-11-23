@@ -1954,8 +1954,8 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : la mise en plan n&apos;a pas pu être redessinée : %2</translation>
     </message>
     <message>
-        <location line="+131"/>
-        <location line="+442"/>
+        <location line="+138"/>
+        <location line="+470"/>
         <source>Title Block</source>
         <translation type="unfinished">Cartouche</translation>
     </message>
@@ -2020,12 +2020,12 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Portrait</translation>
     </message>
     <message>
-        <location line="-457"/>
+        <location line="-485"/>
         <location line="+18"/>
-        <location line="+118"/>
+        <location line="+125"/>
         <location line="+128"/>
-        <location line="+106"/>
-        <location line="+326"/>
+        <location line="+120"/>
+        <location line="+333"/>
         <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1 : %2</translation>
@@ -2036,24 +2036,32 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Toutes les vues ne tiennent pas sur ce papier : celles qui n&apos;y tiennent pas sont placées à côté</translation>
     </message>
     <message>
-        <location line="-469"/>
-        <location line="+475"/>
+        <location line="-497"/>
+        <location line="+503"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">Échelle de la mise en plan</translation>
     </message>
     <message>
-        <location line="-248"/>
+        <location line="-389"/>
+        <location line="+170"/>
+        <location line="+52"/>
+        <location line="+54"/>
+        <source>%1: that view holds %2 of them, as many as a view keeps</source>
+        <translation type="unfinished">%1 : cette vue en a déjà %2, autant qu&apos;une vue peut en contenir</translation>
+    </message>
+    <message>
+        <location line="-156"/>
         <source>%1: frames still refer to datum %2, which the sheet no longer has</source>
         <translation type="unfinished">%1 : des cadres de tolérance font encore référence à la référence %2, que la feuille n&apos;a plus</translation>
     </message>
     <message>
         <location line="+11"/>
-        <location line="+736"/>
+        <location line="+757"/>
         <source>Add Geometric Tolerance</source>
         <translation type="unfinished">Ajouter une tolérance géométrique</translation>
     </message>
     <message>
-        <location line="-714"/>
+        <location line="-735"/>
         <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
         <translation type="unfinished">%1 : la feuille n&apos;a pas de référence %2 ; Ajouter un élément de référence en place d&apos;abord une sur une arête</translation>
     </message>
@@ -2063,45 +2071,45 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : cette arête est elle-même la référence %2 ; un cadre sur elle fait référence à d&apos;autres références</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+15"/>
         <source>%1: that edge has that frame already</source>
         <translation type="unfinished">%1 : cette arête a déjà ce cadre</translation>
     </message>
     <message>
         <location line="+12"/>
-        <location line="+754"/>
+        <location line="+768"/>
         <source>Add Datum Feature</source>
         <translation type="unfinished">Ajouter un élément de référence</translation>
     </message>
     <message>
-        <location line="-734"/>
-        <location line="+746"/>
+        <location line="-748"/>
+        <location line="+760"/>
         <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
         <translation type="unfinished">%1 : « %2 » n&apos;est pas une lettre de référence : une ou deux majuscules, ni I, ni O, ni Q</translation>
     </message>
     <message>
-        <location line="-739"/>
+        <location line="-753"/>
         <source>%1: the sheet has datum %2 already</source>
         <translation type="unfinished">%1 : la feuille a déjà la référence %2</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+17"/>
         <source>%1: that edge is datum %2 already</source>
         <translation type="unfinished">%1 : cette arête est déjà la référence %2</translation>
     </message>
     <message>
         <location line="+13"/>
-        <location line="+620"/>
+        <location line="+627"/>
         <source>Hole Callout</source>
         <translation type="unfinished">Cote de perçage</translation>
     </message>
     <message>
-        <location line="-598"/>
+        <location line="-605"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1 : cette arête n&apos;appartient pas à un perçage (une fonction Perçage)</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+19"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1 : ce perçage est déjà coté ; Supprimer la cote la supprime</translation>
     </message>
@@ -2235,8 +2243,8 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : le cercle ne contient rien de la vue</translation>
     </message>
     <message>
-        <location line="-770"/>
-        <location line="+791"/>
+        <location line="-798"/>
+        <location line="+819"/>
         <source>Move View</source>
         <translation type="unfinished">Déplacer la vue</translation>
     </message>
@@ -2256,14 +2264,14 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Pas sur la mise en plan de la vue</translation>
     </message>
     <message>
-        <location line="-799"/>
-        <location line="+842"/>
+        <location line="-827"/>
+        <location line="+870"/>
         <source>Remove View</source>
         <translation type="unfinished">Supprimer la vue</translation>
     </message>
     <message>
-        <location line="-826"/>
-        <location line="+831"/>
+        <location line="-854"/>
+        <location line="+859"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1 : une feuille conserve au moins une vue</translation>
     </message>
@@ -2274,12 +2282,12 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Vue :</translation>
     </message>
     <message>
-        <location line="-1054"/>
+        <location line="-1082"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1 : les vues qui en dérivaient ont été supprimées avec elle (%2)</translation>
     </message>
     <message>
-        <location line="+863"/>
+        <location line="+891"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">Cliquez sur une arête d&apos;une vue (Échap pour terminer)</translation>
     </message>
@@ -2294,20 +2302,20 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Aucune arête à cet endroit</translation>
     </message>
     <message>
-        <location line="-843"/>
-        <location line="+858"/>
+        <location line="-871"/>
+        <location line="+886"/>
         <source>Add Dimension</source>
         <translation type="unfinished">Ajouter une cote</translation>
     </message>
     <message>
-        <location line="-778"/>
-        <location line="+904"/>
+        <location line="-799"/>
+        <location line="+925"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">Supprimer une cote</translation>
     </message>
     <message>
-        <location line="-981"/>
+        <location line="-1002"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1 : cette arête est déjà cotée ; Supprimer une cote permet de retirer la cote</translation>
     </message>
@@ -2324,13 +2332,13 @@ Les détails figurent dans le journal :
     <message>
         <location line="+17"/>
         <location line="+28"/>
-        <location line="+889"/>
+        <location line="+910"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1 : cette arête n&apos;a pas de cote</translation>
     </message>
     <message>
-        <location line="-1008"/>
-        <location line="+1016"/>
+        <location line="-1036"/>
+        <location line="+1044"/>
         <source>View Properties</source>
         <translation type="unfinished">Propriétés de la vue</translation>
     </message>
