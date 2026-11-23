@@ -1,5 +1,6 @@
 #include "horizon/ai/AgentSession.h"
 
+#include <exception>
 #include <utility>
 
 namespace hz::ai {
@@ -20,7 +21,7 @@ AgentSession::AgentSession(HttpTransport& transport, const ToolRegistry& tools,
 
 AgentSession::~AgentSession() {
     *m_alive = false;
-    if (m_busy) m_transport.cancelAll();
+    if (m_busy) m_transport.cancel(m_inflight);
 }
 
 void AgentSession::setConfig(ProviderConfig config) {
@@ -42,12 +43,9 @@ bool AgentSession::send(const std::string& userText) {
     m_busy = true;
     m_steps = 0;
     m_usage = {};
-    m_changed = false;
+    m_aiSteps = 0;
     m_interleaved = false;
-    if (m_undo.undoCount && m_undo.revision) {
-        m_undoStart = m_undo.undoCount();
-        m_lastRevision = m_undo.revision();
-    }
+    if (m_undo.revision) m_lastRevision = m_undo.revision();
     requestNext();
     return true;
 }
@@ -70,17 +68,30 @@ void AgentSession::requestNext() {
     const HttpRequest request = adapter->buildRequest(chat, m_config);
 
     const std::uint64_t generation = m_generation;
+    const std::uint64_t serial = ++m_requestSerial;
     const std::weak_ptr<bool> alive = m_alive;
-    m_transport.send(request, [this, generation, alive](const HttpResponse& http) {
-        const auto held = alive.lock();
-        if (!held || !*held) return;  // the session is gone
-        onReply(generation, http);
-    });
+    const HttpTransport::RequestId id =
+        m_transport.send(request, [this, generation, alive](const HttpResponse& http) {
+            const auto held = alive.lock();
+            if (!held || !*held) return;  // the session is gone
+            onReply(generation, http);
+        });
+    // A transport that answers at once has run the next round trip already,
+    // whose request is the one in flight now.
+    if (serial == m_requestSerial) m_inflight = id;
 }
 
 void AgentSession::onReply(std::uint64_t generation, const HttpResponse& http) {
     if (generation != m_generation || !m_busy) return;  // stopped: a late reply
-    const ChatResponse response = makeAdapter(m_config.kind)->parseResponse(http);
+    ChatResponse response;
+    try {
+        response = makeAdapter(m_config.kind)->parseResponse(http);
+    } catch (const std::exception& e) {
+        // The adapters do not throw; a reply they did not foresee still must
+        // not reach the transport's event loop.
+        response.stop = StopReason::Error;
+        response.error = std::string("The reply could not be read: ") + e.what();
+    }
     m_usage.inputTokens += response.usage.inputTokens;
     m_usage.outputTokens += response.usage.outputTokens;
 
@@ -120,7 +131,7 @@ void AgentSession::onReply(std::uint64_t generation, const HttpResponse& http) {
 }
 
 void AgentSession::runTools(const Message& message) {
-    const bool tracked = m_undo.undoCount && m_undo.revision;
+    const bool tracked = static_cast<bool>(m_undo.revision);
     if (tracked && m_undo.revision() != m_lastRevision) m_interleaved = true;
 
     Message results{Role::User, {}};
@@ -131,9 +142,10 @@ void AgentSession::runTools(const Message& message) {
         if (access == ToolAccess::External && !(m_approve && m_approve(call->name, call->input))) {
             result = ToolResult::error("The user did not allow " + call->name + ".");
         } else {
-            const std::size_t before = tracked ? m_undo.undoCount() : 0;
             result = m_tools.run(call->name, call->input);
-            if (result.changedModel || (tracked && m_undo.undoCount() != before)) m_changed = true;
+            // Counted, not read from the stack's depth: a stack at its limit
+            // drops its oldest step as each new one comes, depth unchanged.
+            m_aiSteps += result.undoSteps;
         }
         if (tracked) m_lastRevision = m_undo.revision();
         if (result.content.size() > kMaxResultChars) {
@@ -162,32 +174,33 @@ void AgentSession::fail(const std::string& message) {
 void AgentSession::cancel() {
     if (!m_busy) return;
     ++m_generation;
-    m_transport.cancelAll();
+    m_transport.cancel(m_inflight);
     finish();
 }
 
 void AgentSession::reset() {
     cancel();
     m_messages.clear();
-    m_changed = false;
+    m_aiSteps = 0;
     m_interleaved = false;
     m_note.clear();
 }
 
 bool AgentSession::canUndoLastResponse() const {
-    if (m_busy || !m_changed || m_interleaved) return false;
+    if (m_busy || m_aiSteps <= 0 || m_interleaved) return false;
     if (!m_undo.undoCount || !m_undo.revision || !m_undo.undo) return false;
-    return m_undo.revision() == m_lastRevision && m_undo.undoCount() > m_undoStart;
+    return m_undo.revision() == m_lastRevision &&
+           m_undo.undoCount() >= static_cast<std::size_t>(m_aiSteps);
 }
 
 bool AgentSession::undoLastResponse() {
     if (!canUndoLastResponse()) return false;
-    while (m_undo.undoCount() > m_undoStart) {
+    for (int step = 0; step < m_aiSteps; ++step) {
         const std::size_t before = m_undo.undoCount();
         m_undo.undo();
         if (m_undo.undoCount() >= before) break;  // the stack would not go back
     }
-    m_changed = false;
+    m_aiSteps = 0;
     m_note =
         "(The user has undone every change you made in your previous response: the document is "
         "as it was before it.)";

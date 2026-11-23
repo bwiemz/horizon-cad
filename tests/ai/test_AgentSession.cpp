@@ -34,12 +34,14 @@ struct Recorder : AgentObserver {
     }
 };
 
-/// A pretend undo stack: each "edit" is a step.
+/// A pretend undo stack: each "edit" is a step. With a limit, the oldest
+/// step is dropped as a new one comes, as UndoStack's does.
 struct Stack {
     std::size_t count = 0;
     std::uint64_t revision = 0;
+    std::size_t limit = 0;
     void edit() {
-        ++count;
+        if (limit == 0 || count < limit) ++count;
         ++revision;
     }
     UndoHooks hooks() {
@@ -240,6 +242,31 @@ TEST_F(AgentSessionTest, UndoResponseRefusedWhenTheUserEditedMidRequest) {
     transport.releaseNext();
     EXPECT_FALSE(session.busy());
     EXPECT_FALSE(session.canUndoLastResponse());
+}
+
+TEST_F(AgentSessionTest, UndoResponseAtTheUndoLimit) {
+    // A long session: the stack is full, and stays at its limit as the AI's
+    // steps push the oldest out. Its two steps are still the two undone.
+    stack.limit = 1000;
+    stack.count = 1000;
+    transport.replies.push_back(anthropicReply("", {call("a", "add_box"), call("b", "add_box")}));
+    transport.replies.push_back(anthropicReply("Two."));
+    ASSERT_TRUE(session.send("two boxes"));
+    EXPECT_EQ(stack.count, 1000u);
+    ASSERT_TRUE(session.canUndoLastResponse());
+    const std::uint64_t before = stack.revision;
+    EXPECT_TRUE(session.undoLastResponse());
+    EXPECT_EQ(stack.revision, before + 2);  // exactly two undos
+    EXPECT_EQ(stack.count, 998u);
+}
+
+TEST_F(AgentSessionTest, CancelStopsOnlyItsOwnRequest) {
+    transport.hold = true;
+    transport.replies.push_back(anthropicReply("x"));
+    ASSERT_TRUE(session.send("one"));
+    session.cancel();
+    ASSERT_EQ(transport.cancelled.size(), 1u);
+    EXPECT_EQ(transport.cancelled[0], 1u);  // the first request sent
 }
 
 TEST_F(AgentSessionTest, NothingChangedNothingToUndo) {

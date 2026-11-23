@@ -20,31 +20,38 @@ public:
     std::deque<HttpResponse> replies;
     /// Hold replies until releaseNext() rather than answering in send().
     bool hold = false;
-    /// Keep held callbacks through cancelAll(), as a transport that cannot
+    /// Keep held callbacks through cancel(), as a transport that cannot
     /// stop a request in time would: the session must ignore them.
     bool keepThroughCancel = false;
     int cancels = 0;
 
-    void send(const HttpRequest& request, std::function<void(HttpResponse)> done) override {
+    RequestId send(const HttpRequest& request, std::function<void(HttpResponse)> done) override {
         requests.push_back(request);
+        const RequestId id = ++m_nextId;
         if (hold) {
-            m_pending.push_back(std::move(done));
-            return;
+            m_pending.push_back({id, std::move(done)});
+            return id;
         }
         done(next());
+        return id;
     }
 
-    void cancelAll() override {
+    void cancel(RequestId id) override {
         ++cancels;
-        if (!keepThroughCancel) m_pending.clear();
+        cancelled.push_back(id);
+        if (!keepThroughCancel) {
+            std::erase_if(m_pending, [id](const Pending& p) { return p.id == id; });
+        }
     }
+
+    std::vector<RequestId> cancelled;
 
     std::size_t pending() const { return m_pending.size(); }
 
     /// Answer the oldest held request with the next queued reply.
     void releaseNext() {
         if (m_pending.empty()) return;
-        auto done = std::move(m_pending.front());
+        auto done = std::move(m_pending.front().done);
         m_pending.pop_front();
         done(next());
     }
@@ -63,7 +70,12 @@ private:
         return reply;
     }
 
-    std::deque<std::function<void(HttpResponse)>> m_pending;
+    struct Pending {
+        RequestId id;
+        std::function<void(HttpResponse)> done;
+    };
+    std::deque<Pending> m_pending;
+    RequestId m_nextId = 0;
 };
 
 /// An Anthropic reply: text and tool calls ({id, name, input}).

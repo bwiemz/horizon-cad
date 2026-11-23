@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "CadToolsCommon.h"
+#include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/ModelCommands.h"
@@ -355,25 +356,54 @@ json rebuildAndReport(const CadContext& context) {
     return out;
 }
 
+namespace {
+
+/// The document's type, changed as a step of the undo stack.
+class SetDocumentTypeCommand : public doc::Command {
+public:
+    SetDocumentTypeCommand(doc::Document& document, doc::DocumentType type)
+        : m_document(document), m_after(type), m_before(document.type()) {}
+    void execute() override { m_document.setType(m_after); }
+    void undo() override { m_document.setType(m_before); }
+    std::string description() const override { return "Make a Part"; }
+
+private:
+    doc::Document& m_document;
+    doc::DocumentType m_after;
+    doc::DocumentType m_before;
+};
+
+}  // namespace
+
+std::unique_ptr<doc::Command> asPartStep(doc::Document& document,
+                                         std::unique_ptr<doc::Command> command) {
+    if (document.type() != doc::DocumentType::Drawing ||
+        !document.draftDocument().entities().empty()) {
+        return command;
+    }
+    auto step = std::make_unique<doc::CompositeCommand>(command->description());
+    step->addCommand(std::make_unique<SetDocumentTypeCommand>(document, doc::DocumentType::Part));
+    step->addCommand(std::move(command));
+    return step;
+}
+
 ToolResult addFeature(const CadContext& context, std::unique_ptr<doc::Feature> feature,
                       const std::string& verb, json extra) {
     doc::Document& document = context.document;
-    // A drawing that holds nothing drawn becomes a part when it gets one.
-    if (document.type() == doc::DocumentType::Drawing &&
-        document.draftDocument().entities().empty()) {
-        document.setType(doc::DocumentType::Part);
-    }
     auto command = std::make_unique<doc::AddFeatureCommand>(document, std::move(feature));
-    const doc::Command* step = command.get();
     const doc::Feature* added = command->feature();
-    document.undoStack().push(std::move(command));
+    // A new document's first feature makes it a part, in the same step: a
+    // withdrawn feature or an undo puts the type back too.
+    auto step = asPartStep(document, std::move(command));
+    const doc::Command* pushed = step.get();
+    document.undoStack().push(std::move(step));
     document.rebuildModel();
 
     const auto index = document.featureTree().indexOf(added);
     if (index && document.failedFeatureIndex() == static_cast<int>(*index)) {
         // It fails itself: withdrawn, the part and its history as they were.
         const std::string reason = document.lastBuildMessage();
-        document.undoStack().withdraw(step);
+        document.undoStack().withdraw(pushed);
         document.rebuildModel();
         context.modelChanged();
         return ToolResult::error(

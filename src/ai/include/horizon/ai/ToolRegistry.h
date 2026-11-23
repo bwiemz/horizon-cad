@@ -20,7 +20,11 @@ struct ToolResult {
     std::string content;  ///< text (usually JSON) the model reads
     bool isError = false;
     bool changedModel = false;  ///< it changed the part or the drawing
+    /// Steps it added to the document's undo stack: one for a change (each
+    /// change is one step), none for a query or a change that was refused.
+    int undoSteps = 0;
 
+    /// @p changedModel: it changed the document, as one undo step.
     static ToolResult ok(const nlohmann::json& value, bool changedModel = false);
     static ToolResult message(std::string text, bool changedModel = false);
     static ToolResult error(std::string message);

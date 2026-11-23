@@ -201,7 +201,8 @@ public:
                 parts != content->end() && parts->is_array()) {
                 for (const auto& part : *parts) {
                     if (!part.is_object()) continue;
-                    if (part.value("thought", false) ||
+                    if ((part.contains("thought") && part["thought"].is_boolean() &&
+                         part["thought"].get<bool>()) ||
                         (!part.contains("text") && !part.contains("functionCall"))) {
                         response.message.blocks.push_back(
                             ContentBlock::makeOpaque(kProvider, part));

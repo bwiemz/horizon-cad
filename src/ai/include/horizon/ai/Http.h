@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <utility>
@@ -31,11 +32,15 @@ struct HttpResponse {
 /// @p done before send() returns (a test's fake does).
 class HttpTransport {
 public:
+    using RequestId = std::uint64_t;
+
     virtual ~HttpTransport();
 
-    virtual void send(const HttpRequest& request, std::function<void(HttpResponse)> done) = 0;
-    /// Abandon every request in flight; their callbacks are not called.
-    virtual void cancelAll() = 0;
+    /// Send @p request; its id, for cancel().
+    virtual RequestId send(const HttpRequest& request, std::function<void(HttpResponse)> done) = 0;
+    /// Abandon request @p id if it is still in flight: its callback is not
+    /// called. Others sent through the same transport are not touched.
+    virtual void cancel(RequestId id) = 0;
 };
 
 }  // namespace hz::ai

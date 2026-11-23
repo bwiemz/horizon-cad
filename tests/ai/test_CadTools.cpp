@@ -92,6 +92,28 @@ TEST_F(CadToolsTest, RegistersTheToolsWithSchemas) {
     EXPECT_EQ(tools.access("extrude"), ai::ToolAccess::Modify);
 }
 
+TEST_F(CadToolsTest, ANewDocumentBecomesAPartUndoably) {
+    ASSERT_EQ(document.type(), doc::DocumentType::Drawing);
+    box(10, 10, 10);
+    EXPECT_EQ(document.type(), doc::DocumentType::Part);
+    EXPECT_EQ(document.undoStack().undoCount(), 1u);  // one step, the type with it
+    document.undoStack().undo();
+    EXPECT_EQ(document.type(), doc::DocumentType::Drawing);
+    EXPECT_EQ(document.featureTree().featureCount(), 0u);
+
+    // A first feature that fails leaves the type as it was.
+    const std::uint64_t line =
+        ok("create_sketch",
+           {{"entities",
+             json::array({{{"type", "line"}, {"from", {0, 0}}, {"to", {5, 0}}}})}})["sketch_id"];
+    document.undoStack().undo();  // the sketch, and the type
+    EXPECT_EQ(document.type(), doc::DocumentType::Drawing);
+    document.undoStack().redo();
+    EXPECT_EQ(document.type(), doc::DocumentType::Part);
+    fails("extrude", {{"sketch_id", line}, {"distance", 5}});  // an open profile
+    EXPECT_EQ(document.featureTree().featureCount(), 0u);
+}
+
 TEST_F(CadToolsTest, SketchAndExtrudeMakeABox) {
     const auto sketch = rectangleSketch(60, 40);
     const json result = ok("extrude", {{"sketch_id", sketch}, {"distance", 5}});

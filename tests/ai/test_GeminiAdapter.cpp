@@ -137,6 +137,17 @@ TEST(GeminiAdapter, ThoughtPartsAreOpaqueAndOtherProvidersDropped) {
     EXPECT_EQ(parts[1]["functionCall"]["id"], "toolu_1");
 }
 
+TEST(GeminiAdapter, OddFieldTypesDoNotThrow) {
+    const auto adapter = makeAdapter(ProviderKind::Gemini);
+    const ChatResponse response = adapter->parseResponse(
+        reply(json::array({{{"thought", "yes"}, {"text", "Plain."}},
+                           {{"functionCall", {{"name", 7}, {"args", "not an object"}}}}}),
+              "STOP"));
+    EXPECT_EQ(response.message.text(), "Plain.");
+    ASSERT_EQ(response.message.toolCalls().size(), 1u);
+    EXPECT_EQ(response.message.toolCalls()[0]->input, json::object());
+}
+
 TEST(GeminiAdapter, FinishReasons) {
     const auto adapter = makeAdapter(ProviderKind::Gemini);
     EXPECT_EQ(adapter->parseResponse(reply(json::array({{{"text", "a"}}}), "MAX_TOKENS")).stop,

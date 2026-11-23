@@ -28,15 +28,15 @@ ToolResult ToolResult::ok(const nlohmann::json& value, bool changedModel) {
     // Replace, not throw, on invalid UTF-8 (an entity's text, a layer name
     // read from a file): the model gets the rest.
     return {value.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace), false,
-            changedModel};
+            changedModel, changedModel ? 1 : 0};
 }
 
 ToolResult ToolResult::message(std::string text, bool changedModel) {
-    return {std::move(text), false, changedModel};
+    return {std::move(text), false, changedModel, changedModel ? 1 : 0};
 }
 
 ToolResult ToolResult::error(std::string message) {
-    return {std::move(message), true, false};
+    return {std::move(message), true, false, 0};
 }
 
 void ToolRegistry::add(ToolSpec spec, ToolAccess access, Handler handler) {

@@ -112,11 +112,9 @@ ToolResult createSketch(const CadContext& context, const json& in) {
     sketch->setName(text(in, "name", "Sketch " + std::to_string(document.sketches().size() + 1)));
     sketch->setFace(face);
     for (auto& entity : entities) sketch->addEntity(entity);
-    if (document.type() == doc::DocumentType::Drawing &&
-        document.draftDocument().entities().empty()) {
-        document.setType(doc::DocumentType::Part);
-    }
-    document.undoStack().push(std::make_unique<doc::AddSketchCommand>(document, sketch));
+    // A new document's first sketch makes it a part, in the same step.
+    document.undoStack().push(
+        asPartStep(document, std::make_unique<doc::AddSketchCommand>(document, sketch)));
     context.modelChanged();
     json out = {{"sketch_id", sketch->id()},
                 {"name", sketch->name()},

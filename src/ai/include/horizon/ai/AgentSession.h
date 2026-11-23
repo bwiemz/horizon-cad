@@ -117,10 +117,12 @@ private:
     std::uint64_t m_generation = 0;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 
+    HttpTransport::RequestId m_inflight = 0;
+    std::uint64_t m_requestSerial = 0;
+
     // The last request's changes to the document.
-    std::size_t m_undoStart = 0;
+    int m_aiSteps = 0;  ///< undo steps its tools added
     std::uint64_t m_lastRevision = 0;
-    bool m_changed = false;
     bool m_interleaved = false;  ///< the document changed between its tool calls
     std::string m_note;          ///< told to the model with the next request
 };

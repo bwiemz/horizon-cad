@@ -18,6 +18,7 @@
 #include "horizon/math/Vec3.h"
 
 namespace hz::doc {
+class Command;
 class Document;
 class Feature;
 class Sketch;
@@ -105,6 +106,12 @@ std::shared_ptr<doc::Sketch> sketchOf(doc::Document& document, const json& in, c
 /// The features named by index in @p key, as feature ids (for a pattern's or
 /// mirror's targets). Empty when absent.
 std::vector<std::string> featureTargets(doc::Document& document, const json& in, const char* key);
+
+/// @p command, made to turn an empty drawing into a part as it runs, and
+/// back when undone: the first sketch or feature of a new document makes it a
+/// part, as one undo step with what made it so.
+std::unique_ptr<doc::Command> asPartStep(doc::Document& document,
+                                         std::unique_ptr<doc::Command> command);
 
 /// Add @p feature as the window does: one undo step, built at once; one that
 /// fails itself is withdrawn, the history as it was, and the reason is the
