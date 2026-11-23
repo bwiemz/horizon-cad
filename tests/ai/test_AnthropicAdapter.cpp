@@ -300,3 +300,22 @@ TEST(ProviderConfigTest, NamesRoundTrip) {
     EXPECT_EQ(apiKeyEnvironment(ProviderKind::Gemini),
               (std::vector<std::string>{"GEMINI_API_KEY", "GOOGLE_API_KEY"}));
 }
+
+// A tool's picture goes inside its result, among its text, as Claude reads
+// images in a tool_result.
+TEST(AnthropicAdapter, AToolsImageGoesInItsResult) {
+    const auto adapter = makeAdapter(ProviderKind::Anthropic);
+    ChatRequest chat = chatWithToolRound();
+    chat.messages.back().blocks[0].images = {{"image/png", "iVBORw0KGgo="}};
+    const json body = json::parse(adapter->buildRequest(chat, config()).body);
+    const json& results = body["messages"][2]["content"];
+    const json& shown = results[0]["content"];
+    ASSERT_TRUE(shown.is_array());
+    EXPECT_EQ(shown[0], (json{{"type", "text"}, {"text", "{\"ok\":true}"}}));
+    EXPECT_EQ(
+        shown[1],
+        (json{{"type", "image"},
+              {"source",
+               {{"type", "base64"}, {"media_type", "image/png"}, {"data", "iVBORw0KGgo="}}}}));
+    EXPECT_EQ(results[1]["content"], "too big");  // one without an image: text alone
+}

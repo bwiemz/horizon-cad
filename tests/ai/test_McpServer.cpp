@@ -159,3 +159,20 @@ TEST_F(McpServerTest, AfterEachRunsBetweenTheCallsOfABatch) {
         R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"mark"}}])");
     EXPECT_EQ(seen, (std::vector<std::string>{"call", "after", "call", "after"}));
 }
+
+// A tool's picture comes back as MCP image content, after its text.
+TEST_F(McpServerTest, AToolsImageIsImageContent) {
+    tools.add({"view", "A view.", json{{"type", "object"}, {"properties", json::object()}}},
+              ToolAccess::Read, [](const json&) {
+                  ToolResult result = ToolResult::ok(json{{"view", "iso"}});
+                  result.images.push_back({"image/png", "iVBORw0KGgo="});
+                  return result;
+              });
+    const json result =
+        request("tools/call", {{"name", "view"}, {"arguments", json::object()}})["result"];
+    ASSERT_EQ(result["content"].size(), 2u);
+    EXPECT_EQ(result["content"][0]["type"], "text");
+    EXPECT_EQ(result["content"][1],
+              (json{{"type", "image"}, {"data", "iVBORw0KGgo="}, {"mimeType", "image/png"}}));
+    EXPECT_FALSE(result["isError"].get<bool>());
+}

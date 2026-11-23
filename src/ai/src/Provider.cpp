@@ -34,6 +34,7 @@ ProviderConfig defaultConfig(ProviderKind kind) {
             // No model: the user picks one of those the server has.
             config.baseUrl = "http://localhost:11434/v1";
             config.maxTokens = 8192;
+            config.images = false;  // many local models read no images
             break;
     }
     return config;

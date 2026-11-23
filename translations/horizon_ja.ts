@@ -370,6 +370,10 @@ Send requests there?</source>
         <source>Assistant</source>
         <translation type="unfinished">アシスタント</translation>
     </message>
+    <message>
+        <source>Looked at the %1 view</source>
+        <translation type="unfinished">%1 ビューを確認しました</translation>
+    </message>
 </context>
 <context>
     <name>hz::ui::AiSettingsDialog</name>
@@ -574,6 +578,14 @@ Send requests there?</source>
         <translation type="unfinished">
             <numerusform>%n 個のモデルを一覧表示しました。</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Let the AI see pictures of the part</source>
+        <translation type="unfinished">AIに部品の画像を見せる</translation>
+    </message>
+    <message>
+        <source>The assistant can look at a drawn view of the part to check its work. The AI model must read images: the cloud providers&apos; models do; a local model may not.</source>
+        <translation type="unfinished">アシスタントは部品の描画ビューを見て作業を確認できます。AIモデルが画像を読める必要があります。クラウドプロバイダーのモデルは読めますが、ローカルモデルは読めない場合があります。</translation>
     </message>
 </context>
 <context>

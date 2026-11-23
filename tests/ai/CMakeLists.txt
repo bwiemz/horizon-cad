@@ -1,3 +1,5 @@
+find_package(ZLIB REQUIRED)  # the view images' PNG, read back in its test
+
 add_executable(hz_ai_tests
     test_AgentSession.cpp
     test_AnthropicAdapter.cpp
@@ -8,6 +10,7 @@ add_executable(hz_ai_tests
     test_OpenAIAdapter.cpp
     test_ProfileBuilder.cpp
     test_ToolRegistry.cpp
+    test_ViewImage.cpp
 )
 
 target_link_libraries(hz_ai_tests
@@ -16,6 +19,9 @@ target_link_libraries(hz_ai_tests
         Horizon::Document
         Horizon::Drafting
         Horizon::FileIO
+        Horizon::Geometry
+        Horizon::Modeling
+        ZLIB::ZLIB
         GTest::gtest
         GTest::gtest_main
 )

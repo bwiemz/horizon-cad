@@ -117,6 +117,8 @@ private:
     void appendAssistant(const QString& markdown);
     void appendToolCall(const QString& name, const QString& summary);
     void appendToolResult(const QString& summary, bool error);
+    /// A picture a tool showed the model, small, in the transcript.
+    void appendImage(const ai::Image& image);
     void appendNote(const QString& text, bool error = false);
 
     Host m_host;
@@ -130,6 +132,7 @@ private:
     const doc::Document* m_conversationDocument = nullptr;
     QString m_documentName;
     QString m_unavailable;
+    int m_images = 0;  ///< pictures shown in the transcript, each its own name
 
     std::unique_ptr<QtHttpTransport> m_network;
     ai::HttpTransport* m_transport = nullptr;

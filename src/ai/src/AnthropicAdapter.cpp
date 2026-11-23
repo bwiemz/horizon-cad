@@ -46,10 +46,22 @@ json contentOf(const Message& message) {
                      {"input", block.input.is_object() ? block.input : json::object()}});
                 break;
             case ContentBlock::Kind::ToolResult: {
-                json result = {
-                    {"type", "tool_result"},
-                    {"tool_use_id", block.id},
-                    {"content", block.text.empty() ? std::string("(no output)") : block.text}};
+                const std::string text = block.text.empty() ? "(no output)" : block.text;
+                json result = {{"type", "tool_result"}, {"tool_use_id", block.id}};
+                if (block.images.empty()) {
+                    result["content"] = text;
+                } else {
+                    // A result may carry images among its text (a view).
+                    json parts = json::array({{{"type", "text"}, {"text", text}}});
+                    for (const auto& image : block.images) {
+                        parts.push_back({{"type", "image"},
+                                         {"source",
+                                          {{"type", "base64"},
+                                           {"media_type", image.mediaType},
+                                           {"data", image.base64}}}});
+                    }
+                    result["content"] = std::move(parts);
+                }
                 if (block.isError) result["is_error"] = true;
                 content.push_back(std::move(result));
                 break;

@@ -66,6 +66,7 @@ AiSettings AiSettings::load() {
                 .toStdString();
         config.serverFallback =
             store.value(g + QStringLiteral("serverFallback"), config.serverFallback).toBool();
+        config.images = store.value(g + QStringLiteral("images"), config.images).toBool();
         config.apiKey.clear();
     }
     return settings;
@@ -82,6 +83,7 @@ void AiSettings::save() const {
         store.setValue(g + QStringLiteral("maxTokens"), config.maxTokens);
         store.setValue(g + QStringLiteral("effort"), QString::fromStdString(config.effort));
         store.setValue(g + QStringLiteral("serverFallback"), config.serverFallback);
+        store.setValue(g + QStringLiteral("images"), config.images);
         // Never a key: those are AiKeyStore's.
     }
 }

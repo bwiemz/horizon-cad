@@ -93,6 +93,13 @@ AiSettingsDialog::AiSettingsDialog(const AiSettings& settings, QWidget* parent)
     m_maxTokens->setSuffix(tr(" tokens"));
     form->addRow(tr("Longest reply:"), m_maxTokens);
 
+    m_images = new QCheckBox(tr("Let the AI see pictures of the part"), this);
+    m_images->setObjectName(QStringLiteral("aiImages"));
+    m_images->setToolTip(
+        tr("The assistant can look at a drawn view of the part to check its work. The AI "
+           "model must read images: the cloud providers' models do; a local model may not."));
+    form->addRow(QString(), m_images);
+
     m_maxSteps = new QSpinBox(this);
     m_maxSteps->setObjectName(QStringLiteral("aiMaxSteps"));
     m_maxSteps->setAccessibleName(tr("Steps per request"));
@@ -150,6 +157,7 @@ void AiSettingsDialog::showProvider(ai::ProviderKind kind) {
     m_effort->setCurrentIndex(
         std::max(0, m_effort->findData(QString::fromStdString(config.effort))));
     m_fallback->setChecked(config.serverFallback);
+    m_images->setChecked(config.images);
     m_anthropicOnly->setVisible(kind == ai::ProviderKind::Anthropic);
 
     m_key->clear();
@@ -203,6 +211,7 @@ void AiSettingsDialog::takeEdits() {
     config.maxTokens = m_maxTokens->value();
     config.effort = m_effort->currentData().toString().toStdString();
     config.serverFallback = m_fallback->isChecked();
+    config.images = m_images->isChecked();
     if (m_key->isEnabled()) {
         // A key typed is saved; one typed and erased again is not (an
         // untouched field leaves the saved key as it is).

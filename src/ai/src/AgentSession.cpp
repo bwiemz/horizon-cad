@@ -1,7 +1,11 @@
 #include "horizon/ai/AgentSession.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <exception>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace hz::ai {
 
@@ -10,6 +14,34 @@ namespace {
 /// A tool result kept in the conversation is sent again with every later
 /// round trip: one larger than this is cut, and says so.
 constexpr std::size_t kMaxResultChars = 40000;
+/// No more images sent in one request than this, the newest: each request
+/// carries the whole conversation, and an image costs as much as a page of
+/// text every time it is sent. Older ones are said to have been left out.
+constexpr std::size_t kMaxImagesSent = 3;
+
+/// @p messages with the images of all but the newest kMaxImagesSent left
+/// out, a word in their place.
+std::vector<Message> withRecentImages(std::vector<Message> messages) {
+    std::size_t kept = 0;
+    for (auto message = messages.rbegin(); message != messages.rend(); ++message) {
+        for (auto block = message->blocks.rbegin(); block != message->blocks.rend(); ++block) {
+            if (block->images.empty()) continue;
+            const std::size_t room = kMaxImagesSent - std::min(kept, kMaxImagesSent);
+            if (block->images.size() <= room) {
+                kept += block->images.size();
+                continue;
+            }
+            const std::size_t dropped = block->images.size() - room;
+            block->images.erase(block->images.begin(),
+                                block->images.begin() + static_cast<std::ptrdiff_t>(dropped));
+            kept += block->images.size();
+            block->text += "\n[" + std::to_string(dropped) +
+                           " image(s) shown earlier are not sent again; ask for a new view to "
+                           "see it now]";
+        }
+    }
+    return messages;
+}
 
 }  // namespace
 
@@ -61,7 +93,7 @@ void AgentSession::requestNext() {
     ChatRequest chat;
     chat.model = m_config.model;
     chat.system = m_system;
-    chat.messages = m_messages;
+    chat.messages = withRecentImages(m_messages);
     chat.tools = m_tools.specs();
     chat.maxTokens = m_config.maxTokens;
     // Its reply is read in the format it was asked in, whatever the
@@ -175,8 +207,8 @@ void AgentSession::runTools(const Message& message, std::uint64_t generation) {
             }
             m_observer.onToolResult(call->name, result);
         }
-        results.blocks.push_back(
-            ContentBlock::makeToolResult(call->id, call->name, result.content, result.isError));
+        results.blocks.push_back(ContentBlock::makeToolResult(
+            call->id, call->name, result.content, result.isError, std::move(result.images)));
     }
     m_messages.push_back(std::move(results));
 }

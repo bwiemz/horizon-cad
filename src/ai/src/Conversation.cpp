@@ -21,13 +21,14 @@ ContentBlock ContentBlock::makeToolCall(std::string id, std::string name, nlohma
 }
 
 ContentBlock ContentBlock::makeToolResult(std::string callId, std::string name, std::string content,
-                                          bool isError) {
+                                          bool isError, std::vector<Image> images) {
     ContentBlock block;
     block.kind = Kind::ToolResult;
     block.id = std::move(callId);
     block.name = std::move(name);
     block.text = std::move(content);
     block.isError = isError;
+    block.images = std::move(images);
     return block;
 }
 
