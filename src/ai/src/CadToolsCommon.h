@@ -128,5 +128,6 @@ json describeEntity(const draft::DraftEntity& entity);
 void registerQueryTools(ToolRegistry& registry, const Context& context);
 void registerModelTools(ToolRegistry& registry, const Context& context);
 void registerDraftTools(ToolRegistry& registry, const Context& context);
+void registerAdvancedTools(ToolRegistry& registry, const Context& context);
 
 }  // namespace hz::ai::detail

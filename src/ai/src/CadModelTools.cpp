@@ -96,6 +96,14 @@ ToolResult createSketch(const CadContext& context, const json& in) {
                            "; use a name from list_faces");
         }
         plane = draft::SketchPlane(found->origin, found->normal, acrossFor(found->normal));
+    } else if (has(in, "datum")) {
+        const doc::Feature& feature = featureAt(document, in, "datum");
+        const auto* datum = dynamic_cast<const doc::DatumFeature*>(&feature);
+        if (datum == nullptr || datum->datumKind() != doc::DatumFeature::DatumKind::Plane) {
+            throw ArgError("feature " + std::to_string(in["datum"].get<long long>()) +
+                           " is not a datum plane; add one with add_datum");
+        }
+        plane = datum->asPlane().toSketchPlane();
     } else if (has(in, "origin") || has(in, "normal")) {
         const Vec3 normal = direction(in, "normal");
         Vec3 xAxis = has(in, "x_axis") ? direction(in, "x_axis") : acrossFor(normal);
@@ -639,7 +647,8 @@ void registerModelTools(ToolRegistry& registry, const Context& context) {
     add({"create_sketch",
          "Make a sketch: 2D shapes on a plane, to extrude or revolve. The plane is XY (default), "
          "XZ or YZ moved by offset along its normal; or a flat face of the part by name (the "
-         "sketch follows the face); or origin, normal and x_axis. Coordinates are the plane's own "
+         "sketch follows the face); or a datum plane; or origin, normal and x_axis. Coordinates "
+         "are the plane's own "
          "2D x and y in mm (on XY: world x and y; on XZ: world x and z; on YZ: world y and z). "
          "Several closed shapes may be one profile: a shape inside another is a hole. Returns "
          "sketch_id.",
@@ -647,6 +656,7 @@ void registerModelTools(ToolRegistry& registry, const Context& context) {
                  {"plane", enumSchema({"XY", "XZ", "YZ"}, "a standard plane (default XY)")},
                  {"offset", numberSchema("move the standard plane along its normal, mm")},
                  {"face", stringSchema("sketch on this flat face (a name from list_faces)")},
+                 {"datum", integerSchema("sketch on this datum plane (its feature index)")},
                  {"origin", pointSchema("custom plane: a point on it [x,y,z]")},
                  {"normal", pointSchema("custom plane: its normal [x,y,z]")},
                  {"x_axis", pointSchema("custom plane: its x direction [x,y,z]")},

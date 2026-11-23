@@ -81,11 +81,13 @@ It works on the active part or drawing:
 - **Sketches** of lines, polylines, rectangles, circles, arcs, slots and
   polygons, on the XY, XZ or YZ plane, on a flat face of the part, or on any
   plane.
-- **Features**: extrude, revolve, the primitives, fillet, chamfer, shell,
-  holes, linear and circular patterns, and mirror. It can edit, suppress or
-  delete them, and use variables and expressions for their sizes.
+- **Features**: extrude, revolve, loft, sweep, the primitives, fillet,
+  chamfer, shell, draft, holes, linear and circular patterns, mirror, and
+  combining bodies, with datum planes, axes and points to build on. It can
+  edit, suppress or delete them, and use variables and expressions for their
+  sizes.
 - **Looking at the part**: its features, faces and edges, size, volume and
-  mass.
+  mass, and measurements between faces, edges and points.
 - **2D drawing**: shapes and text on layers. It can move, copy, rotate,
   scale, mirror and delete them. It leaves hidden and locked layers alone.
 

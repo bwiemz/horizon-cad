@@ -19,6 +19,12 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **The AI tools reach the rest of the modeller.** Loft (profiles on
+  parallel planes), sweep (a profile along a path), draft, combining separate
+  bodies (union, subtract, intersect), datum planes, axes and points (and
+  sketches on a datum plane), and `measure`: distances and angles between
+  points, straight edges and flat faces, so a model checks what it made.
+
 - **`horizon-mcp`: Horizon CAD over the Model Context Protocol.** A headless
   executable, installed beside `horizon` on Windows and Linux, that serves the
   CAD tools over MCP (JSON-RPC 2.0 on stdio; protocol versions 2025-06-18,

@@ -23,6 +23,7 @@ void registerCadTools(ToolRegistry& registry, doc::Document& document, CadToolHo
     detail::registerQueryTools(registry, context);
     detail::registerModelTools(registry, context);
     detail::registerDraftTools(registry, context);
+    detail::registerAdvancedTools(registry, context);
 }
 
 namespace detail {
