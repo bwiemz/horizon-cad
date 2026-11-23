@@ -2,7 +2,11 @@
 # an adapter per provider wire format, the agent loop, and the CAD tools a
 # model calls. No Qt: the application supplies the HTTP transport.
 add_library(hz_ai STATIC
+    src/AnthropicAdapter.cpp
     src/Conversation.cpp
+    src/GeminiAdapter.cpp
+    src/OpenAIAdapter.cpp
+    src/Provider.cpp
     src/ToolRegistry.cpp
 )
 
