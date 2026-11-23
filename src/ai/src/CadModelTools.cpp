@@ -472,6 +472,10 @@ ToolResult editFeature(const CadContext& context, const json& in) {
             // Kept as the window keeps it: its units written, a bare number
             // in a length taken as millimetres (the tools' unit).
             const std::string written = text(in["expressions"], it.key().c_str());
+            if (written.empty()) {
+                expressions[it.key()] = "";  // its number again, as it now is
+                continue;
+            }
             const auto parsed = math::Expression::parse(written);
             if (!parsed) throw ArgError("\"" + written + "\" is not an expression");
             const auto kind = feature.parameterKind(it.key());
@@ -484,6 +488,14 @@ ToolResult editFeature(const CadContext& context, const json& in) {
                                                math::LengthUnit::Millimetre, &why);
             if (!kept) throw ArgError("expression for \"" + it.key() + "\": " + why);
             expressions[it.key()] = kept->toString();
+        }
+    }
+    // A number given for a parameter that is an expression replaces the
+    // expression: else the next build would work the expression out again
+    // over the number.
+    for (const auto& [name, value] : parameters) {
+        if (feature.parameterExpressions().count(name) && !expressions.count(name)) {
+            expressions[name] = "";
         }
     }
     std::optional<doc::BodyOperation> operation;
@@ -763,8 +775,9 @@ void registerModelTools(ToolRegistry& registry, const Context& context) {
 
     add({"edit_feature",
          "Change a feature: parameters by name (lengths mm, angles degrees, choices by name or "
-         "code), expressions of variables (\"depth\", \"wall * 2\"), vectors by name [x,y,z], or "
-         "the body operation. Names come from list_features. An edit that makes the feature fail "
+         "code; a number replaces an expression), expressions of variables (\"depth\", \"wall * "
+         "2\"; \"\" to drop one), vectors by name [x,y,z], or the body operation. Names come from "
+         "list_features. An edit that makes the feature fail "
          "is not made.",
          object({{"index", indexSchema()},
                  {"parameters", object(json::object())},

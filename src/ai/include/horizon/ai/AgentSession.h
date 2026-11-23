@@ -97,7 +97,7 @@ public:
 private:
     void requestNext();
     void onReply(std::uint64_t generation, const HttpResponse& http);
-    void runTools(const Message& message);
+    void runTools(const Message& message, std::uint64_t generation);
     void finish();
     void fail(const std::string& message);
 
@@ -118,6 +118,7 @@ private:
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 
     HttpTransport::RequestId m_inflight = 0;
+    ProviderKind m_requestKind = ProviderKind::Anthropic;  ///< of the request in flight
     std::uint64_t m_requestSerial = 0;
 
     // The last request's changes to the document.

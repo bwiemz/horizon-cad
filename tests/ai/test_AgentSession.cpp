@@ -269,6 +269,61 @@ TEST_F(AgentSessionTest, CancelStopsOnlyItsOwnRequest) {
     EXPECT_EQ(transport.cancelled[0], 1u);  // the first request sent
 }
 
+TEST_F(AgentSessionTest, StopDuringABatchRunsNoMoreOfIt) {
+    // The host stops the request when it sees the first result.
+    struct Stopper : Recorder {
+        AgentSession* session = nullptr;
+        void onToolResult(const std::string& name, const ToolResult& result) override {
+            Recorder::onToolResult(name, result);
+            if (session) session->cancel();
+        }
+    } stopper;
+    AgentSession stoppable(transport, tools, stopper);
+    stopper.session = &stoppable;
+    ProviderConfig config = defaultConfig(ProviderKind::Anthropic);
+    stoppable.setConfig(config);
+    stoppable.setUndoHooks(stack.hooks());
+    transport.replies.push_back(anthropicReply("", {call("a", "add_box"), call("b", "add_box")}));
+    ASSERT_TRUE(stoppable.send("two boxes"));
+    EXPECT_FALSE(stoppable.busy());
+    EXPECT_EQ(stack.count, 1u);  // the second was not run
+    EXPECT_EQ(transport.requests.size(), 1u);
+    // Both calls are answered, so the next request is a valid conversation.
+    const Message& results = stoppable.messages().back();
+    ASSERT_EQ(results.blocks.size(), 2u);
+    EXPECT_NE(results.blocks[1].text.find("stopped"), std::string::npos);
+    EXPECT_TRUE(results.blocks[1].isError);
+    stopper.session = nullptr;
+    transport.replies.push_back(anthropicReply("Ok."));
+    ASSERT_TRUE(stoppable.send("go on"));
+    const json sent = transport.body(1);
+    EXPECT_EQ(sent["messages"][2]["content"].size(), 2u);
+}
+
+TEST_F(AgentSessionTest, AReplyIsReadAsTheRequestWasAsked) {
+    transport.hold = true;
+    transport.replies.push_back(anthropicReply("From Claude."));
+    ASSERT_TRUE(session.send("hi"));
+    ProviderConfig local = defaultConfig(ProviderKind::OpenAICompatible);
+    local.model = "qwen3";
+    session.setConfig(local);  // changed while the reply is on its way
+    transport.releaseNext();
+    EXPECT_TRUE(recorder.errors.empty()) << recorder.errors.front();
+    EXPECT_EQ(recorder.texts, (std::vector<std::string>{"From Claude."}));
+}
+
+TEST_F(AgentSessionTest, AnEditWhileTheUserIsAskedIsSeen) {
+    session.setApprover([this](const std::string&, const json&) {
+        stack.edit();  // the user edits while the question is open
+        return false;
+    });
+    transport.replies.push_back(anthropicReply("", {call("a", "add_box"), call("b", "export")}));
+    transport.replies.push_back(anthropicReply("Done."));
+    ASSERT_TRUE(session.send("box, then export"));
+    EXPECT_EQ(stack.count, 2u);
+    EXPECT_FALSE(session.canUndoLastResponse());
+}
+
 TEST_F(AgentSessionTest, NothingChangedNothingToUndo) {
     transport.replies.push_back(anthropicReply("", {call("a", "look")}));
     transport.replies.push_back(anthropicReply("One box."));

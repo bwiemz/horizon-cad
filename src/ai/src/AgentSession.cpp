@@ -64,7 +64,10 @@ void AgentSession::requestNext() {
     chat.messages = m_messages;
     chat.tools = m_tools.specs();
     chat.maxTokens = m_config.maxTokens;
-    const auto adapter = makeAdapter(m_config.kind);
+    // Its reply is read in the format it was asked in, whatever the
+    // settings are by the time it comes.
+    m_requestKind = m_config.kind;
+    const auto adapter = makeAdapter(m_requestKind);
     const HttpRequest request = adapter->buildRequest(chat, m_config);
 
     const std::uint64_t generation = m_generation;
@@ -85,7 +88,7 @@ void AgentSession::onReply(std::uint64_t generation, const HttpResponse& http) {
     if (generation != m_generation || !m_busy) return;  // stopped: a late reply
     ChatResponse response;
     try {
-        response = makeAdapter(m_config.kind)->parseResponse(http);
+        response = makeAdapter(m_requestKind)->parseResponse(http);
     } catch (const std::exception& e) {
         // The adapters do not throw; a reply they did not foresee still must
         // not reach the transport's event loop.
@@ -122,7 +125,7 @@ void AgentSession::onReply(std::uint64_t generation, const HttpResponse& http) {
         m_observer.onAssistantText(text);
     }
     if (response.stop == StopReason::ToolUse && !response.message.toolCalls().empty()) {
-        runTools(response.message);
+        runTools(response.message, generation);
         if (generation != m_generation || !m_busy) return;  // stopped by a tool's host
         requestNext();
         return;
@@ -130,30 +133,48 @@ void AgentSession::onReply(std::uint64_t generation, const HttpResponse& http) {
     finish();
 }
 
-void AgentSession::runTools(const Message& message) {
+void AgentSession::runTools(const Message& message, std::uint64_t generation) {
     const bool tracked = static_cast<bool>(m_undo.revision);
-    if (tracked && m_undo.revision() != m_lastRevision) m_interleaved = true;
+    // Anything done to the document between the AI's own steps (an edit while
+    // the model thinks, or while the user is asked about a tool) means its
+    // steps are no longer the newest: they are not undone as one.
+    const auto noticeEdits = [this, tracked] {
+        if (tracked && m_undo.revision() != m_lastRevision) m_interleaved = true;
+    };
+    const auto stopped = [this, generation] { return generation != m_generation || !m_busy; };
 
     Message results{Role::User, {}};
     for (const ContentBlock* call : message.toolCalls()) {
-        m_observer.onToolCall(call->name, call->input);
         ToolResult result;
-        const auto access = m_tools.access(call->name);
-        if (access == ToolAccess::External && !(m_approve && m_approve(call->name, call->input))) {
-            result = ToolResult::error("The user did not allow " + call->name + ".");
+        if (stopped()) {
+            // Stopped part-way: the rest are not run, but answered, so the
+            // conversation stays one the provider accepts.
+            result = ToolResult::error("Not run: the user stopped the request.");
         } else {
-            result = m_tools.run(call->name, call->input);
-            // Counted, not read from the stack's depth: a stack at its limit
-            // drops its oldest step as each new one comes, depth unchanged.
-            m_aiSteps += result.undoSteps;
+            noticeEdits();
+            m_observer.onToolCall(call->name, call->input);
+            const auto access = m_tools.access(call->name);
+            const bool allowed =
+                access != ToolAccess::External || (m_approve && m_approve(call->name, call->input));
+            noticeEdits();
+            if (stopped()) {
+                result = ToolResult::error("Not run: the user stopped the request.");
+            } else if (!allowed) {
+                result = ToolResult::error("The user did not allow " + call->name + ".");
+            } else {
+                result = m_tools.run(call->name, call->input);
+                // Counted, not read from the stack's depth: a stack at its
+                // limit drops its oldest step as each new one comes.
+                m_aiSteps += result.undoSteps;
+            }
+            if (tracked) m_lastRevision = m_undo.revision();
+            if (result.content.size() > kMaxResultChars) {
+                result.content.resize(kMaxResultChars);
+                result.content += "\n[cut: the result was longer than " +
+                                  std::to_string(kMaxResultChars) + " characters]";
+            }
+            m_observer.onToolResult(call->name, result);
         }
-        if (tracked) m_lastRevision = m_undo.revision();
-        if (result.content.size() > kMaxResultChars) {
-            result.content.resize(kMaxResultChars);
-            result.content += "\n[cut: the result was longer than " +
-                              std::to_string(kMaxResultChars) + " characters]";
-        }
-        m_observer.onToolResult(call->name, result);
         results.blocks.push_back(
             ContentBlock::makeToolResult(call->id, call->name, result.content, result.isError));
     }

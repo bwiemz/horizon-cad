@@ -359,6 +359,26 @@ TEST_F(CadToolsTest, VariablesDriveAParameter) {
     EXPECT_NEAR(volume(), 60.0 * 40.0 * 12.0, 1e-6);
 }
 
+TEST_F(CadToolsTest, ANumberReplacesAnExpression) {
+    const auto sketch = rectangleSketch(10, 10);
+    ok("extrude", {{"sketch_id", sketch}, {"distance", 5}});
+    ok("set_variables", {{"variables", {{"depth", "8 mm"}}}});
+    ok("edit_feature", {{"index", 0}, {"expressions", {{"distance", "depth"}}}});
+    EXPECT_NEAR(volume(), 800.0, 1e-6);
+    // A number sticks: the expression goes.
+    ok("edit_feature", {{"index", 0}, {"parameters", {{"distance", 3}}}});
+    EXPECT_NEAR(volume(), 300.0, 1e-6);
+    EXPECT_FALSE(ok("list_features")["features"][0].contains("expressions"));
+    ok("set_variables", {{"variables", {{"depth", "9 mm"}}}});
+    EXPECT_NEAR(volume(), 300.0, 1e-6);
+    // "" drops an expression and keeps the value it came to.
+    ok("edit_feature", {{"index", 0}, {"expressions", {{"distance", "depth"}}}});
+    EXPECT_NEAR(volume(), 900.0, 1e-6);
+    ok("edit_feature", {{"index", 0}, {"expressions", {{"distance", ""}}}});
+    ok("set_variables", {{"variables", {{"depth", "2 mm"}}}});
+    EXPECT_NEAR(volume(), 900.0, 1e-6);
+}
+
 TEST_F(CadToolsTest, DeleteAndSuppressFeature) {
     box(10, 10, 10);
     box(10, 10, 10, json::array({20, 0, 0}));
