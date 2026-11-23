@@ -100,7 +100,7 @@ ToolResult createSketch(const CadContext& context, const json& in) {
         const doc::Feature& feature = featureAt(document, in, "datum");
         const auto* datum = dynamic_cast<const doc::DatumFeature*>(&feature);
         if (datum == nullptr || datum->datumKind() != doc::DatumFeature::DatumKind::Plane) {
-            throw ArgError("feature " + std::to_string(in["datum"].get<long long>()) +
+            throw ArgError("feature " + in["datum"].dump() +
                            " is not a datum plane; add one with add_datum");
         }
         plane = datum->asPlane().toSketchPlane();

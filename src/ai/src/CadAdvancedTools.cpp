@@ -86,7 +86,11 @@ ToolResult draft(const CadContext& context, const json& in) {
 }
 
 ToolResult combineBodies(const CadContext& context, const json& in) {
-    solidOf(context);
+    if (solidOf(context).shellCount() < 2) {
+        throw ArgError(
+            "the part is one body: there is nothing to combine (make bodies with "
+            "operation \"new\" first)");
+    }
     const std::string operation = choice(in, "operation", {"union", "subtract", "intersect"});
     const model::BooleanType type = operation == "union"      ? model::BooleanType::Union
                                     : operation == "subtract" ? model::BooleanType::Subtract
@@ -158,19 +162,35 @@ Target targetOf(const CadContext& context, const json& in, const char* key) {
     }
     if (has(spec, "edge")) {
         const std::string name = text(spec, "edge");
-        int pieces = 0;
+        // Its pieces (a Boolean splits a straight edge; a curve is chords):
+        // straight when they all lie along one line.
+        std::vector<std::pair<Vec3, Vec3>> pieces;
         for (const auto& edge : solid.edges()) {
             if (!edge.alive || !edge.topoId.isValid() || !edge.halfEdge) continue;
+            if (edge.topoId.tag().find("/seam:") != std::string::npos) continue;
             if (model::logicalEdge(edge.topoId.tag()) != name) continue;
             const topo::HalfEdge* he = edge.halfEdge;
             if (!he->origin || !he->next || !he->next->origin) continue;
-            ++pieces;
-            target.a = he->origin->point;
-            target.b = he->next->origin->point;
+            pieces.emplace_back(he->origin->point, he->next->origin->point);
         }
-        if (pieces == 0) throw ArgError("there is no edge \"" + name + "\"; use list_edges");
-        if (pieces > 1) throw ArgError("edge \"" + name + "\" is curved: measure its points");
+        if (pieces.empty()) throw ArgError("there is no edge \"" + name + "\"; use list_edges");
+        Vec3 lo = pieces.front().first;
+        Vec3 hi = pieces.front().second;
+        const Vec3 along = (hi - lo).normalized();
+        for (const auto& [a, b] : pieces) {
+            for (const Vec3& point : {a, b}) {
+                const Vec3 offset = point - pieces.front().first;
+                if ((offset - along * offset.dot(along)).length() > 1e-6) {
+                    throw ArgError("edge \"" + name + "\" is curved: measure its points");
+                }
+                const double t = offset.dot(along);
+                if (t < (lo - pieces.front().first).dot(along)) lo = point;
+                if (t > (hi - pieces.front().first).dot(along)) hi = point;
+            }
+        }
         target.kind = Target::Kind::Edge;
+        target.a = lo;
+        target.b = hi;
         return target;
     }
     throw ArgError(std::string("\"") + key + "\" names no point, edge or face");

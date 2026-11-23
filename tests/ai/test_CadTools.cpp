@@ -431,6 +431,9 @@ TEST_F(CadToolsTest, CombineSeparateBodies) {
     const json two = ok("get_document_info")["solid"];
     EXPECT_EQ(two["shells"], 2);
     const json combined = ok("combine_bodies", {{"operation", "union"}});
+    // One body: nothing to combine.
+    EXPECT_NE(fails("combine_bodies", {{"operation", "union"}}).find("one body"),
+              std::string::npos);
     EXPECT_EQ(combined["solid"]["shells"], 1);
     EXPECT_NEAR(combined["solid"]["volume_mm3"].get<double>(), 1500.0, 1e-6);
 }
