@@ -52,6 +52,45 @@ where it is a circle. **Remove Dimension** on the hole's edge removes its
 callout. A sheet with hole callouts is saved in a format older versions of
 Horizon CAD do not open.
 
+## Geometric tolerances and datums
+
+**Add Datum Feature...**, then click an edge: the edge's face becomes a
+datum, drawn as a triangle on the edge and its letter in a box at the end of a
+short leader, as ASME Y14.5 and ISO 1101 draw it. The form offers the next
+free letter (A, B, C..., never I, O or Q); each further edge clicked becomes
+the letter after. A letter is used once on a sheet.
+
+**Add Geometric Tolerance...** asks for a feature control frame:
+
+- its **characteristic**: position, flatness, straightness, circularity,
+  cylindricity, perpendicularity, parallelism, angularity, profile of a
+  surface, circular runout, concentricity or symmetry;
+- its **tolerance**, in the sheet's unit;
+- its **zone**: between two lines or planes, or a cylinder (⌀), for an axis
+  or a hole's position;
+- its **material condition**: regardless of feature size, maximum (Ⓜ) or
+  least (Ⓛ);
+- up to three **datums** it refers to, primary first, from those on the sheet.
+
+Then click edges: each gets the frame, a row of boxes on a leader from the
+middle of the edge, out of the view. The form refuses what the standard does
+not allow, and says why: a form tolerance (flatness, straightness,
+circularity, cylindricity) refers to no datum; orientation, position,
+runout, concentricity and symmetry need one; only those that control an axis
+or a plane of a feature of size take MMC or LMC. Two frames on one edge stack
+on one leader. A hole's frame, from any edge of a hole the view calls out,
+hangs under its callout, as a hole's position is given under its size, and
+the hole's datum under the frame.
+
+The characteristic symbols are drawn in lines and circles rather than as
+characters, so they print, and export to DXF, whatever the fonts. A frame and
+a datum follow their edge as the part changes; one whose edge the view no
+longer shows is said when the sheet is opened. **Remove Dimension** on an
+edge removes its frames and its datum too; a frame elsewhere that still
+refers to that datum is said. Frames and datums go on the side of the edge
+facing out of its view: when views are close, move them apart to make room. A
+sheet with frames or datums is saved in a format older versions do not open.
+
 ## Notes and exporting
 
 The 2D tools draw notes on the sheet. They are kept with the sheet and move
@@ -61,7 +100,8 @@ are locked.
 **File ▸ Export ▸ PDF...** or **SVG...** writes the sheet on its paper at 1:1.
 
 Each change to a sheet (its title block, paper, scale, a view added, moved
-or removed, a view's settings, a dimension) is one step for **Edit ▸ Undo**
+or removed, a view's settings, a dimension, a frame or a datum) is one step
+for **Edit ▸ Undo**
 and **Redo**. A view's notes, drawn by hand inside it, move back with it.
 Drawing a sheet again from its part (**Update from Part**, or the part
 changing) is not a step: it changes nothing of the sheet's own.

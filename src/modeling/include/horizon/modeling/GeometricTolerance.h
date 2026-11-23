@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,9 @@ struct FeatureControlFrame {
     MaterialCondition modifier = MaterialCondition::None;  ///< applied to the zone
     std::vector<std::string> datumRefs;                    ///< datum letters, e.g. {"A", "B", "C"}
     topo::TopologyID feature;                              ///< the toleranced model feature
+    /// The zone is a cylinder, its tolerance a diameter: "⌀" before it, as a
+    /// hole's position or an axis's perpendicularity is given.
+    bool diameterZone = false;
 };
 
 /// A datum feature: the physical model feature (identified by TopologyID) that
@@ -77,9 +81,51 @@ public:
     static std::string datumSymbol(const DatumFeature& d);
 
     /// A compact one-line frame, e.g. "⟂ 0.05 Ⓜ | A | B" — the characteristic
-    /// symbol, the tolerance, an optional material-condition modifier, then each
-    /// datum reference separated by " | ".
+    /// symbol, the tolerance (after "⌀" for a cylindrical zone), an optional
+    /// material-condition modifier, then each datum reference separated by
+    /// " | ".
     static std::string format(const FeatureControlFrame& fcf);
+
+    /// The characteristic's name in files and in the AI tools: "position",
+    /// "perpendicularity"... Read back by characteristicNamed().
+    static std::string key(GeometricCharacteristic c);
+    static std::optional<GeometricCharacteristic> characteristicNamed(const std::string& key);
+    /// "none", "mmc" or "lmc"; read back by conditionNamed().
+    static std::string conditionKey(MaterialCondition m);
+    static std::optional<MaterialCondition> conditionNamed(const std::string& key);
+
+    /// Whether a frame of @p c may refer to datums: a form tolerance
+    /// (flatness, straightness, circularity, cylindricity) never does.
+    static bool takesDatums(GeometricCharacteristic c);
+    /// Whether a frame of @p c may hold its zone at MMC or LMC: those that
+    /// control a feature of size's axis or plane (straightness, orientation,
+    /// position). The others apply regardless of feature size.
+    static bool takesMaterialCondition(GeometricCharacteristic c);
+    /// Whether a frame of @p c may have a cylindrical (⌀) zone: those that
+    /// can control an axis.
+    static bool takesDiameterZone(GeometricCharacteristic c);
+
+    /// Whether @p label can name a datum: one or two capital letters, none of
+    /// them I, O or Q (ASME Y14.5 leaves those out: they read as 1, 0 and O).
+    static bool usableDatumLabel(const std::string& label);
+    /// The first datum letter not in @p used: A, B, C... past I, O and Q,
+    /// then AA, AB...
+    static std::string nextDatumLabel(const std::vector<std::string>& used);
+
+    /// Why @p frame is not one the standard allows ("Flatness is a form
+    /// tolerance: it refers to no datum"); empty when it is. Its tolerance is
+    /// more than 0 and at most kMaxTolerance; it refers to datums when its
+    /// characteristic needs one, never when it takes none, to at most three,
+    /// each once and by a usable label; its modifier and zone are ones its
+    /// characteristic takes.
+    static std::string check(const FeatureControlFrame& frame);
+    /// No tolerance zone larger than this, in millimetres.
+    static constexpr double kMaxTolerance = 1000.0;
+
+    /// A tolerance as a frame states it: to at most four decimals, without
+    /// the zeros after the last digit that counts ("0.05", "1"), with a point
+    /// whatever the locale.
+    static std::string formatValue(double value);
 };
 
 }  // namespace hz::model

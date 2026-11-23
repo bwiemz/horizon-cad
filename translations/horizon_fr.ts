@@ -26,7 +26,7 @@
         <translation type="unfinished">Angle :</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+67"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+68"/>
         <source>Section %1-%1</source>
         <translation type="unfinished">Coupe %1-%1</translation>
     </message>
@@ -1954,8 +1954,8 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : la mise en plan n&apos;a pas pu être redessinée : %2</translation>
     </message>
     <message>
-        <location line="+103"/>
-        <location line="+296"/>
+        <location line="+131"/>
+        <location line="+442"/>
         <source>Title Block</source>
         <translation type="unfinished">Cartouche</translation>
     </message>
@@ -2020,38 +2020,88 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Portrait</translation>
     </message>
     <message>
-        <location line="-311"/>
+        <location line="-457"/>
         <location line="+18"/>
         <location line="+118"/>
-        <location line="+92"/>
-        <location line="+319"/>
+        <location line="+128"/>
+        <location line="+106"/>
+        <location line="+326"/>
+        <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1 : %2</translation>
     </message>
     <message>
-        <location line="-212"/>
+        <location line="-558"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">Toutes les vues ne tiennent pas sur ce papier : celles qui n&apos;y tiennent pas sont placées à côté</translation>
     </message>
     <message>
-        <location line="-323"/>
-        <location line="+329"/>
+        <location line="-469"/>
+        <location line="+475"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">Échelle de la mise en plan</translation>
     </message>
     <message>
-        <location line="-132"/>
-        <location line="+613"/>
+        <location line="-248"/>
+        <source>%1: frames still refer to datum %2, which the sheet no longer has</source>
+        <translation type="unfinished">%1 : des cadres de tolérance font encore référence à la référence %2, que la feuille n&apos;a plus</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+736"/>
+        <source>Add Geometric Tolerance</source>
+        <translation type="unfinished">Ajouter une tolérance géométrique</translation>
+    </message>
+    <message>
+        <location line="-714"/>
+        <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
+        <translation type="unfinished">%1 : la feuille n&apos;a pas de référence %2 ; Ajouter un élément de référence en place d&apos;abord une sur une arête</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>%1: that edge is datum %2 itself; a frame on it refers to other datums</source>
+        <translation type="unfinished">%1 : cette arête est elle-même la référence %2 ; un cadre sur elle fait référence à d&apos;autres références</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>%1: that edge has that frame already</source>
+        <translation type="unfinished">%1 : cette arête a déjà ce cadre</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <location line="+754"/>
+        <source>Add Datum Feature</source>
+        <translation type="unfinished">Ajouter un élément de référence</translation>
+    </message>
+    <message>
+        <location line="-734"/>
+        <location line="+746"/>
+        <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
+        <translation type="unfinished">%1 : « %2 » n&apos;est pas une lettre de référence : une ou deux majuscules, ni I, ni O, ni Q</translation>
+    </message>
+    <message>
+        <location line="-739"/>
+        <source>%1: the sheet has datum %2 already</source>
+        <translation type="unfinished">%1 : la feuille a déjà la référence %2</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>%1: that edge is datum %2 already</source>
+        <translation type="unfinished">%1 : cette arête est déjà la référence %2</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <location line="+620"/>
         <source>Hole Callout</source>
         <translation type="unfinished">Cote de perçage</translation>
     </message>
     <message>
-        <location line="-592"/>
+        <location line="-598"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1 : cette arête n&apos;appartient pas à un perçage (une fonction Perçage)</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+12"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1 : ce perçage est déjà coté ; Supprimer la cote la supprime</translation>
     </message>
@@ -2062,17 +2112,17 @@ Les détails figurent dans le journal :
     </message>
     <message>
         <location line="+7"/>
-        <location line="+289"/>
+        <location line="+292"/>
         <source>Scale:</source>
         <translation type="unfinished">Échelle :</translation>
     </message>
     <message>
-        <location line="-276"/>
+        <location line="-279"/>
         <source>At this scale not every view has room on the sheet: those without are beside it</source>
         <translation type="unfinished">À cette échelle, toutes les vues ne tiennent pas sur la feuille : celles qui n&apos;y tiennent pas sont placées à côté</translation>
     </message>
     <message>
-        <location line="+124"/>
+        <location line="+127"/>
         <source>%1: placed where there was room; Move View moves it</source>
         <translation type="unfinished">%1 : placée là où il y avait de la place ; Déplacer la vue permet de la déplacer</translation>
     </message>
@@ -2185,8 +2235,8 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : le cercle ne contient rien de la vue</translation>
     </message>
     <message>
-        <location line="-621"/>
-        <location line="+642"/>
+        <location line="-770"/>
+        <location line="+791"/>
         <source>Move View</source>
         <translation type="unfinished">Déplacer la vue</translation>
     </message>
@@ -2206,30 +2256,30 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Pas sur la mise en plan de la vue</translation>
     </message>
     <message>
-        <location line="-650"/>
-        <location line="+693"/>
+        <location line="-799"/>
+        <location line="+842"/>
         <source>Remove View</source>
         <translation type="unfinished">Supprimer la vue</translation>
     </message>
     <message>
-        <location line="-677"/>
-        <location line="+682"/>
+        <location line="-826"/>
+        <location line="+831"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1 : une feuille conserve au moins une vue</translation>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+130"/>
+        <location line="+234"/>
         <source>View:</source>
         <translation type="unfinished">Vue :</translation>
     </message>
     <message>
-        <location line="-801"/>
+        <location line="-1054"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1 : les vues qui en dérivaient ont été supprimées avec elle (%2)</translation>
     </message>
     <message>
-        <location line="+714"/>
+        <location line="+863"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">Cliquez sur une arête d&apos;une vue (Échap pour terminer)</translation>
     </message>
@@ -2244,20 +2294,20 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Aucune arête à cet endroit</translation>
     </message>
     <message>
-        <location line="-694"/>
-        <location line="+709"/>
+        <location line="-843"/>
+        <location line="+858"/>
         <source>Add Dimension</source>
         <translation type="unfinished">Ajouter une cote</translation>
     </message>
     <message>
-        <location line="-630"/>
-        <location line="+652"/>
+        <location line="-778"/>
+        <location line="+904"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">Supprimer une cote</translation>
     </message>
     <message>
-        <location line="-728"/>
+        <location line="-981"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1 : cette arête est déjà cotée ; Supprimer une cote permet de retirer la cote</translation>
     </message>
@@ -2272,20 +2322,150 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : cette arête n&apos;a pas de longueur à indiquer</translation>
     </message>
     <message>
-        <location line="+16"/>
-        <location line="+11"/>
-        <location line="+654"/>
+        <location line="+17"/>
+        <location line="+28"/>
+        <location line="+889"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1 : cette arête n&apos;a pas de cote</translation>
     </message>
     <message>
-        <location line="-755"/>
-        <location line="+763"/>
+        <location line="-1008"/>
+        <location line="+1016"/>
         <source>View Properties</source>
         <translation type="unfinished">Propriétés de la vue</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="-124"/>
+        <source>Position</source>
+        <translation type="unfinished">Localisation</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Flatness</source>
+        <translation type="unfinished">Planéité</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Straightness</source>
+        <translation type="unfinished">Rectitude</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Circularity</source>
+        <translation type="unfinished">Circularité</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Cylindricity</source>
+        <translation type="unfinished">Cylindricité</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Perpendicularity</source>
+        <translation type="unfinished">Perpendicularité</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Parallelism</source>
+        <translation type="unfinished">Parallélisme</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Angularity</source>
+        <translation type="unfinished">Inclinaison</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Profile of a surface</source>
+        <translation type="unfinished">Forme d&apos;une surface quelconque</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Circular runout</source>
+        <translation type="unfinished">Battement circulaire</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Concentricity</source>
+        <translation type="unfinished">Concentricité</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Symmetry</source>
+        <translation type="unfinished">Symétrie</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>None</source>
+        <translation type="unfinished">Aucun</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Characteristic:</source>
+        <translation type="unfinished">Caractéristique :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Tolerance:</source>
+        <translation type="unfinished">Tolérance :</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Zone:</source>
+        <translation type="unfinished">Zone :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Between two lines or planes</source>
+        <translation type="unfinished">Entre deux droites ou plans</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>A cylinder (⌀)</source>
+        <translation type="unfinished">Un cylindre (⌀)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Material condition:</source>
+        <translation type="unfinished">Condition de matière :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Regardless of feature size</source>
+        <translation type="unfinished">Indépendamment de la taille (RFS)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Maximum (MMC)</source>
+        <translation type="unfinished">Maximum de matière (MMC)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Least (LMC)</source>
+        <translation type="unfinished">Minimum de matière (LMC)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Primary datum:</source>
+        <translation type="unfinished">Référence primaire :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Secondary datum:</source>
+        <translation type="unfinished">Référence secondaire :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Tertiary datum:</source>
+        <translation type="unfinished">Référence tertiaire :</translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>Datum letter:</source>
+        <translation type="unfinished">Lettre de référence :</translation>
+    </message>
+    <message>
+        <location line="+69"/>
         <source>Shown</source>
         <translation type="unfinished">Affichées</translation>
     </message>
@@ -2315,8 +2495,8 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Mettre à jour depuis la pièce</translation>
     </message>
     <message>
-        <location line="-624"/>
-        <location line="+633"/>
+        <location line="-731"/>
+        <location line="+740"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">La mise en plan n&apos;a pas pu être redessinée : %1</translation>
     </message>
@@ -3136,7 +3316,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Fermer %1</translation>
     </message>
     <message>
-        <location line="+891"/>
+        <location line="+895"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3355,15 +3535,15 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Dans la face</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-841"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-845"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1216"/>
+        <location line="+1220"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dessin 1</translation>
     </message>
     <message>
-        <location line="-1162"/>
+        <location line="-1166"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Palette de commandes…</translation>
     </message>
@@ -3876,6 +4056,16 @@ commencer à construire votre pièce.</translation>
         <location line="+2"/>
         <source>Add &amp;Hole Callout</source>
         <translation type="unfinished">Ajouter une cote de &amp;perçage</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add &amp;Geometric Tolerance...</source>
+        <translation type="unfinished">Ajouter une tolérance &amp;géométrique...</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add Datum &amp;Feature...</source>
+        <translation type="unfinished">Ajouter un élément de ré&amp;férence...</translation>
     </message>
     <message>
         <location line="+4"/>

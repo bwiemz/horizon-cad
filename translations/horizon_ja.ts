@@ -26,7 +26,7 @@
         <translation type="unfinished">角度:</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+67"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+68"/>
         <source>Section %1-%1</source>
         <translation type="unfinished">断面 %1-%1</translation>
     </message>
@@ -1942,8 +1942,8 @@ Details are in the log:
         <translation type="unfinished">%1: 図面を再作成できませんでした: %2</translation>
     </message>
     <message>
-        <location line="+103"/>
-        <location line="+296"/>
+        <location line="+131"/>
+        <location line="+442"/>
         <source>Title Block</source>
         <translation type="unfinished">表題欄</translation>
     </message>
@@ -2008,38 +2008,88 @@ Details are in the log:
         <translation type="unfinished">縦</translation>
     </message>
     <message>
-        <location line="-311"/>
+        <location line="-457"/>
         <location line="+18"/>
         <location line="+118"/>
-        <location line="+92"/>
-        <location line="+319"/>
+        <location line="+128"/>
+        <location line="+106"/>
+        <location line="+326"/>
+        <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="-212"/>
+        <location line="-558"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">この用紙にはすべてのビューが収まりません: 収まらないビューは用紙の横に配置されます</translation>
     </message>
     <message>
-        <location line="-323"/>
-        <location line="+329"/>
+        <location line="-469"/>
+        <location line="+475"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">図面の尺度</translation>
     </message>
     <message>
-        <location line="-132"/>
-        <location line="+613"/>
+        <location line="-248"/>
+        <source>%1: frames still refer to datum %2, which the sheet no longer has</source>
+        <translation type="unfinished">%1: 公差記入枠がまだデータム %2 を参照していますが、シートにはもうありません</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+736"/>
+        <source>Add Geometric Tolerance</source>
+        <translation type="unfinished">幾何公差の追加</translation>
+    </message>
+    <message>
+        <location line="-714"/>
+        <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
+        <translation type="unfinished">%1: シートにデータム %2 がありません。先にデータム形体の追加でエッジに設定してください</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>%1: that edge is datum %2 itself; a frame on it refers to other datums</source>
+        <translation type="unfinished">%1: そのエッジ自体がデータム %2 です。その上の公差記入枠は他のデータムを参照します</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>%1: that edge has that frame already</source>
+        <translation type="unfinished">%1: そのエッジにはすでにその公差記入枠があります</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <location line="+754"/>
+        <source>Add Datum Feature</source>
+        <translation type="unfinished">データム形体の追加</translation>
+    </message>
+    <message>
+        <location line="-734"/>
+        <location line="+746"/>
+        <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
+        <translation type="unfinished">%1: 「%2」はデータム文字ではありません。大文字 1～2 文字で、I、O、Q は使えません</translation>
+    </message>
+    <message>
+        <location line="-739"/>
+        <source>%1: the sheet has datum %2 already</source>
+        <translation type="unfinished">%1: シートにはすでにデータム %2 があります</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>%1: that edge is datum %2 already</source>
+        <translation type="unfinished">%1: そのエッジはすでにデータム %2 です</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <location line="+620"/>
         <source>Hole Callout</source>
         <translation type="unfinished">穴の注記</translation>
     </message>
     <message>
-        <location line="-592"/>
+        <location line="-598"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: そのエッジは穴 (穴フィーチャー) のものではありません</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+12"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: その穴にはすでに注記があります。寸法の削除で削除できます</translation>
     </message>
@@ -2050,17 +2100,17 @@ Details are in the log:
     </message>
     <message>
         <location line="+7"/>
-        <location line="+289"/>
+        <location line="+292"/>
         <source>Scale:</source>
         <translation type="unfinished">尺度:</translation>
     </message>
     <message>
-        <location line="-276"/>
+        <location line="-279"/>
         <source>At this scale not every view has room on the sheet: those without are beside it</source>
         <translation type="unfinished">この尺度ではシートにすべてのビューが収まりません: 収まらないビューはシートの横に配置されます</translation>
     </message>
     <message>
-        <location line="+124"/>
+        <location line="+127"/>
         <source>%1: placed where there was room; Move View moves it</source>
         <translation type="unfinished">%1: 空いている場所に配置しました。「ビューの移動」で移動できます</translation>
     </message>
@@ -2173,8 +2223,8 @@ Details are in the log:
         <translation type="unfinished">%1: 円内にビューの要素がありません</translation>
     </message>
     <message>
-        <location line="-621"/>
-        <location line="+642"/>
+        <location line="-770"/>
+        <location line="+791"/>
         <source>Move View</source>
         <translation type="unfinished">ビューの移動</translation>
     </message>
@@ -2194,30 +2244,30 @@ Details are in the log:
         <translation type="unfinished">ビューがある図面上ではありません</translation>
     </message>
     <message>
-        <location line="-650"/>
-        <location line="+693"/>
+        <location line="-799"/>
+        <location line="+842"/>
         <source>Remove View</source>
         <translation type="unfinished">ビューの削除</translation>
     </message>
     <message>
-        <location line="-677"/>
-        <location line="+682"/>
+        <location line="-826"/>
+        <location line="+831"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: シートには少なくとも 1 つのビューが必要です</translation>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+130"/>
+        <location line="+234"/>
         <source>View:</source>
         <translation type="unfinished">ビュー:</translation>
     </message>
     <message>
-        <location line="-801"/>
+        <location line="-1054"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: このビューから作成されたビューも削除されました (%2)</translation>
     </message>
     <message>
-        <location line="+714"/>
+        <location line="+863"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">ビューのエッジをクリックしてください (完了したら Esc)</translation>
     </message>
@@ -2232,20 +2282,20 @@ Details are in the log:
         <translation type="unfinished">そこにはエッジがありません</translation>
     </message>
     <message>
-        <location line="-694"/>
-        <location line="+709"/>
+        <location line="-843"/>
+        <location line="+858"/>
         <source>Add Dimension</source>
         <translation type="unfinished">寸法の追加</translation>
     </message>
     <message>
-        <location line="-630"/>
-        <location line="+652"/>
+        <location line="-778"/>
+        <location line="+904"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">寸法の削除</translation>
     </message>
     <message>
-        <location line="-728"/>
+        <location line="-981"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: そのエッジには既に寸法があります。「寸法の削除」で削除できます</translation>
     </message>
@@ -2260,20 +2310,150 @@ Details are in the log:
         <translation type="unfinished">%1: そのエッジには記入する長さがありません</translation>
     </message>
     <message>
-        <location line="+16"/>
-        <location line="+11"/>
-        <location line="+654"/>
+        <location line="+17"/>
+        <location line="+28"/>
+        <location line="+889"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: そのエッジには寸法がありません</translation>
     </message>
     <message>
-        <location line="-755"/>
-        <location line="+763"/>
+        <location line="-1008"/>
+        <location line="+1016"/>
         <source>View Properties</source>
         <translation type="unfinished">ビューのプロパティ</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="-124"/>
+        <source>Position</source>
+        <translation type="unfinished">位置度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Flatness</source>
+        <translation type="unfinished">平面度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Straightness</source>
+        <translation type="unfinished">真直度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Circularity</source>
+        <translation type="unfinished">真円度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Cylindricity</source>
+        <translation type="unfinished">円筒度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Perpendicularity</source>
+        <translation type="unfinished">直角度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Parallelism</source>
+        <translation type="unfinished">平行度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Angularity</source>
+        <translation type="unfinished">傾斜度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Profile of a surface</source>
+        <translation type="unfinished">面の輪郭度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Circular runout</source>
+        <translation type="unfinished">円周振れ</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Concentricity</source>
+        <translation type="unfinished">同心度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Symmetry</source>
+        <translation type="unfinished">対称度</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>None</source>
+        <translation type="unfinished">なし</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Characteristic:</source>
+        <translation type="unfinished">特性:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Tolerance:</source>
+        <translation type="unfinished">公差:</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Zone:</source>
+        <translation type="unfinished">公差域:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Between two lines or planes</source>
+        <translation type="unfinished">2 本の直線または 2 平面の間</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>A cylinder (⌀)</source>
+        <translation type="unfinished">円筒 (⌀)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Material condition:</source>
+        <translation type="unfinished">実体状態:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Regardless of feature size</source>
+        <translation type="unfinished">サイズに無関係 (RFS)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Maximum (MMC)</source>
+        <translation type="unfinished">最大実体 (MMC)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Least (LMC)</source>
+        <translation type="unfinished">最小実体 (LMC)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Primary datum:</source>
+        <translation type="unfinished">第 1 次データム:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Secondary datum:</source>
+        <translation type="unfinished">第 2 次データム:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Tertiary datum:</source>
+        <translation type="unfinished">第 3 次データム:</translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>Datum letter:</source>
+        <translation type="unfinished">データム文字:</translation>
+    </message>
+    <message>
+        <location line="+69"/>
         <source>Shown</source>
         <translation type="unfinished">表示</translation>
     </message>
@@ -2303,8 +2483,8 @@ Details are in the log:
         <translation type="unfinished">部品から更新</translation>
     </message>
     <message>
-        <location line="-624"/>
-        <location line="+633"/>
+        <location line="-731"/>
+        <location line="+740"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">図面を再作成できませんでした: %1</translation>
     </message>
@@ -3115,7 +3295,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 を閉じる</translation>
     </message>
     <message>
-        <location line="+891"/>
+        <location line="+895"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3334,15 +3514,15 @@ begin building your part.</source>
         <translation type="unfinished">穴あけ面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-841"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-845"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1216"/>
+        <location line="+1220"/>
         <source>Drawing 1</source>
         <translation type="unfinished">図面 1</translation>
     </message>
     <message>
-        <location line="-1162"/>
+        <location line="-1166"/>
         <source>Command Palette…</source>
         <translation type="unfinished">コマンド パレット…</translation>
     </message>
@@ -3855,6 +4035,16 @@ begin building your part.</source>
         <location line="+2"/>
         <source>Add &amp;Hole Callout</source>
         <translation type="unfinished">穴の注記を追加(&amp;H)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add &amp;Geometric Tolerance...</source>
+        <translation type="unfinished">幾何公差の追加(&amp;G)...</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add Datum &amp;Feature...</source>
+        <translation type="unfinished">データム形体の追加(&amp;F)...</translation>
     </message>
     <message>
         <location line="+4"/>

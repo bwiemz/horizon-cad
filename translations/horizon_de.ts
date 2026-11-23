@@ -26,7 +26,7 @@
         <translation type="unfinished">Winkel:</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+67"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+68"/>
         <source>Section %1-%1</source>
         <translation type="unfinished">Schnitt %1-%1</translation>
     </message>
@@ -1954,8 +1954,8 @@ Details stehen im Protokoll:
         <translation type="unfinished">%1: die Zeichnung konnte nicht neu gezeichnet werden: %2</translation>
     </message>
     <message>
-        <location line="+103"/>
-        <location line="+296"/>
+        <location line="+131"/>
+        <location line="+442"/>
         <source>Title Block</source>
         <translation type="unfinished">Schriftfeld</translation>
     </message>
@@ -2020,38 +2020,88 @@ Details stehen im Protokoll:
         <translation type="unfinished">Hochformat</translation>
     </message>
     <message>
-        <location line="-311"/>
+        <location line="-457"/>
         <location line="+18"/>
         <location line="+118"/>
-        <location line="+92"/>
-        <location line="+319"/>
+        <location line="+128"/>
+        <location line="+106"/>
+        <location line="+326"/>
+        <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="-212"/>
+        <location line="-558"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">Nicht jede Ansicht passt auf dieses Papier: die übrigen liegen daneben</translation>
     </message>
     <message>
-        <location line="-323"/>
-        <location line="+329"/>
+        <location line="-469"/>
+        <location line="+475"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">Zeichnungsmaßstab</translation>
     </message>
     <message>
-        <location line="-132"/>
-        <location line="+613"/>
+        <location line="-248"/>
+        <source>%1: frames still refer to datum %2, which the sheet no longer has</source>
+        <translation type="unfinished">%1: Toleranzrahmen beziehen sich noch auf Bezug %2, den das Blatt nicht mehr hat</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+736"/>
+        <source>Add Geometric Tolerance</source>
+        <translation type="unfinished">Form- und Lagetoleranz hinzufügen</translation>
+    </message>
+    <message>
+        <location line="-714"/>
+        <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
+        <translation type="unfinished">%1: Das Blatt hat keinen Bezug %2; „Bezugselement hinzufügen“ setzt zuerst einen auf eine Kante</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>%1: that edge is datum %2 itself; a frame on it refers to other datums</source>
+        <translation type="unfinished">%1: Diese Kante ist selbst Bezug %2; ein Toleranzrahmen auf ihr bezieht sich auf andere Bezüge</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>%1: that edge has that frame already</source>
+        <translation type="unfinished">%1: Diese Kante hat diesen Toleranzrahmen bereits</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <location line="+754"/>
+        <source>Add Datum Feature</source>
+        <translation type="unfinished">Bezugselement hinzufügen</translation>
+    </message>
+    <message>
+        <location line="-734"/>
+        <location line="+746"/>
+        <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
+        <translation type="unfinished">%1: „%2“ ist kein Bezugsbuchstabe: ein oder zwei Großbuchstaben, nicht I, O oder Q</translation>
+    </message>
+    <message>
+        <location line="-739"/>
+        <source>%1: the sheet has datum %2 already</source>
+        <translation type="unfinished">%1: Das Blatt hat Bezug %2 bereits</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>%1: that edge is datum %2 already</source>
+        <translation type="unfinished">%1: Diese Kante ist bereits Bezug %2</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <location line="+620"/>
         <source>Hole Callout</source>
         <translation type="unfinished">Bohrungsangabe</translation>
     </message>
     <message>
-        <location line="-592"/>
+        <location line="-598"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: Diese Kante gehört zu keiner Bohrung (einem Bohrungs-Feature)</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+12"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: Diese Bohrung ist bereits angegeben; „Bemaßung entfernen“ entfernt die Angabe</translation>
     </message>
@@ -2062,17 +2112,17 @@ Details stehen im Protokoll:
     </message>
     <message>
         <location line="+7"/>
-        <location line="+289"/>
+        <location line="+292"/>
         <source>Scale:</source>
         <translation type="unfinished">Maßstab:</translation>
     </message>
     <message>
-        <location line="-276"/>
+        <location line="-279"/>
         <source>At this scale not every view has room on the sheet: those without are beside it</source>
         <translation type="unfinished">In diesem Maßstab passt nicht jede Ansicht auf das Blatt: die übrigen liegen daneben</translation>
     </message>
     <message>
-        <location line="+124"/>
+        <location line="+127"/>
         <source>%1: placed where there was room; Move View moves it</source>
         <translation type="unfinished">%1: dort platziert, wo Platz war; Ansicht verschieben versetzt sie</translation>
     </message>
@@ -2185,8 +2235,8 @@ Details stehen im Protokoll:
         <translation type="unfinished">%1: der Kreis enthält nichts von der Ansicht</translation>
     </message>
     <message>
-        <location line="-621"/>
-        <location line="+642"/>
+        <location line="-770"/>
+        <location line="+791"/>
         <source>Move View</source>
         <translation type="unfinished">Ansicht verschieben</translation>
     </message>
@@ -2206,30 +2256,30 @@ Details stehen im Protokoll:
         <translation type="unfinished">Nicht auf der Zeichnung, auf der die Ansicht liegt</translation>
     </message>
     <message>
-        <location line="-650"/>
-        <location line="+693"/>
+        <location line="-799"/>
+        <location line="+842"/>
         <source>Remove View</source>
         <translation type="unfinished">Ansicht entfernen</translation>
     </message>
     <message>
-        <location line="-677"/>
-        <location line="+682"/>
+        <location line="-826"/>
+        <location line="+831"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: ein Blatt behält mindestens eine Ansicht</translation>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+130"/>
+        <location line="+234"/>
         <source>View:</source>
         <translation type="unfinished">Ansicht:</translation>
     </message>
     <message>
-        <location line="-801"/>
+        <location line="-1054"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: die davon abgeleiteten Ansichten wurden mit entfernt (%2)</translation>
     </message>
     <message>
-        <location line="+714"/>
+        <location line="+863"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">Klicken Sie auf eine Kante einer Ansicht (Esc zum Beenden)</translation>
     </message>
@@ -2244,20 +2294,20 @@ Details stehen im Protokoll:
         <translation type="unfinished">Dort ist keine Kante</translation>
     </message>
     <message>
-        <location line="-694"/>
-        <location line="+709"/>
+        <location line="-843"/>
+        <location line="+858"/>
         <source>Add Dimension</source>
         <translation type="unfinished">Bemaßung hinzufügen</translation>
     </message>
     <message>
-        <location line="-630"/>
-        <location line="+652"/>
+        <location line="-778"/>
+        <location line="+904"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">Bemaßung entfernen</translation>
     </message>
     <message>
-        <location line="-728"/>
+        <location line="-981"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: diese Kante ist bereits bemaßt; Bemaßung entfernen entfernt die Bemaßung</translation>
     </message>
@@ -2272,20 +2322,150 @@ Details stehen im Protokoll:
         <translation type="unfinished">%1: diese Kante hat keine anzugebende Länge</translation>
     </message>
     <message>
-        <location line="+16"/>
-        <location line="+11"/>
-        <location line="+654"/>
+        <location line="+17"/>
+        <location line="+28"/>
+        <location line="+889"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: diese Kante hat keine Bemaßung</translation>
     </message>
     <message>
-        <location line="-755"/>
-        <location line="+763"/>
+        <location line="-1008"/>
+        <location line="+1016"/>
         <source>View Properties</source>
         <translation type="unfinished">Ansichtseigenschaften</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="-124"/>
+        <source>Position</source>
+        <translation type="unfinished">Position</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Flatness</source>
+        <translation type="unfinished">Ebenheit</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Straightness</source>
+        <translation type="unfinished">Geradheit</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Circularity</source>
+        <translation type="unfinished">Rundheit</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Cylindricity</source>
+        <translation type="unfinished">Zylinderform</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Perpendicularity</source>
+        <translation type="unfinished">Rechtwinkligkeit</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Parallelism</source>
+        <translation type="unfinished">Parallelität</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Angularity</source>
+        <translation type="unfinished">Neigung</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Profile of a surface</source>
+        <translation type="unfinished">Flächenform</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Circular runout</source>
+        <translation type="unfinished">Rundlauf</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Concentricity</source>
+        <translation type="unfinished">Konzentrizität</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Symmetry</source>
+        <translation type="unfinished">Symmetrie</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>None</source>
+        <translation type="unfinished">Keine</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Characteristic:</source>
+        <translation type="unfinished">Merkmal:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Tolerance:</source>
+        <translation type="unfinished">Toleranz:</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Zone:</source>
+        <translation type="unfinished">Toleranzzone:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Between two lines or planes</source>
+        <translation type="unfinished">Zwischen zwei Linien oder Ebenen</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>A cylinder (⌀)</source>
+        <translation type="unfinished">Ein Zylinder (⌀)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Material condition:</source>
+        <translation type="unfinished">Materialbedingung:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Regardless of feature size</source>
+        <translation type="unfinished">Unabhängig von der Größe (RFS)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Maximum (MMC)</source>
+        <translation type="unfinished">Maximum-Material (MMC)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Least (LMC)</source>
+        <translation type="unfinished">Minimum-Material (LMC)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Primary datum:</source>
+        <translation type="unfinished">Primärbezug:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Secondary datum:</source>
+        <translation type="unfinished">Sekundärbezug:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Tertiary datum:</source>
+        <translation type="unfinished">Tertiärbezug:</translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>Datum letter:</source>
+        <translation type="unfinished">Bezugsbuchstabe:</translation>
+    </message>
+    <message>
+        <location line="+69"/>
         <source>Shown</source>
         <translation type="unfinished">Angezeigt</translation>
     </message>
@@ -2315,8 +2495,8 @@ Details stehen im Protokoll:
         <translation type="unfinished">Aus Teil aktualisieren</translation>
     </message>
     <message>
-        <location line="-624"/>
-        <location line="+633"/>
+        <location line="-731"/>
+        <location line="+740"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">Die Zeichnung konnte nicht neu gezeichnet werden: %1</translation>
     </message>
@@ -3136,7 +3316,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">%1 schließen</translation>
     </message>
     <message>
-        <location line="+891"/>
+        <location line="+895"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3355,15 +3535,15 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">In die Fläche</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-841"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-845"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1216"/>
+        <location line="+1220"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Zeichnung 1</translation>
     </message>
     <message>
-        <location line="-1162"/>
+        <location line="-1166"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Befehlspalette…</translation>
     </message>
@@ -3876,6 +4056,16 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+2"/>
         <source>Add &amp;Hole Callout</source>
         <translation type="unfinished">&amp;Bohrungsangabe hinzufügen</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add &amp;Geometric Tolerance...</source>
+        <translation type="unfinished">&amp;Form- und Lagetoleranz hinzufügen...</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add Datum &amp;Feature...</source>
+        <translation type="unfinished">Bezugs&amp;element hinzufügen...</translation>
     </message>
     <message>
         <location line="+4"/>

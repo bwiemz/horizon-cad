@@ -7,6 +7,7 @@
 
 #include "horizon/math/Units.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/GeometricTolerance.h"
 #include "horizon/modeling/HoleCallout.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/TitleBlock.h"
@@ -27,6 +28,21 @@ struct DrawingDimensionSpec {
     enum class Kind { Length, Radius, Diameter };
     std::string edge;  ///< the edge's name: a curve's logical name, not one of its chords'
     Kind kind = Kind::Length;
+};
+
+/// A geometric tolerance on a view: a feature control frame, on the model
+/// edge it names by its stable name. The frame's own feature is not saved:
+/// it is the edge, found again in the view whenever the sheet is drawn.
+struct DrawingToleranceSpec {
+    std::string edge;  ///< its logical name, without the piece of a circle
+    model::FeatureControlFrame frame;
+};
+
+/// A datum feature symbol on a view: the model edge that establishes the
+/// datum, by its stable name, and the datum's letter, one on the sheet.
+struct DrawingDatumSpec {
+    std::string edge;  ///< its logical name, without the piece of a circle
+    std::string label;
 };
 
 /// Where a view was on the sheet when it was saved (Phase 150): what it is,
@@ -63,6 +79,9 @@ struct DrawingViewSpec {
     /// The holes called out in it, each by an edge of the hole: its logical
     /// name, without the piece of the circle (model::withoutPiece).
     std::vector<std::string> holeCallouts;
+    /// Its geometric tolerances and datum feature symbols (format 5).
+    std::vector<DrawingToleranceSpec> tolerances;
+    std::vector<DrawingDatumSpec> datums;
 };
 
 /// What a hole feature of the part says of its holes, for their callouts.
@@ -143,8 +162,9 @@ public:
                          std::string* error = nullptr);
 
     /// The drawing @p spec describes, projected from @p solid, its dimensions
-    /// measured from it. A dimension whose edge the part no longer has is
-    /// left out, and said in @p lost ("view 2: a length").
+    /// measured from it. A dimension, callout, tolerance or datum whose edge
+    /// the view no longer shows is left out, and said in @p lost ("view 2: a
+    /// length").
     static model::Drawing build(const topo::Solid& solid, const DrawingDocumentSpec& spec,
                                 std::vector<std::string>* lost = nullptr,
                                 const std::vector<HoleNote>* holes = nullptr);

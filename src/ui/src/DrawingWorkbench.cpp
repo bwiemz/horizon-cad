@@ -30,6 +30,7 @@
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/GeometricTolerance.h"
 #include "horizon/modeling/HoleCallout.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
@@ -847,6 +848,34 @@ std::string noView(std::size_t view) {
     return "the sheet has no view " + std::to_string(view) + " (get_sheet_info lists them)";
 }
 
+/// The datum letters @p spec's views have, in order.
+std::vector<std::string> datumLabels(const io::DrawingDocumentSpec& spec) {
+    std::vector<std::string> labels;
+    for (const io::DrawingViewSpec& v : spec.views) {
+        for (const io::DrawingDatumSpec& d : v.datums) labels.push_back(d.label);
+    }
+    return labels;
+}
+
+/// Whether view @p view of @p drawing shows an edge whose name, without its
+/// piece, is @p named.
+bool showsEdge(const model::Drawing& drawing, std::size_t view, const std::string& named) {
+    return view < drawing.views.size() &&
+           std::any_of(drawing.views[view].edges.begin(), drawing.views[view].edges.end(),
+                       [&](const model::ProjectedEdge& e) {
+                           return model::withoutPiece(model::logicalEdge(e.sourceEdge.tag())) ==
+                                  named;
+                       });
+}
+
+/// The same frame: the same characteristic, zone, tolerance, condition and
+/// datums.
+bool sameFrame(const model::FeatureControlFrame& a, const model::FeatureControlFrame& b) {
+    return a.characteristic == b.characteristic && a.tolerance == b.tolerance &&
+           a.diameterZone == b.diameterZone && a.modifier == b.modifier &&
+           a.datumRefs == b.datumRefs;
+}
+
 }  // namespace
 
 const io::DrawingDocumentSpec* DrawingWorkbench::specOf(const doc::Document* document) const {
@@ -1079,7 +1108,8 @@ bool DrawingWorkbench::addEdgeDimension(doc::Document& document, std::size_t vie
 }
 
 bool DrawingWorkbench::removeEdgeDimensions(doc::Document& document, std::size_t view,
-                                            const std::string& edge, std::string* error) {
+                                            const std::string& edge, std::string* error,
+                                            std::string* note) {
     const QString verb = tr("Remove Dimension");
     Sheet* sheet = sheetOf(&document);
     if (sheet == nullptr) return refused(kNotASheet, error);
@@ -1099,14 +1129,148 @@ bool DrawingWorkbench::removeEdgeDimensions(doc::Document& document, std::size_t
     const auto source = sourceFor(*sheet, &unread);
     const io::HoleNote* hole =
         source ? io::DrawingDocumentIO::holeOfEdge(source->holes, named) : nullptr;
-    removed += std::erase_if(sheet->spec.views[view].holeCallouts, [&](const std::string& c) {
-        const std::string other = model::withoutPiece(model::logicalEdge(c));
+    const auto ofThatEdge = [&](const std::string& given) {
+        const std::string other = model::withoutPiece(model::logicalEdge(given));
         return other == named ||
                (hole != nullptr && io::DrawingDocumentIO::holeOfEdge(source->holes, other) == hole);
+    };
+    io::DrawingViewSpec& shown = sheet->spec.views[view];
+    removed += std::erase_if(shown.holeCallouts, ofThatEdge);
+    removed += std::erase_if(shown.tolerances,
+                             [&](const io::DrawingToleranceSpec& t) { return ofThatEdge(t.edge); });
+    std::vector<std::string> gone;
+    removed += std::erase_if(shown.datums, [&](const io::DrawingDatumSpec& d) {
+        if (!ofThatEdge(d.edge)) return false;
+        gone.push_back(d.label);
+        return true;
     });
     if (removed == 0) return refused(m_host, tr("%1: that edge has no dimension").arg(verb), error);
+    // A frame still referring to a datum removed: said, not removed with it.
+    std::vector<std::string> cited;
+    for (const std::string& label : gone) {
+        for (const io::DrawingViewSpec& v : sheet->spec.views) {
+            for (const io::DrawingToleranceSpec& t : v.tolerances) {
+                const auto& refs = t.frame.datumRefs;
+                if (std::find(refs.begin(), refs.end(), label) != refs.end() &&
+                    std::find(cited.begin(), cited.end(), label) == cited.end()) {
+                    cited.push_back(label);
+                }
+            }
+        }
+    }
+    kept.drawing();
+    if (!redraw(*sheet, verb, error)) return false;
+    if (!cited.empty()) {
+        QStringList letters;
+        for (const std::string& label : cited) letters << QString::fromStdString(label);
+        const QString said = tr("%1: frames still refer to datum %2, which the sheet no longer has")
+                                 .arg(verb, letters.join(QStringLiteral(", ")));
+        m_host.showStatus(said);
+        if (note != nullptr) *note = said.toStdString();
+    }
+    return true;
+}
+
+bool DrawingWorkbench::addTolerance(doc::Document& document, std::size_t view,
+                                    const std::string& edge,
+                                    const model::FeatureControlFrame& frame, std::string* error) {
+    const QString verb = tr("Add Geometric Tolerance");
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return refused(kNotASheet, error);
+    SpecKept kept(sheet->spec);
+    listViews(*sheet);
+    if (view >= sheet->spec.views.size()) return refused(noView(view), error);
+    const std::string named = model::withoutPiece(model::logicalEdge(edge));
+    if (!showsEdge(sheet->drawing, view, named)) {
+        return refused("view " + std::to_string(view) + " shows no edge named \"" + edge +
+                           "\" (list_view_edges names those it shows)",
+                       error);
+    }
+    const std::string wrong = model::Gdt::check(frame);
+    if (!wrong.empty()) {
+        return refused(m_host, tr("%1: %2").arg(verb, QString::fromStdString(wrong)), error);
+    }
+    // Its datums are ones the sheet has, on another feature than this one.
+    const std::vector<std::string> labels = datumLabels(sheet->spec);
+    io::DrawingViewSpec& shown = sheet->spec.views[view];
+    for (const std::string& label : frame.datumRefs) {
+        if (std::find(labels.begin(), labels.end(), label) == labels.end()) {
+            return refused(m_host,
+                           tr("%1: the sheet has no datum %2; Add Datum Feature puts one on an "
+                              "edge first")
+                               .arg(verb, QString::fromStdString(label)),
+                           error);
+        }
+        if (std::any_of(shown.datums.begin(), shown.datums.end(), [&](const auto& d) {
+                return d.label == label && model::withoutPiece(model::logicalEdge(d.edge)) == named;
+            })) {
+            return refused(m_host,
+                           tr("%1: that edge is datum %2 itself; a frame on it refers to "
+                              "other datums")
+                               .arg(verb, QString::fromStdString(label)),
+                           error);
+        }
+    }
+    if (std::any_of(shown.tolerances.begin(), shown.tolerances.end(),
+                    [&](const auto& t) { return t.edge == named && sameFrame(t.frame, frame); })) {
+        return refused(m_host, tr("%1: that edge has that frame already").arg(verb), error);
+    }
+    io::DrawingToleranceSpec tolerance{named, frame};
+    tolerance.frame.feature = {};
+    shown.tolerances.push_back(std::move(tolerance));
+    sheet->spec.version = 3;
     kept.drawing();
     return redraw(*sheet, verb, error);
+}
+
+bool DrawingWorkbench::addDatum(doc::Document& document, std::size_t view, const std::string& edge,
+                                const std::string& label, std::string* error, std::string* given) {
+    const QString verb = tr("Add Datum Feature");
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return refused(kNotASheet, error);
+    SpecKept kept(sheet->spec);
+    listViews(*sheet);
+    if (view >= sheet->spec.views.size()) return refused(noView(view), error);
+    const std::string named = model::withoutPiece(model::logicalEdge(edge));
+    if (!showsEdge(sheet->drawing, view, named)) {
+        return refused("view " + std::to_string(view) + " shows no edge named \"" + edge +
+                           "\" (list_view_edges names those it shows)",
+                       error);
+    }
+    const std::vector<std::string> labels = datumLabels(sheet->spec);
+    std::string letter = label;
+    for (char& c : letter) {
+        if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+    }
+    if (letter.empty()) letter = model::Gdt::nextDatumLabel(labels);
+    if (!model::Gdt::usableDatumLabel(letter)) {
+        return refused(m_host,
+                       tr("%1: \"%2\" is not a datum letter: one or two capitals, not I, O or Q")
+                           .arg(verb, QString::fromStdString(label)),
+                       error);
+    }
+    if (std::find(labels.begin(), labels.end(), letter) != labels.end()) {
+        return refused(
+            m_host,
+            tr("%1: the sheet has datum %2 already").arg(verb, QString::fromStdString(letter)),
+            error);
+    }
+    io::DrawingViewSpec& shown = sheet->spec.views[view];
+    const auto same = std::find_if(shown.datums.begin(), shown.datums.end(), [&](const auto& d) {
+        return model::withoutPiece(model::logicalEdge(d.edge)) == named;
+    });
+    if (same != shown.datums.end()) {
+        return refused(
+            m_host,
+            tr("%1: that edge is datum %2 already").arg(verb, QString::fromStdString(same->label)),
+            error);
+    }
+    shown.datums.push_back({named, letter});
+    sheet->spec.version = 3;
+    kept.drawing();
+    if (!redraw(*sheet, verb, error)) return false;
+    if (given != nullptr) *given = letter;
+    return true;
 }
 
 bool DrawingWorkbench::addHoleCallout(doc::Document& document, std::size_t view,
@@ -1312,6 +1476,8 @@ bool DrawingWorkbench::layOutAgain(Sheet& sheet, double scale, bool* fits, std::
         kept.showCentreLines = was->showCentreLines;
         kept.dimensions = was->dimensions;
         kept.holeCallouts = was->holeCallouts;
+        kept.tolerances = was->tolerances;
+        kept.datums = was->datums;
         views.push_back(std::move(kept));
     }
     const std::size_t standard = views.size();
@@ -1741,6 +1907,110 @@ void DrawingWorkbench::addHoleCalloutAt(const std::weak_ptr<doc::Document>& docu
     if (!shown || picked.view < 0) return;
     addHoleCallout(*shown, static_cast<std::size_t>(picked.view), picked.edge.tag(),
                    nullptr);  // said
+}
+
+void DrawingWorkbench::onAddTolerance() {
+    const QString verb = tr("Add Geometric Tolerance");
+    const Sheet* active = activeSheet(verb);
+    if (active == nullptr) return;
+    const std::shared_ptr<doc::Document> document = active->document.lock();
+    if (!document) return;
+    using model::GeometricCharacteristic;
+    const std::vector<std::pair<GeometricCharacteristic, QString>> kinds = {
+        {GeometricCharacteristic::Position, tr("Position")},
+        {GeometricCharacteristic::Flatness, tr("Flatness")},
+        {GeometricCharacteristic::Straightness, tr("Straightness")},
+        {GeometricCharacteristic::Circularity, tr("Circularity")},
+        {GeometricCharacteristic::Cylindricity, tr("Cylindricity")},
+        {GeometricCharacteristic::Perpendicularity, tr("Perpendicularity")},
+        {GeometricCharacteristic::Parallelism, tr("Parallelism")},
+        {GeometricCharacteristic::Angularity, tr("Angularity")},
+        {GeometricCharacteristic::Profile, tr("Profile of a surface")},
+        {GeometricCharacteristic::Runout, tr("Circular runout")},
+        {GeometricCharacteristic::Concentricity, tr("Concentricity")},
+        {GeometricCharacteristic::Symmetry, tr("Symmetry")},
+    };
+    QStringList names;
+    for (const auto& [kind, name] : kinds) names << name;
+    QStringList datums{tr("None")};
+    for (const std::string& label : datumLabels(active->spec)) {
+        datums << QString::fromStdString(label);
+    }
+    FeatureForm form(m_host.dialogParent(), verb, document->lengthUnit());
+    auto* kind = form.choice(QStringLiteral("characteristic"), tr("Characteristic:"), names);
+    auto* tolerance = form.length(QStringLiteral("tolerance"), tr("Tolerance:"), 0.1, 0.0,
+                                  model::Gdt::kMaxTolerance, 4);
+    auto* zone = form.choice(QStringLiteral("zone"), tr("Zone:"),
+                             {tr("Between two lines or planes"), tr("A cylinder (\xE2\x8C\x80)")});
+    auto* condition =
+        form.choice(QStringLiteral("condition"), tr("Material condition:"),
+                    {tr("Regardless of feature size"), tr("Maximum (MMC)"), tr("Least (LMC)")});
+    std::array<QComboBox*, 3> refs{
+        form.choice(QStringLiteral("primary"), tr("Primary datum:"), datums),
+        form.choice(QStringLiteral("secondary"), tr("Secondary datum:"), datums),
+        form.choice(QStringLiteral("tertiary"), tr("Tertiary datum:"), datums)};
+    if (!form.exec()) return;
+    model::FeatureControlFrame frame;
+    frame.characteristic = kinds[static_cast<std::size_t>(std::max(kind->currentIndex(), 0))].first;
+    frame.tolerance = tolerance->value();
+    frame.diameterZone = zone->currentIndex() == 1;
+    frame.modifier = condition->currentIndex() == 1   ? model::MaterialCondition::MMC
+                     : condition->currentIndex() == 2 ? model::MaterialCondition::LMC
+                                                      : model::MaterialCondition::None;
+    for (QComboBox* ref : refs) {
+        if (ref->currentIndex() > 0) frame.datumRefs.push_back(ref->currentText().toStdString());
+    }
+    // Said now, not at each edge clicked.
+    const std::string wrong = model::Gdt::check(frame);
+    if (!wrong.empty()) {
+        m_host.showStatus(tr("%1: %2").arg(verb, QString::fromStdString(wrong)));
+        return;
+    }
+    m_frame = std::move(frame);
+    pickEdges(verb, document, &DrawingWorkbench::addToleranceAt);
+}
+
+void DrawingWorkbench::addToleranceAt(const std::weak_ptr<doc::Document>& document,
+                                      const PickedEdge& picked) {
+    const std::shared_ptr<doc::Document> shown = document.lock();
+    if (!shown || picked.view < 0) return;
+    addTolerance(*shown, static_cast<std::size_t>(picked.view), picked.edge.tag(), m_frame,
+                 nullptr);  // said
+}
+
+void DrawingWorkbench::onAddDatum() {
+    const QString verb = tr("Add Datum Feature");
+    const Sheet* active = activeSheet(verb);
+    if (active == nullptr) return;
+    const std::shared_ptr<doc::Document> document = active->document.lock();
+    if (!document) return;
+    FeatureForm form(m_host.dialogParent(), verb);
+    auto* letter =
+        form.text(QStringLiteral("label"), tr("Datum letter:"),
+                  QString::fromStdString(model::Gdt::nextDatumLabel(datumLabels(active->spec))));
+    if (!form.exec()) return;
+    const std::string label = letter->text().trimmed().toUpper().toStdString();
+    if (!model::Gdt::usableDatumLabel(label)) {
+        m_host.showStatus(tr("%1: \"%2\" is not a datum letter: one or two capitals, not I, O or Q")
+                              .arg(verb, letter->text()));
+        return;
+    }
+    m_datum = label;
+    pickEdges(verb, document, &DrawingWorkbench::addDatumAt);
+}
+
+void DrawingWorkbench::addDatumAt(const std::weak_ptr<doc::Document>& document,
+                                  const PickedEdge& picked) {
+    const std::shared_ptr<doc::Document> shown = document.lock();
+    if (!shown || picked.view < 0) return;
+    if (!addDatum(*shown, static_cast<std::size_t>(picked.view), picked.edge.tag(), m_datum,
+                  nullptr)) {  // said
+        return;
+    }
+    // The next edge clicked, the next letter.
+    if (const io::DrawingDocumentSpec* spec = specOf(shown.get())) {
+        m_datum = model::Gdt::nextDatumLabel(datumLabels(*spec));
+    }
 }
 
 void DrawingWorkbench::onRemoveDimension() {
