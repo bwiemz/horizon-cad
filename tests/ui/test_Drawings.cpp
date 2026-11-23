@@ -1038,7 +1038,8 @@ TEST(DrawingsTest, AnUndoWhileThePartCannotBeReadStillTakesItsStep) {
 
 // A sheet read again from its file draws its views afresh, and a note in a
 // view moves with it again. An undo made while the part could not be read
-// leaves the views behind their notes; read again after it, the next view
+// leaves the views behind their notes, until they are next drawn; read
+// again after it, with no change to the part to draw them, the next view
 // moved left its notes where they were.
 TEST(DrawingsTest, ASheetReadAgainAfterAnUndoWithoutItsPartMovesNotesWithViews) {
     QTemporaryDir dir;
@@ -1070,13 +1071,18 @@ TEST(DrawingsTest, ASheetReadAgainAfterAnUndoWithoutItsPartMovesNotesWithViews) 
     drive.click(at);
     drive.click({at.x - 20.0, at.y - 15.0});
     ASSERT_TRUE(waitUntil([&] { return selecting(w); }, 5000));
+    const std::filesystem::path partPath(block.toStdString());
+    const auto partTime = std::filesystem::last_write_time(partPath);
     ASSERT_TRUE(QFile::remove(block));
     trigger(w, "action_update_drawing");
     trigger(w, "action_undo");
 
-    // The part back, and the sheet's file changed by another program: read
+    // The part back as it was, with the time it had (as a copy put back
+    // keeps it): nothing tells the sheet the part changed, so nothing draws
+    // it again. Then the sheet's file changed by another program: read
     // again, drawn from what it says.
     saveBlock(block, 10);
+    std::filesystem::last_write_time(partPath, partTime);
     ASSERT_FALSE(sheet->isDirty());
     spec.titleBlock.title = "Read again";
     ASSERT_TRUE(hz::io::DrawingDocumentIO::save(sheetFile.toStdString(), spec));
