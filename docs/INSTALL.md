@@ -6,7 +6,7 @@ page. A beta is marked **Pre-release** there.
 | System | Package | Needs |
 |---|---|---|
 | Windows 10 or 11, 64-bit | `HorizonCAD-<version>-win64.exe` | OpenGL 3.3 (any graphics driver from the last ten years) |
-| macOS 14 (Sonoma) or later, Apple silicon | `HorizonCAD-<version>-macOS-arm64.dmg` | Not an Intel Mac |
+| macOS 15 (Sequoia) or later, Apple silicon | `HorizonCAD-<version>-macOS-arm64.dmg` | Not an Intel Mac |
 | Linux, x86-64 | `HorizonCAD-<version>-x86_64.AppImage` or `HorizonCAD-<version>-Linux.tar.gz` | X11 or Wayland (it runs through XWayland), OpenGL 3.3, glibc 2.35 or later (Ubuntu 22.04, Debian 12, Fedora 36 or newer) |
 
 `SHA256SUMS.txt` beside the packages has each one's checksum.
