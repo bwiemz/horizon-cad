@@ -19,6 +19,20 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **An AI assistant's core (`hz::ai`).** A model can build and edit parts
+  and drawings through 27 tools: sketches on planes or faces, extrude,
+  revolve, primitives, fillet, chamfer, shell, hole, patterns and mirror,
+  feature edits, design variables, 2D shapes and layers, and queries of the
+  document, the feature tree, the solid's faces and edges with their geometry,
+  and its mass. Every change is one undo step through the window's own
+  commands; a feature that fails to build is withdrawn and its reason given
+  back to the model. Providers: Anthropic Claude (API version 2026-10-21,
+  thinking blocks replayed, refusals handled, server-side fallback), OpenAI
+  GPT, Google Gemini (thought signatures replayed), and any OpenAI-compatible
+  server, local or hosted. "Undo this response" takes back all of a request's
+  changes at once, and never the user's. The library has no network code; the
+  window's assistant panel follows.
+
 - **Hatches are drawn at any size.** A hatch too fine for 2,000 lines
   across drew nothing but its outline, in the view and in PDF and SVG
   plots: a solid fill more than 200 wide (its lines a tenth of a unit
