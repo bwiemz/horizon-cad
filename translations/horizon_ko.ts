@@ -99,12 +99,12 @@
 <context>
     <name>hz::ui::AiAssistantPanel</name>
     <message>
-        <location filename="../src/ui/src/AiAssistantPanel.cpp" line="+75"/>
+        <location filename="../src/ui/src/AiAssistantPanel.cpp" line="+80"/>
         <source>Done</source>
         <translation type="unfinished">완료</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+15"/>
         <source>Added %1</source>
         <translation type="unfinished">%1을(를) 추가했습니다</translation>
     </message>
@@ -124,33 +124,33 @@
         <translation type="unfinished">%1을(를) 삭제했습니다</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+7"/>
         <source>Set the variables</source>
         <translation type="unfinished">변수를 설정했습니다</translation>
     </message>
     <message numerus="yes">
-        <location line="-46"/>
+        <location line="-54"/>
         <source>list of %n</source>
         <translation type="unfinished">
             <numerusform>항목 %n개</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location line="+43"/>
+        <location line="+52"/>
         <source>Shapes drawn: %n</source>
         <translation type="unfinished">
             <numerusform>도형 %n개를 그렸습니다</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location line="+5"/>
+        <location line="+6"/>
         <source>Edges read: %n</source>
         <translation type="unfinished">
             <numerusform>모서리 %n개를 확인했습니다</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Faces read: %n</source>
         <translation type="unfinished">
             <numerusform>면 %n개를 확인했습니다</numerusform>
@@ -184,7 +184,7 @@
         <translation type="unfinished">피처 %1 실패</translation>
     </message>
     <message>
-        <location line="+28"/>
+        <location line="+35"/>
         <source>%1 tokens in, %2 out</source>
         <translation type="unfinished">입력 토큰 %1개, 출력 %2개</translation>
     </message>
@@ -246,7 +246,7 @@
         <translation type="unfinished">대화</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+11"/>
         <source>Working</source>
         <translation type="unfinished">작업 중</translation>
     </message>
@@ -257,12 +257,12 @@
     </message>
     <message>
         <location line="+2"/>
-        <location line="+154"/>
+        <location line="+206"/>
         <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
         <translation type="unfinished">부품 또는 변경 사항 설명… (Enter: 보내기, Shift+Enter: 줄 바꿈)</translation>
     </message>
     <message>
-        <location line="-148"/>
+        <location line="-200"/>
         <source>Undo This Response</source>
         <translation type="unfinished">이 응답 실행 취소</translation>
     </message>
@@ -287,12 +287,12 @@
         <translation type="unfinished">중지됨: 제공업체 또는 서버가 변경되었습니다. 요청을 다시 보내세요.</translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+40"/>
         <source>Stopped: the document changed.</source>
         <translation type="unfinished">중지됨: 문서가 변경되었습니다.</translation>
     </message>
     <message>
-        <location line="+39"/>
+        <location line="+73"/>
         <source>choose a model in Settings</source>
         <translation type="unfinished">설정에서 모델을 선택하십시오</translation>
     </message>
@@ -361,16 +361,18 @@ Send requests there?</source>
         <translation type="unfinished">API 키를 저장할 수 없습니다: %1</translation>
     </message>
     <message>
-        <location line="+47"/>
+        <location line="+48"/>
         <source>You</source>
         <translation type="unfinished">사용자</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+18"/>
+        <location line="+17"/>
         <source>Assistant</source>
         <translation type="unfinished">어시스턴트</translation>
     </message>
     <message>
+        <location line="-559"/>
         <source>Looked at the %1 view</source>
         <translation type="unfinished">%1 뷰를 확인함</translation>
     </message>
@@ -498,7 +500,17 @@ Send requests there?</source>
         <translation type="unfinished">최대 응답 길이:</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+8"/>
+        <source>Show replies as they are written</source>
+        <translation type="unfinished">응답을 작성되는 대로 표시</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Ask for each reply as it is written, so its text appears as it comes. Turn it off for a server that does not stream replies well.</source>
+        <translation type="unfinished">각 응답을 작성되는 대로 받아 텍스트가 도착하는 대로 표시합니다. 응답 스트리밍이 잘 되지 않는 서버에서는 끄십시오.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
         <source>Steps per request</source>
         <translation type="unfinished">요청당 단계 수</translation>
     </message>
@@ -513,7 +525,7 @@ Send requests there?</source>
         <translation type="unfinished">요청당 단계 수:</translation>
     </message>
     <message>
-        <location line="+60"/>
+        <location line="+62"/>
         <source>Set by %1</source>
         <translation type="unfinished">%1에서 설정됨</translation>
     </message>
@@ -568,7 +580,7 @@ Send requests there?</source>
         <translation type="unfinished">이 컴퓨터의 모델 또는 OpenAI 채팅 API를 제공하는 모든 서버입니다. Ollama: http://localhost:11434/v1. LM Studio: http://localhost:1234/v1. llama.cpp: http://localhost:8080/v1. 도구(함수)를 호출할 수 있는 모델을 선택하십시오.</translation>
     </message>
     <message>
-        <location line="+42"/>
+        <location line="+44"/>
         <source>Asking the server for its models…</source>
         <translation type="unfinished">서버에 모델 목록을 요청하는 중…</translation>
     </message>
@@ -580,10 +592,12 @@ Send requests there?</source>
         </translation>
     </message>
     <message>
+        <location line="-173"/>
         <source>Let the AI see pictures of the part</source>
         <translation type="unfinished">AI가 부품 이미지를 볼 수 있게 하기</translation>
     </message>
     <message>
+        <location line="+3"/>
         <source>The assistant can look at a drawn view of the part to check its work. The AI model must read images: the cloud providers&apos; models do; a local model may not.</source>
         <translation type="unfinished">어시스턴트는 부품의 렌더링된 뷰를 보고 작업을 확인할 수 있습니다. AI 모델이 이미지를 읽을 수 있어야 합니다. 클라우드 제공업체의 모델은 가능하지만 로컬 모델은 그렇지 않을 수 있습니다.</translation>
     </message>
@@ -871,7 +885,7 @@ Details are in the log:
         <translation type="unfinished">구성 요소를 삽입했습니다.</translation>
     </message>
     <message>
-        <location line="+29"/>
+        <location line="+9"/>
         <source>Mates solved (%1 iterations)</source>
         <translation type="unfinished">메이트 해석 완료 (반복 %1회)</translation>
     </message>
@@ -891,7 +905,7 @@ Details are in the log:
         <translation type="unfinished">메이트 해석 실패: %1</translation>
     </message>
     <message>
-        <location line="+66"/>
+        <location line="+70"/>
         <source>%1 is placed by its pattern: drag its seed</source>
         <translation type="unfinished">%1은(는) 패턴에 의해 배치됩니다: 시드를 끌어 이동하십시오</translation>
     </message>
@@ -931,7 +945,7 @@ Details are in the log:
         <translation type="unfinished">끌기가 취소되었습니다: 모든 항목이 원래 위치에 있습니다</translation>
     </message>
     <message>
-        <location line="+65"/>
+        <location line="+21"/>
         <source>Check Interference is only available in an assembly document</source>
         <translation type="unfinished">간섭 검사는 어셈블리 문서에서만 사용할 수 있습니다</translation>
     </message>
@@ -1719,7 +1733,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DraftingCommands</name>
     <message>
-        <location filename="../src/ui/src/DraftingCommands.cpp" line="+132"/>
+        <location filename="../src/ui/src/DraftingCommands.cpp" line="+152"/>
         <source>Nothing to purge: every layer and block is in use.</source>
         <translation type="unfinished">정리할 항목이 없습니다: 모든 레이어와 블록이 사용 중입니다.</translation>
     </message>
@@ -1748,7 +1762,7 @@ Details are in the log:
         <translation type="unfinished">선택 항목에 중복이 없습니다.</translation>
     </message>
     <message numerus="yes">
-        <location line="+19"/>
+        <location line="+10"/>
         <source>Deleted %n duplicate(s).</source>
         <translation type="unfinished">
             <numerusform>중복 %n개를 삭제했습니다.</numerusform>
@@ -3012,7 +3026,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+373"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+445"/>
         <source>&amp;File</source>
         <translation>파일(&amp;F)</translation>
     </message>
@@ -3048,12 +3062,12 @@ begin building your part.</source>
         <translation type="unfinished">%2 주변, 패싯 %1개의 곡면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-234"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-280"/>
         <source>Close %1</source>
         <translation type="unfinished">%1 닫기</translation>
     </message>
     <message>
-        <location line="+805"/>
+        <location line="+880"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3252,19 +3266,20 @@ begin building your part.</source>
         <translation type="unfinished">뚫을 면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-755"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-830"/>
         <location line="+1"/>
-        <location line="+1108"/>
+        <location line="+38"/>
+        <location line="+1159"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-1041"/>
+        <location line="-1105"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
     <message>
-        <location line="+83"/>
+        <location line="+122"/>
         <source>New &amp;Part</source>
         <translation type="unfinished">새 부품(&amp;P)</translation>
     </message>
@@ -4274,6 +4289,7 @@ begin building your part.</source>
     <message>
         <location line="+3"/>
         <location line="+9"/>
+        <location line="+0"/>
         <location line="+13"/>
         <location line="+61"/>
         <source>Modify</source>
@@ -4379,19 +4395,19 @@ begin building your part.</source>
         <translation type="unfinished">치수</translation>
     </message>
     <message numerus="yes">
-        <location line="+1413"/>
+        <location line="+1430"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>파일을 저장했습니다. 레이어 %n개는 DXF에서 허용하는 이름으로 저장했습니다.</numerusform>
         </translation>
     </message>
     <message>
-        <location line="+317"/>
+        <location line="-1111"/>
         <source>The assistant works on parts and drawings, not drawing sheets</source>
         <translation type="unfinished">어시스턴트는 도면 시트가 아니라 부품과 도면에서 작동합니다</translation>
     </message>
     <message>
-        <location line="+435"/>
+        <location line="+1546"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">확대/축소할 선택 항목이 없습니다. 전체 맞춤(F)은 전체를 표시합니다</translation>
     </message>
@@ -4440,7 +4456,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
     </message>
     <message>
-        <location line="-2551"/>
+        <location line="-2568"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -4665,7 +4681,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+988"/>
+        <location line="+1005"/>
         <location line="+488"/>
         <location line="+936"/>
         <location line="+593"/>
@@ -4674,7 +4690,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-3088"/>
+        <location line="-3105"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -4695,17 +4711,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2736"/>
+        <location line="+2753"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-2730"/>
+        <location line="-2747"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
     <message>
-        <location line="+313"/>
+        <location line="+327"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (복구됨)</translation>
     </message>
@@ -5806,7 +5822,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-3104"/>
+        <location line="-3121"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>
@@ -6091,12 +6107,12 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="-155"/>
-        <location line="+438"/>
+        <location line="+436"/>
         <source>Goes:</source>
         <translation type="unfinished">종료 조건:</translation>
     </message>
     <message>
-        <location line="-437"/>
+        <location line="-435"/>
         <source>To the distance</source>
         <translation type="unfinished">지정 거리</translation>
     </message>
@@ -6107,23 +6123,23 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+438"/>
+        <location line="+436"/>
         <source>Through all</source>
         <translation type="unfinished">관통</translation>
     </message>
     <message>
-        <location line="-437"/>
+        <location line="-435"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">양방향 관통</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+437"/>
+        <location line="+435"/>
         <source>Up to a face</source>
         <translation type="unfinished">면까지</translation>
     </message>
     <message>
-        <location line="-433"/>
+        <location line="-431"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(스케치와 평행한 부품의 평평한 면이 없음)</translation>
     </message>
@@ -6282,17 +6298,17 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+2"/>
-        <location line="+48"/>
+        <location line="+46"/>
         <source>Instances:</source>
         <translation type="unfinished">인스턴스 수:</translation>
     </message>
     <message>
-        <location line="-44"/>
+        <location line="-43"/>
         <source>Second direction:</source>
         <translation type="unfinished">두 번째 방향:</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>Second spacing:</source>
         <translation type="unfinished">두 번째 간격:</translation>
     </message>
@@ -6303,22 +6319,22 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+7"/>
-        <location line="+41"/>
+        <location line="+39"/>
         <source>%1 not added: a feature it repeats is gone</source>
         <translation type="unfinished">%1을(를) 추가하지 않았습니다: 반복할 피처가 더 이상 없습니다</translation>
     </message>
     <message>
-        <location line="-35"/>
+        <location line="-34"/>
         <source>%1 not added: its second direction runs along its first</source>
         <translation type="unfinished">%1이(가) 추가되지 않음: 두 번째 방향이 첫 번째 방향과 같습니다</translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="+5"/>
         <source>%1 not added: more than %2 instances in all</source>
         <translation type="unfinished">%1이(가) 추가되지 않음: 인스턴스가 모두 %2개를 넘습니다</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+15"/>
         <source>Circular Pattern</source>
         <translation type="unfinished">원형 패턴</translation>
     </message>

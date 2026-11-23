@@ -149,6 +149,10 @@ public:
     void onAssistantText(const std::string& text) override {
         m_panel.appendAssistant(QString::fromStdString(text));
     }
+    void onAssistantTextPart(const std::string& text) override {
+        m_panel.appendAssistantPart(QString::fromStdString(text));
+    }
+    void onAssistantTextWithdrawn() override { m_panel.withdrawAssistantPart(); }
     void onToolCall(const std::string& name, const json& input) override {
         m_panel.appendToolCall(QString::fromStdString(name), summariseInput(input));
     }
@@ -161,6 +165,7 @@ public:
         m_panel.appendNote(QString::fromStdString(message), true);
     }
     void onFinished(const ai::Usage& usage) override {
+        m_panel.closeLiveReply();  // stopped while it was being written: what came stays
         if (usage.inputTokens > 0 || usage.outputTokens > 0) {
             const QLocale locale;
             m_panel.m_status->setText(
@@ -228,6 +233,9 @@ AiAssistantPanel::AiAssistantPanel(QWidget* parent)
     m_transcript->setAccessibleName(tr("Conversation"));
     m_transcript->setOpenLinks(false);
     m_transcript->setOpenExternalLinks(false);
+    // Shown, never edited: nothing to undo, and a reply written a word at a
+    // time would otherwise keep every word as a step.
+    m_transcript->document()->setUndoRedoEnabled(false);
     layout->addWidget(m_transcript, 1);
 
     auto* statusRow = new QHBoxLayout;
@@ -602,6 +610,7 @@ QTextCharFormat formatOf(const QColor& colour, bool bold = false, bool italic = 
 }  // namespace
 
 void AiAssistantPanel::appendUser(const QString& text) {
+    closeLiveReply();
     QTextCursor cursor = endOf(m_transcript);
     cursor.insertText(tr("You"), formatOf({}, true));
     cursor.insertBlock();
@@ -611,9 +620,19 @@ void AiAssistantPanel::appendUser(const QString& text) {
 }
 
 void AiAssistantPanel::appendAssistant(const QString& markdown) {
-    QTextCursor cursor = endOf(m_transcript);
-    cursor.insertText(tr("Assistant"), formatOf(QColor(74, 144, 217), true));
-    cursor.insertBlock();
+    QTextCursor cursor;
+    if (m_liveTextFrom >= 0) {
+        // What came as it was written gives way to the whole, as Markdown.
+        cursor = QTextCursor(m_transcript->document());
+        cursor.setPosition(m_liveTextFrom);
+        cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+        closeLiveReply();
+    } else {
+        cursor = endOf(m_transcript);
+        cursor.insertText(tr("Assistant"), formatOf(QColor(74, 144, 217), true));
+        cursor.insertBlock();
+    }
     cursor.setCharFormat(QTextCharFormat());
     // No HTML from a model: its text is Markdown, shown, never loaded.
     cursor.insertMarkdown(markdown,
@@ -623,7 +642,40 @@ void AiAssistantPanel::appendAssistant(const QString& markdown) {
     updateState();
 }
 
+void AiAssistantPanel::appendAssistantPart(const QString& text) {
+    QTextDocument* document = m_transcript->document();
+    if (m_liveTextFrom < 0) {
+        m_liveFrom = document->isEmpty() ? 0 : document->characterCount() - 1;
+        QTextCursor cursor = endOf(m_transcript);
+        cursor.insertText(tr("Assistant"), formatOf(QColor(74, 144, 217), true));
+        cursor.insertBlock();
+        m_liveTextFrom = cursor.position();
+    }
+    QTextCursor cursor(document);
+    cursor.movePosition(QTextCursor::End);
+    // Plain while it comes: half a Markdown table or code block is not one.
+    cursor.insertText(text, QTextCharFormat());
+    scrollToEnd(m_transcript);
+    updateState();
+}
+
+void AiAssistantPanel::withdrawAssistantPart() {
+    if (m_liveFrom < 0) return;
+    QTextCursor cursor(m_transcript->document());
+    cursor.setPosition(m_liveFrom);
+    cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    closeLiveReply();
+    updateState();
+}
+
+void AiAssistantPanel::closeLiveReply() {
+    m_liveFrom = -1;
+    m_liveTextFrom = -1;
+}
+
 void AiAssistantPanel::appendToolCall(const QString& name, const QString& summary) {
+    closeLiveReply();
     QTextCursor cursor = endOf(m_transcript);
     cursor.insertText(QStringLiteral("▸ ") + name +
                           (summary.isEmpty() ? QString() : QStringLiteral("  ") + summary),
@@ -632,6 +684,7 @@ void AiAssistantPanel::appendToolCall(const QString& name, const QString& summar
 }
 
 void AiAssistantPanel::appendToolResult(const QString& summary, bool error) {
+    closeLiveReply();
     QTextCursor cursor = endOf(m_transcript);
     cursor.insertText((error ? QStringLiteral("    ✗ ") : QStringLiteral("    ✓ ")) + summary,
                       formatOf(error ? QColor(220, 100, 100) : QColor(140, 140, 140)));
@@ -639,6 +692,7 @@ void AiAssistantPanel::appendToolResult(const QString& summary, bool error) {
 }
 
 void AiAssistantPanel::clearTranscript() {
+    closeLiveReply();
     // The pictures shown are the document's resources, which clearing its
     // text keeps: each is let go too.
     for (int n = 1; n <= m_images; ++n) {
@@ -650,6 +704,7 @@ void AiAssistantPanel::clearTranscript() {
 }
 
 void AiAssistantPanel::appendImage(const ai::Image& image) {
+    closeLiveReply();
     QImage picture;
     if (!picture.loadFromData(QByteArray::fromBase64(QByteArray::fromStdString(image.base64)))) {
         return;
@@ -671,6 +726,7 @@ void AiAssistantPanel::appendImage(const ai::Image& image) {
 }
 
 void AiAssistantPanel::appendNote(const QString& text, bool error) {
+    closeLiveReply();
     QTextCursor cursor = endOf(m_transcript);
     cursor.insertText(
         text, formatOf(error ? QColor(220, 100, 100) : QColor(140, 140, 140), false, !error));

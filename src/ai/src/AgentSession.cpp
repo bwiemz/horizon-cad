@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cstddef>
 #include <exception>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -101,27 +103,54 @@ void AgentSession::requestNext() {
     // settings are by the time it comes.
     m_requestKind = m_config.kind;
     const auto adapter = makeAdapter(m_requestKind);
-    const HttpRequest request = adapter->buildRequest(chat, m_config);
+    // Streamed when it can be: the text shows as it is written.
+    const bool stream = m_config.stream && m_transport.streams();
+    const HttpRequest request = stream ? adapter->buildStreamingRequest(chat, m_config)
+                                       : adapter->buildRequest(chat, m_config);
 
     const std::uint64_t generation = m_generation;
     const std::uint64_t serial = ++m_requestSerial;
     const std::weak_ptr<bool> alive = m_alive;
-    const HttpTransport::RequestId id =
-        m_transport.send(request, [this, generation, alive](const HttpResponse& http) {
+    m_shownPart = false;
+    HttpTransport::RequestId id = 0;
+    if (stream) {
+        // Held by both callbacks; the transport lets them go when it is done.
+        const std::shared_ptr<StreamReader> reader = adapter->makeStreamReader();
+        id = m_transport.sendStreaming(
+            request,
+            [this, generation, alive, reader](std::string_view bytes) {
+                const auto held = alive.lock();
+                if (!held || !*held) return;
+                if (generation != m_generation || !m_busy) return;  // stopped
+                const std::string text = reader->feed(bytes);
+                if (text.empty()) return;
+                m_shownPart = true;
+                m_observer.onAssistantTextPart(text);
+            },
+            [this, generation, alive, reader](const HttpResponse& http) {
+                const auto held = alive.lock();
+                if (!held || !*held) return;
+                onReply(generation, http, reader.get());
+            });
+    } else {
+        id = m_transport.send(request, [this, generation, alive](const HttpResponse& http) {
             const auto held = alive.lock();
             if (!held || !*held) return;  // the session is gone
-            onReply(generation, http);
+            onReply(generation, http, nullptr);
         });
+    }
     // A transport that answers at once has run the next round trip already,
     // whose request is the one in flight now.
     if (serial == m_requestSerial) m_inflight = id;
 }
 
-void AgentSession::onReply(std::uint64_t generation, const HttpResponse& http) {
+void AgentSession::onReply(std::uint64_t generation, const HttpResponse& http,
+                           StreamReader* reader) {
     if (generation != m_generation || !m_busy) return;  // stopped: a late reply
     ChatResponse response;
     try {
-        response = makeAdapter(m_requestKind)->parseResponse(http);
+        response = reader != nullptr ? reader->finish(http)
+                                     : makeAdapter(m_requestKind)->parseResponse(http);
     } catch (const std::exception& e) {
         // The adapters do not throw; a reply they did not foresee still must
         // not reach the transport's event loop.
@@ -136,6 +165,8 @@ void AgentSession::onReply(std::uint64_t generation, const HttpResponse& http) {
             fail(response.error.empty() ? "The request failed." : response.error);
             return;
         case StopReason::Refusal:
+            // What came before it declined is not the answer.
+            if (m_shownPart) m_observer.onAssistantTextWithdrawn();
             fail("The model declined this request" + (response.refusalDetail.empty()
                                                           ? std::string(".")
                                                           : ": " + response.refusalDetail));

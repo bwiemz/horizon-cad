@@ -12,6 +12,7 @@ std::unique_ptr<ProviderAdapter> makeOpenAIAdapter(bool official);
 std::unique_ptr<ProviderAdapter> makeGeminiAdapter();
 
 ProviderAdapter::~ProviderAdapter() = default;
+StreamReader::~StreamReader() = default;
 
 ProviderConfig defaultConfig(ProviderKind kind) {
     ProviderConfig config;
