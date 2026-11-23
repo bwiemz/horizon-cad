@@ -211,6 +211,27 @@ TEST_F(AssemblyToolsTest, InsertKeepsToTheAssemblysFolder) {
     }
     EXPECT_EQ(steps(), 0u);
 
+    // Nor through a subassembly in the folder that places a part from
+    // elsewhere; one whose parts are all in it is placed.
+    {
+        doc::AssemblyDocument sub;
+        doc::ComponentInstance far;
+        far.partPath = outside;
+        sub.addComponent(far);
+        ASSERT_TRUE(io::NativeFormat::saveAssembly((dir / "sub.hzasm").string(), sub));
+        doc::AssemblyDocument near;
+        doc::ComponentInstance pin;
+        pin.partPath = (dir / "pin.hzpart").string();
+        near.addComponent(pin);
+        ASSERT_TRUE(io::NativeFormat::saveAssembly((dir / "near.hzasm").string(), near));
+    }
+    const std::string why = fails("insert_component", {{"file", "sub.hzasm"}});
+    EXPECT_NE(why.find("outside the assembly's folder"), std::string::npos) << why;
+    EXPECT_EQ(why.find("secret"), std::string::npos) << "where is not said";
+    EXPECT_EQ(steps(), 0u);
+    insert("near.hzasm");
+    backing.undoStack().undo();
+
     // Unsaved, it has no folder: nothing is read, and saving is the way.
     assembly.setFilePath({});
     EXPECT_NE(fails("insert_component", {{"file", (dir / "plate.hzpart").string()}}).find("save"),

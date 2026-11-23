@@ -666,6 +666,21 @@ bool inFolder(const std::string& folder, const fs::path& path) {
            inside != fs::path(".");
 }
 
+/// Whether every file @p comp places, at any depth, is in @p folder: a
+/// subassembly in the folder may place parts from anywhere. @p dir is the
+/// folder of the assembly @p comp is in.
+bool allInFolder(const std::string& folder, const doc::ComponentInstance& comp,
+                 const std::string& dir) {
+    fs::path file(comp.partPath);
+    if (file.is_relative() && !dir.empty()) file = fs::path(dir) / file;
+    if (!inFolder(folder, file)) return false;
+    if (!comp.resolvedAssembly) return true;
+    const std::string subDir = file.parent_path().string();
+    const auto& children = comp.resolvedAssembly->components();
+    return std::all_of(children.begin(), children.end(),
+                       [&](const auto& child) { return allInFolder(folder, child, subDir); });
+}
+
 /// Whether the assembly places the file at @p path already.
 bool placedAlready(const AssemblyContext& c, const fs::path& path) {
     const std::string folder = folderOf(c.assembly);
@@ -725,6 +740,13 @@ ToolResult insertComponent(const AssemblyContext& c, const json& in) {
                                       within)) {
         return ToolResult::error(comp.name + " is not inserted: " +
                                  (why.empty() ? "no geometry could be made from it" : why));
+    }
+    // A subassembly brings its own parts: they are kept to the folder too,
+    // and one from elsewhere is said without saying where.
+    if (comp.isAssembly() && !allInFolder(folder, comp, folder)) {
+        return ToolResult::error(comp.name +
+                                 " is not inserted: it places parts from outside the assembly's "
+                                 "folder; the user can insert it with Assembly > Insert Component");
     }
 
     if (has(in, "position") || has(in, "rotation")) {
