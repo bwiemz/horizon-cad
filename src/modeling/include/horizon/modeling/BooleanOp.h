@@ -113,6 +113,12 @@ public:
     BooleanCancellation(const BooleanCancellation&) = delete;
     BooleanCancellation& operator=(const BooleanCancellation&) = delete;
 
+    /// Whether the build this thread runs for has been cancelled: for work
+    /// between Booleans and around them (copying a pattern's instances,
+    /// merging and sewing a result), which ran on for seconds after the
+    /// cancel in a debug build, to stop at too.
+    [[nodiscard]] static bool requested();
+
 private:
     const std::atomic<bool>* m_saved;
 };
