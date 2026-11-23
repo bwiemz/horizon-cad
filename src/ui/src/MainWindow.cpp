@@ -80,6 +80,7 @@
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/render/SceneGraph.h"
 #include "horizon/topology/Solid.h"
+#include "horizon/ui/AiAssistantPanel.h"
 #include "horizon/ui/AngularDimensionTool.h"
 #include "horizon/ui/Application.h"
 #include "horizon/ui/ArcTool.h"
@@ -243,6 +244,24 @@ MainWindow::MainWindow(QWidget* parent)
     addDockWidget(Qt::RightDockWidgetArea, m_layerPanel);
 
     tabifyDockWidget(m_propertyPanel, m_layerPanel);
+
+    // The AI assistant, in a tab beside them: it builds and changes the
+    // active part or drawing through its undo stack, and the window shows
+    // what changed.
+    m_aiPanel = new AiAssistantPanel(this);
+    addDockWidget(Qt::RightDockWidgetArea, m_aiPanel);
+    tabifyDockWidget(m_layerPanel, m_aiPanel);
+    m_aiPanel->setHost({[this] {
+                            if (DocTab* tab = activeTab()) tab->modelStale = false;
+                            showBuildResult();
+                        },
+                        [this] {
+                            m_layerPanel->refresh();
+                            onSelectionChanged();
+                            m_viewport->update();
+                        },
+                        [this] { onUndo(); }});
+    m_aiPanel->setDocument(m_document, tr("Drawing 1"));
     m_propertyPanel->raise();
 
     // Feature tree panel (left dock)
@@ -337,6 +356,12 @@ MainWindow::~MainWindow() {
     m_openTask.reset();
     m_reloadTask.reset();
     m_massTask.reset();
+}
+
+void MainWindow::showAssistant() {
+    m_aiPanel->show();
+    m_aiPanel->raise();
+    m_aiPanel->focusInput();
 }
 
 void MainWindow::onCommandPalette() {
@@ -551,6 +576,7 @@ void MainWindow::createMenus() {
     viewMenu->addAction(m_assemblyTreePanel->toggleViewAction());
     viewMenu->addAction(m_propertyPanel->toggleViewAction());
     viewMenu->addAction(m_layerPanel->toggleViewAction());
+    viewMenu->addAction(m_aiPanel->toggleViewAction());
 
     // ---- Model ----
     QMenu* modelMenu = menuBar()->addMenu(tr("&Model"));
@@ -866,6 +892,10 @@ void MainWindow::createRibbonBar() {
               QKeySequence(Qt::CTRL | Qt::Key_G));
     addAction(g, "ungroup", tr("Ungroup"), m_drafting.get(), &DraftingCommands::onUngroupEntities,
               QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
+
+    g = group(tr("Home"), tr("Assistant"));
+    addAction(g, "assistant", tr("AI Assistant"), this, &MainWindow::showAssistant,
+              QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
 
     g = group(tr("Home"), tr("View"));
     auto* selectAct = addToolAction(g, "select", tr("Select"), &MainWindow::onSelectTool,
@@ -1227,6 +1257,14 @@ void MainWindow::activateTabDocument() {
     }
     refreshAllPanels();
     updateWindowTitle();
+    if (m_aiPanel) {
+        if (m_assembly) {
+            m_aiPanel->setDocument(nullptr, tab->title,
+                                   tr("The assistant works on parts and drawings, not assemblies"));
+        } else {
+            m_aiPanel->setDocument(m_document, tab->title);
+        }
+    }
     // A sheet is paper, seen from above.
     if (m_drawings && m_drawings->isSheet(m_document.get())) m_drawings->shown(*m_document);
 }
@@ -1472,7 +1510,10 @@ void MainWindow::watchDocument(const std::shared_ptr<doc::Document>& document) {
             if (tab.document.get() == changed) tab.snapshotStale = true;
         }
         refreshModifiedIndicators();
-        if (changed == m_document.get()) syncSketchView();
+        if (changed == m_document.get()) {
+            syncSketchView();
+            if (m_aiPanel) m_aiPanel->refreshState();
+        }
     });
 }
 

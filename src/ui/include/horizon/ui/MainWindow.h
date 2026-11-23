@@ -47,6 +47,7 @@ namespace hz::ui {
 class ViewportWidget;
 class ToolManager;
 class PropertyPanel;
+class AiAssistantPanel;
 class LayerPanel;
 class RibbonBar;
 class FeatureTreePanel;
@@ -165,6 +166,8 @@ protected:
 
 private slots:
     void onCommandPalette();
+    /// Show the AI assistant and put the cursor in its request box.
+    void showAssistant();
     void onNewFile();
     void onNewPart();
     void onNewAssembly();
@@ -488,6 +491,7 @@ private:
     std::shared_ptr<doc::AssemblyDocument> m_assembly;
     PropertyPanel* m_propertyPanel = nullptr;
     LayerPanel* m_layerPanel = nullptr;
+    AiAssistantPanel* m_aiPanel = nullptr;
     RibbonBar* m_ribbonBar = nullptr;
     FeatureTreePanel* m_featureTreePanel = nullptr;
     AssemblyTreePanel* m_assemblyTreePanel = nullptr;  ///< tabbed with the feature tree

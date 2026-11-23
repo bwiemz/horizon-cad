@@ -180,6 +180,8 @@ QIcon IconGenerator::icon(const QString& name, int size) {
         {"pattern-circular", drawPatternCircular},
         {"mirror-3d", drawMirror3d},
         {"hole", drawHole},
+        // The AI assistant
+        {"assistant", drawAssistant},
     };
 
     const int s = size > 0 ? size : kRenderSize;
@@ -1673,6 +1675,43 @@ QIcon IconGenerator::drawPatternLinear(int s) {
     p.drawLine(QPointF(3, 18.5), QPointF(21, 18.5));
     p.drawLine(QPointF(21, 18.5), QPointF(18.5, 16.5));
     p.drawLine(QPointF(21, 18.5), QPointF(18.5, 20.5));
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+QIcon IconGenerator::drawAssistant(int s) {
+    QImage img = createImage(s);
+    QPainter p(&img);
+    initPainter(p, s);
+    // A speech bubble...
+    QPainterPath bubble;
+    bubble.addRoundedRect(QRectF(2.5, 4, 15, 11), 3, 3);
+    QPainterPath tail;
+    tail.moveTo(6, 14.5);
+    tail.lineTo(5, 19.5);
+    tail.lineTo(10.5, 14.5);
+    tail.closeSubpath();
+    p.setPen(primaryPen());
+    p.setBrush(Qt::NoBrush);
+    p.drawPath(bubble.united(tail));
+    // ...three dots in it...
+    drawDot(p, 6.5, 9.5, 1.1, kPrimary);
+    drawDot(p, 10, 9.5, 1.1, kPrimary);
+    drawDot(p, 13.5, 9.5, 1.1, kPrimary);
+    // ...and a four-pointed spark at its corner.
+    QPainterPath spark;
+    const qreal cx = 19;
+    const qreal cy = 5.5;
+    const qreal r = 4.2;
+    const qreal w = 1.1;
+    spark.moveTo(cx, cy - r);
+    spark.quadTo(cx + w * 0.4, cy - w * 0.4, cx + r, cy);
+    spark.quadTo(cx + w * 0.4, cy + w * 0.4, cx, cy + r);
+    spark.quadTo(cx - w * 0.4, cy + w * 0.4, cx - r, cy);
+    spark.quadTo(cx - w * 0.4, cy - w * 0.4, cx, cy - r);
+    p.setPen(Qt::NoPen);
+    p.setBrush(kAccent);
+    p.drawPath(spark);
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }

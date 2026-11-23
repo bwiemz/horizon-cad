@@ -55,6 +55,7 @@ endif()
 if(TARGET Qt6::QOffscreenIntegrationPlugin)
     add_executable(hz_ui_window_tests
         window_tests_main.cpp
+        test_AiAssistant.cpp
         test_Application.cpp
         test_Accessibility.cpp
         test_MainWindowDocuments.cpp
