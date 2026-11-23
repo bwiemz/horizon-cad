@@ -232,10 +232,15 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
         }
         return nullptr;
     }
+    // Merging, sewing and naming a result of thousands of faces each take
+    // seconds in a debug build, and ask nothing: a cancel is heard between
+    // them.
+    if (BooleanCancellation::requested()) return fail("cancelled");
     if (merged && !fragments.empty()) {
         // The CSG works on triangles and leaves every face in pieces, even a
         // face the cut never reached; put each face back together.
         fragments = mergeFragments(std::move(fragments), tol.plane);
+        if (BooleanCancellation::requested()) return fail("cancelled");
     }
     if (fragments.empty()) {
         switch (type) {
@@ -268,7 +273,9 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
     // Weld at the CSG plane epsilon: fragments carry split points the BSP
     // treated as on-plane coincident, so healing must reach that far.
     // sewChecked enforces the checkManifold() contract for this path too.
-    return sewn(sewChecked(faces, tol.plane));
+    auto sewnSolid = sewChecked(faces, tol.plane);
+    if (BooleanCancellation::requested()) return fail("cancelled");
+    return sewn(std::move(sewnSolid));
 }
 
 BooleanWorkLimits::BooleanWorkLimits(std::size_t work, std::size_t splits) {
@@ -286,6 +293,11 @@ BooleanCancellation::BooleanCancellation(const std::atomic<bool>* cancelled)
 
 BooleanCancellation::~BooleanCancellation() {
     csgLimitsOnThisThread().cancelled = m_saved;
+}
+
+bool BooleanCancellation::requested() {
+    const std::atomic<bool>* cancelled = csgLimitsOnThisThread().cancelled;
+    return cancelled != nullptr && cancelled->load(std::memory_order_relaxed);
 }
 
 BooleanSeries::BooleanSeries(std::size_t work) {

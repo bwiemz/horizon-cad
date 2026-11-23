@@ -322,11 +322,20 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
         }
     }
 
+    // Stopped as the build is cancelled: copying 40 instances of a cylinder
+    // of 1,024 facets, and the tool of each round, took seconds in a debug
+    // build, between the Booleans that hear a cancel.
+    const auto stopped = [reason]() -> std::unique_ptr<Solid> {
+        if (reason) *reason = "cancelled";
+        return nullptr;
+    };
+
     // Each instance as its own solid, so overlapping ones can be merged.
     std::vector<std::unique_ptr<Solid>> instances;
     std::vector<BoundingBox> bounds;
     for (size_t k = 0; k < transforms.size(); ++k) {
         if (skip.count(static_cast<int>(k))) continue;
+        if (BooleanCancellation::requested()) return stopped();
         auto inst = std::make_unique<Solid>();
         cloneInto(*inst, source, transforms[k], static_cast<int>(k));
         bounds.push_back(boundsOf(*inst));
@@ -372,6 +381,7 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
             std::unique_ptr<Solid> group = std::move(instances[members[root].front()]);
             std::vector<size_t> left(members[root].begin() + 1, members[root].end());
             while (!left.empty()) {
+                if (BooleanCancellation::requested()) return stopped();
                 math::RTree<size_t> taken;
                 std::vector<size_t> round;
                 std::vector<size_t> later;
@@ -417,6 +427,7 @@ std::unique_ptr<topo::Solid> buildPattern(const Solid& source, const std::vector
         }
     }
 
+    if (BooleanCancellation::requested()) return stopped();
     auto result = std::make_unique<Solid>();
     for (const auto& body : bodies) {
         if (body) cloneInto(*result, *body, Mat4::identity(), 0, nullptr, true);

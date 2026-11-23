@@ -110,7 +110,11 @@ work, not "post-1.0".
   features, and the window waited for the feature it was in: a pattern of
   overlapping cylinders of many facets could hold it for many minutes after
   an edit. A Boolean now stops within moments of its build being cancelled,
-  and so does an interference check.
+  and so does an interference check. So does the work around a Boolean:
+  a pattern's copying of its instances, and the merging and sewing of a
+  result, ran on for seconds after the cancel in a debug build (a grid of
+  40 cylinders of 1,024 facets, cancelled while it copied them, stopped
+  after 6 s on macOS).
 
 - **Whole-part patterns whose copies overlap join faster.** The copies were
   joined one at a time, each time to all that had been joined: they are now
