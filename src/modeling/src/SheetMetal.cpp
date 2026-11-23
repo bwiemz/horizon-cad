@@ -48,8 +48,13 @@ std::string mm(double value) {
     return out.str();
 }
 
-/// Smaller than this, a turn is no bend, a line no line (model mm, radians).
+/// Shorter than this, a line is no line (model mm).
 constexpr double kTiny = 1e-9;
+/// Less than this, a turn is no bend (radians): a bend that small would be
+/// chords far shorter than the kernel tells apart.
+constexpr double kNoTurn = 1e-6;
+/// Less than this, a flat between bends is none (model mm).
+constexpr double kNoFlat = 1e-6;
 /// A turn within this of a half turn folds the sheet back on itself.
 constexpr double kHalfTurn = 3.14159265358979323846 - 1e-6;
 
@@ -70,6 +75,12 @@ std::optional<SheetMetalStrip> stripFromPolyline(const std::vector<math::Vec2>& 
         refuse(why, "a base flange needs at least one line");
         return std::nullopt;
     }
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        if (!std::isfinite(points[i].x) || !std::isfinite(points[i].y)) {
+            refuse(why, "point " + std::to_string(i + 1) + " of the sketch is not a number");
+            return std::nullopt;
+        }
+    }
     const std::size_t lines = points.size() - 1;
     std::vector<double> lengths(lines);
     std::vector<math::Vec2> along(lines);
@@ -88,7 +99,7 @@ std::optional<SheetMetalStrip> stripFromPolyline(const std::vector<math::Vec2>& 
         const math::Vec2& a = along[j];
         const math::Vec2& b = along[j + 1];
         double turn = std::atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y);
-        if (std::abs(turn) < kTiny) turn = 0.0;
+        if (std::abs(turn) < kNoTurn) turn = 0.0;
         if (std::abs(turn) >= kHalfTurn) {
             refuse(why, "at the end of line " + std::to_string(j + 1) +
                             " the sketch turns back on itself: a bend can be at most nearly "
@@ -97,6 +108,11 @@ std::optional<SheetMetalStrip> stripFromPolyline(const std::vector<math::Vec2>& 
         }
         // Positive toward the material: to the left of travel, or the right.
         const double angle = materialRight ? -turn : turn;
+        if (angle != 0.0 && !(params.bendRadius > kTiny)) {
+            refuse(why, "a bend needs an inside radius above 0 (at the end of line " +
+                            std::to_string(j + 1) + ")");
+            return std::nullopt;
+        }
         strip.bendAngles.push_back(angle);
         const double radius =
             angle > 0.0 ? params.bendRadius + params.thickness : params.bendRadius;
@@ -113,7 +129,15 @@ std::optional<SheetMetalStrip> stripFromPolyline(const std::vector<math::Vec2>& 
                             " mm of it (a smaller bend radius takes less)");
             return std::nullopt;
         }
-        strip.segments.push_back(std::max(flat, 0.0));
+        // Some flat between bends, and at each end: a sheet that starts in a
+        // bend, or goes from one bend straight into the next, is not folded.
+        if (flat < kNoFlat) {
+            refuse(why, "line " + std::to_string(i + 1) +
+                            " is no longer than its bends take: leave it some flat, or use a "
+                            "smaller bend radius");
+            return std::nullopt;
+        }
+        strip.segments.push_back(flat);
     }
     return strip;
 }

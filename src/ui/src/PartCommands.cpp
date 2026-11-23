@@ -424,7 +424,7 @@ void PartCommands::onBaseFlange() {
     FeatureForm form(m_host.dialogParent(), tr("Base Flange"), part().lengthUnit());
     auto* thickness = form.length(QStringLiteral("thickness"), tr("Thickness:"), 2.0, 0.01, 1e3, 3);
     auto* radius =
-        form.length(QStringLiteral("bendRadius"), tr("Bend radius (inside):"), 2.0, 0.0, 1e3, 3);
+        form.length(QStringLiteral("bendRadius"), tr("Bend radius (inside):"), 2.0, 0.01, 1e3, 3);
     auto* kFactor = form.number(QStringLiteral("kFactor"), tr("K-factor:"), 0.44, 0.0, 1.0, 3);
     auto* width = form.length(QStringLiteral("width"), tr("Width:"), 50.0, 0.01, 1e6, 2);
     auto* side = form.choice(QStringLiteral("flip"), tr("Material:"),

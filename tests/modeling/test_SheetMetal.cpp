@@ -205,3 +205,30 @@ TEST(BaseFlangeStrip, ABendEitherWayTakesItsAllowance) {
     EXPECT_NEAR(developedLength(down, p), developedLength(up, p), 1e-12);
     EXPECT_NEAR(developedLength(down, p), 30.0 + bendAllowance(kPi / 2, p), 1e-12);
 }
+
+// A line that its bends take whole (a jog with no flat), a bend with no
+// radius, a turn too small to be a bend, and a point that is not a number:
+// each refused, or read, with its reason.
+TEST(BaseFlangeStrip, EdgesOfWhatFolds) {
+    std::string why;
+    // A U whose 10 mm base has a bend toward the material at each end, each
+    // taking r + t = 5 of it: nothing left between the bends.
+    const SheetMetalParams p{1.0, 4.0, 0.44};
+    EXPECT_FALSE(
+        hz::model::stripFromPolyline({{0, 20}, {0, 0}, {10, 0}, {10, 20}}, p, false, &why));
+    EXPECT_NE(why.find("no longer than its bends take"), std::string::npos) << why;
+    EXPECT_NE(why.find("line 2"), std::string::npos) << why;
+
+    EXPECT_FALSE(
+        hz::model::stripFromPolyline({{0, 0}, {20, 0}, {20, 10}}, {1.0, 0.0, 0.44}, false, &why));
+    EXPECT_NE(why.find("inside radius above 0"), std::string::npos) << why;
+    // With no bend, no radius is needed: a flat plate.
+    EXPECT_TRUE(hz::model::stripFromPolyline({{0, 0}, {20, 0}}, {1.0, 0.0, 0.44}, false, &why));
+
+    const auto almost = hz::model::stripFromPolyline({{0, 0}, {20, 0}, {40, 1e-8}}, p, false, &why);
+    ASSERT_TRUE(almost.has_value()) << why;
+    EXPECT_EQ(almost->bendAngles[0], 0.0) << "a turn of a millionth of a degree is no bend";
+
+    EXPECT_FALSE(hz::model::stripFromPolyline({{0, 0}, {std::nan(""), 0}}, p, false, &why));
+    EXPECT_NE(why.find("not a number"), std::string::npos) << why;
+}
