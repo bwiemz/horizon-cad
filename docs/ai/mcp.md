@@ -19,7 +19,7 @@ build it from source: it is the `horizon-mcp` target.
 horizon-mcp [--root DIR] [--open FILE] [--drawing]
 
   --root DIR    the folder files may be opened, saved and exported in
-                (default: the folder it is started in)
+                (default: Documents/Horizon CAD MCP in your home folder)
   --open FILE   start with FILE (.hzpart, .hcad or .dxf)
   --drawing     start with an empty 2D drawing (default: an empty part)
 ```
@@ -29,9 +29,12 @@ It works on one document at a time, and saves nothing unless asked.
 **Files.** A model chooses the paths it opens, saves and exports, so they are
 kept to one folder, `--root`. A relative path is taken in that folder. A path
 that leads out of it is refused, whether by `..`, by an absolute path or
-through a symbolic link. A file already there is replaced only when the call
-says `overwrite: true`; the document's own file is the exception. Point
-`--root` at a project folder, not your home folder.
+through a symbolic link. It is refused before anything is touched when it names
+another drive or a network share, and refused when its last part is a
+symbolic link. A file already there is replaced only when the call says
+`overwrite: true`; the document's own file is the exception. A filesystem
+root or your home folder itself is refused as `--root`: point it at a project
+folder.
 
 ## Claude Desktop
 

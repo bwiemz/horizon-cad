@@ -159,6 +159,21 @@ TEST_F(McpSessionTest, FilesStayInTheFolder) {
     std::error_code ec;
     fs::create_directory_symlink(dir.parent_path(), dir / "up", ec);
     if (!ec) fails(session, "export_document", {{"path", "up/through-link.stl"}});
+    // A link to nothing as the last part: writing through it would make its
+    // target, outside.
+    const fs::path target = dir.parent_path() / (dir.filename().string() + "-dangling.stl");
+    fs::create_symlink(target, dir / "dangling.stl", ec);
+    if (!ec) {
+        EXPECT_NE(fails(session, "export_document", {{"path", "dangling.stl"}, {"overwrite", true}})
+                      .find("symbolic link"),
+                  std::string::npos);
+        EXPECT_FALSE(fs::exists(target));
+    }
+#ifdef _WIN32
+    EXPECT_NE(fails(session, "export_document", {{"path", "\\\\host\\share\\x.stl"}})
+                  .find("network share"),
+              std::string::npos);
+#endif
     EXPECT_FALSE(fs::exists(outside));
     EXPECT_EQ(ok(session, "get_session_info")["folder"], fs::weakly_canonical(dir).string());
 }

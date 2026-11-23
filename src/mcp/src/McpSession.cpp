@@ -86,35 +86,53 @@ ai::ToolSpec spec(std::string name, std::string description, json properties,
 McpSession::McpSession(bool part, const std::filesystem::path& root)
     : m_document(std::make_unique<doc::Document>()) {
     std::error_code ec;
-    m_root = fs::weakly_canonical(fs::absolute(root, ec), ec);
-    if (ec || m_root.empty()) m_root = fs::absolute(root);
+    m_rootAsGiven = fs::absolute(root, ec).lexically_normal();
+    m_root = fs::weakly_canonical(m_rootAsGiven, ec);
+    if (ec || m_root.empty()) m_root = m_rootAsGiven;
     m_document->setType(part ? doc::DocumentType::Part : doc::DocumentType::Drawing);
     bind();
 }
 
+namespace {
+
+/// Whether @p path is @p root or inside it, component by component.
+bool within(const fs::path& root, const fs::path& path) {
+    const auto [rootEnd, pathAt] =
+        std::mismatch(root.begin(), root.end(), path.begin(), path.end());
+    (void)pathAt;
+    return rootEnd == root.end();
+}
+
+}  // namespace
+
 std::optional<std::filesystem::path> McpSession::resolve(const std::string& given,
                                                          std::string* why) const {
-    if (given.empty()) {
-        if (why) *why = "the path is empty";
+    const auto refuse = [why](std::string reason) -> std::optional<fs::path> {
+        if (why) *why = std::move(reason);
         return std::nullopt;
-    }
+    };
+    if (given.empty()) return refuse("the path is empty");
     fs::path path(given);
-    if (path.is_relative()) path = m_root / path;
-    // Symbolic links and ".." resolved, so neither leads out of the root.
-    std::error_code ec;
-    const fs::path resolved = fs::weakly_canonical(path, ec);
-    if (ec) {
-        if (why) *why = "the path cannot be resolved: " + ec.message();
-        return std::nullopt;
+    // Another drive, or a network share (\\host\share, \\?\, \\.\): refused
+    // before anything touches it, so no share is ever contacted.
+    if (path.has_root_name() && path.root_name() != m_root.root_name() &&
+        path.root_name() != m_rootAsGiven.root_name()) {
+        return refuse("it is on another drive or a network share");
     }
-    const auto [rootEnd, pathAt] =
-        std::mismatch(m_root.begin(), m_root.end(), resolved.begin(), resolved.end());
-    if (rootEnd != m_root.end()) {
-        if (why) {
-            *why = "it is outside the folder this server may use, " + m_root.string() +
-                   " (horizon-mcp --root sets it)";
-        }
-        return std::nullopt;
+    if (path.is_relative()) path = m_root / path;
+    const fs::path lexical = path.lexically_normal();
+    const std::string outside = "it is outside the folder this server may use, " + m_root.string() +
+                                " (horizon-mcp --root sets it)";
+    // First by its words alone, then on the disk, where links are followed.
+    if (!within(m_root, lexical) && !within(m_rootAsGiven, lexical)) return refuse(outside);
+    std::error_code ec;
+    const fs::path resolved = fs::weakly_canonical(lexical, ec);
+    if (ec) return refuse("the path cannot be resolved: " + ec.message());
+    if (!within(m_root, resolved)) return refuse(outside);
+    // A link left as the last part (one to nothing, which the resolving
+    // above cannot follow) would be written through, out of the folder.
+    if (fs::is_symlink(fs::symlink_status(resolved, ec))) {
+        return refuse("it is a symbolic link");
     }
     return resolved;
 }

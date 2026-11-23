@@ -8,6 +8,7 @@
 // error.
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
@@ -24,11 +25,21 @@
 
 namespace {
 
+/// The user's home folder, or empty.
+std::filesystem::path homeFolder() {
+#ifdef _WIN32
+    const char* home = std::getenv("USERPROFILE");
+#else
+    const char* home = std::getenv("HOME");
+#endif
+    return home != nullptr && *home != '\0' ? std::filesystem::path(home) : std::filesystem::path();
+}
+
 void usage(std::ostream& out) {
     out << "Usage: horizon-mcp [--root DIR] [--open FILE] [--drawing]\n\n"
            "Serves Horizon CAD's CAD tools over the Model Context Protocol (stdio).\n"
            "  --root DIR    the folder files may be opened, saved and exported in\n"
-           "                (default: the current folder)\n"
+           "                (default: Documents/Horizon CAD MCP in the home folder)\n"
            "  --open FILE   start with FILE (.hzpart, .hcad or .dxf)\n"
            "  --drawing     start with an empty 2D drawing (default: an empty part)\n"
            "  --version     print the version\n"
@@ -69,11 +80,30 @@ int main(int argc, char** argv) {
         }
     }
 
+    // The folder a model may use files in. Not the folder it happens to be
+    // started in (an MCP client may start it in / or the home folder): one
+    // of its own, unless --root names another.
+    namespace fs = std::filesystem;
     std::error_code ec;
-    const std::filesystem::path folder =
-        root.empty() ? std::filesystem::current_path(ec) : std::filesystem::path(root);
-    if (!std::filesystem::is_directory(folder, ec)) {
+    const fs::path home = homeFolder();
+    fs::path folder = root.empty() ? fs::path() : fs::path(root);
+    if (folder.empty()) {
+        if (home.empty()) {
+            std::cerr << "horizon-mcp: no home folder: give the folder to use with --root\n";
+            return 2;
+        }
+        folder = home / "Documents" / "Horizon CAD MCP";
+        fs::create_directories(folder, ec);
+    }
+    if (!fs::is_directory(folder, ec)) {
         std::cerr << "horizon-mcp: " << folder.string() << " is not a folder\n";
+        return 2;
+    }
+    const fs::path resolved = fs::weakly_canonical(fs::absolute(folder, ec), ec);
+    if (resolved == resolved.root_path() || (!home.empty() && fs::equivalent(resolved, home, ec))) {
+        std::cerr << "horizon-mcp: " << resolved.string()
+                  << " is too wide a folder to let a model write in: give a project folder "
+                     "with --root\n";
         return 2;
     }
     hz::mcp::McpSession session(part, folder);

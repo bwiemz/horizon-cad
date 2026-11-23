@@ -60,7 +60,8 @@ private:
     std::optional<std::string> overwriteRefused(const std::string& path,
                                                 const nlohmann::json& in) const;
 
-    std::filesystem::path m_root;
+    std::filesystem::path m_root;         ///< resolved
+    std::filesystem::path m_rootAsGiven;  ///< as given, absolute, before links are followed
 
     std::unique_ptr<doc::Document> m_document;
     std::string m_path;

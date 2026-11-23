@@ -48,3 +48,33 @@ if(NOT EXISTS "${part}")
     message(FATAL_ERROR "save_document wrote nothing at ${part}:\n${out}")
 endif()
 message(STATUS "horizon-mcp answered ${count} requests and saved ${part}")
+
+# With no --root, its own folder in the home folder, made when needed; a
+# filesystem root is refused.
+set(home "${WORK_DIR}/home")
+file(REMOVE_RECURSE "${home}")
+file(MAKE_DIRECTORY "${home}")
+file(WRITE "${WORK_DIR}/save-relative.jsonl"
+"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"add_primitive\",\"arguments\":{\"shape\":\"box\",\"size_x\":1,\"size_y\":1,\"size_z\":1}}}
+{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"save_document\",\"arguments\":{\"path\":\"cube.hzpart\"}}}
+")
+execute_process(COMMAND ${CMAKE_COMMAND} -E env "HOME=${home}" "USERPROFILE=${home}" "${EXE}"
+    INPUT_FILE "${WORK_DIR}/save-relative.jsonl"
+    OUTPUT_VARIABLE out
+    ERROR_VARIABLE err
+    RESULT_VARIABLE status
+    TIMEOUT 120)
+if(NOT status EQUAL 0 OR NOT EXISTS "${home}/Documents/Horizon CAD MCP/cube.hzpart")
+    message(FATAL_ERROR "with no --root, a relative save did not land in its folder:\n${out}\n${err}")
+endif()
+cmake_path(GET WORK_DIR ROOT_PATH filesystem_root)
+execute_process(COMMAND "${EXE}" --root "${filesystem_root}"
+    INPUT_FILE "${WORK_DIR}/save-relative.jsonl"
+    OUTPUT_VARIABLE out
+    ERROR_VARIABLE err
+    RESULT_VARIABLE status
+    TIMEOUT 120)
+if(status EQUAL 0)
+    message(FATAL_ERROR "--root ${filesystem_root} was accepted:\n${out}")
+endif()
+message(STATUS "with no --root it used its own folder; --root ${filesystem_root} was refused")
