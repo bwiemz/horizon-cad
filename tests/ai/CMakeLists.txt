@@ -3,6 +3,7 @@ add_executable(hz_ai_tests
     test_AnthropicAdapter.cpp
     test_CadTools.cpp
     test_GeminiAdapter.cpp
+    test_McpServer.cpp
     test_OpenAIAdapter.cpp
     test_ProfileBuilder.cpp
     test_ToolRegistry.cpp

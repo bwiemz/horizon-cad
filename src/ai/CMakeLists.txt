@@ -10,6 +10,7 @@ add_library(hz_ai STATIC
     src/CadTools.cpp
     src/Conversation.cpp
     src/GeminiAdapter.cpp
+    src/McpServer.cpp
     src/OpenAIAdapter.cpp
     src/ProfileBuilder.cpp
     src/Provider.cpp
