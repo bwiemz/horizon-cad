@@ -104,7 +104,7 @@
         <translation type="unfinished">완료</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+8"/>
         <source>Added %1</source>
         <translation type="unfinished">%1을(를) 추가했습니다</translation>
     </message>
@@ -129,14 +129,14 @@
         <translation type="unfinished">변수를 설정했습니다</translation>
     </message>
     <message numerus="yes">
-        <location line="-48"/>
+        <location line="-46"/>
         <source>list of %n</source>
         <translation type="unfinished">
             <numerusform>항목 %n개</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location line="+45"/>
+        <location line="+43"/>
         <source>Shapes drawn: %n</source>
         <translation type="unfinished">
             <numerusform>도형 %n개를 그렸습니다</numerusform>
@@ -179,7 +179,7 @@
         <translation type="unfinished">문서를 확인했습니다</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+10"/>
         <source>feature %1 fails</source>
         <translation type="unfinished">피처 %1 실패</translation>
     </message>
@@ -189,7 +189,7 @@
         <translation type="unfinished">입력 토큰 %1개, 출력 %2개</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+14"/>
         <source>AI Assistant</source>
         <translation type="unfinished">AI 어시스턴트</translation>
     </message>
@@ -256,13 +256,13 @@
         <translation type="unfinished">어시스턴트에 보낼 요청</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <location line="+141"/>
+        <location line="+2"/>
+        <location line="+154"/>
         <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
         <translation type="unfinished">부품 또는 변경 사항 설명… (Enter: 보내기, Shift+Enter: 줄 바꿈)</translation>
     </message>
     <message>
-        <location line="-135"/>
+        <location line="-148"/>
         <source>Undo This Response</source>
         <translation type="unfinished">이 응답 실행 취소</translation>
     </message>
@@ -282,12 +282,17 @@
         <translation type="unfinished">보내기</translation>
     </message>
     <message>
-        <location line="+67"/>
+        <location line="+57"/>
+        <source>Stopped: the provider or server changed. Send the request again.</source>
+        <translation type="unfinished">중지됨: 제공업체 또는 서버가 변경되었습니다. 요청을 다시 보내세요.</translation>
+    </message>
+    <message>
+        <location line="+22"/>
         <source>Stopped: the document changed.</source>
         <translation type="unfinished">중지됨: 문서가 변경되었습니다.</translation>
     </message>
     <message>
-        <location line="+38"/>
+        <location line="+39"/>
         <source>choose a model in Settings</source>
         <translation type="unfinished">설정에서 모델을 선택하십시오</translation>
     </message>
@@ -316,7 +321,7 @@ Send requests there?</source>
 이 제공업체로 요청을 보내시겠습니까?</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+14"/>
         <source>Open a part or a drawing first.</source>
         <translation type="unfinished">먼저 부품 또는 도면을 여십시오.</translation>
     </message>
@@ -331,7 +336,7 @@ Send requests there?</source>
         <translation type="unfinished">먼저 어시스턴트 설정에서 %1 API 키를 추가하십시오.</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+18"/>
         <source>Working…</source>
         <translation type="unfinished">작업 중…</translation>
     </message>
@@ -356,7 +361,7 @@ Send requests there?</source>
         <translation type="unfinished">API 키를 저장할 수 없습니다: %1</translation>
     </message>
     <message>
-        <location line="+48"/>
+        <location line="+47"/>
         <source>You</source>
         <translation type="unfinished">사용자</translation>
     </message>
@@ -504,7 +509,7 @@ Send requests there?</source>
         <translation type="unfinished">요청당 단계 수:</translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+60"/>
         <source>Set by %1</source>
         <translation type="unfinished">%1에서 설정됨</translation>
     </message>
@@ -524,7 +529,7 @@ Send requests there?</source>
         <translation type="unfinished">이 컴퓨터에만 저장되며 본인만 읽을 수 있습니다.</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>Paste your API key</source>
         <translation type="unfinished">API 키 붙여넣기</translation>
     </message>
@@ -539,7 +544,7 @@ Send requests there?</source>
         <translation type="unfinished">이 컴퓨터의 %1에만 저장되며 본인만 읽을 수 있습니다. 또는 환경 변수 %2을(를) 설정하십시오.</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>Claude models from Anthropic. Get a key at console.anthropic.com.</source>
         <translation type="unfinished">Anthropic의 Claude 모델입니다. console.anthropic.com에서 키를 발급받으십시오.</translation>
     </message>
@@ -559,7 +564,7 @@ Send requests there?</source>
         <translation type="unfinished">이 컴퓨터의 모델 또는 OpenAI 채팅 API를 제공하는 모든 서버입니다. Ollama: http://localhost:11434/v1. LM Studio: http://localhost:1234/v1. llama.cpp: http://localhost:8080/v1. 도구(함수)를 호출할 수 있는 모델을 선택하십시오.</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+42"/>
         <source>Asking the server for its models…</source>
         <translation type="unfinished">서버에 모델 목록을 요청하는 중…</translation>
     </message>
@@ -3157,12 +3162,12 @@ begin building your part.</source>
         <location filename="../src/ui/src/MainWindow.cpp" line="-746"/>
         <location line="+1"/>
         <location line="+31"/>
-        <location line="+1074"/>
+        <location line="+1080"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-1020"/>
+        <location line="-1026"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -4238,6 +4243,11 @@ begin building your part.</source>
         <translation type="unfinished">어시스턴트는 어셈블리가 아니라 부품과 도면에서 작동합니다</translation>
     </message>
     <message>
+        <location line="+6"/>
+        <source>The assistant works on parts and drawings, not drawing sheets</source>
+        <translation type="unfinished">어시스턴트는 도면 시트가 아니라 부품과 도면에서 작동합니다</translation>
+    </message>
+    <message>
         <location line="+2187"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
@@ -4282,7 +4292,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
     </message>
     <message>
-        <location line="-2522"/>
+        <location line="-2528"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -4507,7 +4517,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+997"/>
+        <location line="+1003"/>
         <location line="+478"/>
         <location line="+908"/>
         <location line="+593"/>
@@ -4516,7 +4526,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-3059"/>
+        <location line="-3065"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -4537,17 +4547,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2707"/>
+        <location line="+2713"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-2701"/>
+        <location line="-2707"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
     <message>
-        <location line="+319"/>
+        <location line="+325"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (복구됨)</translation>
     </message>
@@ -5648,7 +5658,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-3075"/>
+        <location line="-3081"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>

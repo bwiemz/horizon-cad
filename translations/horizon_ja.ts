@@ -104,7 +104,7 @@
         <translation type="unfinished">完了</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+8"/>
         <source>Added %1</source>
         <translation type="unfinished">%1 を追加しました</translation>
     </message>
@@ -129,14 +129,14 @@
         <translation type="unfinished">変数を設定しました</translation>
     </message>
     <message numerus="yes">
-        <location line="-48"/>
+        <location line="-46"/>
         <source>list of %n</source>
         <translation type="unfinished">
             <numerusform>%n 個の項目</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location line="+45"/>
+        <location line="+43"/>
         <source>Shapes drawn: %n</source>
         <translation type="unfinished">
             <numerusform>図形を %n 個描画しました</numerusform>
@@ -179,7 +179,7 @@
         <translation type="unfinished">ドキュメントを調べました</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+10"/>
         <source>feature %1 fails</source>
         <translation type="unfinished">フィーチャー %1 が失敗しています</translation>
     </message>
@@ -189,7 +189,7 @@
         <translation type="unfinished">入力 %1 トークン、出力 %2 トークン</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+14"/>
         <source>AI Assistant</source>
         <translation type="unfinished">AI アシスタント</translation>
     </message>
@@ -256,13 +256,13 @@
         <translation type="unfinished">アシスタントへのリクエスト</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <location line="+141"/>
+        <location line="+2"/>
+        <location line="+154"/>
         <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
         <translation type="unfinished">部品や変更内容を説明… (Enter で送信、Shift+Enter で改行)</translation>
     </message>
     <message>
-        <location line="-135"/>
+        <location line="-148"/>
         <source>Undo This Response</source>
         <translation type="unfinished">この応答を元に戻す</translation>
     </message>
@@ -282,12 +282,17 @@
         <translation type="unfinished">送信</translation>
     </message>
     <message>
-        <location line="+67"/>
+        <location line="+57"/>
+        <source>Stopped: the provider or server changed. Send the request again.</source>
+        <translation type="unfinished">停止しました: プロバイダーまたはサーバーが変更されました。リクエストをもう一度送信してください。</translation>
+    </message>
+    <message>
+        <location line="+22"/>
         <source>Stopped: the document changed.</source>
         <translation type="unfinished">停止しました: ドキュメントが変更されました。</translation>
     </message>
     <message>
-        <location line="+38"/>
+        <location line="+39"/>
         <source>choose a model in Settings</source>
         <translation type="unfinished">設定でモデルを選択してください</translation>
     </message>
@@ -316,7 +321,7 @@ Send requests there?</source>
 リクエストを送信しますか？</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+14"/>
         <source>Open a part or a drawing first.</source>
         <translation type="unfinished">先に部品または図面を開いてください。</translation>
     </message>
@@ -331,7 +336,7 @@ Send requests there?</source>
         <translation type="unfinished">先にアシスタントの設定で %1 の API キーを追加してください。</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+18"/>
         <source>Working…</source>
         <translation type="unfinished">処理中…</translation>
     </message>
@@ -356,7 +361,7 @@ Send requests there?</source>
         <translation type="unfinished">API キーを保存できませんでした: %1</translation>
     </message>
     <message>
-        <location line="+48"/>
+        <location line="+47"/>
         <source>You</source>
         <translation type="unfinished">あなた</translation>
     </message>
@@ -504,7 +509,7 @@ Send requests there?</source>
         <translation type="unfinished">リクエストあたりのステップ数:</translation>
     </message>
     <message>
-        <location line="+56"/>
+        <location line="+60"/>
         <source>Set by %1</source>
         <translation type="unfinished">%1 で設定済み</translation>
     </message>
@@ -524,7 +529,7 @@ Send requests there?</source>
         <translation type="unfinished">このコンピューターにのみ保存され、あなただけが読み取れます。</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+3"/>
         <source>Paste your API key</source>
         <translation type="unfinished">API キーを貼り付けてください</translation>
     </message>
@@ -539,7 +544,7 @@ Send requests there?</source>
         <translation type="unfinished">このコンピューターの %1 にのみ保存され、あなただけが読み取れます。または、環境変数 %2 を設定してください。</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>Claude models from Anthropic. Get a key at console.anthropic.com.</source>
         <translation type="unfinished">Anthropic の Claude モデル。キーは console.anthropic.com で取得できます。</translation>
     </message>
@@ -559,7 +564,7 @@ Send requests there?</source>
         <translation type="unfinished">このコンピューター上のモデル、または OpenAI のチャット API に対応した任意のサーバー。Ollama: http://localhost:11434/v1、LM Studio: http://localhost:1234/v1、llama.cpp: http://localhost:8080/v1。ツール (関数) を呼び出せるモデルを選択してください。</translation>
     </message>
     <message>
-        <location line="+34"/>
+        <location line="+42"/>
         <source>Asking the server for its models…</source>
         <translation type="unfinished">サーバーにモデルを問い合わせています…</translation>
     </message>
@@ -3157,12 +3162,12 @@ begin building your part.</source>
         <location filename="../src/ui/src/MainWindow.cpp" line="-746"/>
         <location line="+1"/>
         <location line="+31"/>
-        <location line="+1074"/>
+        <location line="+1080"/>
         <source>Drawing 1</source>
         <translation type="unfinished">図面 1</translation>
     </message>
     <message>
-        <location line="-1020"/>
+        <location line="-1026"/>
         <source>Command Palette…</source>
         <translation type="unfinished">コマンド パレット…</translation>
     </message>
@@ -4238,6 +4243,11 @@ begin building your part.</source>
         <translation type="unfinished">アシスタントは部品と図面で使用でき、アセンブリでは使用できません</translation>
     </message>
     <message>
+        <location line="+6"/>
+        <source>The assistant works on parts and drawings, not drawing sheets</source>
+        <translation type="unfinished">アシスタントは部品と図面で使用でき、図面シートでは使用できません</translation>
+    </message>
+    <message>
         <location line="+2187"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
@@ -4282,7 +4292,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 誤差は推定されていません: 細分化せず一度だけ測定しました。</translation>
     </message>
     <message>
-        <location line="-2522"/>
+        <location line="-2528"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -4507,7 +4517,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+997"/>
+        <location line="+1003"/>
         <location line="+478"/>
         <location line="+908"/>
         <location line="+593"/>
@@ -4516,7 +4526,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-3059"/>
+        <location line="-3065"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -4537,17 +4547,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2707"/>
+        <location line="+2713"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-2701"/>
+        <location line="-2707"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
     <message>
-        <location line="+319"/>
+        <location line="+325"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (復元)</translation>
     </message>
@@ -5648,7 +5658,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-3075"/>
+        <location line="-3081"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>
