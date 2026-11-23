@@ -1323,7 +1323,13 @@ int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
     m_tabs.push_back(std::move(tab));
     int index = m_tabBar->addTab(title);
     nameCloseButton(*m_tabBar, index);
-    if (!behind) m_tabBar->setCurrentIndex(index);  // triggers onTabChanged
+    if (behind) {
+        // Not shown, so not refreshed as the active tab is: its title says
+        // it is unsaved all the same.
+        refreshModifiedIndicators();
+    } else {
+        m_tabBar->setCurrentIndex(index);  // triggers onTabChanged
+    }
     return index;
 }
 

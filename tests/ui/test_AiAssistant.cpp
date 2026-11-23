@@ -324,9 +324,11 @@ TEST(AiAssistantTest, MakesADrawingOfThePartBehindItsTab) {
     ASSERT_NE(tabs, nullptr);
     int sheetTab = -1;
     for (int i = 0; i < tabs->count(); ++i) {
-        if (tabs->tabText(i) == QStringLiteral("Drawing of plate")) sheetTab = i;
+        if (tabs->tabText(i).startsWith(QStringLiteral("Drawing of plate"))) sheetTab = i;
     }
     ASSERT_GE(sheetTab, 0);
+    // Behind, its tab still says it is not saved.
+    EXPECT_EQ(tabs->tabText(sheetTab), QStringLiteral("Drawing of plate *"));
     tabs->setCurrentIndex(sheetTab);
     hz::doc::Document* sheet = window.activeDocument();
     ASSERT_NE(sheet, part);
