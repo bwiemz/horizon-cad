@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/ai/ToolRegistry.h"
@@ -81,6 +82,60 @@ struct AssemblyToolHooks {
     /// tool.
     MakeDrawing makeDrawing;
 };
+
+/// A change to a drawing sheet, named rather than clicked: what the sheet
+/// tools ask the host for. Each is the Drawing menu command's change, one
+/// undo step.
+struct SheetChange {
+    enum class Kind {
+        TitleBlock,    ///< fields, paper, orientation
+        Scale,         ///< scale
+        MoveView,      ///< view, by (or to)
+        RemoveView,    ///< view
+        ViewSwitches,  ///< view, hidden, tangent, centreLines
+        AddDimension,  ///< view, edge
+        RemoveDimension,
+    };
+    Kind kind = Kind::TitleBlock;
+    /// The title block fields given, by the tools' names (title,
+    /// part_number, revision, drawn_by, date, material, company,
+    /// sheet_number); the others stay as they are.
+    std::vector<std::pair<std::string, std::string>> fields;
+    std::string paper;        ///< as make_drawing names it ("a3"); "" keeps it
+    std::string orientation;  ///< "landscape", "portrait"; "" keeps it
+    double scale = 0.0;       ///< sheet mm per model mm; 0: the largest that fits
+    int view = -1;            ///< as get_sheet_info numbers them
+    double x = 0.0;           ///< MoveView: by (sheet mm), or to (its lower-left corner)
+    double y = 0.0;
+    bool to = false;
+    int hidden = -1;  ///< ViewSwitches: 1 shown, 0 left out, -1 as it is
+    int tangent = -1;
+    int centreLines = -1;
+    std::string edge;  ///< as list_view_edges names it
+};
+
+/// What came of a SheetChange.
+struct SheetChanged {
+    std::string error;  ///< why it was not made; empty when it was
+    std::string note;   ///< what the model should know of it ("a view had no room")
+    bool step = false;  ///< it added an undo step (none for a change that changed nothing)
+};
+
+/// The host's side of the sheet tools, for the sheet one tab shows.
+struct SheetToolHooks {
+    /// The sheet as the model reads it: paper, scale, title block, views.
+    std::function<nlohmann::json()> info;
+    /// The model edges view @p view shows, named for dimensions; null, with
+    /// why in @p error, when there is no such view.
+    std::function<nlohmann::json(int view, std::string* error)> edges;
+    std::function<SheetChanged(const SheetChange&)> change;
+};
+
+/// Add the drawing sheet tools to @p registry: what the sheet shows, its
+/// title block, paper and scale, its views (moved, removed, what they show)
+/// and their dimensions. Every change is one undo step, as the Drawing
+/// menu's are. Nothing is added unless all three hooks are set.
+void registerSheetTools(ToolRegistry& registry, SheetToolHooks hooks);
 
 /// Add the assembly tools, acting on @p assembly, to @p registry: what it
 /// holds, inserting, placing, mating and patterning its components, the

@@ -19,6 +19,15 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **The AI assistant changes drawing sheets.** On a sheet's tab, where it
+  was switched off, it now has the sheet's tools: what the sheet shows
+  (`get_sheet_info`), the edges a view shows by name (`list_view_edges`),
+  and the Drawing menu's changes (title block and paper, scale, moving and
+  removing views, what a view shows, adding and removing dimensions). Each
+  is made by the same code as the menu's command, now taking values rather
+  than a form or clicks, so each is one undo step, and a response is taken
+  back whole. A change to nothing takes no step and is said to.
+
 - **Changes to a drawing sheet can be undone.** A sheet's title block,
   paper, scale, views (added, moved, removed, their settings) and
   dimensions were changed outside the undo stack: Undo did nothing, and the

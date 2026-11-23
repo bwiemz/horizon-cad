@@ -96,6 +96,7 @@ add_library(hz_ui STATIC
     src/AiAssistantPanel.cpp
     src/AiSettings.cpp
     src/AiSettingsDialog.cpp
+    src/AiSheetTools.cpp
     src/QtHttpTransport.cpp
     src/Application.cpp
     src/CrashReport.cpp

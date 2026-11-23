@@ -134,6 +134,14 @@ json rebuildAndReport(const CadContext& context);
 /// One drawing entity as a model reads it: id, layer, type, geometry.
 json describeEntity(const draft::DraftEntity& entity);
 
+/// A drawing scale as a model gives it ("1:2", "2:1", "1", or a number):
+/// sheet millimetres per model millimetre; 0 when @p key is absent. An
+/// ArgError for anything else.
+double drawingScale(const json& in, const char* key);
+/// A title block field, @p key: text no longer than a block holds ("" when
+/// absent).
+std::string titleBlockField(const json& in, const char* key);
+
 /// What make_drawing draws: the part or the assembly, as its tab has it.
 struct DrawingSource {
     std::string what;      ///< "part" or "assembly"
