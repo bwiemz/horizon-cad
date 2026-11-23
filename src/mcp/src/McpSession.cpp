@@ -67,6 +67,13 @@ json summary(const doc::Document& document, const std::string& path) {
                 {"drawing_entities", document.draftDocument().entities().size()},
                 {"modified", document.isDirty()}};
     out["path"] = path.empty() ? json(nullptr) : json(path);
+    if (document.readInPart()) {
+        // Saved over its file, these would be lost.
+        out["left_out"] = document.leftOut();
+        out["read_in_part"] =
+            "the file holds things this version could not read: save to a new file, or saving "
+            "over it loses them";
+    }
     if (document.failedFeatureIndex() >= 0) {
         out["build_error"] = {{"feature_index", document.failedFeatureIndex()},
                               {"message", document.lastBuildMessage()}};
@@ -243,6 +250,8 @@ void McpSession::registerDocumentTools() {
         ai::ToolAccess::External, [this](const json& in) {
             // Its own file, which the user chose: kept to wherever it is.
             std::string path = m_path;
+            const bool asked = in.contains("overwrite") && in["overwrite"].is_boolean() &&
+                               in["overwrite"].get<bool>();
             if (in.contains("path") && in["path"].is_string()) {
                 std::string why;
                 const auto resolved = resolve(in["path"].get<std::string>(), &why);
@@ -254,6 +263,19 @@ void McpSession::registerDocumentTools() {
             }
             if (path.empty()) {
                 return ai::ToolResult::error("The document has no file yet: give a path.");
+            }
+            // A file read in part keeps what was left out of it; saving over
+            // it would lose that, so it is not done unasked (as the window
+            // asks before it replaces such a file).
+            std::error_code same;
+            if (m_document->readInPart() && !m_path.empty() && !asked &&
+                (path == m_path || fs::equivalent(path, m_path, same))) {
+                return ai::ToolResult::error(
+                    "This document was read from " + m_path +
+                    " in part: saving over it would lose what this version could not read (" +
+                    std::to_string(m_document->leftOut().size()) +
+                    " items; see get_session_info). Save to a new path, or pass overwrite true "
+                    "after asking the user.");
             }
             const std::string extension = extensionOf(path);
             if (extension != ".hzpart" && extension != ".hcad") {
@@ -273,6 +295,7 @@ void McpSession::registerDocumentTools() {
             }
             m_document->setFilePath(path);
             m_document->undoStack().setClean();
+            m_document->setLeftOut({});  // the file now holds all it has
             m_path = path;
             return ai::ToolResult::ok(json{{"saved", path}});
         });

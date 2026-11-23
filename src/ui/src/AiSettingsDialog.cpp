@@ -111,10 +111,7 @@ AiSettingsDialog::AiSettingsDialog(const AiSettings& settings, QWidget* parent)
     layout->addWidget(m_status);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    connect(buttons, &QDialogButtonBox::accepted, this, [this] {
-        takeEdits();
-        accept();
-    });
+    connect(buttons, &QDialogButtonBox::accepted, this, &AiSettingsDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
 
@@ -127,6 +124,12 @@ AiSettingsDialog::AiSettingsDialog(const AiSettings& settings, QWidget* parent)
         showProvider(shownProvider());
     });
     connect(m_fetchButton, &QPushButton::clicked, this, &AiSettingsDialog::fetchModels);
+}
+
+void AiSettingsDialog::accept() {
+    // However it is accepted (OK, Enter), what the fields show is taken.
+    takeEdits();
+    QDialog::accept();
 }
 
 AiSettingsDialog::~AiSettingsDialog() {
@@ -200,8 +203,15 @@ void AiSettingsDialog::takeEdits() {
     config.maxTokens = m_maxTokens->value();
     config.effort = m_effort->currentData().toString().toStdString();
     config.serverFallback = m_fallback->isChecked();
-    if (m_key->isEnabled() && !m_key->text().isEmpty()) {
-        m_keys[m_shown] = m_key->text().trimmed().toStdString();
+    if (m_key->isEnabled()) {
+        // A key typed is saved; one typed and erased again is not (an
+        // untouched field leaves the saved key as it is).
+        const QString typed = m_key->text().trimmed();
+        if (typed.isEmpty()) {
+            m_keys.erase(m_shown);
+        } else {
+            m_keys[m_shown] = typed.toStdString();
+        }
     }
     m_settings.maxSteps = m_maxSteps->value();
     m_settings.provider = shownProvider();

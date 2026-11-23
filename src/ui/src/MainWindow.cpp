@@ -1261,6 +1261,12 @@ void MainWindow::activateTabDocument() {
         if (m_assembly) {
             m_aiPanel->setDocument(nullptr, tab->title,
                                    tr("The assistant works on parts and drawings, not assemblies"));
+        } else if (m_drawings && m_drawings->isSheet(m_document.get())) {
+            // A sheet keeps its views and annotations, not features: what
+            // the assistant would add to it would not be saved.
+            m_aiPanel->setDocument(
+                nullptr, tab->title,
+                tr("The assistant works on parts and drawings, not drawing sheets"));
         } else {
             m_aiPanel->setDocument(m_document, tab->title);
         }

@@ -204,3 +204,27 @@ TEST_F(McpSessionTest, AFailedSaveLeavesTheTypeAsItWas) {
     fails(session, "save_document", {{"path", "no-such-folder/part.hcad"}});
     EXPECT_EQ(session.document().type(), hz::doc::DocumentType::Part);
 }
+
+TEST_F(McpSessionTest, AFileReadInPartIsNotSavedOverUnasked) {
+    const fs::path file = dir / "future.hcad";
+    {
+        std::ofstream out(file);
+        out << R"({"version": 16, "type": "hcad",
+            "entities": [
+                {"type": "line", "id": 1, "start": {"x": 0, "y": 0}, "end": {"x": 1, "y": 0}},
+                {"type": "hologram", "id": 3}
+            ]})";
+    }
+    McpSession session(false, dir);
+    const json opened = ok(session, "open_document", {{"path", "future.hcad"}});
+    ASSERT_TRUE(opened.contains("left_out")) << opened.dump();
+    session.applyPending();
+    EXPECT_EQ(ok(session, "get_session_info")["left_out"].size(), 1u);
+    EXPECT_NE(fails(session, "save_document", json::object()).find("in part"), std::string::npos);
+    std::ifstream before(file);
+    const std::string kept((std::istreambuf_iterator<char>(before)),
+                           std::istreambuf_iterator<char>());
+    EXPECT_NE(kept.find("hologram"), std::string::npos);  // untouched
+    ok(session, "save_document", {{"path", "copy.hcad"}});
+    EXPECT_FALSE(ok(session, "get_session_info").contains("left_out"));
+}

@@ -30,6 +30,9 @@ public:
     explicit AiSettingsDialog(const AiSettings& settings, QWidget* parent = nullptr);
     ~AiSettingsDialog() override;
 
+    /// Take what the fields show, then close.
+    void accept() override;
+
     /// The settings as edited (no keys).
     AiSettings settings() const;
     /// The keys typed, by provider ("" to forget one); providers left alone
