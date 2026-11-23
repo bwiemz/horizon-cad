@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <iterator>
+#include <set>
+#include <string>
 #include <system_error>
 
 #include "horizon/modeling/SolidTessellator.h"
@@ -192,6 +195,30 @@ void DocumentManager::noteSaved(const std::shared_ptr<AssemblyDocument>& doc) {
     const std::string key = canonicalPath(doc->filePath());
     m_assembliesByPath[key] = doc;
     watchFile(key);
+}
+
+bool DocumentManager::placesOnly(const std::string& path,
+                                 const std::function<bool(const std::string&)>& allowed) const {
+    if (!m_assemblyLoader) return false;
+    std::set<std::string> seen;
+    std::function<bool(const std::string&, int)> walk = [&](const std::string& file, int depth) {
+        if (depth > kMaxPlacesDepth) return false;
+        // Each assembly checked once: one placed twice, or inside itself
+        // (refused when it is resolved), is not walked again.
+        if (!seen.insert(canonicalPath(file)).second) return true;
+        AssemblyDocument read;
+        if (!m_assemblyLoader(file, read)) return false;
+        const std::filesystem::path dir = std::filesystem::path(file).parent_path();
+        for (const auto& comp : read.components()) {
+            std::filesystem::path placed(comp.partPath);
+            if (placed.is_relative()) placed = dir / placed;
+            const std::string full = placed.lexically_normal().string();
+            if (!allowed(full)) return false;
+            if (comp.isAssembly() && !walk(full, depth + 1)) return false;
+        }
+        return true;
+    };
+    return allowed(path) && walk(path, 0);
 }
 
 bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentState mode,

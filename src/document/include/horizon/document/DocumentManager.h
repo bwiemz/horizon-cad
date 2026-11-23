@@ -137,6 +137,17 @@ public:
                           const std::string& assemblyDir = {}, std::string* why = nullptr,
                           const std::vector<std::string>& within = {});
 
+    /// Whether every file the assembly at @p path places, at any depth,
+    /// passes @p allowed (given each one's path, absolute), read from the
+    /// assembly files alone: no part is read, and no assembly @p allowed
+    /// refuses. False too, failing closed, when one of the assemblies cannot
+    /// be read (or no assembly loader is set) or they nest deeper than
+    /// kMaxPlacesDepth. For a caller that may read only some files: the AI
+    /// assistant, kept to an assembly's folder.
+    bool placesOnly(const std::string& path,
+                    const std::function<bool(const std::string&)>& allowed) const;
+    static constexpr int kMaxPlacesDepth = 32;
+
     /// Whether @p a and @p b name the same file (canonically).
     static bool samePath(const std::string& a, const std::string& b);
 

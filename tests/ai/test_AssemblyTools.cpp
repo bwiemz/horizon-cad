@@ -231,6 +231,16 @@ TEST_F(AssemblyToolsTest, InsertKeepsToTheAssemblysFolder) {
     EXPECT_EQ(steps(), 0u);
     insert("near.hzasm");
     backing.undoStack().undo();
+    {
+        // A subassembly in the folder placing one that reaches out.
+        doc::AssemblyDocument wraps;
+        doc::ComponentInstance inner;
+        inner.partPath = (dir / "sub.hzasm").string();
+        wraps.addComponent(inner);
+        ASSERT_TRUE(io::NativeFormat::saveAssembly((dir / "wraps.hzasm").string(), wraps));
+    }
+    EXPECT_NE(fails("insert_component", {{"file", "wraps.hzasm"}}).find("outside"),
+              std::string::npos);
 
     // Unsaved, it has no folder: nothing is read, and saving is the way.
     assembly.setFilePath({});

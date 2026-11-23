@@ -68,11 +68,11 @@ std::string lower(std::string text) {
     return text;
 }
 
-/// The folder a relative part path is taken from: the assembly's file's;
-/// none while it is unsaved.
-std::string folderOf(const doc::AssemblyDocument& assembly) {
-    return assembly.filePath().empty() ? std::string()
-                                       : fs::path(assembly.filePath()).parent_path().string();
+/// The folder parts are taken from: the assembly's file's; while it is
+/// unsaved, the host's (horizon-mcp's root), or none.
+std::string folderOf(const AssemblyContext& c) {
+    return c.assembly.filePath().empty() ? c.hooks.unsavedFolder
+                                         : fs::path(c.assembly.filePath()).parent_path().string();
 }
 
 // --- Placements -------------------------------------------------------------
@@ -342,7 +342,7 @@ json geometryJson(const Geometry& g) {
 /// The part of @p comp read whole, so its faces and datums are there.
 void resolve(const AssemblyContext& c, doc::ComponentInstance& comp) {
     if (comp.solid() == nullptr || !comp.resolvedPart) {
-        c.documents.resolveComponent(comp, doc::ComponentState::Resolved, folderOf(c.assembly));
+        c.documents.resolveComponent(comp, doc::ComponentState::Resolved, folderOf(c));
     }
 }
 
@@ -563,7 +563,7 @@ ToolResult getAssemblyInfo(const AssemblyContext& c, const json& /*in*/) {
         }
         out["exploded_views"] = views;
     }
-    const std::string folder = folderOf(a);
+    const std::string folder = folderOf(c);
     if (folder.empty()) {
         out["folder"] = nullptr;
         out["note"] =
@@ -666,24 +666,9 @@ bool inFolder(const std::string& folder, const fs::path& path) {
            inside != fs::path(".");
 }
 
-/// Whether every file @p comp places, at any depth, is in @p folder: a
-/// subassembly in the folder may place parts from anywhere. @p dir is the
-/// folder of the assembly @p comp is in.
-bool allInFolder(const std::string& folder, const doc::ComponentInstance& comp,
-                 const std::string& dir) {
-    fs::path file(comp.partPath);
-    if (file.is_relative() && !dir.empty()) file = fs::path(dir) / file;
-    if (!inFolder(folder, file)) return false;
-    if (!comp.resolvedAssembly) return true;
-    const std::string subDir = file.parent_path().string();
-    const auto& children = comp.resolvedAssembly->components();
-    return std::all_of(children.begin(), children.end(),
-                       [&](const auto& child) { return allInFolder(folder, child, subDir); });
-}
-
 /// Whether the assembly places the file at @p path already.
 bool placedAlready(const AssemblyContext& c, const fs::path& path) {
-    const std::string folder = folderOf(c.assembly);
+    const std::string folder = folderOf(c);
     for (const auto& comp : c.assembly.components()) {
         fs::path file(comp.partPath);
         if (file.is_relative() && !folder.empty()) file = fs::path(folder) / file;
@@ -695,7 +680,7 @@ bool placedAlready(const AssemblyContext& c, const fs::path& path) {
 ToolResult insertComponent(const AssemblyContext& c, const json& in) {
     const std::string given = text(in, "file");
     if (given.empty()) throw ArgError("\"file\" must name a part (.hzpart) or assembly (.hzasm)");
-    const std::string folder = folderOf(c.assembly);
+    const std::string folder = folderOf(c);
     fs::path path(given);
     if (!path.is_absolute() && !folder.empty()) path = fs::path(folder) / path;
     path = path.lexically_normal();
@@ -727,6 +712,18 @@ ToolResult insertComponent(const AssemblyContext& c, const json& in) {
                        (near.empty() ? std::string() : "; the folder has: " + near));
     }
 
+    // A subassembly brings its own parts: they are kept to the folder too,
+    // checked from its file (and those of the subassemblies in it) before
+    // any of them is read; one from elsewhere is said without saying where.
+    if (ext == ".hzasm" &&
+        !c.documents.placesOnly(
+            path.string(), [&folder](const std::string& file) { return inFolder(folder, file); })) {
+        return ToolResult::error(path.stem().string() +
+                                 " is not inserted: it places parts from outside the assembly's "
+                                 "folder, or a subassembly in it cannot be read; the user can "
+                                 "insert it with Assembly > Insert Component");
+    }
+
     doc::ComponentInstance comp;
     comp.partPath = path.string();
     comp.name = has(in, "name") ? text(in, "name") : path.stem().string();
@@ -740,13 +737,6 @@ ToolResult insertComponent(const AssemblyContext& c, const json& in) {
                                       within)) {
         return ToolResult::error(comp.name + " is not inserted: " +
                                  (why.empty() ? "no geometry could be made from it" : why));
-    }
-    // A subassembly brings its own parts: they are kept to the folder too,
-    // and one from elsewhere is said without saying where.
-    if (comp.isAssembly() && !allInFolder(folder, comp, folder)) {
-        return ToolResult::error(comp.name +
-                                 " is not inserted: it places parts from outside the assembly's "
-                                 "folder; the user can insert it with Assembly > Insert Component");
     }
 
     if (has(in, "position") || has(in, "rotation")) {

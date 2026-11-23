@@ -37,6 +37,10 @@ struct AssemblyToolHooks {
     /// A change is about to be made: a component being dragged in the view
     /// is put back first, or the drag's release would record over it.
     std::function<void()> beforeChange;
+    /// The folder an unsaved assembly takes its parts from (horizon-mcp: its
+    /// root). Empty: none, so it must be saved beside them first. A saved
+    /// one takes them from its own folder.
+    std::string unsavedFolder;
 };
 
 /// Add the assembly tools, acting on @p assembly, to @p registry: what it
