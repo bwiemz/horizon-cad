@@ -19,6 +19,13 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **The translation check finishes again.** CI's check that every
+  translation catalog has every string ran lupdate over the sources, and
+  lupdate 6.4 never finishes reading a `translate()` whose count is a call
+  given a string, as four in the AI Assistant panel's summaries were: the
+  check ran out of its 15 minutes on every Release build. Each count is
+  read into a variable first, and the check takes a second.
+
 - **The AI Assistant panel.** Home ▸ AI Assistant (Ctrl+Shift+A) opens a
   chat beside Properties and Layers that builds and changes the active part or
   drawing. Settings choose the provider (Anthropic, OpenAI, Gemini, or a local
