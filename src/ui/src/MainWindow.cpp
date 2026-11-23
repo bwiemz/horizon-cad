@@ -109,6 +109,7 @@
 #include "horizon/ui/LineTool.h"
 #include "horizon/ui/LinearDimensionTool.h"
 #include "horizon/ui/LocaleManager.h"
+#include "horizon/ui/MatchPropertiesTool.h"
 #include "horizon/ui/MeasureAngleTool.h"
 #include "horizon/ui/MeasureAreaTool.h"
 #include "horizon/ui/MeasureDistanceTool.h"
@@ -119,6 +120,7 @@
 #include "horizon/ui/PartCommands.h"
 #include "horizon/ui/PasteTool.h"
 #include "horizon/ui/PdfExport.h"
+#include "horizon/ui/PolygonTool.h"
 #include "horizon/ui/PolylineEditTool.h"
 #include "horizon/ui/PolylineTool.h"
 #include "horizon/ui/PreferencesDialog.h"
@@ -481,6 +483,11 @@ void MainWindow::createMenus() {
 
     editMenu->addSeparator();
 
+    QAction* selectAllAction =
+        editMenu->addAction(tr("Select &All"), m_drafting.get(), &DraftingCommands::onSelectAll);
+    selectAllAction->setShortcut(QKeySequence::SelectAll);
+    selectAllAction->setObjectName(QStringLiteral("action_select_all"));
+
     QAction* duplicateAction =
         editMenu->addAction(tr("&Duplicate"), m_drafting.get(), &DraftingCommands::onDuplicate);
     duplicateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
@@ -508,6 +515,14 @@ void MainWindow::createMenus() {
     QAction* ungroupAction =
         editMenu->addAction(tr("U&ngroup"), m_drafting.get(), &DraftingCommands::onUngroupEntities);
     ungroupAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
+
+    editMenu->addSeparator();
+    editMenu->addAction(tr("P&urge Unused"), m_drafting.get(), &DraftingCommands::onPurge)
+        ->setObjectName(QStringLiteral("action_purge"));
+    editMenu
+        ->addAction(tr("D&elete Duplicates"), m_drafting.get(),
+                    &DraftingCommands::onDeleteDuplicates)
+        ->setObjectName(QStringLiteral("action_delete_duplicates"));
 
     editMenu->addSeparator();
     editMenu->addAction(tr("Document &Units..."), this, &MainWindow::onDocumentUnits)
@@ -546,6 +561,25 @@ void MainWindow::createMenus() {
     // The ribbon's Fit All, with its shortcut, takes this place
     // (completeMenusFromRibbon): one action, not two.
     m_viewFitAllPlaceholder = viewMenu->addSeparator();
+    // Zooms by command, as well as by the wheel: to what is selected, and in
+    // and out a step at a time about the middle of the view.
+    auto* zoomSelection =
+        viewMenu->addAction(tr("Zoom to &Selection"), this, &MainWindow::onZoomToSelection);
+    zoomSelection->setObjectName(QStringLiteral("action_zoom_selection"));
+    zoomSelection->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F));
+    auto* zoomIn = viewMenu->addAction(tr("Zoom &In"), this, [this] {
+        m_viewport->camera().zoom(1.0 / 1.25);
+        m_viewport->update();
+    });
+    zoomIn->setObjectName(QStringLiteral("action_zoom_in"));
+    zoomIn->setShortcut(QKeySequence::ZoomIn);
+    auto* zoomOut = viewMenu->addAction(tr("Zoom O&ut"), this, [this] {
+        m_viewport->camera().zoom(1.25);
+        m_viewport->update();
+    });
+    zoomOut->setObjectName(QStringLiteral("action_zoom_out"));
+    zoomOut->setShortcut(QKeySequence::ZoomOut);
+    viewMenu->addSeparator();
     auto* ortho = viewMenu->addAction(tr("&Orthographic"));
     ortho->setObjectName(QStringLiteral("action_view_ortho"));
     ortho->setCheckable(true);
@@ -702,6 +736,7 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Circle"), this, &MainWindow::onCircleTool);
     toolsMenu->addAction(tr("&Arc"), this, &MainWindow::onArcTool);
     toolsMenu->addAction(tr("&Rectangle"), this, &MainWindow::onRectangleTool);
+    toolsMenu->addAction(tr("Pol&ygon"), this, &MainWindow::onPolygonTool);
     toolsMenu->addAction(tr("&Polyline"), this, &MainWindow::onPolylineTool);
     toolsMenu->addAction(tr("&Text"), this, &MainWindow::onTextTool);
     toolsMenu->addAction(tr("&Spline"), this, &MainWindow::onSplineTool);
@@ -722,6 +757,7 @@ void MainWindow::createMenus() {
     toolsMenu->addAction(tr("&Extend"), this, &MainWindow::onExtendTool);
     toolsMenu->addAction(tr("&Stretch"), this, &MainWindow::onStretchTool);
     toolsMenu->addAction(tr("Polyline Ed&it"), this, &MainWindow::onPolylineEditTool);
+    toolsMenu->addAction(tr("Matc&h Properties"), this, &MainWindow::onMatchPropertiesTool);
     toolsMenu->addSeparator();
     toolsMenu->addAction(tr("Rectangular &Array"), m_drafting.get(),
                          &DraftingCommands::onRectangularArray);
@@ -908,6 +944,8 @@ void MainWindow::createRibbonBar() {
     addToolAction(g, "line", tr("Line"), &MainWindow::onLineTool, QKeySequence(Qt::Key_L));
     addToolAction(g, "rectangle", tr("Rectangle"), &MainWindow::onRectangleTool,
                   QKeySequence(Qt::Key_R));
+    addToolAction(g, "polygon", tr("Polygon"), &MainWindow::onPolygonTool,
+                  QKeySequence(Qt::SHIFT | Qt::Key_P));
     addToolAction(g, "circle", tr("Circle"), &MainWindow::onCircleTool, QKeySequence(Qt::Key_C));
     addToolAction(g, "arc", tr("Arc"), &MainWindow::onArcTool, QKeySequence(Qt::Key_A));
 
@@ -941,6 +979,8 @@ void MainWindow::createRibbonBar() {
     addToolAction(g, "break", tr("Break"), &MainWindow::onBreakTool, QKeySequence(Qt::Key_B));
     addToolAction(g, "stretch", tr("Stretch"), &MainWindow::onStretchTool, QKeySequence(Qt::Key_W));
     addToolAction(g, "polyline-edit", tr("PL Edit"), &MainWindow::onPolylineEditTool);
+    addToolAction(g, "match-properties", tr("Match Properties"),
+                  &MainWindow::onMatchPropertiesTool);
 
     g = group(tr("Modify"), tr("Array"));
     addAction(g, "rect-array", tr("Rect Array"), m_drafting.get(),
@@ -1187,6 +1227,8 @@ void MainWindow::registerTools() {
     m_toolManager->registerTool(std::make_unique<SplineTool>());
     m_toolManager->registerTool(std::make_unique<HatchTool>());
     m_toolManager->registerTool(std::make_unique<EllipseTool>());
+    m_toolManager->registerTool(std::make_unique<PolygonTool>());
+    m_toolManager->registerTool(std::make_unique<MatchPropertiesTool>());
     m_toolManager->registerTool(std::make_unique<MeasureDistanceTool>());
     m_toolManager->registerTool(std::make_unique<MeasureAngleTool>());
     m_toolManager->registerTool(std::make_unique<MeasureAreaTool>());
@@ -2352,8 +2394,9 @@ bool MainWindow::saveActiveDocument() {
     std::string path = m_document->filePath();
     bool ok = false;
     std::string error;
+    io::DxfWriteReport dxfReport;
     if (QString::fromStdString(path).endsWith(".dxf", Qt::CaseInsensitive)) {
-        ok = io::DxfFormat::save(path, *m_document, &error);
+        ok = io::DxfFormat::save(path, *m_document, &error, &dxfReport);
     } else {
         // Make sure parts carry a fresh tessellation cache for lightweight
         // assembly loading. A solid may be there and still be out of date:
@@ -2370,6 +2413,15 @@ bool MainWindow::saveActiveDocument() {
         updateWindowTitle();
         // The assemblies placing it show it as saved.
         refreshUsersOf(path);
+        // What the DXF could not hold as the drawing has it: entities left
+        // out, said at every save; layers renamed, which every save of the
+        // drawing will rename again, in the status bar.
+        if (!dxfReport.leftOut.empty()) {
+            ExchangeCommands::showDxfWriteReport(dxfReport, this);
+        } else if (!dxfReport.renamed.empty()) {
+            m_statusPrompt->setText(tr("File saved; %n layer(s) under a name DXF allows.", nullptr,
+                                       static_cast<int>(dxfReport.renamed.size())));
+        }
         return true;
     }
     reportFileError(tr("Could not save"), path, error);
@@ -2793,6 +2845,22 @@ void MainWindow::onFitAll() {
     m_viewport->update();
 }
 
+void MainWindow::onZoomToSelection() {
+    math::BoundingBox bbox;
+    const auto& selection = m_viewport->selectionManager();
+    for (const auto& entity : m_document->activeDrawing().entities()) {
+        if (!selection.isSelected(entity->id())) continue;
+        const auto box = entity->boundingBox();
+        if (box.isValid()) bbox.expand(box);
+    }
+    if (!bbox.isValid()) {
+        m_statusPrompt->setText(tr("Nothing selected to zoom to: Fit All (F) shows everything"));
+        return;
+    }
+    m_viewport->camera().fitAll(bbox);
+    m_viewport->update();
+}
+
 // ---------------------------------------------------------------------------
 // Slots -- Tools
 // ---------------------------------------------------------------------------
@@ -2959,6 +3027,18 @@ void MainWindow::onHatchTool() {
 
 void MainWindow::onEllipseTool() {
     m_toolManager->setActiveTool("Ellipse");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
+}
+
+void MainWindow::onPolygonTool() {
+    m_toolManager->setActiveTool("Polygon");
+    m_viewport->setActiveTool(m_toolManager->activeTool());
+    updateStatusBar();
+}
+
+void MainWindow::onMatchPropertiesTool() {
+    m_toolManager->setActiveTool("Match Properties");
     m_viewport->setActiveTool(m_toolManager->activeTool());
     updateStatusBar();
 }

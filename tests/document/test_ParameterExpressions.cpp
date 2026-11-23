@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -159,4 +160,57 @@ TEST(ConfigurationsTest, AConstraintKeepsItsValueWhenItsVariableCannotBeWorkedOu
     constraints.resolveVariables(resolver);
     EXPECT_DOUBLE_EQ(tied->dimensionalValue(), 7.0) << "left as it was";
     EXPECT_DOUBLE_EQ(wall->dimensionalValue(), 3.0);
+}
+
+// An expression that makes a value with no finite size (a number past the
+// largest) fails its feature, said, and the feature keeps its last size:
+// built at it, the part's every point would be undefined, and saved, it
+// could not be read back.
+TEST(ParameterExpressionsTest, AnExpressionWithNoFiniteValueFailsItsFeature) {
+    const auto owner = boxPart({{"wall", "3 mm"}});
+    Document& part = *owner;
+    const std::string huge = "1" + std::string(200, '0');
+    for (const std::string& expression :
+         {"(" + std::string(400, '9') + " mm)", "((" + huge + " mm) * " + huge + ")",
+          "((" + huge + " mm) * (" + huge + " * " + huge + "))"}) {
+        SCOPED_TRACE(expression.substr(0, 40));
+        part.featureTree().feature(0)->setParameterExpression("width", expression);
+        EXPECT_FALSE(part.rebuildModel());
+        EXPECT_EQ(part.failedFeatureIndex(), 0);
+        EXPECT_NE(part.lastBuildMessage().find("cannot be worked out"), std::string::npos)
+            << part.lastBuildMessage();
+        EXPECT_DOUBLE_EQ(part.featureTree().feature(0)->parameters().at("width"), 10.0);
+    }
+}
+
+// No feature takes a size that is not a finite number, from wherever it
+// comes: a file, a design table, a script.
+TEST(ParameterExpressionsTest, NoFeatureTakesAValueThatIsNotFinite) {
+    const double values[] = {std::numeric_limits<double>::infinity(),
+                             -std::numeric_limits<double>::infinity(),
+                             std::numeric_limits<double>::quiet_NaN()};
+    std::vector<std::unique_ptr<hz::doc::Feature>> features;
+    features.push_back(PrimitiveFeature::makeBox(1, 2, 3));
+    features.push_back(PrimitiveFeature::makeCylinder(1, 2));
+    features.push_back(PrimitiveFeature::makeSphere(1));
+    features.push_back(PrimitiveFeature::makeCone(1, 0.5, 2));
+    features.push_back(PrimitiveFeature::makeTorus(3, 1));
+    features.push_back(hz::doc::PatternFeature::makeLinear(hz::math::Vec3(1, 0, 0), 5.0, 3));
+    features.push_back(
+        std::make_unique<hz::doc::FilletFeature>(std::vector<hz::topo::TopologyID>{}, 1.0));
+    features.push_back(
+        std::make_unique<hz::doc::ChamferFeature>(std::vector<hz::topo::TopologyID>{}, 1.0));
+    features.push_back(
+        std::make_unique<hz::doc::ShellFeature>(1.0, std::vector<hz::topo::TopologyID>{}));
+    features.push_back(std::make_unique<hz::doc::DraftFeature>(hz::math::Vec3(0, 0, 1),
+                                                               hz::math::Vec3(0, 0, 0), 0.1));
+    for (const auto& feature : features) {
+        for (const auto& [name, before] : feature->parameters()) {
+            for (const double value : values) {
+                EXPECT_FALSE(feature->setParameter(name, value))
+                    << feature->name() << " took " << value << " for " << name;
+                EXPECT_EQ(feature->parameters().at(name), before) << feature->name() << " " << name;
+            }
+        }
+    }
 }

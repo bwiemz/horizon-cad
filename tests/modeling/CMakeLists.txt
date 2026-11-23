@@ -3,6 +3,7 @@ add_executable(hz_modeling_tests
     test_ProfileValidator.cpp
     test_ProfileRegions.cpp
     test_Extrude.cpp
+    test_LargeProfiles.cpp
     test_Revolve.cpp
     test_SolidTessellator.cpp
     test_ExactPredicates.cpp

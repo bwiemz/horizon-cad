@@ -64,6 +64,8 @@ private:
     static QIcon drawRectangle(int s);
     static QIcon drawPolyline(int s);
     static QIcon drawEllipse(int s);
+    static QIcon drawPolygon(int s);
+    static QIcon drawMatchProperties(int s);
     static QIcon drawSpline(int s);
     static QIcon drawText(int s);
     static QIcon drawHatch(int s);

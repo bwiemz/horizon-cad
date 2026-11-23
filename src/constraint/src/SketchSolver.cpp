@@ -1,10 +1,14 @@
 #include "horizon/constraint/SketchSolver.h"
 
+#include <Eigen/OrderingMethods>
 #include <Eigen/SVD>
+#include <Eigen/SparseCholesky>
 #include <Eigen/SparseCore>
 #include <Eigen/SparseQR>
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <map>
 #include <numeric>
@@ -36,11 +40,118 @@ constexpr double kRoundingUlps = 4.0;
 /// each residual (the change one unit in the last place of each makes, by
 /// the Jacobian) is taken off it first. Where the sketch is drawn that is
 /// far below the tolerance, and changes nothing.
-bool residualsMet(const Eigen::VectorXd& f, const Eigen::MatrixXd& j, const Eigen::VectorXd& x,
+template <typename Jacobian>
+bool residualsMet(const Eigen::VectorXd& f, const Jacobian& j, const Eigen::VectorXd& x,
                   double tolerance) {
     const double eps = std::numeric_limits<double>::epsilon();
     const Eigen::VectorXd rounding = kRoundingUlps * eps * (j.cwiseAbs() * x.cwiseAbs());
     return (f.cwiseAbs() - rounding).cwiseMax(0.0).norm() < tolerance;
+}
+
+/// Above this many parameters a sketch is solved with its Jacobian sparse
+/// (SketchSolver::solveSparse). A dense step factors an n x n matrix: a
+/// closed chain of 200 lines, equal and joined end to end, took 1.5 s to
+/// solve, 400 lines 13 s and 1,000 four minutes, at every move of any of
+/// them.
+constexpr int kDenseSolveParameters = 200;
+
+/// The Jacobian, sparse: each constraint's equations in the columns of the
+/// entities it names, as analyzeDOF reads them, a held parameter's column
+/// empty. @p scratch is as many rows as the most equations of a constraint
+/// by every parameter, zero, and is left so. A constraint naming what its
+/// entity does not have throws, as from the dense one.
+Eigen::SparseMatrix<double> sparseJacobian(const ParameterTable& params,
+                                           const ConstraintSystem& constraints,
+                                           Eigen::MatrixXd& scratch) {
+    std::vector<Eigen::Triplet<double>> entries;
+    std::vector<uint64_t> entities;
+    std::vector<std::pair<int, int>> ranges;
+    int row = 0;
+    for (const auto& c : constraints.constraints()) {
+        const int rows = c->equationCount();
+        if (rows <= 0) continue;
+        // Each entity once: one named twice (a line's two ends) would have
+        // its columns read twice.
+        entities.clear();
+        for (const uint64_t id : c->referencedEntityIds()) {
+            if (std::find(entities.begin(), entities.end(), id) == entities.end()) {
+                entities.push_back(id);
+            }
+        }
+        ranges.clear();
+        for (const uint64_t id : entities) {
+            const auto range = params.parameterRange(id);
+            if (range.second > 0) ranges.push_back(range);
+        }
+        c->jacobian(params, scratch, 0);
+        for (const auto& [first, count] : ranges) {
+            for (int col = first; col < first + count; ++col) {
+                const bool held = params.isFixed(col);
+                for (int r = 0; r < rows; ++r) {
+                    const double v = scratch(r, col);
+                    if (v != 0.0 && !held) entries.emplace_back(row + r, col, v);
+                }
+            }
+            scratch.block(0, first, rows, count).setZero();
+        }
+        row += rows;
+    }
+    Eigen::SparseMatrix<double> j(constraints.totalEquations(), params.parameterCount());
+    j.setFromTriplets(entries.begin(), entries.end());
+    j.makeCompressed();
+    return j;
+}
+
+/// The damped Gauss-Newton step: dx with (JᵀJ + λI) dx = -JᵀF, as the dense
+/// solve takes it, from a sparse Cholesky (LDLᵀ) of JᵀJ + λI. Where that
+/// fails (no damping, and J short of full rank), the least-squares solution
+/// of [J; √λ I] dx = [-F; 0] from a sparse QR, which is the same step and
+/// slower. Empty if neither gives one.
+///
+/// The Cholesky's rounding along a direction nothing constrains (a chain
+/// free to turn) is divided by λ; but λ is only small once F is, so the
+/// step there stays far below the tolerance.
+Eigen::VectorXd dampedStep(const Eigen::SparseMatrix<double>& j, const Eigen::VectorXd& f,
+                           double damping) {
+    const auto m = j.rows();
+    const auto n = j.cols();
+    if (damping > 0.0) {
+        Eigen::SparseMatrix<double> normal = j.transpose() * j;
+        Eigen::SparseMatrix<double> identity(n, n);
+        identity.setIdentity();
+        normal += damping * identity;
+        const Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> ldlt(normal);
+        if (ldlt.info() == Eigen::Success) {
+            Eigen::VectorXd dx = ldlt.solve(-(j.transpose() * f));
+            if (ldlt.info() == Eigen::Success && dx.allFinite()) return dx;
+        }
+    }
+    const bool damped = damping > 0.0;
+    std::vector<Eigen::Triplet<double>> entries;
+    entries.reserve(static_cast<size_t>(j.nonZeros() + (damped ? n : 0)));
+    for (int k = 0; k < j.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(j, k); it; ++it) {
+            entries.emplace_back(static_cast<int>(it.row()), static_cast<int>(it.col()),
+                                 it.value());
+        }
+    }
+    if (damped) {
+        const double root = std::sqrt(damping);
+        for (Eigen::Index i = 0; i < n; ++i) {
+            entries.emplace_back(static_cast<int>(m + i), static_cast<int>(i), root);
+        }
+    }
+    Eigen::SparseMatrix<double> a(m + (damped ? n : 0), n);
+    a.setFromTriplets(entries.begin(), entries.end());
+    a.makeCompressed();
+    Eigen::VectorXd b = Eigen::VectorXd::Zero(a.rows());
+    b.head(m) = -f;
+    Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> qr;
+    qr.compute(a);
+    if (qr.info() != Eigen::Success) return {};
+    Eigen::VectorXd dx = qr.solve(b);
+    if (qr.info() != Eigen::Success || !dx.allFinite()) return {};
+    return dx;
 }
 
 }  // namespace
@@ -111,6 +222,8 @@ SolveResult SketchSolver::solveFrom(ParameterTable& params, const ConstraintSyst
         result.message = "No parameters but constraints exist";
         return result;
     }
+
+    if (n > kDenseSolveParameters) return solveSparse(params, constraints);
 
     // Use a local copy of damping so each solve() starts from the configured value.
     double damping = m_damping;
@@ -196,6 +309,73 @@ SolveResult SketchSolver::solveFrom(ParameterTable& params, const ConstraintSyst
     return result;
 }
 
+SolveResult SketchSolver::solveSparse(ParameterTable& params, const ConstraintSystem& constraints) {
+    // As solveFrom(), step for step: its Jacobian sparse, its step found by
+    // a sparse QR, and its rank by analyzeDOF, which reads the Jacobian so.
+    SolveResult result;
+    const int m = constraints.totalEquations();
+    const int n = params.parameterCount();
+    int widest = 1;
+    for (const auto& c : constraints.constraints()) widest = std::max(widest, c->equationCount());
+    Eigen::MatrixXd scratch = Eigen::MatrixXd::Zero(widest, n);
+    const auto rankOfJacobian = [&]() {
+        return n - params.fixedCount() - analyzeDOF(params, constraints).totalDOF;
+    };
+
+    double damping = m_damping;
+    for (int iter = 0; iter < m_maxIterations; ++iter) {
+        const Eigen::VectorXd F = buildResiduals(params, constraints);
+        const double currentNorm = F.norm();
+        result.residualNorm = currentNorm;
+        result.iterations = iter + 1;
+        const Eigen::SparseMatrix<double> J = sparseJacobian(params, constraints, scratch);
+
+        if (residualsMet(F, J, params.values(), m_tolerance)) {
+            result.degreesOfFreedom = analyzeDOF(params, constraints).totalDOF;
+            if (result.degreesOfFreedom > 0) {
+                result.status = SolveStatus::UnderConstrained;
+                result.message = "Solved but " + std::to_string(result.degreesOfFreedom) +
+                                 " degrees of freedom remain";
+            } else {
+                result.status = SolveStatus::Success;
+                result.message = "All constraints satisfied";
+            }
+            return result;
+        }
+
+        const Eigen::VectorXd dx = dampedStep(J, F, damping);
+        if (dx.size() != n) break;
+        const Eigen::VectorXd savedParams = params.values();
+        params.values() = savedParams + dx;
+        const double newNorm = buildResiduals(params, constraints).norm();
+        if (newNorm < currentNorm) {
+            damping = std::max(damping / 10.0, 1e-12);
+        } else {
+            params.values() = savedParams;
+            damping *= 10.0;
+            if (damping > 1e10) break;
+            --iter;  // a rejected step is not counted
+        }
+    }
+
+    const int rank = rankOfJacobian();
+    result.degreesOfFreedom = n - params.fixedCount() - rank;
+    if (m > rank) {
+        result.status = SolveStatus::OverConstrained;
+        result.message =
+            "Over-constrained: " + std::to_string(m) + " equations, rank " + std::to_string(rank);
+    } else if (result.residualNorm > m_tolerance * 100.0) {
+        result.status = SolveStatus::Inconsistent;
+        result.message =
+            "Inconsistent constraints (residual = " + std::to_string(result.residualNorm) + ")";
+    } else {
+        result.status = SolveStatus::FailedToConverge;
+        result.message = "Failed to converge after " + std::to_string(m_maxIterations) +
+                         " iterations (residual = " + std::to_string(result.residualNorm) + ")";
+    }
+    return result;
+}
+
 namespace {
 
 /// Union-find over parameter indices.
@@ -222,6 +402,99 @@ private:
 /// above it, from a sparse QR.
 constexpr int kDenseClusterParameters = 96;
 
+/// R of a sparse QR, kept by row, built by Givens rotations a row at a time
+/// (George and Heath): each row is rotated into the rows of R it meets, from
+/// its first column on, and starts a row of R where none starts at its
+/// first column. Q is not kept, and R is short where the matrix is: a chain
+/// of constraints makes a band.
+class GivensR {
+public:
+    GivensR(int cols, double noise) : m_r(static_cast<size_t>(cols)), m_noise(noise) {}
+
+    /// Rotate @p row (by column, ascending) in. A value within the noise of
+    /// zero (rounding, where a dependent row has been taken to nothing) is
+    /// zero; any other meets a row of R, however small, for a dependence on
+    /// that row is only met so.
+    void insert(std::vector<std::pair<int, double>>& row) {
+        size_t lead = 0;
+        while (lead < row.size()) {
+            const auto [col, value] = row[lead];
+            if (std::abs(value) <= m_noise) {
+                ++lead;
+                continue;
+            }
+            auto& pivot = m_r[static_cast<size_t>(col)];
+            if (pivot.empty()) {
+                pivot.assign(row.begin() + static_cast<std::ptrdiff_t>(lead), row.end());
+                return;
+            }
+            rotate(pivot, row, lead, col);
+            lead = 0;
+        }
+    }
+
+    /// The rank, taking a pivot within @p tolerance of zero as zero, as a
+    /// dense QR does: such a row of R is taken out, its first value dropped,
+    /// and the rest rotated in again, from the first column on. A rotation
+    /// never makes a pivot smaller, so what is left is the rank.
+    int rank(double tolerance) {
+        std::vector<std::pair<int, double>> rest;
+        for (auto& pivot : m_r) {
+            if (pivot.empty() || std::abs(pivot.front().second) > tolerance) continue;
+            rest.assign(pivot.begin() + 1, pivot.end());
+            pivot.clear();
+            insert(rest);  // all of it in later columns
+        }
+        int rank = 0;
+        for (const auto& pivot : m_r) rank += pivot.empty() ? 0 : 1;
+        return rank;
+    }
+
+private:
+    /// Rotate @p pivot and @p row (from @p lead, both starting at @p col) so
+    /// the row has nothing in that column.
+    void rotate(std::vector<std::pair<int, double>>& pivot,
+                std::vector<std::pair<int, double>>& row, size_t lead, int col) {
+        const double a = pivot.front().second;
+        const double b = row[lead].second;
+        const double h = std::hypot(a, b);
+        const double c = a / h;
+        const double sn = b / h;
+        m_upper.clear();
+        m_lower.clear();
+        size_t i = 0;
+        size_t k = lead;
+        while (i < pivot.size() || k < row.size()) {
+            int at = 0;
+            double p = 0.0;
+            double q = 0.0;
+            if (k >= row.size() || (i < pivot.size() && pivot[i].first < row[k].first)) {
+                at = pivot[i].first;
+                p = pivot[i++].second;
+            } else if (i >= pivot.size() || row[k].first < pivot[i].first) {
+                at = row[k].first;
+                q = row[k++].second;
+            } else {
+                at = pivot[i].first;
+                p = pivot[i++].second;
+                q = row[k++].second;
+            }
+            m_upper.emplace_back(at, c * p + sn * q);
+            if (at != col) {
+                const double rest = c * q - sn * p;
+                if (rest != 0.0) m_lower.emplace_back(at, rest);
+            }
+        }
+        pivot.swap(m_upper);
+        row.swap(m_lower);
+    }
+
+    std::vector<std::vector<std::pair<int, double>>> m_r;  ///< by first column
+    double m_noise;
+    std::vector<std::pair<int, double>> m_upper;
+    std::vector<std::pair<int, double>> m_lower;
+};
+
 /// The rank of the @p rows x @p cols matrix of @p entries (local indices).
 int rankOf(int rows, int cols, const std::vector<Eigen::Triplet<double>>& entries) {
     if (rows == 0 || cols == 0 || entries.empty()) return 0;
@@ -239,12 +512,47 @@ int rankOf(int rows, int cols, const std::vector<Eigen::Triplet<double>>& entrie
         return rank;
     }
     Eigen::SparseMatrix<double> block(rows, cols);
-    block.setFromTriplets(entries.begin(), entries.end());
+    block.setFromTriplets(entries.begin(), entries.end());  // repeats summed
     block.makeCompressed();
-    Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>> qr;
-    qr.compute(block);
-    if (qr.info() != Eigen::Success) return 0;
-    return static_cast<int>(qr.rank());
+    // Columns in an order that keeps R short (COLAMD, as SparseQR takes
+    // them), and rows by the first of their columns in it.
+    Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic, int> order;
+    Eigen::COLAMDOrdering<int>()(block, order);
+    const auto placeOf = [&](Eigen::Index col) {
+        return order.size() == cols ? order.indices()(col) : static_cast<int>(col);
+    };
+    std::vector<std::vector<std::pair<int, double>>> rowsOf(static_cast<size_t>(rows));
+    double largest = 0.0;
+    for (int col = 0; col < block.outerSize(); ++col) {
+        double norm = 0.0;
+        for (Eigen::SparseMatrix<double>::InnerIterator it(block, col); it; ++it) {
+            if (it.value() == 0.0) continue;
+            rowsOf[static_cast<size_t>(it.row())].emplace_back(placeOf(col), it.value());
+            norm += it.value() * it.value();
+        }
+        largest = std::max(largest, std::sqrt(norm));
+    }
+    for (auto& row : rowsOf) {
+        std::sort(row.begin(), row.end());
+        double norm = 0.0;
+        for (const auto& entry : row) norm += entry.second * entry.second;
+        largest = std::max(largest, std::sqrt(norm));
+    }
+    if (largest <= 0.0) return 0;
+    std::stable_sort(rowsOf.begin(), rowsOf.end(), [](const auto& a, const auto& b) {
+        const int first = a.empty() ? std::numeric_limits<int>::max() : a.front().first;
+        const int second = b.empty() ? std::numeric_limits<int>::max() : b.front().first;
+        return first < second;
+    });
+    // As the dense rank's threshold, against the largest row or column,
+    // which no singular value is below; and rounding, as rotations leave it.
+    // Eigen's SparseQR kept Q's Householder vectors, which on a chain of
+    // lines grew with it: the rank of a staircase of 1,000 constrained lines
+    // took 2.8 s in an optimised build, at each edit, to colour the sketch.
+    const double size = std::max(rows, cols);
+    GivensR r(cols, 16.0 * std::numeric_limits<double>::epsilon() * size * largest);
+    for (auto& row : rowsOf) r.insert(row);
+    return r.rank(1e-8 * size * largest);
 }
 
 }  // namespace
