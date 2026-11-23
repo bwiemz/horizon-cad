@@ -87,6 +87,7 @@
 #include "horizon/render/SceneGraph.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AiAssistantPanel.h"
+#include "horizon/ui/AiSheetTools.h"
 #include "horizon/ui/AngularDimensionTool.h"
 #include "horizon/ui/Application.h"
 #include "horizon/ui/ArcTool.h"
@@ -277,7 +278,10 @@ MainWindow::MainWindow(QWidget* parent)
              updateWindowTitle();
          },
          [this] { m_viewport->cancelComponentDrag(); },
-         [this](const ai::DrawingRequest& request) { return makeDrawingForAssistant(request); }});
+         [this](const ai::DrawingRequest& request) { return makeDrawingForAssistant(request); },
+         [this](std::shared_ptr<doc::Document> sheet) {
+             return sheetToolHooks(*m_drawings, std::move(sheet));
+         }});
     m_aiPanel->setDocument(m_document, tr("Drawing 1"));
     m_propertyPanel->raise();
 
@@ -1364,11 +1368,9 @@ void MainWindow::activateTabDocument() {
             // Its tab's document carries its undo steps.
             m_aiPanel->setAssembly(m_document, m_assembly, documents(), tab->title);
         } else if (m_drawings && m_drawings->isSheet(m_document.get())) {
-            // A sheet keeps its views and annotations, not features: what
-            // the assistant would add to it would not be saved.
-            m_aiPanel->setDocument(
-                nullptr, tab->title,
-                tr("The assistant works on parts and drawings, not drawing sheets"));
+            // A sheet keeps its views and annotations, not features: the
+            // sheet tools take the part tools' place.
+            m_aiPanel->setSheet(m_document, tab->title);
         } else {
             m_aiPanel->setDocument(m_document, tab->title);
         }
@@ -1393,15 +1395,7 @@ ai::DrawingMade MainWindow::makeDrawingForAssistant(const ai::DrawingRequest& re
     }
     io::DrawingDocumentSpec spec;
     spec.partPath = request.source;
-    static const std::map<std::string, model::PaperSize> kPapers = {
-        {"a0", model::PaperSize::A0},        {"a1", model::PaperSize::A1},
-        {"a2", model::PaperSize::A2},        {"a3", model::PaperSize::A3},
-        {"a4", model::PaperSize::A4},        {"ansi_a", model::PaperSize::AnsiA},
-        {"ansi_b", model::PaperSize::AnsiB}, {"ansi_c", model::PaperSize::AnsiC},
-        {"ansi_d", model::PaperSize::AnsiD}};
-    if (const auto paper = kPapers.find(request.paper); paper != kPapers.end()) {
-        spec.sheet.size = paper->second;
-    }
+    if (const auto paper = paperSizeNamed(request.paper)) spec.sheet.size = *paper;
     spec.sheet.orientation =
         request.portrait ? model::Orientation::Portrait : model::Orientation::Landscape;
     spec.scale = request.scale;

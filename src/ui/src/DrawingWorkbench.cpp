@@ -758,18 +758,23 @@ private:
     bool m_drawn = true;
 };
 
-void DrawingWorkbench::redraw(Sheet& sheet, const QString& verb) {
+bool DrawingWorkbench::redraw(Sheet& sheet, const QString& verb, std::string* error) {
     const auto document = sheet.document.lock();
-    if (!document) return;
+    if (!document) {
+        if (error != nullptr) *error = "the sheet is closed";
+        return false;
+    }
     io::DrawingDocumentSpec before = sheet.drawn;
     Carried carried;
-    std::string error;
-    if (!drawAgain(sheet, &error, &carried)) {
+    std::string why;
+    if (!drawAgain(sheet, &why, &carried)) {
         // Not drawn, not made: the sheet stays as it is shown.
         sheet.spec = std::move(before);
-        m_host.showStatus(tr("%1: the drawing could not be drawn again: %2")
-                              .arg(verb, QString::fromStdString(error)));
-        return;
+        const QString message = tr("%1: the drawing could not be drawn again: %2")
+                                    .arg(verb, QString::fromStdString(why));
+        m_host.showStatus(message);
+        if (error != nullptr) *error = message.toStdString();
+        return false;
     }
     // A form accepted as it was changes nothing: no step, nothing to save.
     const bool same =
@@ -782,6 +787,253 @@ void DrawingWorkbench::redraw(Sheet& sheet, const QString& verb) {
     }
     m_host.refreshModifiedIndicators();
     m_host.viewport().update();
+    return true;
+}
+
+void DrawingWorkbench::listViews(Sheet& sheet) {
+    if (sheet.spec.views.empty()) sheet.spec.views = io::DrawingDocumentIO::viewsOf(sheet.drawing);
+}
+
+namespace {
+
+/// Refused, with @p message said in the status bar and in @p error.
+bool refused(WorkbenchHost& host, const QString& message, std::string* error) {
+    host.showStatus(message);
+    if (error != nullptr) *error = message.toStdString();
+    return false;
+}
+
+/// Refused, with @p message in @p error alone: what only a caller naming
+/// things (the AI assistant) can get wrong, never a click.
+bool refused(const std::string& message, std::string* error) {
+    if (error != nullptr) *error = message;
+    return false;
+}
+
+constexpr const char* kNotASheet = "it is not a drawing sheet";
+
+/// A view number a caller gave that the sheet does not have.
+std::string noView(std::size_t view) {
+    return "the sheet has no view " + std::to_string(view) + " (get_sheet_info lists them)";
+}
+
+}  // namespace
+
+const io::DrawingDocumentSpec* DrawingWorkbench::specOf(const doc::Document* document) const {
+    const Sheet* sheet = sheetOf(document);
+    return sheet != nullptr ? &sheet->spec : nullptr;
+}
+
+const model::Drawing* DrawingWorkbench::drawnViews(const doc::Document* document) const {
+    const Sheet* sheet = sheetOf(document);
+    return sheet != nullptr ? &sheet->drawing : nullptr;
+}
+
+const topo::Solid* DrawingWorkbench::solidOf(doc::Document& document, std::string* error) {
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) {
+        refused(kNotASheet, error);
+        return nullptr;
+    }
+    const auto source = sourceFor(*sheet, error);
+    return source ? source->solid.get() : nullptr;
+}
+
+bool DrawingWorkbench::setTitleBlock(doc::Document& document, const model::TitleBlock& block,
+                                     const model::Sheet& paper, bool* fits, std::string* error) {
+    const QString verb = tr("Title Block");
+    if (fits != nullptr) *fits = true;
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return refused(kNotASheet, error);
+    const model::Sheet paperWas = sheet->spec.sheet;
+    sheet->spec.titleBlock = block;
+    sheet->spec.sheet.size = paper.size;
+    sheet->spec.sheet.orientation = paper.orientation;
+    // A new paper: the views are laid out on it again.
+    if (paper.size != paperWas.size || paper.orientation != paperWas.orientation) {
+        std::string why;
+        if (!layOutAgain(*sheet, sheet->spec.scale, fits, &why)) {
+            sheet->spec = sheet->drawn;
+            return refused(m_host, tr("%1: %2").arg(verb, QString::fromStdString(why)), error);
+        }
+    }
+    if (!redraw(*sheet, verb, error)) return false;
+    if (m_host.currentDocument() == &document) shown(document);
+    return true;
+}
+
+bool DrawingWorkbench::setScale(doc::Document& document, double scale, bool* fits,
+                                std::string* error) {
+    const QString verb = tr("Drawing Scale");
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return refused(kNotASheet, error);
+    std::string why;
+    if (!layOutAgain(*sheet, scale, fits, &why)) {
+        sheet->spec = sheet->drawn;
+        return refused(m_host, tr("%1: %2").arg(verb, QString::fromStdString(why)), error);
+    }
+    return redraw(*sheet, verb, error);
+}
+
+bool DrawingWorkbench::moveView(doc::Document& document, std::size_t view, const math::Vec2& by,
+                                std::string* error) {
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return refused(kNotASheet, error);
+    listViews(*sheet);
+    if (view >= sheet->spec.views.size()) return refused(noView(view), error);
+    math::Vec2& at = sheet->spec.views[view].placement;
+    at = {at.x + by.x, at.y + by.y};
+    sheet->spec.version = 3;
+    return redraw(*sheet, tr("Move View"), error);
+}
+
+bool DrawingWorkbench::removeView(doc::Document& document, std::size_t view, int* taken,
+                                  std::string* error) {
+    const QString verb = tr("Remove View");
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return refused(kNotASheet, error);
+    listViews(*sheet);
+    auto& views = sheet->spec.views;
+    if (view >= views.size()) return refused(noView(view), error);
+
+    // It goes, and the views taken from it with it; the rest keep their
+    // sources, counted again.
+    std::vector<bool> gone(views.size(), false);
+    gone[view] = true;
+    for (std::size_t i = 0; i < views.size(); ++i) {
+        if (views[i].source == static_cast<int>(view)) gone[i] = true;
+    }
+    if (std::all_of(gone.begin(), gone.end(), [](bool g) { return g; })) {
+        return refused(m_host, tr("%1: a sheet keeps at least one view").arg(verb), error);
+    }
+    std::vector<int> renumbered(views.size(), -1);
+    std::vector<io::DrawingViewSpec> kept;
+    for (std::size_t i = 0; i < views.size(); ++i) {
+        if (gone[i]) continue;
+        renumbered[i] = static_cast<int>(kept.size());
+        kept.push_back(views[i]);
+    }
+    for (io::DrawingViewSpec& v : kept) {
+        if (v.source >= 0) v.source = renumbered[static_cast<std::size_t>(v.source)];
+    }
+    const auto with = std::count(gone.begin(), gone.end(), true) - 1;
+    views = std::move(kept);
+    sheet->spec.version = 3;
+    if (!redraw(*sheet, verb, error)) return false;
+    if (taken != nullptr) *taken = static_cast<int>(with);
+    if (with > 0) {
+        m_host.showStatus(tr("%1: the views taken from it went with it (%2)").arg(verb).arg(with),
+                          15000);
+    }
+    return true;
+}
+
+bool DrawingWorkbench::setViewSwitches(doc::Document& document, std::size_t view, bool hidden,
+                                       bool tangent, bool centreLines, std::string* error) {
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return refused(kNotASheet, error);
+    listViews(*sheet);
+    if (view >= sheet->spec.views.size()) return refused(noView(view), error);
+    io::DrawingViewSpec& chosen = sheet->spec.views[view];
+    chosen.showHidden = hidden;
+    chosen.showTangentEdges = tangent;
+    chosen.showCentreLines = centreLines;
+    sheet->spec.version = 3;
+    return redraw(*sheet, tr("View Properties"), error);
+}
+
+bool DrawingWorkbench::addEdgeDimension(doc::Document& document, std::size_t view,
+                                        const std::string& edge, std::string* error) {
+    const QString verb = tr("Add Dimension");
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return refused(kNotASheet, error);
+    listViews(*sheet);
+    if (view >= sheet->spec.views.size()) return refused(noView(view), error);
+    // A curve is dimensioned whole, by its own name, not one chord's.
+    const std::string tag = model::logicalEdge(edge);
+    if (view >= sheet->drawing.views.size() ||
+        std::none_of(sheet->drawing.views[view].edges.begin(),
+                     sheet->drawing.views[view].edges.end(), [&](const model::ProjectedEdge& e) {
+                         return model::logicalEdge(e.sourceEdge.tag()) == tag;
+                     })) {
+        return refused("view " + std::to_string(view) + " shows no edge named \"" + edge +
+                           "\" (list_view_edges names those it shows)",
+                       error);
+    }
+    auto& dimensions = sheet->spec.views[view].dimensions;
+    if (std::any_of(dimensions.begin(), dimensions.end(),
+                    [&](const auto& d) { return d.edge == tag; })) {
+        return refused(
+            m_host,
+            tr("%1: that edge is dimensioned already; Remove Dimension removes it").arg(verb),
+            error);
+    }
+
+    // A circle or arc is dimensioned by its diameter or radius, anything else
+    // by its length: measured from the part as it is.
+    std::string why;
+    const auto source = sourceFor(*sheet, &why);
+    if (!source) return refused(m_host, tr("%1: %2").arg(verb, QString::fromStdString(why)), error);
+    const topo::Solid* solid = source->solid.get();
+    const topo::Edge* named = nullptr;
+    for (const topo::Edge& e : solid->edges()) {
+        if (model::logicalEdge(e.topoId.tag()) == tag) {
+            named = &e;
+            break;
+        }
+    }
+    if (named == nullptr) return refused("the part has no edge named \"" + edge + "\"", error);
+    io::DrawingDimensionSpec dimension{tag, io::DrawingDimensionSpec::Kind::Length};
+    double measured = 0.0;
+    if (model::DrawingDimensioner::measureRadius(*solid, named->topoId, measured)) {
+        // A whole circle, or an arc: a curve is one edge of many chords by
+        // one name. It is whole when its chords close, every end shared.
+        std::map<const topo::Vertex*, int> ends;
+        for (const topo::Edge& e : solid->edges()) {
+            if (model::logicalEdge(e.topoId.tag()) != tag || e.halfEdge == nullptr ||
+                e.halfEdge->twin == nullptr) {
+                continue;
+            }
+            ++ends[e.halfEdge->origin];
+            ++ends[e.halfEdge->twin->origin];
+        }
+        const bool closed =
+            !ends.empty() && std::all_of(ends.begin(), ends.end(),
+                                         [](const auto& end) { return end.second % 2 == 0; });
+        dimension.kind = closed ? io::DrawingDimensionSpec::Kind::Diameter
+                                : io::DrawingDimensionSpec::Kind::Radius;
+    } else if (!model::DrawingDimensioner::isStraight(*solid, tag)) {
+        // Neither a circle nor straight (an ellipse, a lofted edge): no one
+        // number says how large it is.
+        return refused(
+            m_host,
+            tr("%1: that edge is curved, but not a circle or arc; its size is not stated")
+                .arg(verb),
+            error);
+    } else if (!model::DrawingDimensioner::measureEdge(*solid, named->topoId, measured) ||
+               measured < 1e-9) {
+        return refused(m_host, tr("%1: that edge has no length to state").arg(verb), error);
+    }
+    dimensions.push_back(std::move(dimension));
+    sheet->spec.version = 3;
+    return redraw(*sheet, verb, error);
+}
+
+bool DrawingWorkbench::removeEdgeDimensions(doc::Document& document, std::size_t view,
+                                            const std::string& edge, std::string* error) {
+    const QString verb = tr("Remove Dimension");
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return refused(kNotASheet, error);
+    listViews(*sheet);
+    if (view >= sheet->spec.views.size()) {
+        return refused(m_host, tr("%1: that edge has no dimension").arg(verb), error);
+    }
+    auto& dimensions = sheet->spec.views[view].dimensions;
+    const std::string tag = model::logicalEdge(edge);
+    const auto removed =
+        std::erase_if(dimensions, [&](const io::DrawingDimensionSpec& d) { return d.edge == tag; });
+    if (removed == 0) return refused(m_host, tr("%1: that edge has no dimension").arg(verb), error);
+    return redraw(*sheet, verb, error);
 }
 
 void DrawingWorkbench::replay(doc::Document& document, const io::DrawingDocumentSpec& spec,
@@ -855,7 +1107,7 @@ void DrawingWorkbench::onTitleBlock() {
     if (sheet == nullptr) return;
 
     const auto read = [](QLineEdit* edit) { return edit->text().trimmed().toStdString(); };
-    model::TitleBlock& fields = sheet->spec.titleBlock;
+    model::TitleBlock fields = sheet->spec.titleBlock;
     fields.title = read(title);
     fields.partNumber = read(number);
     fields.revision = read(revision);
@@ -864,21 +1116,12 @@ void DrawingWorkbench::onTitleBlock() {
     fields.material = read(material);
     fields.company = read(company);
     fields.sheetNumber = read(sheetNumber);
-    sheet->spec.sheet.size = paperSizes()[static_cast<size_t>(std::max(paper->currentIndex(), 0))];
-    sheet->spec.sheet.orientation = orientation->currentIndex() == 1
-                                        ? model::Orientation::Portrait
-                                        : model::Orientation::Landscape;
-    // A new paper: the views are laid out on it again.
+    model::Sheet chosen = sheet->spec.sheet;
+    chosen.size = paperSizes()[static_cast<size_t>(std::max(paper->currentIndex(), 0))];
+    chosen.orientation = orientation->currentIndex() == 1 ? model::Orientation::Portrait
+                                                          : model::Orientation::Landscape;
     bool fits = true;
-    if (sheet->spec.sheet.size != paperWas.size ||
-        sheet->spec.sheet.orientation != paperWas.orientation) {
-        std::string error;
-        if (!layOutAgain(*sheet, sheet->spec.scale, &fits, &error)) {
-            m_host.showStatus(tr("%1: %2").arg(verb, QString::fromStdString(error)), 15000);
-        }
-    }
-    redraw(*sheet, verb);
-    shown(*document);
+    if (!setTitleBlock(*document, fields, chosen, &fits, nullptr)) return;  // said
     if (!fits) {
         m_host.showStatus(tr("Not every view has room on this paper: those without are beside it"),
                           15000);
@@ -909,12 +1152,7 @@ void DrawingWorkbench::onScale() {
         index <= 0 ? 0.0
                    : model::DrawingGenerator::standardScales()[static_cast<size_t>(index - 1)];
     bool fits = true;
-    std::string error;
-    if (!layOutAgain(*sheet, scale, &fits, &error)) {
-        m_host.showStatus(tr("%1: %2").arg(verb, QString::fromStdString(error)), 15000);
-        return;
-    }
-    redraw(*sheet, verb);
+    if (!setScale(*document, scale, &fits, nullptr)) return;  // said
     if (!fits) {
         m_host.showStatus(tr("At this scale not every view has room on the sheet: those without "
                              "are beside it"),
@@ -1255,15 +1493,8 @@ void DrawingWorkbench::onMoveView() {
                 const auto shown = document.lock();
                 Sheet* sheet = sheetOf(shown.get());
                 if (sheet == nullptr || points.size() != 2 || *moving < 0) return;
-                if (sheet->spec.views.empty()) {
-                    sheet->spec.views = io::DrawingDocumentIO::viewsOf(sheet->drawing);
-                }
-                const auto index = static_cast<std::size_t>(*moving);
-                if (index >= sheet->spec.views.size()) return;
-                math::Vec2& at = sheet->spec.views[index].placement;
-                at = {at.x + points[1].x - points[0].x, at.y + points[1].y - points[0].y};
-                sheet->spec.version = 3;
-                redraw(*sheet, tr("Move View"));
+                moveView(*shown, static_cast<std::size_t>(*moving),
+                         {points[1].x - points[0].x, points[1].y - points[0].y}, nullptr);
             });
         });
     // The view's outline, carried with the pointer.
@@ -1306,43 +1537,9 @@ void DrawingWorkbench::onRemoveView() {
     FeatureForm form(m_host.dialogParent(), verb);
     auto* view = form.choice(QStringLiteral("view"), tr("View:"), names);
     if (!form.exec()) return;
-    Sheet* sheet = sheetOf(document.get());
-    if (sheet == nullptr) return;
-    if (sheet->spec.views.empty())
-        sheet->spec.views = io::DrawingDocumentIO::viewsOf(sheet->drawing);
-    auto& views = sheet->spec.views;
-    const auto removed = static_cast<std::size_t>(std::max(view->currentIndex(), 0));
-    if (removed >= views.size()) return;
-
-    // It goes, and the views taken from it with it; the rest keep their
-    // sources, counted again.
-    std::vector<bool> gone(views.size(), false);
-    gone[removed] = true;
-    for (std::size_t i = 0; i < views.size(); ++i) {
-        if (views[i].source == static_cast<int>(removed)) gone[i] = true;
-    }
-    if (std::all_of(gone.begin(), gone.end(), [](bool g) { return g; })) {
-        m_host.showStatus(tr("%1: a sheet keeps at least one view").arg(verb));
-        return;
-    }
-    std::vector<int> renumbered(views.size(), -1);
-    std::vector<io::DrawingViewSpec> kept;
-    for (std::size_t i = 0; i < views.size(); ++i) {
-        if (gone[i]) continue;
-        renumbered[i] = static_cast<int>(kept.size());
-        kept.push_back(views[i]);
-    }
-    for (io::DrawingViewSpec& v : kept) {
-        if (v.source >= 0) v.source = renumbered[static_cast<std::size_t>(v.source)];
-    }
-    const auto taken = std::count(gone.begin(), gone.end(), true) - 1;
-    views = std::move(kept);
-    sheet->spec.version = 3;
-    redraw(*sheet, verb);
-    if (taken > 0) {
-        m_host.showStatus(tr("%1: the views taken from it went with it (%2)").arg(verb).arg(taken),
-                          15000);
-    }
+    if (!sheetOf(document.get())) return;
+    removeView(*document, static_cast<std::size_t>(std::max(view->currentIndex(), 0)), nullptr,
+               nullptr);  // said
 }
 
 std::optional<DrawingWorkbench::PickedEdge> DrawingWorkbench::edgeAt(const Sheet& sheet,
@@ -1421,89 +1618,22 @@ void DrawingWorkbench::onRemoveDimension() {
 
 void DrawingWorkbench::addDimension(const std::weak_ptr<doc::Document>& document,
                                     const PickedEdge& picked) {
-    const QString verb = tr("Add Dimension");
     const std::shared_ptr<doc::Document> shown = document.lock();
-    Sheet* sheet = sheetOf(shown.get());
-    if (sheet == nullptr) return;
-    if (sheet->spec.views.empty())
-        sheet->spec.views = io::DrawingDocumentIO::viewsOf(sheet->drawing);
-    if (picked.view < 0 || static_cast<std::size_t>(picked.view) >= sheet->spec.views.size()) {
-        return;
-    }
-    auto& dimensions = sheet->spec.views[static_cast<std::size_t>(picked.view)].dimensions;
-    // A curve is dimensioned whole, by its own name, not one chord's.
-    const std::string tag = model::logicalEdge(picked.edge.tag());
-    if (std::any_of(dimensions.begin(), dimensions.end(),
-                    [&](const auto& d) { return d.edge == tag; })) {
-        m_host.showStatus(
-            tr("%1: that edge is dimensioned already; Remove Dimension removes it").arg(verb));
-        return;
-    }
-
-    // A circle or arc is dimensioned by its diameter or radius, anything else
-    // by its length: measured from the part as it is.
-    std::string error;
-    const auto source = sourceFor(*sheet, &error);
-    if (!source) {
-        m_host.showStatus(tr("%1: %2").arg(verb, QString::fromStdString(error)), 15000);
-        return;
-    }
-    const topo::Solid* solid = source->solid.get();
-    io::DrawingDimensionSpec dimension{tag, io::DrawingDimensionSpec::Kind::Length};
-    double measured = 0.0;
-    if (model::DrawingDimensioner::measureRadius(*solid, picked.edge, measured)) {
-        // A whole circle, or an arc: a curve is one edge of many chords by
-        // one name. It is whole when its chords close, every end shared.
-        std::map<const topo::Vertex*, int> ends;
-        for (const topo::Edge& e : solid->edges()) {
-            if (model::logicalEdge(e.topoId.tag()) != tag || e.halfEdge == nullptr ||
-                e.halfEdge->twin == nullptr) {
-                continue;
-            }
-            ++ends[e.halfEdge->origin];
-            ++ends[e.halfEdge->twin->origin];
-        }
-        const bool closed =
-            !ends.empty() && std::all_of(ends.begin(), ends.end(),
-                                         [](const auto& end) { return end.second % 2 == 0; });
-        dimension.kind = closed ? io::DrawingDimensionSpec::Kind::Diameter
-                                : io::DrawingDimensionSpec::Kind::Radius;
-    } else if (!model::DrawingDimensioner::isStraight(*solid, tag)) {
-        // Neither a circle nor straight (an ellipse, a lofted edge): no one
-        // number says how large it is.
-        m_host.showStatus(
-            tr("%1: that edge is curved, but not a circle or arc; its size is not stated")
-                .arg(verb));
-        return;
-    } else if (!model::DrawingDimensioner::measureEdge(*solid, picked.edge, measured) ||
-               measured < 1e-9) {
-        m_host.showStatus(tr("%1: that edge has no length to state").arg(verb));
-        return;
-    }
-    dimensions.push_back(std::move(dimension));
-    sheet->spec.version = 3;
-    redraw(*sheet, verb);
+    if (!shown || picked.view < 0) return;
+    addEdgeDimension(*shown, static_cast<std::size_t>(picked.view), picked.edge.tag(),
+                     nullptr);  // said
 }
 
 void DrawingWorkbench::removeDimensions(const std::weak_ptr<doc::Document>& document,
                                         const PickedEdge& picked) {
-    const QString verb = tr("Remove Dimension");
     const std::shared_ptr<doc::Document> shown = document.lock();
-    Sheet* sheet = sheetOf(shown.get());
-    if (sheet == nullptr || picked.view < 0 ||
-        static_cast<std::size_t>(picked.view) >= sheet->spec.views.size()) {
-        m_host.showStatus(tr("%1: that edge has no dimension").arg(verb));
+    if (!shown) return;
+    if (picked.view < 0) {
+        m_host.showStatus(tr("%1: that edge has no dimension").arg(tr("Remove Dimension")));
         return;
     }
-    auto& dimensions = sheet->spec.views[static_cast<std::size_t>(picked.view)].dimensions;
-    const std::string tag = model::logicalEdge(picked.edge.tag());
-    const auto removed =
-        std::erase_if(dimensions, [&](const io::DrawingDimensionSpec& d) { return d.edge == tag; });
-    if (removed == 0) {
-        m_host.showStatus(tr("%1: that edge has no dimension").arg(verb));
-        return;
-    }
-    redraw(*sheet, verb);
+    removeEdgeDimensions(*shown, static_cast<std::size_t>(picked.view), picked.edge.tag(),
+                         nullptr);  // said
 }
 
 void DrawingWorkbench::onViewProperties() {
@@ -1536,18 +1666,10 @@ void DrawingWorkbench::onViewProperties() {
     showFor(0);
     QObject::connect(view, &QComboBox::currentIndexChanged, view, showFor);
     if (!form.exec()) return;
-    Sheet* sheet = sheetOf(document.get());
-    if (sheet == nullptr) return;
-    if (sheet->spec.views.empty())
-        sheet->spec.views = io::DrawingDocumentIO::viewsOf(sheet->drawing);
-    const auto index = static_cast<std::size_t>(std::max(view->currentIndex(), 0));
-    if (index >= sheet->spec.views.size()) return;
-    io::DrawingViewSpec& chosen = sheet->spec.views[index];
-    chosen.showHidden = switches[0]->currentIndex() == 0;
-    chosen.showTangentEdges = switches[1]->currentIndex() == 0;
-    chosen.showCentreLines = switches[2]->currentIndex() == 0;
-    sheet->spec.version = 3;
-    redraw(*sheet, verb);
+    if (!sheetOf(document.get())) return;
+    setViewSwitches(*document, static_cast<std::size_t>(std::max(view->currentIndex(), 0)),
+                    switches[0]->currentIndex() == 0, switches[1]->currentIndex() == 0,
+                    switches[2]->currentIndex() == 0, nullptr);  // said
 }
 
 void DrawingWorkbench::onUpdateFromPart() {
