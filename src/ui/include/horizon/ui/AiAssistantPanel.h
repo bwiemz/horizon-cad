@@ -98,6 +98,8 @@ private:
     Host m_host;
     AiSettings m_settings;
     std::shared_ptr<doc::Document> m_document;
+    /// The document the conversation last worked on: compared, never used.
+    const doc::Document* m_conversationDocument = nullptr;
     QString m_documentName;
     QString m_unavailable;
 

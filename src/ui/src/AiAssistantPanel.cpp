@@ -308,12 +308,16 @@ void AiAssistantPanel::applyConfig() {
 void AiAssistantPanel::setDocument(std::shared_ptr<doc::Document> document, const QString& name,
                                    const QString& why) {
     if (document == m_document && name == m_documentName && why == m_unavailable) return;
-    const bool switched = m_document != nullptr && document != m_document;
+    // The conversation was about another document (even with an assembly,
+    // and so no document, shown between).
+    const bool switched = document != nullptr && m_conversationDocument != nullptr &&
+                          document.get() != m_conversationDocument;
     if (m_session->busy()) {
         m_session->cancel();
         appendNote(tr("Stopped: the document changed."));
     }
     m_document = std::move(document);
+    if (m_document) m_conversationDocument = m_document.get();
     m_documentName = name;
     m_unavailable = why;
     rebindTools();
@@ -386,7 +390,7 @@ bool AiAssistantPanel::askConsent() {
            "policy apply to what it receives.\n\nSend requests there?")
             .arg(host.isEmpty() ? QString::fromStdString(config.baseUrl) : host));
     if (answer != QMessageBox::Yes) return false;
-    AiSettings::setConsented(config.kind, true);
+    m_settings.setConsented(config.kind, true);
     return true;
 }
 
@@ -412,8 +416,14 @@ bool AiAssistantPanel::submit(const QString& text) {
         updateState();
         return false;
     }
-    if (m_settings.isRemote(config.kind) && !AiSettings::consented(config.kind) && !askConsent()) {
-        return false;
+    if (m_settings.isRemote(config.kind) && !m_settings.consented(config.kind)) {
+        if (!askConsent()) return false;
+        // The question ran an event loop: the document, or a request, may
+        // have changed under it.
+        if (!m_document || busy()) {
+            updateState();
+            return false;
+        }
     }
     m_session->setConfig(config);
     m_session->setMaxSteps(m_settings.maxSteps);

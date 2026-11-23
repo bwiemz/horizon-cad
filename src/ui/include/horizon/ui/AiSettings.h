@@ -29,10 +29,12 @@ struct AiSettings {
     /// Whether a request to @p kind's server leaves this computer: any but a
     /// local OpenAI-compatible server (localhost, 127.0.0.1, ::1).
     bool isRemote(ai::ProviderKind kind) const;
-    /// Whether the user has agreed to send to @p kind (asked once per
-    /// provider, for a remote one).
-    static bool consented(ai::ProviderKind kind);
-    static void setConsented(ai::ProviderKind kind, bool consented);
+    /// Whether the user has agreed to send to @p kind's server: asked once
+    /// per provider and host, so a server moved to another host asks again.
+    bool consented(ai::ProviderKind kind) const;
+    void setConsented(ai::ProviderKind kind, bool consented) const;
+    /// The host @p kind's requests go to.
+    QString host(ai::ProviderKind kind) const;
 };
 
 /// API keys. An environment variable (ANTHROPIC_API_KEY, OPENAI_API_KEY,

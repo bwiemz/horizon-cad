@@ -93,7 +93,9 @@ ai::HttpTransport::RequestId QtHttpTransport::send(const ai::HttpRequest& reques
         if (response.status == 0) {
             // No HTTP answer at all. The error text names the host, never a
             // header: no key reaches it.
-            response.networkError = reply->error() == QNetworkReply::OperationCanceledError
+            const auto failure = reply->error();
+            response.networkError = failure == QNetworkReply::OperationCanceledError ||
+                                            failure == QNetworkReply::TimeoutError
                                         ? "no reply within the time limit"
                                         : reply->errorString().toStdString();
         }

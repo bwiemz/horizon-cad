@@ -19,11 +19,17 @@ QString group(ai::ProviderKind kind) {
     return QStringLiteral("ai/") + QString::fromLatin1(ai::providerName(kind));
 }
 
-QJsonObject readKeys() {
+/// The saved keys; false when the file is there but cannot be read as keys
+/// (then it is not written over: the other providers' keys are in it).
+bool readKeys(QJsonObject& keys) {
+    keys = {};
     QFile file(AiKeyStore::filePath());
-    if (!file.open(QIODevice::ReadOnly)) return {};
+    if (!file.exists()) return true;
+    if (!file.open(QIODevice::ReadOnly)) return false;
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
-    return document.isObject() ? document.object() : QJsonObject();
+    if (!document.isObject()) return false;
+    keys = document.object();
+    return true;
 }
 
 }  // namespace
@@ -88,21 +94,33 @@ ai::ProviderConfig AiSettings::config(ai::ProviderKind kind) const {
     return config;
 }
 
+QString AiSettings::host(ai::ProviderKind kind) const {
+    const auto it = configs.find(kind);
+    return QUrl(QString::fromStdString(it != configs.end() ? it->second.baseUrl : ""))
+        .host()
+        .toLower();
+}
+
 bool AiSettings::isRemote(ai::ProviderKind kind) const {
     if (kind != ai::ProviderKind::OpenAICompatible) return true;
-    const auto it = configs.find(kind);
-    const QUrl url(QString::fromStdString(it != configs.end() ? it->second.baseUrl : ""));
-    const QString host = url.host().toLower();
-    return !(host == QLatin1String("localhost") || host == QLatin1String("127.0.0.1") ||
-             host == QLatin1String("::1"));
+    const QString server = host(kind);
+    return !(server == QLatin1String("localhost") || server == QLatin1String("127.0.0.1") ||
+             server == QLatin1String("::1"));
 }
 
-bool AiSettings::consented(ai::ProviderKind kind) {
-    return QSettings().value(group(kind) + QStringLiteral("/consented"), false).toBool();
+bool AiSettings::consented(ai::ProviderKind kind) const {
+    const QString agreed =
+        QSettings().value(group(kind) + QStringLiteral("/consentedHost")).toString();
+    return !agreed.isEmpty() && agreed == host(kind);
 }
 
-void AiSettings::setConsented(ai::ProviderKind kind, bool consented) {
-    QSettings().setValue(group(kind) + QStringLiteral("/consented"), consented);
+void AiSettings::setConsented(ai::ProviderKind kind, bool consented) const {
+    QSettings store;
+    if (consented) {
+        store.setValue(group(kind) + QStringLiteral("/consentedHost"), host(kind));
+    } else {
+        store.remove(group(kind) + QStringLiteral("/consentedHost"));
+    }
 }
 
 // --- AiKeyStore ---------------------------------------------------------------
@@ -123,7 +141,9 @@ std::optional<std::string> AiKeyStore::environmentKey(ai::ProviderKind kind, QSt
 }
 
 std::string AiKeyStore::savedKey(ai::ProviderKind kind) {
-    return readKeys().value(QString::fromLatin1(ai::providerName(kind))).toString().toStdString();
+    QJsonObject keys;
+    readKeys(keys);
+    return keys.value(QString::fromLatin1(ai::providerName(kind))).toString().toStdString();
 }
 
 std::string AiKeyStore::key(ai::ProviderKind kind) {
@@ -132,7 +152,14 @@ std::string AiKeyStore::key(ai::ProviderKind kind) {
 }
 
 bool AiKeyStore::saveKey(ai::ProviderKind kind, const std::string& key, QString* error) {
-    QJsonObject keys = readKeys();
+    QJsonObject keys;
+    if (!readKeys(keys)) {
+        if (error) {
+            *error = QStringLiteral("%1 cannot be read as saved keys; fix or delete it first")
+                         .arg(filePath());
+        }
+        return false;
+    }
     const QString name = QString::fromLatin1(ai::providerName(kind));
     const QString trimmed = QString::fromStdString(key).trimmed();
     if (trimmed.isEmpty()) {

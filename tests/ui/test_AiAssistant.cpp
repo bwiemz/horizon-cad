@@ -156,7 +156,7 @@ TEST(AiAssistantTest, AsksBeforeSendingToARemoteServer) {
     AiSettings settings = panel->settings();
     settings.configs[ProviderKind::OpenAICompatible].baseUrl = "http://models.example.com/v1";
     panel->setSettings(settings);
-    AiSettings::setConsented(ProviderKind::OpenAICompatible, false);
+    panel->settings().setConsented(ProviderKind::OpenAICompatible, false);
     {
         DialogResponder no(QMessageBox::No);
         EXPECT_FALSE(panel->submit(QStringLiteral("hello")));
@@ -170,11 +170,35 @@ TEST(AiAssistantTest, AsksBeforeSendingToARemoteServer) {
         EXPECT_TRUE(yes.seen());
     }
     EXPECT_EQ(transport.requests.size(), 1u);
-    EXPECT_TRUE(AiSettings::consented(ProviderKind::OpenAICompatible));
+    EXPECT_TRUE(panel->settings().consented(ProviderKind::OpenAICompatible));
     // Not asked again.
     transport.replies.push_back(text("Again."));
     EXPECT_TRUE(panel->submit(QStringLiteral("hello again")));
-    AiSettings::setConsented(ProviderKind::OpenAICompatible, false);
+    // Another host is asked about again.
+    settings.configs[ProviderKind::OpenAICompatible].baseUrl = "http://other.example.org/v1";
+    panel->setSettings(settings);
+    EXPECT_FALSE(panel->settings().consented(ProviderKind::OpenAICompatible));
+    {
+        DialogResponder no(QMessageBox::No);
+        EXPECT_FALSE(panel->submit(QStringLiteral("hello there")));
+        EXPECT_TRUE(no.seen());
+    }
+    panel->settings().setConsented(ProviderKind::OpenAICompatible, false);
+}
+
+TEST(AiSettingsTest, AnUnreadableKeyFileIsNotWrittenOver) {
+    qunsetenv("GEMINI_API_KEY");
+    qunsetenv("GOOGLE_API_KEY");
+    ASSERT_TRUE(AiKeyStore::saveKey(ProviderKind::Gemini, "g-kept"));
+    {
+        QFile file(AiKeyStore::filePath());
+        ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+        file.write("{ not json");
+    }
+    QString error;
+    EXPECT_FALSE(AiKeyStore::saveKey(ProviderKind::OpenAI, "sk-new", &error));
+    EXPECT_FALSE(error.isEmpty());
+    QFile::remove(AiKeyStore::filePath());
 }
 
 TEST(AiAssistantTest, FollowsTheActiveTab) {
