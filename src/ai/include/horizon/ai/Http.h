@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -38,6 +39,17 @@ public:
 
     /// Send @p request; its id, for cancel().
     virtual RequestId send(const HttpRequest& request, std::function<void(HttpResponse)> done) = 0;
+
+    /// Whether sendStreaming() hands over a reply's body as it arrives. When
+    /// it does not, there is no point asking a server to stream.
+    virtual bool streams() const { return false; }
+    /// Like send(), and @p part is called with each piece of the body as it
+    /// arrives, when the status is a success. @p done is still called last,
+    /// with the whole body. By default the whole body is one piece, given
+    /// just before @p done.
+    virtual RequestId sendStreaming(const HttpRequest& request,
+                                    std::function<void(std::string_view)> part,
+                                    std::function<void(HttpResponse)> done);
     /// Abandon request @p id if it is still in flight: its callback is not
     /// called. Others sent through the same transport are not touched.
     virtual void cancel(RequestId id) = 0;

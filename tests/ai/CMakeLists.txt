@@ -9,6 +9,7 @@ add_executable(hz_ai_tests
     test_McpServer.cpp
     test_OpenAIAdapter.cpp
     test_ProfileBuilder.cpp
+    test_Streaming.cpp
     test_ToolRegistry.cpp
     test_ViewImage.cpp
 )
