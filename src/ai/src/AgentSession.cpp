@@ -19,14 +19,16 @@ constexpr std::size_t kMaxResultChars = 40000;
 /// text every time it is sent. Older ones are said to have been left out.
 constexpr std::size_t kMaxImagesSent = 3;
 
-/// @p messages with the images of all but the newest kMaxImagesSent left
-/// out, a word in their place.
-std::vector<Message> withRecentImages(std::vector<Message> messages) {
+/// @p messages with the images of all but the newest @p limit left out, a
+/// word in their place. A limit of none: a model that is not sent images
+/// (the user turned them off, or switched to a model that reads none), which
+/// would refuse a request carrying the ones shown before.
+std::vector<Message> withRecentImages(std::vector<Message> messages, std::size_t limit) {
     std::size_t kept = 0;
     for (auto message = messages.rbegin(); message != messages.rend(); ++message) {
         for (auto block = message->blocks.rbegin(); block != message->blocks.rend(); ++block) {
             if (block->images.empty()) continue;
-            const std::size_t room = kMaxImagesSent - std::min(kept, kMaxImagesSent);
+            const std::size_t room = limit - std::min(kept, limit);
             if (block->images.size() <= room) {
                 kept += block->images.size();
                 continue;
@@ -35,9 +37,8 @@ std::vector<Message> withRecentImages(std::vector<Message> messages) {
             block->images.erase(block->images.begin(),
                                 block->images.begin() + static_cast<std::ptrdiff_t>(dropped));
             kept += block->images.size();
-            block->text += "\n[" + std::to_string(dropped) +
-                           " image(s) shown earlier are not sent again; ask for a new view to "
-                           "see it now]";
+            block->text +=
+                "\n[" + std::to_string(dropped) + " image(s) shown earlier are not sent again]";
         }
     }
     return messages;
@@ -93,7 +94,7 @@ void AgentSession::requestNext() {
     ChatRequest chat;
     chat.model = m_config.model;
     chat.system = m_system;
-    chat.messages = withRecentImages(m_messages);
+    chat.messages = withRecentImages(m_messages, m_config.images ? kMaxImagesSent : 0);
     chat.tools = m_tools.specs();
     chat.maxTokens = m_config.maxTokens;
     // Its reply is read in the format it was asked in, whatever the

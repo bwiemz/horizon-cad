@@ -119,6 +119,8 @@ private:
     void appendToolResult(const QString& summary, bool error);
     /// A picture a tool showed the model, small, in the transcript.
     void appendImage(const ai::Image& image);
+    /// Empty the transcript, its pictures let go too.
+    void clearTranscript();
     void appendNote(const QString& text, bool error = false);
 
     Host m_host;

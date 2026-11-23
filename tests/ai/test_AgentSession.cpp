@@ -486,3 +486,27 @@ TEST_F(AgentSessionTest, OnlyTheNewestImagesAreSentAgain) {
     }
     EXPECT_EQ(kept, 5);
 }
+
+// Images turned off (or a model that reads none chosen) after some were
+// shown: none goes with the next request, which that model would refuse.
+TEST_F(AgentSessionTest, NoImageIsSentToAModelNotSentImages) {
+    tools.add(spec("view"), ToolAccess::Read, [](const json&) {
+        ToolResult result = ToolResult::ok(json{{"view", "iso"}});
+        result.images.push_back({"image/png", "AAAA"});
+        return result;
+    });
+    transport.replies.push_back(anthropicReply("Looking.", {call("v1", "view")}));
+    transport.replies.push_back(anthropicReply("Seen."));
+    ASSERT_TRUE(session.send("look"));
+    ASSERT_NE(transport.requests[1].body.find("\"image\""), std::string::npos);
+
+    ProviderConfig config = defaultConfig(ProviderKind::Anthropic);
+    config.apiKey = "k";
+    config.images = false;
+    session.setConfig(config);
+    transport.replies.push_back(anthropicReply("Ok."));
+    ASSERT_TRUE(session.send("and now?"));
+    const std::string sent = transport.requests[2].body;
+    EXPECT_EQ(sent.find("\"image\""), std::string::npos);
+    EXPECT_NE(sent.find("not sent again"), std::string::npos);
+}

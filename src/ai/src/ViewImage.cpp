@@ -187,6 +187,13 @@ std::optional<ViewImage> renderView(const std::vector<ViewMesh>& meshes, const s
         const geo::MeshData& mesh = *placed.mesh;
         const auto& p = mesh.positions;
         const bool named = mesh.triangleFaces.size() * 3 == mesh.indices.size();
+        // Each face's number, once per mesh: a curved face's facets share
+        // their logical face's (no edges are drawn between them).
+        std::vector<long> faceOf(named ? mesh.faceTags.size() : 0);
+        for (std::size_t f = 0; f < faceOf.size(); ++f) {
+            const std::string key = std::to_string(m) + "#" + model::logicalFace(mesh.faceTags[f]);
+            faceOf[f] = faces.emplace(key, static_cast<long>(faces.size())).first->second;
+        }
         for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
             std::array<Vec3, 3> corner;
             bool inside = true;
@@ -200,9 +207,15 @@ std::optional<ViewImage> renderView(const std::vector<ViewMesh>& meshes, const s
                                                                  static_cast<double>(p[v + 1]),
                                                                  static_cast<double>(p[v + 2])));
             }
+            // A corner out of range, or not a number (a file's cached mesh
+            // may hold anything), and the triangle is not drawn.
+            for (const Vec3& c : corner) {
+                inside = inside && std::isfinite(c.x) && std::isfinite(c.y) && std::isfinite(c.z);
+            }
             if (!inside) continue;
             Vec3 normal = (corner[1] - corner[0]).cross(corner[2] - corner[0]);
-            if (normal.length() < 1e-12) continue;  // no area
+            const double twiceArea = normal.length();
+            if (!std::isfinite(twiceArea) || twiceArea < 1e-12) continue;  // no area, or too big
             normal = normal.normalized();
             if (normal.dot(basis->into) > 0.0) normal = normal * -1.0;  // the side seen
             Drawn d;
@@ -216,12 +229,7 @@ std::optional<ViewImage> renderView(const std::vector<ViewMesh>& meshes, const s
             d.colour = {channel(kBase[0] * lit), channel(kBase[1] * lit), channel(kBase[2] * lit)};
             if (named) {
                 const std::size_t f = mesh.triangleFaces[t / 3];
-                if (f < mesh.faceTags.size()) {
-                    // A curved face's facets are one face: no edges between them.
-                    const std::string key =
-                        std::to_string(m) + "#" + model::logicalFace(mesh.faceTags[f]);
-                    d.face = faces.emplace(key, static_cast<long>(faces.size())).first->second;
-                }
+                if (f < faceOf.size()) d.face = faceOf[f];
             }
             triangles.push_back(d);
         }
@@ -250,6 +258,10 @@ std::optional<ViewImage> renderView(const std::vector<ViewMesh>& meshes, const s
     const double spanY = std::max(maxY - minY, 1e-9);
     const double scale = std::min(static_cast<double>(width) * (1.0 - 2.0 * margin) / spanX,
                                   static_cast<double>(height) * (1.0 - 2.0 * margin) / spanY);
+    // Coordinates so far apart their span is not a number: nothing to fit.
+    if (!std::isfinite(scale) || !(scale > 0.0) || !std::isfinite(minZ) || !std::isfinite(maxZ)) {
+        return std::nullopt;
+    }
     const double midX = (minX + maxX) / 2.0;
     const double midY = (minY + maxY) / 2.0;
     for (auto& d : triangles) {
@@ -267,7 +279,7 @@ std::optional<ViewImage> renderView(const std::vector<ViewMesh>& meshes, const s
         const Drawn& d = triangles[i];
         const double area =
             (d.x[1] - d.x[0]) * (d.y[2] - d.y[0]) - (d.x[2] - d.x[0]) * (d.y[1] - d.y[0]);
-        if (std::abs(area) < 1e-12) continue;  // edge-on
+        if (!std::isfinite(area) || std::abs(area) < 1e-12) continue;  // edge-on, or unplaceable
         const int x0 =
             std::max(0, static_cast<int>(std::floor(std::min({d.x[0], d.x[1], d.x[2]}))));
         const int x1 =

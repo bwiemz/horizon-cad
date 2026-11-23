@@ -5,8 +5,10 @@
 #include <zlib.h>
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/ai/CadTools.h"
@@ -259,4 +261,31 @@ TEST(ViewImage, PiecesOfAFlatFaceShowNoEdge) {
     };
     EXPECT_EQ(edgesAlong(true, 200), 2) << "between the holes, the outline alone";
     EXPECT_EQ(edgesAlong(false, 300), 2);
+}
+
+// A file's cached mesh may hold anything: a corner that is not a number, or
+// is not drawn (nor cast to a pixel).
+TEST(ViewImage, ACornerNotANumberIsNotDrawn) {
+    const auto meshOf = [](std::vector<float> positions) {
+        auto mesh = std::make_shared<geo::MeshData>();
+        mesh->positions = std::move(positions);
+        mesh->indices = {0, 1, 2, 3, 4, 5};
+        return std::vector<ViewMesh>{{mesh, math::Mat4::identity()}};
+    };
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    // One good triangle, one with a corner not a number: the good one is drawn.
+    const auto mixed = ai::renderView(
+        meshOf({0, 0, 0, 10, 0, 0, 0, 10, 0, nan, 0, 0, 1, 1, 0, 2, 0, 0}), "top", 200, 200);
+    ASSERT_TRUE(mixed.has_value());
+    EXPECT_TRUE(shaded(at(*mixed, 70, 120)));
+    EXPECT_FALSE(
+        ai::renderView(meshOf({nan, 0, 0, 1, 0, 0, 0, 1, 0, inf, 0, 0, 1, inf, 0, 0, 0, inf}),
+                       "iso", 200, 200)
+            .has_value());
+    // The largest floats a mesh holds are fitted like any (doubles span them).
+    EXPECT_TRUE(ai::renderView(meshOf({-3e38F, 0, 0, 3e38F, 0, 0, 0, 3e38F, 0, -3e38F, 1, 0, 3e38F,
+                                       1, 0, 0, -3e38F, 0}),
+                               "top", 200, 200)
+                    .has_value());
 }

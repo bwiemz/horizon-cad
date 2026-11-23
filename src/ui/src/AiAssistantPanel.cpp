@@ -21,6 +21,7 @@
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QVariant>
 #include <algorithm>
 
 #include "horizon/ai/AgentSession.h"
@@ -299,7 +300,7 @@ void AiAssistantPanel::setTransport(ai::HttpTransport* transport) {
     };
     m_session->setUndoHooks(std::move(hooks));
     applyConfig();
-    m_transcript->clear();
+    clearTranscript();
     updateState();
 }
 
@@ -529,7 +530,7 @@ bool AiAssistantPanel::undoLastResponse() {
 void AiAssistantPanel::newConversation() {
     if (busy()) m_session->cancel();
     m_session->reset();
-    m_transcript->clear();
+    clearTranscript();
     m_status->clear();
     updateState();
 }
@@ -628,6 +629,17 @@ void AiAssistantPanel::appendToolResult(const QString& summary, bool error) {
     cursor.insertText((error ? QStringLiteral("    ✗ ") : QStringLiteral("    ✓ ")) + summary,
                       formatOf(error ? QColor(220, 100, 100) : QColor(140, 140, 140)));
     scrollToEnd(m_transcript);
+}
+
+void AiAssistantPanel::clearTranscript() {
+    // The pictures shown are the document's resources, which clearing its
+    // text keeps: each is let go too.
+    for (int n = 1; n <= m_images; ++n) {
+        m_transcript->document()->addResource(
+            QTextDocument::ImageResource, QUrl(QStringLiteral("hzview://%1").arg(n)), QVariant());
+    }
+    m_images = 0;
+    m_transcript->clear();
 }
 
 void AiAssistantPanel::appendImage(const ai::Image& image) {

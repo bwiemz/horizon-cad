@@ -323,6 +323,11 @@ TEST(AiAssistantTest, TheModelSeesWhatItMade) {
         transcript->document()->resource(QTextDocument::ImageResource, QUrl("hzview://1"));
     ASSERT_TRUE(picture.isValid());
     EXPECT_LE(picture.value<QImage>().width(), 320);
+    // A new conversation lets the pictures go with the text.
+    panel->newConversation();
+    EXPECT_FALSE(transcript->document()
+                     ->resource(QTextDocument::ImageResource, QUrl("hzview://1"))
+                     .isValid());
 }
 
 TEST(AiAssistantTest, StopLeavesThePanelReady) {
