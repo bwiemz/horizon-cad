@@ -31,6 +31,11 @@ struct ContentBlock {
     std::string provider;
     nlohmann::json raw;
 
+    /// Not noexcept: its JSON members are built on construction, and building
+    /// a JSON value may allocate. (Defaulted with its own exception
+    /// specification, as C++20 allows; the implicit one would claim noexcept.)
+    ContentBlock() noexcept(false) = default;
+
     static ContentBlock makeText(std::string text);
     static ContentBlock makeToolCall(std::string id, std::string name, nlohmann::json input);
     static ContentBlock makeToolResult(std::string callId, std::string name, std::string content,
