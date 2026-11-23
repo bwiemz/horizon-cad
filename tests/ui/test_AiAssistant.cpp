@@ -28,19 +28,10 @@
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/QtHttpTransport.h"
 
-// Qt keeps process-lifetime singletons that LeakSanitizer would report at exit.
-#if defined(__SANITIZE_ADDRESS__)
-#define HZ_ASAN_ACTIVE 1
-#elif defined(__has_feature)
-#if __has_feature(address_sanitizer)
-#define HZ_ASAN_ACTIVE 1
-#endif
-#endif
-#ifdef HZ_ASAN_ACTIVE
-extern "C" const char* __lsan_default_options() {
-    return "detect_leaks=0";
-}
-#endif
+// LeakSanitizer is told of Qt's process-lifetime singletons once for all the
+// window tests, in test_MainWindowDocuments.cpp: a second definition here
+// failed the AddressSanitizer build's link ("multiple definition of
+// __lsan_default_options").
 
 using hz::ai::HttpResponse;
 using hz::ai::ProviderKind;

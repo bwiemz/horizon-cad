@@ -24,7 +24,9 @@ work, not "post-1.0".
   lupdate 6.4 never finishes reading a `translate()` whose count is a call
   given a string, as four in the AI Assistant panel's summaries were: the
   check ran out of its 15 minutes on every Release build. Each count is
-  read into a variable first, and the check takes a second.
+  read into a variable first, and the check takes a second. And the
+  AddressSanitizer build links its window tests again: the AI Assistant's
+  tests told LeakSanitizer of Qt's singletons a second time.
 
 - **The AI Assistant panel.** Home ▸ AI Assistant (Ctrl+Shift+A) opens a
   chat beside Properties and Layers that builds and changes the active part or
