@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -88,10 +89,17 @@ public:
     void refreshDrawingsOf(const std::string& path);
 
 private:
+    friend class SheetEditCommand;
+
     struct Source;
+    /// What was drawn by hand that a change of the sheet carried with its
+    /// views: each entity, and how far it went.
+    using Carried = std::vector<std::pair<uint64_t, math::Vec2>>;
     struct Sheet {
         std::weak_ptr<doc::Document> document;
         io::DrawingDocumentSpec spec;
+        /// The spec as last drawn: where a change's undo goes back to.
+        io::DrawingDocumentSpec drawn;
         /// The views as last drawn: what a click on the sheet finds.
         model::Drawing drawing;
         /// The part files it was drawn from: its part's, or its assembly's
@@ -171,11 +179,17 @@ private:
     void addView(Sheet& sheet, const model::DrawingView& view, io::DrawingViewSpec spec,
                  const QString& verb);
     /// Draw @p sheet again from its spec and its part, carrying what was
-    /// drawn by hand inside a view with the view. False, with the reason.
-    bool drawAgain(Sheet& sheet, std::string* error);
-    /// Draw the active sheet again after its spec changed, and mark it
-    /// modified.
+    /// drawn by hand inside a view with the view (said in @p carried, when
+    /// given). False, with the reason.
+    bool drawAgain(Sheet& sheet, std::string* error, Carried* carried = nullptr);
+    /// Draw the active sheet again after its spec changed, as one step on its
+    /// undo stack.
     void redraw(Sheet& sheet, const QString& verb);
+    /// Draw the sheet showing @p document as @p spec has it (an undo or a
+    /// redo of a change), moving what the change carried by @p sign times
+    /// how far it went: just that, not what lies where the views are now.
+    void replay(doc::Document& document, const io::DrawingDocumentSpec& spec,
+                const Carried& carried, double sign);
 
     WorkbenchHost& m_host;
     /// Each sheet where it was made: a form holds one while it is open, and

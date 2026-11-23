@@ -49,4 +49,8 @@ are locked.
 
 **File ▸ Export ▸ PDF...** or **SVG...** writes the sheet on its paper at 1:1.
 
-Changes to a sheet are saved with it, but cannot be undone with Undo.
+Each change to a sheet (its title block, paper, scale, a view added, moved
+or removed, a view's settings, a dimension) is one step for **Edit ▸ Undo**
+and **Redo**. A view's notes, drawn by hand inside it, move back with it.
+Drawing a sheet again from its part (**Update from Part**, or the part
+changing) is not a step: it changes nothing of the sheet's own.

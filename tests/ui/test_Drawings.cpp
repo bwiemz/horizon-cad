@@ -30,8 +30,10 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftDimension.h"
+#include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -575,6 +577,15 @@ TEST(DrawingsTest, ARemovedViewTakesItsDetailWithIt) {
     ASSERT_EQ(spec.views.size(), 3u);
     for (const auto& v : spec.views) EXPECT_EQ(v.role, hz::model::ViewRole::Projection);
     EXPECT_NE(spec.views[0].kind, hz::model::StandardView::Front);
+
+    // Undone, the view and its detail are back; saved, the file says so.
+    trigger(w, "action_undo");
+    EXPECT_FALSE(labelTexts(*sheet).isEmpty()) << "the detail drawn again";
+    EXPECT_TRUE(sheet->isDirty()) << "saved without them";
+    const auto back = savedSpec(w, dir.filePath(QStringLiteral("block.hzdwg")));
+    ASSERT_EQ(back.views.size(), 5u);
+    EXPECT_EQ(back.views[0].kind, hz::model::StandardView::Front);
+    EXPECT_EQ(back.views[4].role, hz::model::ViewRole::Detail);
 }
 
 // The Scale form lays the standard views out again and keeps the section
@@ -862,4 +873,99 @@ TEST(DrawingsTest, AnAssemblysDrawingHasBalloonsAndAPartsList) {
     deepenOnDisk(dir.filePath(QStringLiteral("block.hzpart")), 30);
     EXPECT_TRUE(waitUntil([&] { return sheet->draftDocument().revision() != drawnAt; }, 5000));
     EXPECT_EQ(countOn(*sheet, "Balloons"), static_cast<size_t>(3 * circles));
+}
+
+// Each change to a sheet is one step on its undo stack, as a change to a part
+// is: Edit ▸ Undo takes it back and Redo makes it again. Undone back to where
+// it was saved, the sheet is not modified.
+TEST(DrawingsTest, EachChangeToASheetIsUndoneAndRedone) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, block);
+    ASSERT_NE(sheet, nullptr);
+    sheet->setDirty(false);  // as if saved
+    const QString titleWas = titleBlockText(*sheet);
+    const double borderWas = extentOn(*sheet, "Border", 0);
+    const double viewsWas = extentOn(*sheet, "Visible", 0);
+
+    {
+        FormFiller form(QStringLiteral("Title Block"), FormAnswers()
+                                                           .text("title", "Bracket")
+                                                           .choose("paper", "A4")
+                                                           .choose("orientation", "Portrait"));
+        trigger(w, "action_drawing_title_block");
+        ASSERT_TRUE(form.seen());
+    }
+    {
+        FormFiller form(QStringLiteral("Drawing Scale"), FormAnswers().choose("scale", "2:1"));
+        trigger(w, "action_drawing_scale");
+        ASSERT_TRUE(form.seen());
+    }
+    ASSERT_EQ(sheet->undoStack().undoCount(), 2u);
+    const QString titled = titleBlockText(*sheet);
+    const double atTwo = extentOn(*sheet, "Visible", 0);
+    EXPECT_TRUE(sheet->isDirty());
+
+    trigger(w, "action_undo");  // the scale
+    EXPECT_FALSE(titleBlockText(*sheet).contains(QStringLiteral("SCALE: 2:1")));
+    EXPECT_LT(extentOn(*sheet, "Visible", 0), atTwo);
+    EXPECT_TRUE(titleBlockText(*sheet).contains(QStringLiteral("Bracket")));
+    EXPECT_TRUE(sheet->isDirty());
+
+    trigger(w, "action_undo");  // the title block and the paper
+    EXPECT_EQ(titleBlockText(*sheet), titleWas);
+    EXPECT_NEAR(extentOn(*sheet, "Border", 0), borderWas, 1e-6) << "A3 landscape again";
+    EXPECT_NEAR(extentOn(*sheet, "Visible", 0), viewsWas, 1e-6);
+    EXPECT_FALSE(sheet->isDirty()) << "back where it was saved";
+
+    trigger(w, "action_redo");
+    trigger(w, "action_redo");
+    EXPECT_EQ(titleBlockText(*sheet), titled);
+    EXPECT_NEAR(extentOn(*sheet, "Visible", 0), atTwo, 1e-6);
+    EXPECT_NEAR(extentOn(*sheet, "Border", 0), 210.0 - 20.0, 1e-6) << "A4 portrait again";
+    EXPECT_TRUE(sheet->isDirty());
+}
+
+// What was drawn by hand inside a view moves with it, and a move undone takes
+// it back: just what moved, not what lay where the view went.
+TEST(DrawingsTest, AMovedViewTakesItsNotesBackWhenUndone) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    const hz::model::Drawing layout = layoutOf(block);
+    const hz::model::DrawingView& iso = layout.views[3];
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, block);
+    ASSERT_NE(sheet, nullptr);
+    const hz::math::Vec2 at{iso.placement.x + iso.sheetWidth() / 2.0,
+                            iso.placement.y + iso.sheetHeight() / 2.0};
+    const hz::math::Vec2 to{at.x - 20.0, at.y - 15.0};
+    // A note in the view, and one where the view's centre goes, outside it.
+    auto inView = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(at.x - 1.0, at.y),
+                                                         hz::math::Vec2(at.x + 1.0, at.y));
+    auto there = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(to.x - 1.0, to.y - 30.0),
+                                                        hz::math::Vec2(to.x + 1.0, to.y - 30.0));
+    sheet->addEntity(inView);
+    sheet->addEntity(there);
+
+    ToolDriver drive(w);
+    trigger(w, "action_move_view");
+    drive.click(at);
+    drive.click(to);
+    ASSERT_TRUE(waitUntil([&] { return selecting(w); }, 5000)) << "back to Select";
+    const hz::math::Vec2 moved = inView->start();
+    ASSERT_GT(std::abs(moved.x - (at.x - 1.0)), 10.0) << "the note went with the view";
+    EXPECT_NEAR(there->start().x, to.x - 1.0, 1e-9) << "what was outside it stayed";
+
+    trigger(w, "action_undo");
+    EXPECT_NEAR(inView->start().x, at.x - 1.0, 1e-9);
+    EXPECT_NEAR(inView->start().y, at.y, 1e-9);
+    EXPECT_NEAR(there->start().x, to.x - 1.0, 1e-9) << "not taken along by the undo";
+    EXPECT_NEAR(there->start().y, to.y - 30.0, 1e-9);
+
+    trigger(w, "action_redo");
+    EXPECT_NEAR(inView->start().x, moved.x, 1e-9);
+    EXPECT_NEAR(there->start().x, to.x - 1.0, 1e-9);
 }
