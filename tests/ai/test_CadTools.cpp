@@ -77,7 +77,7 @@ protected:
 
 TEST_F(CadToolsTest, RegistersTheToolsWithSchemas) {
     const auto specs = tools.specs();
-    EXPECT_GE(specs.size(), 25u);
+    EXPECT_GE(specs.size(), 32u);
     for (const auto& spec : specs) {
         EXPECT_FALSE(spec.description.empty()) << spec.name;
         EXPECT_EQ(spec.inputSchema["type"], "object") << spec.name;
@@ -267,6 +267,31 @@ TEST_F(CadToolsTest, HoleThroughAFace) {
     EXPECT_EQ(features.back()["parameters"]["type"]["choice"], "Counterbore");
 }
 
+TEST_F(CadToolsTest, FacesByTheirSide) {
+    box(60, 40, 5);
+    // A hole in "Top", as a model first asks for it.
+    ok("add_hole",
+       {{"face", "Top"}, {"position", {8, 8, 5}}, {"diameter", 6}, {"through_all", true}});
+    EXPECT_NEAR(volume(), 60.0 * 40.0 * 5.0 - kPi * 9.0 * 5.0, 2.0);
+    const json sketch =
+        ok("create_sketch",
+           {{"face", "front"},
+            {"entities", json::array({{{"type", "circle"}, {"center", {0, 0}}, {"radius", 1}}})}});
+    EXPECT_EQ(sketch["plane"]["normal"], json::array({0.0, -1.0, 0.0}));
+    const json thickness =
+        ok("measure", {{"from", {{"face", "top"}}}, {"to", {{"face", "bottom"}}}});
+    EXPECT_NEAR(thickness["distance"].get<double>(), 5.0, 1e-9);
+    // A side the part has no flat face on.
+    doc::Document round;
+    ToolRegistry tools2;
+    ai::registerCadTools(tools2, round);
+    tools2.run("add_primitive", {{"shape", "sphere"}, {"radius", 5}});
+    EXPECT_TRUE(tools2
+                    .run("add_hole",
+                         {{"face", "top"}, {"position", {0, 0, 5}}, {"diameter", 1}, {"depth", 1}})
+                    .isError);
+}
+
 TEST_F(CadToolsTest, LinearAndCircularPattern) {
     box(10, 10, 10);
     ok("linear_pattern", {{"direction", {1, 0, 0}}, {"spacing", 20}, {"count", 3}});
@@ -377,6 +402,114 @@ TEST_F(CadToolsTest, ANumberReplacesAnExpression) {
     ok("edit_feature", {{"index", 0}, {"expressions", {{"distance", ""}}}});
     ok("set_variables", {{"variables", {{"depth", "2 mm"}}}});
     EXPECT_NEAR(volume(), 900.0, 1e-6);
+}
+
+TEST_F(CadToolsTest, LoftBetweenTwoSquares) {
+    const auto square = [this](double side, double offset) {
+        return ok("create_sketch", {{"offset", offset},
+                                    {"entities", json::array({{{"type", "rectangle"},
+                                                               {"center", {0, 0}},
+                                                               {"width", side},
+                                                               {"height", side}}})}})["sketch_id"];
+    };
+    const json bottom = square(20, 0);
+    const json top = square(10, 10);
+    ok("loft", {{"sketch_ids", {bottom, top}}});
+    // A frustum of a pyramid: h/3 (A1 + A2 + sqrt(A1 A2)).
+    EXPECT_NEAR(volume(), 10.0 / 3.0 * (400.0 + 100.0 + 200.0), 1e-6);
+    fails("loft", {{"sketch_ids", {bottom}}});
+}
+
+TEST_F(CadToolsTest, SweepAlongAPath) {
+    const json path =
+        ok("create_sketch",
+           {{"plane", "XZ"},
+            {"entities",
+             json::array({{{"type", "line"}, {"from", {0, 0}}, {"to", {30, 0}}}})}})["sketch_id"];
+    const json profile =
+        ok("create_sketch",
+           {{"plane", "YZ"},
+            {"entities",
+             json::array({{{"type", "circle"}, {"center", {0, 0}}, {"radius", 2}}})}})["sketch_id"];
+    const json swept = ok("sweep", {{"profile_sketch_id", profile}, {"path_sketch_id", path}});
+    EXPECT_NEAR(swept["solid"]["bounding_box"]["size"][0].get<double>(), 30.0, 1e-6);
+    EXPECT_NEAR(volume(), kPi * 4.0 * 30.0, 0.02 * kPi * 4.0 * 30.0);
+    fails("sweep", {{"profile_sketch_id", profile}, {"path_sketch_id", profile}});
+}
+
+TEST_F(CadToolsTest, DraftTapersTheSides) {
+    box(20, 20, 10);
+    ok("draft", {{"angle", 5}});
+    EXPECT_GT(std::abs(volume() - 4000.0), 1.0);
+    fails("draft", {{"angle", 0}});
+    fails("draft", {{"angle", 60}});
+}
+
+TEST_F(CadToolsTest, CombineSeparateBodies) {
+    box(10, 10, 10);
+    ok("add_primitive", {{"shape", "box"},
+                         {"size_x", 10},
+                         {"size_y", 10},
+                         {"size_z", 10},
+                         {"position", {5, 0, 0}},
+                         {"operation", "new"}});
+    const json two = ok("get_document_info")["solid"];
+    EXPECT_EQ(two["shells"], 2);
+    const json combined = ok("combine_bodies", {{"operation", "union"}});
+    // One body: nothing to combine.
+    EXPECT_NE(fails("combine_bodies", {{"operation", "union"}}).find("one body"),
+              std::string::npos);
+    EXPECT_EQ(combined["solid"]["shells"], 1);
+    EXPECT_NEAR(combined["solid"]["volume_mm3"].get<double>(), 1500.0, 1e-6);
+}
+
+TEST_F(CadToolsTest, SketchOnADatumPlane) {
+    const json datum =
+        ok("add_datum", {{"kind", "plane"}, {"origin", {0, 0, 5}}, {"normal", {0, 0, 1}}});
+    EXPECT_EQ(datum["feature_index"], 0);
+    const json sketch =
+        ok("create_sketch",
+           {{"datum", 0},
+            {"entities", json::array({{{"type", "circle"}, {"center", {0, 0}}, {"radius", 5}}})}});
+    EXPECT_EQ(sketch["plane"]["origin"], json::array({0.0, 0.0, 5.0}));
+    const json made = ok("extrude", {{"sketch_id", sketch["sketch_id"]}, {"distance", 5}});
+    EXPECT_NEAR(made["solid"]["bounding_box"]["min"][2].get<double>(), 5.0, 1e-9);
+    ok("add_datum", {{"kind", "axis"}, {"direction", {0, 0, 1}}});
+    ok("add_datum", {{"kind", "point"}, {"position", {1, 2, 3}}});
+    // A datum that is not a plane cannot be sketched on.
+    fails("create_sketch",
+          {{"datum", 2},
+           {"entities", json::array({{{"type", "circle"}, {"center", {0, 0}}, {"radius", 1}}})}});
+    fails("add_datum", {{"kind", "plane"}, {"normal", {0, 0, 0}}});
+}
+
+TEST_F(CadToolsTest, MeasureWhatWasMade) {
+    box(20, 20, 10);
+    const json top = face(json::array({0, 0, 1}));
+    const json bottom = face(json::array({0, 0, -1}));
+    const json side = face(json::array({1, 0, 0}));
+    const json thickness =
+        ok("measure", {{"from", {{"face", top["id"]}}}, {"to", {{"face", bottom["name"]}}}});
+    EXPECT_NEAR(thickness["distance"].get<double>(), 10.0, 1e-9);
+    EXPECT_NEAR(thickness["angle_between_normals_deg"].get<double>(), 180.0, 1e-9);
+    const json corner =
+        ok("measure", {{"from", {{"face", top["id"]}}}, {"to", {{"face", side["id"]}}}});
+    EXPECT_NEAR(corner["angle_between_normals_deg"].get<double>(), 90.0, 1e-9);
+    EXPECT_FALSE(corner.contains("distance"));
+    const json height =
+        ok("measure", {{"from", {{"point", {3, 3, 25}}}}, {"to", {{"face", top["id"]}}}});
+    EXPECT_NEAR(height["distance"].get<double>(), 15.0, 1e-9);
+    const json points =
+        ok("measure", {{"from", {{"point", {0, 0, 0}}}}, {"to", {{"point", {3, 4, 0}}}}});
+    EXPECT_NEAR(points["distance"].get<double>(), 5.0, 1e-12);
+    const json edges = ok("list_edges", {{"direction", {1, 0, 0}}})["edges"];
+    ASSERT_GE(edges.size(), 2u);
+    const json gap =
+        ok("measure", {{"from", {{"edge", edges[0]["id"]}}}, {"to", {{"edge", edges[1]["id"]}}}});
+    EXPECT_GT(gap["distance"].get<double>(), 0.0);
+    EXPECT_NEAR(gap["angle_deg"].get<double>(), 0.0, 1e-9);
+    fails("measure", {{"from", {{"face", "nope"}}}, {"to", {{"point", {0, 0, 0}}}}});
+    fails("measure", {{"from", 5}, {"to", {{"point", {0, 0, 0}}}}});
 }
 
 TEST_F(CadToolsTest, DeleteAndSuppressFeature) {
@@ -610,6 +743,8 @@ TEST_F(CadToolsTest, BadArgumentsAreErrorsNotCrashes) {
         {"get_mass_properties", {{"density_kg_m3", -5}}},
         {"set_variables", json::object()},
         {"set_variables", {{"remove", json::array({"never_was"})}}},
+        {"add_primitive", {{"shape", "sphere"}, {"radius", 6e15}}},
+        {"extrude", {{"sketch_id", 1}, {"distance", 1e12}}},
     };
     const std::size_t features = document.featureTree().featureCount();
     const std::size_t steps = document.undoStack().undoCount();

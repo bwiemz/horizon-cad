@@ -4,6 +4,7 @@
 add_library(hz_ai STATIC
     src/AgentSession.cpp
     src/AnthropicAdapter.cpp
+    src/CadAdvancedTools.cpp
     src/CadDraftTools.cpp
     src/CadModelTools.cpp
     src/CadQueryTools.cpp

@@ -3,6 +3,7 @@
 #include <QDockWidget>
 #include <functional>
 #include <memory>
+#include <nlohmann/json.hpp>
 
 #include "horizon/ai/ToolRegistry.h"
 #include "horizon/ui/AiSettings.h"
@@ -44,6 +45,10 @@ public:
         std::function<void()> modelChanged;
         std::function<void()> drawingChanged;
         std::function<void()> undo;
+        /// What the user has selected, as the tools name it (get_selection):
+        /// {"faces": [...], "edges": [...], "drawing_entities": [...]}. Unset:
+        /// no such tool.
+        std::function<nlohmann::json()> selection;
     };
     void setHost(Host host) { m_host = std::move(host); }
 

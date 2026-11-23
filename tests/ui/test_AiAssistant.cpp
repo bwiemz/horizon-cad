@@ -22,11 +22,14 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/modeling/Naming.h"
+#include "horizon/topology/Solid.h"
 #include "horizon/ui/AiAssistantPanel.h"
 #include "horizon/ui/AiSettings.h"
 #include "horizon/ui/AiSettingsDialog.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/QtHttpTransport.h"
+#include "horizon/ui/ViewportWidget.h"
 
 // LeakSanitizer is told of Qt's process-lifetime singletons once for all the
 // window tests, in test_MainWindowDocuments.cpp: a second definition here
@@ -254,6 +257,32 @@ TEST(AiAssistantTest, AFailedToolIsShownAndTheModelCarriesOn) {
     EXPECT_TRUE(shown.contains(QStringLiteral("There is no part to fillet yet.")));
     // The error went back to the model as a tool result.
     EXPECT_EQ(transport.body(1)["messages"].back()["role"], "tool");
+}
+
+TEST(AiAssistantTest, TheModelCanAskWhatIsSelected) {
+    MainWindow window;
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    transport.replies.push_back(toolCall("c1", "add_primitive", kBox));
+    transport.replies.push_back(text("Box."));
+    ASSERT_TRUE(panel->submit(QStringLiteral("a box")));
+    const hz::topo::Solid* solid = window.activeDocument()->solid();
+    ASSERT_NE(solid, nullptr);
+    const std::string tag = solid->faces().front().topoId.tag();
+    auto* viewport = window.findChild<hz::ui::ViewportWidget*>();
+    ASSERT_NE(viewport, nullptr);
+    viewport->chooseModel(hz::ui::ViewportWidget::ModelPick{0, tag, false}, false);
+
+    transport.replies.push_back(toolCall("c2", "get_selection", json::object()));
+    transport.replies.push_back(text("That face."));
+    ASSERT_TRUE(panel->submit(QStringLiteral("what is this?")));
+    const json sent = transport.body(transport.requests.size() - 1);
+    const json result = json::parse(sent["messages"].back()["content"].get<std::string>());
+    ASSERT_EQ(result["faces"].size(), 1u);
+    EXPECT_EQ(result["faces"][0]["id"], hz::model::logicalFace(tag));
+    EXPECT_TRUE(result["edges"].empty());
+    EXPECT_TRUE(result.contains("drawing_entities"));
 }
 
 TEST(AiAssistantTest, TheMenuShowsThePanel) {

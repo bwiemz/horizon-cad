@@ -75,6 +75,7 @@
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/SolidTessellator.h"
@@ -262,7 +263,7 @@ MainWindow::MainWindow(QWidget* parent)
                             onSelectionChanged();
                             m_viewport->update();
                         },
-                        [this] { onUndo(); }});
+                        [this] { onUndo(); }, [this] { return assistantSelection(); }});
     m_aiPanel->setDocument(m_document, tr("Drawing 1"));
     m_propertyPanel->raise();
 
@@ -358,6 +359,30 @@ MainWindow::~MainWindow() {
     m_openTask.reset();
     m_reloadTask.reset();
     m_massTask.reset();
+}
+
+nlohmann::json MainWindow::assistantSelection() const {
+    // As the assistant's tools name them: a face by its logical id and whole
+    // name, an edge by its logical id (list_faces, list_edges).
+    nlohmann::json faces = nlohmann::json::array();
+    nlohmann::json edges = nlohmann::json::array();
+    for (const auto& pick : m_viewport->modelSelection()) {
+        if (pick.owner != 0 || pick.tag.empty()) continue;  // a component, or a whole body
+        if (pick.edge) {
+            const std::string id = model::logicalEdge(pick.tag);
+            if (std::find(edges.begin(), edges.end(), id) == edges.end()) edges.push_back(id);
+        } else {
+            const std::string id = model::logicalFace(pick.tag);
+            const nlohmann::json face = {{"id", id}, {"name", model::wholeFaceName(id)}};
+            if (std::find(faces.begin(), faces.end(), face) == faces.end()) faces.push_back(face);
+        }
+    }
+    nlohmann::json entities = nlohmann::json::array();
+    for (const uint64_t id : m_viewport->selectionManager().selectedIds()) entities.push_back(id);
+    nlohmann::json out = {{"faces", std::move(faces)}, {"edges", std::move(edges)}};
+    // Entities are of the drawing the window edits: a sketch's when one is.
+    out[m_document->editedSketch() ? "sketch_entities" : "drawing_entities"] = std::move(entities);
+    return out;
 }
 
 void MainWindow::showAssistant() {
