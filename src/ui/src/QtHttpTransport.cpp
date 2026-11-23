@@ -1,5 +1,7 @@
 #include "horizon/ui/QtHttpTransport.h"
 
+#include <spdlog/spdlog.h>
+
 #include <QByteArray>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -97,9 +99,10 @@ ai::HttpTransport::RequestId QtHttpTransport::send(const ai::HttpRequest& reques
         }
         try {
             done(response);
-        } catch (const std::exception&) {
+        } catch (const std::exception& e) {
             // The session's callback does not throw; a transport never lets
             // an exception into Qt's event loop.
+            spdlog::error("AI assistant: a reply's handler failed: {}", e.what());
         }
     });
     return id;
