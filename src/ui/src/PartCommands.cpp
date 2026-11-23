@@ -413,6 +413,45 @@ void PartCommands::onExtrudeSketch() {
     m_host.viewport().update();
 }
 
+void PartCommands::onBaseFlange() {
+    if (m_host.currentDocument() == nullptr) return;
+    bool createdWrapper = false;
+    auto sketch = resolveProfileSketch(createdWrapper);
+    if (!sketch || sketch->entities().empty()) {
+        m_host.showStatus(tr("Sketch an open run of lines first (an L, a U, a Z)"));
+        return;
+    }
+    FeatureForm form(m_host.dialogParent(), tr("Base Flange"), part().lengthUnit());
+    auto* thickness = form.length(QStringLiteral("thickness"), tr("Thickness:"), 2.0, 0.01, 1e3, 3);
+    auto* radius =
+        form.length(QStringLiteral("bendRadius"), tr("Bend radius (inside):"), 2.0, 0.0, 1e3, 3);
+    auto* kFactor = form.number(QStringLiteral("kFactor"), tr("K-factor:"), 0.44, 0.0, 1.0, 3);
+    auto* width = form.length(QStringLiteral("width"), tr("Width:"), 50.0, 0.01, 1e6, 2);
+    auto* side = form.choice(QStringLiteral("flip"), tr("Material:"),
+                             {tr("Left of the lines"), tr("Right of the lines")});
+    auto* result = form.operationChoice(proposedOperation());
+    if (!form.exec()) return;
+
+    auto feature = std::make_unique<doc::SheetMetalFeature>(sketch, thickness->value(),
+                                                            radius->value(), width->value());
+    feature->setParameter("kFactor", kFactor->value());
+    feature->setParameter("flip", side->currentIndex() == 1 ? 1.0 : 0.0);
+    feature->setOperation(FeatureForm::operation(result));
+    // Folded first, before the document changes: a flange that cannot be
+    // made leaves nothing behind, and says why.
+    std::string why;
+    if (!feature->execute(nullptr, &why)) {
+        m_host.showStatus(tr("Base Flange failed: %1").arg(QString::fromStdString(why)));
+        return;
+    }
+    if (!m_host.addFeature(std::move(feature), tr("Base Flange"),
+                           createdWrapper ? sketch : nullptr)) {
+        return;
+    }
+    m_host.viewport().camera().setIsometricView();
+    m_host.viewport().update();
+}
+
 void PartCommands::onRevolveSketch() {
     if (m_host.currentDocument() == nullptr) return;
 

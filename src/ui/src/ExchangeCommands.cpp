@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QLabel>
 #include <QLayout>
+#include <QLocale>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QStringList>
@@ -21,6 +22,7 @@
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/PlotScene.h"
 #include "horizon/fileio/DxfFormat.h"
+#include "horizon/fileio/FlatPattern.h"
 #include "horizon/fileio/GltfExport.h"
 #include "horizon/fileio/StlExport.h"
 #include "horizon/fileio/SvgExport.h"
@@ -454,6 +456,44 @@ void ExchangeCommands::onExportDxf() {
     }
     m_host.setPrompt(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
     showDxfWriteReport(report, m_host.dialogParent());
+}
+
+void ExchangeCommands::onExportFlatPattern() {
+    // The part's base flange: the first, of those built.
+    const doc::Document* document = m_host.currentDocument();
+    const doc::SheetMetalFeature* flange = nullptr;
+    if (document != nullptr && !m_host.currentAssembly()) {
+        const auto& tree = document->featureTree();
+        for (std::size_t i = 0; i < tree.featureCount() && flange == nullptr; ++i) {
+            const auto* feature = dynamic_cast<const doc::SheetMetalFeature*>(tree.feature(i));
+            if (feature != nullptr && !feature->isSuppressed()) flange = feature;
+        }
+    }
+    if (flange == nullptr) {
+        m_host.showStatus(
+            tr("A flat pattern is a sheet metal part's: this part has no base flange"));
+        return;
+    }
+    std::string why;
+    const auto pattern = io::flatPatternOf(*flange, &why);
+    if (!pattern) {
+        m_host.showStatus(
+            tr("The base flange does not unfold: %1").arg(QString::fromStdString(why)));
+        return;
+    }
+    const QString fileName =
+        askExportPath(tr("Flat Pattern"), tr("DXF Files (*.dxf)"), QStringLiteral(".dxf"));
+    if (fileName.isEmpty()) return;
+    if (!io::saveFlatPatternDxf(fileName.toStdString(), *pattern, &why)) {
+        m_host.reportFileError(tr("Could not export"), fileName.toStdString(), why);
+        return;
+    }
+    const QLocale locale;
+    m_host.setPrompt(tr("Exported %1: a blank %2 by %3 mm, %n bend(s).", nullptr,
+                        static_cast<int>(pattern->bends.size()))
+                         .arg(QFileInfo(fileName).fileName(),
+                              locale.toString(pattern->length, 'f', 2),
+                              locale.toString(pattern->width, 'f', 2)));
 }
 
 void ExchangeCommands::showDxfWriteReport(const io::DxfWriteReport& report, QWidget* parent) {

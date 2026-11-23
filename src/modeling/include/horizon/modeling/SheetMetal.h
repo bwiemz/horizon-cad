@@ -1,6 +1,10 @@
 #pragma once
 
+#include <optional>
+#include <string>
 #include <vector>
+
+#include "horizon/math/Vec2.h"
 
 namespace hz::model {
 
@@ -39,8 +43,28 @@ double bendAllowance(double angleRad, const SheetMetalParams& p);
 double bendDeduction(double angleRad, const SheetMetalParams& p);
 
 /// Developed (flat-pattern) length of @p strip: the sum of its flat segment
-/// lengths plus the bend allowance of each bend. Returns 0 if the params are
-/// invalid or the strip's segment/bend counts are inconsistent.
+/// lengths plus the bend allowance of each bend, whichever way it turns.
+/// Returns 0 if the params are invalid or the strip's segment/bend counts are
+/// inconsistent.
 double developedLength(const SheetMetalStrip& strip, const SheetMetalParams& p);
+
+/// A base flange's strip from its sketch: @p points, end to end, are the
+/// virtual sharps of the sheet's bottom surface (the one its thickness grows
+/// from), the material to the left of travel, or to the right with
+/// @p materialRight. Each corner is a bend of the turn's angle, positive
+/// toward the material. A flat segment is its line less the setback of each
+/// bend at its ends: R tan(angle/2), R being the bottom surface's radius
+/// there (r + t on a bend toward the material, r away from it). nullopt,
+/// with why in @p why when given, for fewer than two points, a line of no
+/// length, a corner that turns back on itself, a line too short for its
+/// bends, or parameters that are not usable.
+std::optional<SheetMetalStrip> stripFromPolyline(const std::vector<math::Vec2>& points,
+                                                 const SheetMetalParams& params, bool materialRight,
+                                                 std::string* why);
+
+/// Where each bend's centre line runs across the flat pattern: its distance
+/// from the strip's start along the developed length (the middle of the
+/// bend's allowance, whichever way it turns).
+std::vector<double> bendLinePositions(const SheetMetalStrip& strip, const SheetMetalParams& p);
 
 }  // namespace hz::model

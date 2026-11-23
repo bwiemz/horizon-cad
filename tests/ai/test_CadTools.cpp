@@ -117,6 +117,54 @@ TEST_F(CadToolsTest, ANewDocumentBecomesAPartUndoably) {
     EXPECT_EQ(document.featureTree().featureCount(), 0u);
 }
 
+// Sheet metal: an L sketched as lines folded into a base flange, one undo
+// step, and its blank read back for cutting.
+TEST_F(CadToolsTest, ABaseFlangeAndItsFlatPattern) {
+    const std::uint64_t l =
+        ok("create_sketch",
+           {{"entities",
+             json::array({{{"type", "line"}, {"from", {0, 0}}, {"to", {50, 0}}},
+                          {{"type", "line"}, {"from", {50, 0}}, {"to", {50, 30}}}})}})["sketch_id"];
+    const std::size_t steps = document.undoStack().undoCount();
+    const json made = ok("add_base_flange",
+                         {{"sketch_id", l}, {"thickness", 2}, {"bend_radius", 1}, {"width", 20}});
+    EXPECT_EQ(document.undoStack().undoCount(), steps + 1);
+    EXPECT_EQ(made["bends"], 1);
+    const double ba = (3.14159265358979323846 / 2) * (1.0 + 0.44 * 2.0);
+    EXPECT_NEAR(made["flat_length"].get<double>(), 47.0 + 27.0 + ba, 1e-5);
+    // Flats 47 and 27, 2 thick, 20 wide, and the bend's ring in 8 chords.
+    const double ring = 0.5 * 8 * std::sin(3.14159265358979323846 / 16) * (9.0 - 1.0);
+    EXPECT_NEAR(volume(), 20.0 * ((47.0 + 27.0) * 2.0 + ring), 1e-3);
+
+    const json blank = ok("get_flat_pattern");
+    EXPECT_NEAR(blank["length"].get<double>(), 47.0 + 27.0 + ba, 1e-5);
+    EXPECT_EQ(blank["width"], 20.0);
+    ASSERT_EQ(blank["bends"].size(), 1u);
+    EXPECT_EQ(blank["bends"][0]["direction"], "up");
+    EXPECT_NEAR(blank["bends"][0]["angle"].get<double>(), 90.0, 1e-6);
+
+    // A closed run of lines, or a shape that is not lines, is no flange, and
+    // says so; nothing is added.
+    const std::uint64_t triangle =
+        ok("create_sketch",
+           {{"entities",
+             json::array({{{"type", "line"}, {"from", {0, 0}}, {"to", {10, 0}}},
+                          {{"type", "line"}, {"from", {10, 0}}, {"to", {0, 10}}},
+                          {{"type", "line"}, {"from", {0, 10}}, {"to", {0, 0}}}})}})["sketch_id"];
+    const std::size_t before = document.featureTree().featureCount();
+    std::string why =
+        fails("add_base_flange", {{"sketch_id", triangle}, {"thickness", 2}, {"width", 20}});
+    EXPECT_NE(why.find("closed"), std::string::npos) << why;
+    why = fails("add_base_flange",
+                {{"sketch_id", rectangleSketch(10, 10)}, {"thickness", 2}, {"width", 20}});
+    EXPECT_NE(why.find("lines only"), std::string::npos) << why;
+    EXPECT_EQ(document.featureTree().featureCount(), before);
+    EXPECT_NE(fails("add_base_flange",
+                    {{"sketch_id", l}, {"thickness", 2}, {"width", 20}, {"k_factor", 2}})
+                  .find("k_factor"),
+              std::string::npos);
+}
+
 TEST_F(CadToolsTest, SketchAndExtrudeMakeABox) {
     const auto sketch = rectangleSketch(60, 40);
     const json result = ok("extrude", {{"sketch_id", sketch}, {"distance", 5}});

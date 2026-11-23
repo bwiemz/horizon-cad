@@ -262,12 +262,12 @@
     </message>
     <message>
         <location line="+2"/>
-        <location line="+206"/>
+        <location line="+208"/>
         <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
         <translation type="unfinished">Décrivez une pièce ou une modification… (Entrée envoie, Maj+Entrée : nouvelle ligne)</translation>
     </message>
     <message>
-        <location line="-200"/>
+        <location line="-202"/>
         <source>Undo This Response</source>
         <translation type="unfinished">Annuler cette réponse</translation>
     </message>
@@ -297,7 +297,7 @@
         <translation type="unfinished">Arrêté : le document a changé.</translation>
     </message>
     <message>
-        <location line="+73"/>
+        <location line="+75"/>
         <source>choose a model in Settings</source>
         <translation type="unfinished">choisissez un modèle dans les Paramètres</translation>
     </message>
@@ -377,7 +377,7 @@ Y envoyer les demandes ?</translation>
         <translation type="unfinished">Assistant</translation>
     </message>
     <message>
-        <location line="-559"/>
+        <location line="-561"/>
         <source>Looked at the %1 view</source>
         <translation type="unfinished">Vue %1 examinée</translation>
     </message>
@@ -1918,22 +1918,22 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Pièces et assemblages Horizon (*.hzpart *.hzasm);;Tous les fichiers (*)</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="+9"/>
         <source>Could not make a drawing of</source>
         <translation type="unfinished">Impossible de créer une mise en plan de</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+21"/>
         <source>Drawing of %1</source>
         <translation type="unfinished">Mise en plan de %1</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="-18"/>
         <source>Drawing made.</source>
         <translation type="unfinished">Mise en plan créée.</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+33"/>
         <location line="+5"/>
         <source>Could not open</source>
         <translation type="unfinished">Impossible d&apos;ouvrir</translation>
@@ -2305,7 +2305,7 @@ Les détails figurent dans le journal :
 <context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+104"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+106"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">Unité de longueur non indiquée</translation>
     </message>
@@ -2434,13 +2434,13 @@ Les détails figurent dans le journal :
     </message>
     <message>
         <location line="+8"/>
-        <location line="+198"/>
+        <location line="+236"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">Exporter en %1</translation>
     </message>
     <message>
-        <location line="-229"/>
+        <location line="-267"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>
@@ -2458,22 +2458,23 @@ Les détails figurent dans le journal :
         <location line="+52"/>
         <location line="+17"/>
         <location line="+18"/>
-        <location line="+130"/>
+        <location line="+34"/>
+        <location line="+134"/>
         <source>Could not export</source>
         <translation type="unfinished">Impossible d&apos;exporter</translation>
     </message>
     <message>
-        <location line="-241"/>
+        <location line="-279"/>
         <location line="+28"/>
         <location line="+51"/>
         <location line="+18"/>
         <location line="+17"/>
-        <location line="+130"/>
+        <location line="+168"/>
         <source>Exported %1.</source>
         <translation type="unfinished">%1 exporté.</translation>
     </message>
     <message>
-        <location line="-235"/>
+        <location line="-273"/>
         <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
         <translation type="unfinished">L&apos;export STEP écrit les composants d&apos;un assemblage ; aucune des pièces de celui-ci ne peut être lue</translation>
     </message>
@@ -2489,12 +2490,12 @@ Les détails figurent dans le journal :
     </message>
     <message>
         <location line="+3"/>
-        <location line="+79"/>
+        <location line="+117"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Omis : %1</translation>
     </message>
     <message numerus="yes">
-        <location line="-71"/>
+        <location line="-109"/>
         <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
         <translation type="unfinished">
             <numerusform>%n face courbe a été écrite sous forme de facettes, et non sur sa surface.</numerusform>
@@ -2553,11 +2554,35 @@ Les détails figurent dans le journal :
     </message>
     <message>
         <location line="+0"/>
+        <location line="+36"/>
         <source>DXF Files (*.dxf)</source>
         <translation type="unfinished">Fichiers DXF (*.dxf)</translation>
     </message>
     <message>
-        <location line="+19"/>
+        <location line="-11"/>
+        <source>A flat pattern is a sheet metal part&apos;s: this part has no base flange</source>
+        <translation type="unfinished">Un développé appartient à une pièce de tôlerie : cette pièce n&apos;a pas de tôle de base</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>The base flange does not unfold: %1</source>
+        <translation type="unfinished">La tôle de base ne se déplie pas : %1</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Flat Pattern</source>
+        <translation type="unfinished">Développé</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+7"/>
+        <source>Exported %1: a blank %2 by %3 mm, %n bend(s).</source>
+        <translation type="unfinished">
+            <numerusform>%1 exporté : un flan de %2 par %3 mm, %n pli.</numerusform>
+            <numerusform>%1 exporté : un flan de %2 par %3 mm, %n plis.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+14"/>
         <source>Renamed: %1</source>
         <translation type="unfinished">Renommé : %1</translation>
     </message>
@@ -3046,12 +3071,12 @@ commencer à construire votre pièce.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+445"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+452"/>
         <source>&amp;File</source>
         <translation>&amp;Fichier</translation>
     </message>
     <message>
-        <location line="+78"/>
+        <location line="+81"/>
         <source>&amp;Edit</source>
         <translation>&amp;Édition</translation>
     </message>
@@ -3061,7 +3086,7 @@ commencer à construire votre pièce.</translation>
         <translation>&amp;Affichage</translation>
     </message>
     <message>
-        <location line="-141"/>
+        <location line="-144"/>
         <source>&amp;New Drawing</source>
         <translation>&amp;Nouveau dessin</translation>
     </message>
@@ -3072,22 +3097,22 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+48"/>
-        <location line="+87"/>
+        <location line="+91"/>
         <source>facing %1 at %2</source>
         <translation type="unfinished">normale %1, en %2</translation>
     </message>
     <message>
-        <location line="-81"/>
+        <location line="-85"/>
         <source>a curved face of %1 facets, around %2</source>
         <translation type="unfinished">une face courbe de %1 facettes, autour de %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-280"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-282"/>
         <source>Close %1</source>
         <translation type="unfinished">Fermer %1</translation>
     </message>
     <message>
-        <location line="+880"/>
+        <location line="+885"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3169,6 +3194,26 @@ commencer à construire votre pièce.</translation>
         <location line="+1"/>
         <source>Width</source>
         <translation type="unfinished">Largeur</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Bend radius (inside)</source>
+        <translation type="unfinished">Rayon de pliage (intérieur)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>K-factor</source>
+        <translation type="unfinished">Facteur K</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Chords per bend</source>
+        <translation type="unfinished">Cordes par pli</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Material side</source>
+        <translation type="unfinished">Côté de la matière</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -3286,15 +3331,15 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Dans la face</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-830"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-835"/>
         <location line="+1"/>
-        <location line="+38"/>
-        <location line="+1159"/>
+        <location line="+40"/>
+        <location line="+1224"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dessin 1</translation>
     </message>
     <message>
-        <location line="-1105"/>
+        <location line="-1170"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Palette de commandes…</translation>
     </message>
@@ -3389,7 +3434,12 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">S&amp;VG...</translation>
     </message>
     <message>
-        <location line="+19"/>
+        <location line="+1"/>
+        <source>&amp;Flat Pattern (DXF)...</source>
+        <translation type="unfinished">&amp;Développé (DXF)...</translation>
+    </message>
+    <message>
+        <location line="+21"/>
         <source>E&amp;xit</source>
         <translation type="unfinished">&amp;Quitter</translation>
     </message>
@@ -4225,12 +4275,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+206"/>
+        <location line="+211"/>
         <source>Select</source>
         <translation type="unfinished">Sélectionner</translation>
     </message>
     <message>
-        <location line="-203"/>
+        <location line="-208"/>
         <source>Fit All</source>
         <translation type="unfinished">Tout afficher</translation>
     </message>
@@ -4311,12 +4361,12 @@ commencer à construire votre pièce.</translation>
         <location line="+9"/>
         <location line="+0"/>
         <location line="+13"/>
-        <location line="+61"/>
+        <location line="+66"/>
         <source>Modify</source>
         <translation type="unfinished">Modifier</translation>
     </message>
     <message>
-        <location line="-83"/>
+        <location line="-88"/>
         <source>Transform</source>
         <translation type="unfinished">Transformer</translation>
     </message>
@@ -4337,12 +4387,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+2"/>
-        <location line="+88"/>
+        <location line="+93"/>
         <source>Mirror</source>
         <translation type="unfinished">Symétrie</translation>
     </message>
     <message>
-        <location line="-84"/>
+        <location line="-89"/>
         <source>Trim</source>
         <translation type="unfinished">Ajuster</translation>
     </message>
@@ -4358,18 +4408,18 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+70"/>
+        <location line="+75"/>
         <source>Fillet</source>
         <translation type="unfinished">Congé</translation>
     </message>
     <message>
-        <location line="-69"/>
-        <location line="+70"/>
+        <location line="-74"/>
+        <location line="+75"/>
         <source>Chamfer</source>
         <translation type="unfinished">Chanfrein</translation>
     </message>
     <message>
-        <location line="-69"/>
+        <location line="-74"/>
         <source>Break</source>
         <translation type="unfinished">Coupure</translation>
     </message>
@@ -4414,8 +4464,23 @@ commencer à construire votre pièce.</translation>
         <source>Dimensions</source>
         <translation type="unfinished">Cotes</translation>
     </message>
+    <message>
+        <location line="+47"/>
+        <source>Sheet Metal</source>
+        <translation type="unfinished">Tôlerie</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Base Flange</source>
+        <translation type="unfinished">Tôle de base</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Flat Pattern</source>
+        <translation type="unfinished">Développé</translation>
+    </message>
     <message numerus="yes">
-        <location line="+1430"/>
+        <location line="+1443"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>Fichier enregistré ; %n calque sous un nom que DXF accepte.</numerusform>
@@ -4423,12 +4488,12 @@ commencer à construire votre pièce.</translation>
         </translation>
     </message>
     <message>
-        <location line="-1111"/>
+        <location line="-1162"/>
         <source>The assistant works on parts and drawings, not drawing sheets</source>
         <translation type="unfinished">L&apos;assistant travaille sur les pièces et les dessins, pas sur les mises en plan</translation>
     </message>
     <message>
-        <location line="+1546"/>
+        <location line="+1597"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">Rien de sélectionné pour zoomer : Tout afficher (F) montre tout</translation>
     </message>
@@ -4479,7 +4544,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.</translation>
     </message>
     <message>
-        <location line="-2568"/>
+        <location line="-2630"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
@@ -4588,13 +4653,14 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <location line="+3"/>
         <location line="+7"/>
         <location line="+5"/>
+        <location line="+5"/>
         <location line="+7"/>
         <location line="+6"/>
         <source>3D</source>
         <translation type="unfinished">3D</translation>
     </message>
     <message>
-        <location line="-25"/>
+        <location line="-30"/>
         <source>Primitives</source>
         <translation type="unfinished">Primitives</translation>
     </message>
@@ -4644,7 +4710,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Perçage</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+7"/>
         <source>Combine Bodies</source>
         <translation type="unfinished">Combiner les corps</translation>
     </message>
@@ -4704,16 +4770,16 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1005"/>
+        <location line="+1062"/>
         <location line="+488"/>
         <location line="+936"/>
-        <location line="+593"/>
+        <location line="+601"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-3105"/>
+        <location line="-3170"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -4734,17 +4800,17 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2753"/>
+        <location line="+2818"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-2747"/>
+        <location line="-2812"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
     <message>
-        <location line="+327"/>
+        <location line="+384"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (récupéré)</translation>
     </message>
@@ -5324,7 +5390,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">X : %1  Y : %2</translation>
     </message>
     <message>
-        <location line="+755"/>
+        <location line="+763"/>
         <source>y:</source>
         <translation type="unfinished">y :</translation>
     </message>
@@ -5334,7 +5400,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">z :</translation>
     </message>
     <message>
-        <location line="-731"/>
+        <location line="-739"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">Un assemblage n&apos;a pas d&apos;esquisses : esquissez dans une pièce</translation>
     </message>
@@ -5769,7 +5835,7 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Modifier %1</translation>
     </message>
     <message>
-        <location line="+104"/>
+        <location line="+112"/>
         <source>+X</source>
         <translation type="unfinished">+X</translation>
     </message>
@@ -5850,18 +5916,18 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-3121"/>
+        <location line="-3186"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>
     <message>
-        <location line="-108"/>
+        <location line="-113"/>
         <source>Linear</source>
         <comment>a dimension</comment>
         <translation type="unfinished">Linéaire</translation>
     </message>
     <message>
-        <location line="+197"/>
+        <location line="+202"/>
         <source>1 selected</source>
         <translation>1 sélectionné</translation>
     </message>
@@ -5925,12 +5991,12 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     <message>
         <location line="+0"/>
         <location line="+7"/>
-        <location line="+409"/>
+        <location line="+448"/>
         <source>Radius:</source>
         <translation type="unfinished">Rayon :</translation>
     </message>
     <message>
-        <location line="-416"/>
+        <location line="-455"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">Hauteur :</translation>
@@ -6117,30 +6183,30 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     </message>
     <message>
         <location line="+15"/>
-        <location line="+81"/>
+        <location line="+120"/>
         <source>Draw a closed profile first</source>
         <translation type="unfinished">Dessinez d&apos;abord un profil fermé</translation>
     </message>
     <message>
-        <location line="-60"/>
+        <location line="-99"/>
         <location line="+46"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
         <location line="-45"/>
-        <location line="+156"/>
+        <location line="+195"/>
         <source>Distance:</source>
         <translation type="unfinished">Distance :</translation>
     </message>
     <message>
-        <location line="-155"/>
-        <location line="+436"/>
+        <location line="-194"/>
+        <location line="+475"/>
         <source>Goes:</source>
         <translation type="unfinished">Étendue :</translation>
     </message>
     <message>
-        <location line="-435"/>
+        <location line="-474"/>
         <source>To the distance</source>
         <translation type="unfinished">Jusqu&apos;à la distance</translation>
     </message>
@@ -6151,23 +6217,23 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     </message>
     <message>
         <location line="+0"/>
-        <location line="+436"/>
+        <location line="+475"/>
         <source>Through all</source>
         <translation type="unfinished">À travers tout</translation>
     </message>
     <message>
-        <location line="-435"/>
+        <location line="-474"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">À travers tout, des deux côtés</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+435"/>
+        <location line="+474"/>
         <source>Up to a face</source>
         <translation type="unfinished">Jusqu&apos;à une face</translation>
     </message>
     <message>
-        <location line="-431"/>
+        <location line="-470"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(aucune face plane de la pièce n&apos;est parallèle à l&apos;esquisse)</translation>
     </message>
@@ -6178,12 +6244,12 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
     </message>
     <message>
         <location line="+1"/>
-        <location line="+275"/>
+        <location line="+314"/>
         <source>Direction:</source>
         <translation type="unfinished">Direction :</translation>
     </message>
     <message>
-        <location line="-274"/>
+        <location line="-313"/>
         <source>Out of the sketch</source>
         <translation type="unfinished">Sortant de l&apos;esquisse</translation>
     </message>
@@ -6203,7 +6269,58 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Échec de l&apos;extrusion : %1</translation>
     </message>
     <message>
-        <location line="+26"/>
+        <location line="+21"/>
+        <source>Sketch an open run of lines first (an L, a U, a Z)</source>
+        <translation type="unfinished">Esquissez d&apos;abord une suite ouverte de lignes (un L, un U, un Z)</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <location line="+23"/>
+        <source>Base Flange</source>
+        <translation type="unfinished">Tôle de base</translation>
+    </message>
+    <message>
+        <location line="-22"/>
+        <source>Thickness:</source>
+        <translation type="unfinished">Épaisseur :</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Bend radius (inside):</source>
+        <translation type="unfinished">Rayon de pliage (intérieur) :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>K-factor:</source>
+        <translation type="unfinished">Facteur K :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Width:</source>
+        <translation type="unfinished">Épaisseur :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Material:</source>
+        <translation type="unfinished">Matériau :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Left of the lines</source>
+        <translation type="unfinished">À gauche des lignes</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Right of the lines</source>
+        <translation type="unfinished">À droite des lignes</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Base Flange failed: %1</source>
+        <translation type="unfinished">Échec de la tôle de base : %1</translation>
+    </message>
+    <message>
+        <location line="+21"/>
         <location line="+27"/>
         <source>Revolve</source>
         <translation type="unfinished">Révolution</translation>

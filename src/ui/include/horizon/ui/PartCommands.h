@@ -66,6 +66,9 @@ public:
     void onMirror();
     /// A hole drilled into a flat face of the part (Phase 162).
     void onHole();
+    /// A base flange (sheet metal) from an open sketch of lines: its
+    /// thickness, bend radius, K-factor, width and side asked in a form.
+    void onBaseFlange();
 
     /// The part's solid, or null — with a word in the status bar — when there
     /// is no part or it has no body yet.

@@ -19,6 +19,20 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Sheet metal: a base flange, and its flat pattern for cutting.** The
+  sheet-metal maths (bends, K-factor, bend allowance) was a library no user
+  could reach. **3D ▸ Sheet Metal ▸ Base Flange** now folds an open sketch of
+  lines (an L, a U, a Z; lines or an open polyline) into a sheet of a
+  thickness, each corner a bend of an inside radius, extruded to a width: a
+  feature in the history, edited, saved and built on like any other.
+  **Flat Pattern** (and File ▸ Export ▸ Flat Pattern) writes the blank as a
+  DXF at full size, each bend marked with its direction and angle. The AI
+  assistant has `add_base_flange` and `get_flat_pattern`. A feature's
+  parameter can now be a plain number (the K-factor), edited as one. The
+  developed length of a strip whose bends turn both ways (a Z, a flange with
+  its material on the other side) counted only the bends one way; a bend
+  takes its allowance whichever way it turns.
+
 - **The AI assistant makes drawings.** Asked for a drawing of the part or the
   assembly, it makes the sheet the Drawing menu makes (front, top, right and
   isometric views over a title block) with the paper, orientation, scale and
