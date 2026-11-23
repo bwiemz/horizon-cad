@@ -1138,22 +1138,29 @@ TEST(DrawingsTest, AHoleIsCalledOutWithItsSizeAndCount) {
     const QString plate = dir.filePath(QStringLiteral("plate.hzpart"));
     saveHoledPlate(plate);
     const hz::model::Drawing layout = layoutOf(plate);
-    // A point on the first hole's counterbore rim, in the top view.
+    // A point on the first hole's counterbore rim, and on a copy's, in the
+    // top view.
     std::optional<hz::math::Vec2> onRim;
+    std::optional<hz::math::Vec2> onCopy;
     for (const auto& view : layout.views) {
         if (view.kind != hz::model::StandardView::Top) continue;
         for (const auto& e : view.edges) {
             const std::string name = hz::model::logicalEdge(e.sourceEdge.tag());
             if (e.visibility != hz::model::ProjectedEdge::Visibility::Visible ||
-                name.find("/bore|") == std::string::npos ||
-                name.find("pattern") != std::string::npos) {
+                name.find("/bore") == std::string::npos || name.find('|') == std::string::npos ||
+                name.find("Floor") != std::string::npos) {
                 continue;
             }
-            onRim = view.toSheet({(e.a.x + e.b.x) / 2.0, (e.a.y + e.b.y) / 2.0});
-            break;
+            const auto at = view.toSheet({(e.a.x + e.b.x) / 2.0, (e.a.y + e.b.y) / 2.0});
+            if (name.find("pattern") == std::string::npos) {
+                if (!onRim) onRim = at;
+            } else if (!onCopy) {
+                onCopy = at;
+            }
         }
     }
     ASSERT_TRUE(onRim.has_value());
+    ASSERT_TRUE(onCopy.has_value());
 
     MainWindow w;
     hz::doc::Document* sheet = drawingOfOpenPart(w, plate);
@@ -1178,13 +1185,25 @@ TEST(DrawingsTest, AHoleIsCalledOutWithItsSizeAndCount) {
     trigger(w, "action_redo");
     EXPECT_TRUE(calledOut());
 
-    // Called out already: said, nothing added.
-    drive.click(*onRim);
+    // Called out already, from a copy's rim too: said, nothing added.
+    drive.click(*onCopy);
     ASSERT_TRUE(waitUntil(
         [&] { return w.statusBar()->currentMessage().contains(QStringLiteral("already")); }, 5000));
+    EXPECT_EQ(dimensionTexts(*sheet).filter(QStringLiteral("CBORE")).size(), 1);
     drive.key(Qt::Key_Escape);
+
+    // Laid out again at another scale, the views keep their callouts.
+    {
+        FormFiller form(QStringLiteral("Drawing Scale"), FormAnswers().choose("scale", "1:1"));
+        trigger(w, "action_drawing_scale");
+        ASSERT_TRUE(form.seen());
+    }
+    EXPECT_TRUE(titleBlockText(*sheet).contains(QStringLiteral("SCALE: 1:1")));
+    EXPECT_TRUE(calledOut()) << dimensionTexts(*sheet).join(", ").toStdString();
+
+    // Removed from any edge of the hole: here a copy's.
     trigger(w, "action_remove_drawing_dimension");
-    drive.click(*onRim);
+    drive.click(*onCopy);
     ASSERT_TRUE(waitUntil(
         [&] { return dimensionTexts(*sheet).filter(QStringLiteral("CBORE")).isEmpty(); }, 5000));
 }

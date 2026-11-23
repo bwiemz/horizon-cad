@@ -1092,10 +1092,17 @@ bool DrawingWorkbench::removeEdgeDimensions(doc::Document& document, std::size_t
     const std::string tag = model::logicalEdge(edge);
     auto removed =
         std::erase_if(dimensions, [&](const io::DrawingDimensionSpec& d) { return d.edge == tag; });
-    // The callout on that edge's hole too.
+    // The callout of that edge's hole too, from whichever edge of it: by the
+    // hole when the part's holes are known, else by the edge.
     const std::string named = model::withoutPiece(tag);
+    std::string unread;
+    const auto source = sourceFor(*sheet, &unread);
+    const io::HoleNote* hole =
+        source ? io::DrawingDocumentIO::holeOfEdge(source->holes, named) : nullptr;
     removed += std::erase_if(sheet->spec.views[view].holeCallouts, [&](const std::string& c) {
-        return model::withoutPiece(model::logicalEdge(c)) == named;
+        const std::string other = model::withoutPiece(model::logicalEdge(c));
+        return other == named ||
+               (hole != nullptr && io::DrawingDocumentIO::holeOfEdge(source->holes, other) == hole);
     });
     if (removed == 0) return refused(m_host, tr("%1: that edge has no dimension").arg(verb), error);
     kept.drawing();
@@ -1124,13 +1131,17 @@ bool DrawingWorkbench::addHoleCallout(doc::Document& document, std::size_t view,
     std::string why;
     const auto source = sourceFor(*sheet, &why);
     if (!source) return refused(m_host, tr("%1: %2").arg(verb, QString::fromStdString(why)), error);
-    if (io::DrawingDocumentIO::holeOfEdge(source->holes, named) == nullptr) {
+    const io::HoleNote* hole = io::DrawingDocumentIO::holeOfEdge(source->holes, named);
+    if (hole == nullptr) {
         return refused(m_host, tr("%1: that edge is not a hole's (a Hole feature's)").arg(verb),
                        error);
     }
+    // One callout a hole in a view: each states all of its copies, from
+    // whichever edge of whichever copy.
     auto& callouts = sheet->spec.views[view].holeCallouts;
     if (std::any_of(callouts.begin(), callouts.end(), [&](const std::string& c) {
-            return model::withoutPiece(model::logicalEdge(c)) == named;
+            return io::DrawingDocumentIO::holeOfEdge(
+                       source->holes, model::withoutPiece(model::logicalEdge(c))) == hole;
         })) {
         return refused(
             m_host,
@@ -1300,6 +1311,7 @@ bool DrawingWorkbench::layOutAgain(Sheet& sheet, double scale, bool* fits, std::
         kept.showTangentEdges = was->showTangentEdges;
         kept.showCentreLines = was->showCentreLines;
         kept.dimensions = was->dimensions;
+        kept.holeCallouts = was->holeCallouts;
         views.push_back(std::move(kept));
     }
     const std::size_t standard = views.size();
