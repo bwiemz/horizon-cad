@@ -96,6 +96,12 @@ if ((WIN32 OR APPLE) AND COMMAND qt_generate_deploy_app_script)
         set(_hz_plugins_dir "${HZ_BUNDLE_NAME}.app/Contents/PlugIns")
         set(_hz_deploy_options DEPLOY_TOOL_OPTIONS -no-plugins)
         set(_hz_mac_plugins platforms Qt6::QCocoaIntegrationPlugin styles Qt6::QMacStylePlugin)
+        # The AI assistant's https: the TLS backend this Qt has.
+        if (TARGET Qt6::QSecureTransportBackendPlugin)
+            list(APPEND _hz_mac_plugins tls Qt6::QSecureTransportBackendPlugin)
+        elseif (TARGET Qt6::QTlsBackendOpenSSLPlugin)
+            list(APPEND _hz_mac_plugins tls Qt6::QTlsBackendOpenSSLPlugin)
+        endif()
         while (_hz_mac_plugins)
             list(POP_FRONT _hz_mac_plugins _hz_plugin_dir _hz_plugin_target)
             if (NOT TARGET ${_hz_plugin_target})
@@ -143,6 +149,9 @@ if (WIN32)
     if (TARGET Qt6::QModernWindowsStylePlugin)          # styles/qmodernwindowsstyle[d].dll
         list(APPEND _hz_qt_plugins styles Qt6::QModernWindowsStylePlugin)
     endif()
+    if (TARGET Qt6::QSchannelBackendPlugin)             # tls/qschannelbackend[d].dll
+        list(APPEND _hz_qt_plugins tls Qt6::QSchannelBackendPlugin)
+    endif()
     while (_hz_qt_plugins)
         list(POP_FRONT _hz_qt_plugins _hz_plugin_dir _hz_plugin_target)
         add_custom_command(TARGET horizon POST_BUILD
@@ -154,6 +163,25 @@ if (WIN32)
             COMMENT "Deploying Qt ${_hz_plugin_dir} plugin next to horizon executable"
             VERBATIM)
     endwhile()
+endif()
+
+# A static Qt (vcpkg's x64-linux) links only the plugins it is told to: the
+# AI assistant's https needs a TLS backend in the executable.
+get_target_property(_hz_qt_core_type Qt6::Core TYPE)
+if (_hz_qt_core_type STREQUAL "STATIC_LIBRARY")
+    set(_hz_tls_plugins)
+    foreach (_hz_tls_plugin Qt6::QTlsBackendOpenSSLPlugin Qt6::QSchannelBackendPlugin
+                            Qt6::QSecureTransportBackendPlugin)
+        if (TARGET ${_hz_tls_plugin})
+            list(APPEND _hz_tls_plugins ${_hz_tls_plugin})
+        endif()
+    endforeach()
+    if (_hz_tls_plugins)
+        qt_import_plugins(horizon INCLUDE ${_hz_tls_plugins})
+    else()
+        message(WARNING "This static Qt has no TLS backend: the AI assistant can reach only "
+                        "local (http) model servers")
+    endif()
 endif()
 
 # Translations (Phase 77): compile translations/*.ts to .qm next to the
