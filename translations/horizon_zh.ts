@@ -4374,12 +4374,7 @@ begin building your part.</source>
         </translation>
     </message>
     <message>
-        <location line="+311"/>
-        <source>The assistant works on parts and drawings, not assemblies</source>
-        <translation type="unfinished">助手适用于零件和工程图，不适用于装配体</translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+317"/>
         <source>The assistant works on parts and drawings, not drawing sheets</source>
         <translation type="unfinished">助手适用于零件和工程图，不适用于工程图图纸</translation>
     </message>

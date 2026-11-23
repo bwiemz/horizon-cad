@@ -149,6 +149,36 @@ TEST_F(CadToolsTest, CutThroughAll) {
     EXPECT_NEAR(volume(), 4000.0 - kPi * 25.0 * 10.0, 10.0);
 }
 
+// Seen in a small local model: a part's first extrude asked to go "through
+// all", again and again. With a distance it is the plate the model means.
+TEST_F(CadToolsTest, AFirstExtrudeThroughAllIsBlind) {
+    const auto sketch = rectangleSketch(60, 40);
+    box(10, 10, 10, json::array({100, 0, 0}));
+    EXPECT_NE(fails("add_hole", {{"face", "top"}, {"position", {105, 5, 10}}, {"diameter", 2}})
+                  .find("\"through_all\": true"),
+              std::string::npos);
+    ok("delete_feature", {{"index", 0}});
+    const std::string missing =
+        fails("extrude", {{"sketch_id", sketch}, {"extent", "through_all"}});
+    EXPECT_NE(missing.find("give \"distance\""), std::string::npos) << missing;
+    EXPECT_NE(fails("extrude", {{"sketch_id", sketch}}).find("for example"), std::string::npos);
+
+    const json made =
+        ok("extrude", {{"sketch_id", sketch}, {"extent", "through_all"}, {"distance", 5}});
+    EXPECT_NE(made.value("note", "").find("blind"), std::string::npos) << made.dump();
+    EXPECT_NEAR(volume(), 12000.0, 1e-6);
+
+    // With a part there, through all is through all.
+    const auto hole = ok(
+        "create_sketch",
+        {{"entities",
+          json::array({{{"type", "circle"}, {"center", {30, 20}}, {"radius", 5}}})}})["sketch_id"];
+    const json cut =
+        ok("extrude", {{"sketch_id", hole}, {"extent", "through_all_both"}, {"operation", "cut"}});
+    EXPECT_FALSE(cut.contains("note"));
+    EXPECT_LT(volume(), 12000.0 - 380.0);
+}
+
 TEST_F(CadToolsTest, ExtrudeOnXZPlane) {
     const auto sketch = rectangleSketch(10, 20, {{"plane", "XZ"}});
     const json result = ok("extrude", {{"sketch_id", sketch}, {"distance", 5}});

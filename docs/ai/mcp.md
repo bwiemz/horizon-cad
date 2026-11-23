@@ -2,11 +2,12 @@
 
 `horizon-mcp` serves Horizon CAD's CAD tools over the
 [Model Context Protocol](https://modelcontextprotocol.io). Any MCP client can
-then build and change parts and drawings: Claude Desktop, Claude Code,
+then build and change parts, assemblies and drawings: Claude Desktop, Claude Code,
 ChatGPT's desktop app, Cursor, VS Code, and agents you write yourself. These
 are the same tools the AI assistant uses in the window: sketches, features,
-variables, faces and edges, mass, and 2D drafting. Five more tools handle the
-document's files.
+variables, faces and edges, mass, and 2D drafting, and in an assembly,
+components, mates, interference and the bill of materials. Five more tools
+handle the document's files.
 
 It runs headless (no window) and speaks MCP over standard input and output.
 
@@ -20,7 +21,7 @@ horizon-mcp [--root DIR] [--open FILE] [--drawing]
 
   --root DIR    the folder files may be opened, saved and exported in
                 (default: Documents/Horizon CAD MCP in your home folder)
-  --open FILE   start with FILE (.hzpart, .hcad or .dxf)
+  --open FILE   start with FILE (.hzpart, .hcad, .hzasm or .dxf)
   --drawing     start with an empty 2D drawing (default: an empty part)
 ```
 
@@ -77,13 +78,23 @@ schemas. The file tools are:
 
 | Tool | Does |
 |------|------|
-| `get_session_info` | The document: part or drawing, its file, unsaved changes, any build error |
-| `new_document` | Start an empty part or drawing in its place |
-| `open_document` | Open a `.hzpart`, `.hcad` or `.dxf` file in its place |
-| `save_document` | Save as `.hzpart` (a part) or `.hcad` (a drawing) |
-| `export_document` | Write the solid as STEP, STL or glTF (`.glb`), or the drawing as DXF |
+| `get_session_info` | The document: part, drawing or assembly, its file, unsaved changes, any build error |
+| `new_document` | Start an empty part, drawing or assembly in its place |
+| `open_document` | Open a `.hzpart`, `.hcad`, `.hzasm` or `.dxf` file in its place |
+| `save_document` | Save as `.hzpart` (a part), `.hcad` (a drawing) or `.hzasm` (an assembly) |
+| `export_document` | Write the solid as STEP, STL or glTF (`.glb`), the drawing as DXF, or the assembly as STEP (its parts and their placements), STL or glTF |
 
 Lengths are millimetres and angles degrees.
+
+**Assemblies.** An assembly places part files. To build one, make and save
+each part in the folder, start a `new_document` of type `assembly`, insert
+the parts with `insert_component`, and mate them with `add_mate`. Save it as
+`.hzasm` and export it to STEP for other CAD systems. Parts are taken only
+from the assembly's folder (or a folder in it), or from the server's folder
+while the assembly is unsaved. An assembly that places a part from outside
+the server's folder is not opened by `open_document`. That is checked from
+its files before any part is read. `--open` opens it, since that is your own
+choice.
 
 `tools/list` marks each tool with hints, which a client can use to decide
 what to confirm with you:

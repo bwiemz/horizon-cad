@@ -4395,12 +4395,7 @@ empezar a construir su pieza.</translation>
         </translation>
     </message>
     <message>
-        <location line="+311"/>
-        <source>The assistant works on parts and drawings, not assemblies</source>
-        <translation type="unfinished">El asistente trabaja con piezas y dibujos, no con ensamblajes</translation>
-    </message>
-    <message>
-        <location line="+6"/>
+        <location line="+317"/>
         <source>The assistant works on parts and drawings, not drawing sheets</source>
         <translation type="unfinished">El asistente trabaja con piezas y dibujos, no con hojas de dibujo</translation>
     </message>

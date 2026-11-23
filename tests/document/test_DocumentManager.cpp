@@ -4,8 +4,10 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
@@ -534,4 +536,98 @@ TEST(DocumentManagerTest, APartReadAgainIsNotShownWithItsOldMesh) {
     EXPECT_NEAR(height(after), 7.0, 1e-9) << "not the mesh of the part as it was";
 
     std::remove(path.c_str());
+}
+
+// What an assembly places, checked from its files before any part is read:
+// the AI assistant may read only an assembly's folder. Fails closed.
+TEST(DocumentManagerTest, PlacesOnlyWalksAssembliesFromTheirFiles) {
+    const fs::path in = fs::temp_directory_path() / "hz_places_only" / "project";
+    const fs::path out = fs::temp_directory_path() / "hz_places_only" / "elsewhere";
+    const auto at = [](const fs::path& folder, const char* name) {
+        return (folder / name).lexically_normal().string();
+    };
+    std::map<std::string, std::vector<std::string>> files = {
+        {at(in, "top.hzasm"), {at(in, "a.hzpart"), at(in, "sub.hzasm")}},
+        {at(in, "sub.hzasm"), {at(in, "b.hzpart"), at(out, "far.hzpart")}},
+        {at(in, "own.hzasm"), {at(in, "a.hzpart"), at(in, "own.hzasm")}},
+        {at(in, "holds.hzasm"), {at(in, "missing.hzasm")}},
+        {at(in, "reaches.hzasm"), {at(out, "far.hzasm")}},
+        {at(out, "far.hzasm"), {at(in, "a.hzpart")}},
+    };
+    std::vector<std::string> read;
+    DocumentManager mgr;
+    EXPECT_FALSE(mgr.placesOnly(at(in, "top.hzasm"), [](const std::string&) { return true; }))
+        << "no loader: nothing is known, so nothing is allowed";
+    mgr.setAssemblyLoader([&](const std::string& path, AssemblyDocument& assembly) {
+        read.push_back(path);
+        const auto found = files.find(path);
+        if (found == files.end()) return false;
+        for (const auto& part : found->second) {
+            ComponentInstance comp;
+            comp.partPath = part;
+            assembly.addComponent(comp);
+        }
+        return true;
+    });
+    const std::string root = in.lexically_normal().string();
+    const auto inProject = [&root](const std::string& file) { return file.rfind(root, 0) == 0; };
+
+    EXPECT_FALSE(mgr.placesOnly(at(in, "top.hzasm"), inProject));    // its sub reaches out
+    EXPECT_TRUE(mgr.placesOnly(at(in, "own.hzasm"), inProject));     // walked once
+    EXPECT_FALSE(mgr.placesOnly(at(in, "holds.hzasm"), inProject));  // cannot be read
+    read.clear();
+    EXPECT_FALSE(mgr.placesOnly(at(in, "reaches.hzasm"), inProject));
+    EXPECT_EQ(read, std::vector<std::string>{at(in, "reaches.hzasm")})
+        << "an assembly outside is refused before it is read";
+    EXPECT_FALSE(mgr.placesOnly(at(out, "far.hzasm"), inProject));
+
+    // Nested past the limit: refused, not followed for ever.
+    for (int k = 0; k <= DocumentManager::kMaxPlacesDepth + 1; ++k) {
+        files[at(in, ("deep" + std::to_string(k) + ".hzasm").c_str())] = {
+            at(in, ("deep" + std::to_string(k + 1) + ".hzasm").c_str())};
+    }
+    files[at(in, ("deep" + std::to_string(DocumentManager::kMaxPlacesDepth + 2) + ".hzasm")
+                     .c_str())] = {};
+    EXPECT_FALSE(mgr.placesOnly(at(in, "deep0.hzasm"), inProject));
+    EXPECT_TRUE(mgr.placesOnly(
+        at(in, ("deep" + std::to_string(DocumentManager::kMaxPlacesDepth / 2) + ".hzasm").c_str()),
+        inProject));
+}
+
+// Assemblies placing each other twice over, a few deep: read once each by
+// placesOnly, but resolved as a tree they would be read millions of times
+// (2^20 here). Resolving one component reads no more than the budget, and
+// says so.
+TEST(DocumentManagerTest, ResolvingASubassemblyKeepsToABudget) {
+    const fs::path in = fs::temp_directory_path() / "hz_budget";
+    constexpr int kLevels = 20;
+    std::size_t loads = 0;
+    DocumentManager mgr;
+    mgr.setAssemblyLoader([&](const std::string& path, AssemblyDocument& assembly) {
+        ++loads;
+        const std::string stem = fs::path(path).stem().string();
+        const int level = std::stoi(stem.substr(1));
+        if (level >= kLevels) return true;
+        for (int twice = 0; twice < 2; ++twice) {
+            ComponentInstance comp;
+            comp.partPath = (in / ("L" + std::to_string(level + 1) + ".hzasm")).string();
+            assembly.addComponent(comp);
+        }
+        return true;
+    });
+    ComponentInstance top;
+    top.partPath = (in / "L0.hzasm").string();
+    std::string why;
+    EXPECT_FALSE(mgr.resolveComponent(top, ComponentState::Lightweight, {}, &why));
+    EXPECT_LE(loads, DocumentManager::kMaxSubassemblyLoads + 1);
+    EXPECT_NE(why.find("too many subassemblies"), std::string::npos) << why;
+
+    // The budget is each component's own: the next starts afresh.
+    loads = 0;
+    ComponentInstance small;
+    small.partPath = (in / ("L" + std::to_string(kLevels - 3) + ".hzasm")).string();
+    why.clear();
+    mgr.resolveComponent(small, ComponentState::Lightweight, {}, &why);
+    EXPECT_EQ(loads, 15u) << "1 + 2 + 4 + 8 assemblies, all read";
+    EXPECT_EQ(why.find("too many"), std::string::npos) << why;
 }
