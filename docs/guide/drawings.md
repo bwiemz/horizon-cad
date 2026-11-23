@@ -42,6 +42,16 @@ tab it changes the sheet as the Drawing menu does: see
 diameter, an arc its radius, a straight edge its length. **Remove
 Dimension**, then click an edge, removes its dimension.
 
+**Add Hole Callout**, then click an edge of a hole made with **Hole**: the
+hole is called out on a leader, its size and depth as the Hole feature says
+them ("⌀6.6 THRU", "⌀5 × 10 DEEP"), a counterbore's or countersink's on a
+second line ("CBORE ⌀11 × 6.4 DEEP", "CSK ⌀12 × 90°"), and how many of it the
+part has when a pattern or mirror repeats it ("3× ⌀6.6 THRU"). It follows the
+hole when the part changes. Call a hole out in the view that looks along it,
+where it is a circle. **Remove Dimension** on the hole's edge removes its
+callout. A sheet with hole callouts is saved in a format older versions of
+Horizon CAD do not open.
+
 ## Notes and exporting
 
 The 2D tools draw notes on the sheet. They are kept with the sheet and move

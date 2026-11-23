@@ -95,6 +95,7 @@ struct SheetChange {
         ViewSwitches,  ///< view, hidden, tangent, centreLines
         AddDimension,  ///< view, edge
         RemoveDimension,
+        HoleCallout,  ///< view, edge (an edge of the hole)
     };
     Kind kind = Kind::TitleBlock;
     /// The title block fields given, by the tools' names (title,

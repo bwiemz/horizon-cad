@@ -128,6 +128,9 @@ json describe(const DrawingWorkbench& drawings, const doc::Document& sheet) {
             }
         }
         view["dimensions"] = std::move(dimensions);
+        if (i < spec->views.size() && !spec->views[i].holeCallouts.empty()) {
+            view["hole_callouts"] = spec->views[i].holeCallouts;
+        }
         views.push_back(std::move(view));
     }
     out["views"] = std::move(views);
@@ -162,6 +165,8 @@ json edgesOf(DrawingWorkbench& drawings, doc::Document& sheet, int index, std::s
     }
     const topo::Solid* solid = drawings.solidOf(sheet, error);
     if (solid == nullptr) return nullptr;
+    const std::vector<io::HoleNote>* holes = drawings.holesOf(sheet, error);
+    if (holes == nullptr) return nullptr;
     const model::DrawingView& view = drawn->views[static_cast<std::size_t>(index)];
 
     // Each model edge once, by its name: a curve is many chords of one name.
@@ -196,6 +201,10 @@ json edgesOf(DrawingWorkbench& drawings, doc::Document& sheet, int index, std::s
         json edge = {{"edge", name},
                      {"seen", s.visible},
                      {"at", json::array({round1(s.at.x), round1(s.at.y)})}};
+        // An edge a Hole feature made: add_hole_callout calls the hole out.
+        if (const io::HoleNote* hole = io::DrawingDocumentIO::holeOfEdge(*holes, name)) {
+            edge["hole"] = hole->feature;
+        }
         double measured = 0.0;
         if (model::DrawingDimensioner::measureRadius(*solid, s.id, measured)) {
             if (closedCurve(*solid, name)) {
@@ -302,6 +311,9 @@ ai::SheetChanged change(DrawingWorkbench& drawings, doc::Document& sheet,
             break;
         case ai::SheetChange::Kind::RemoveDimension:
             made = drawings.removeEdgeDimensions(sheet, view, c.edge, &error);
+            break;
+        case ai::SheetChange::Kind::HoleCallout:
+            made = drawings.addHoleCallout(sheet, view, c.edge, &error);
             break;
     }
     if (!made) {

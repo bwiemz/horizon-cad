@@ -19,6 +19,18 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Hole callouts on drawings.** **Drawing ▸ Add Hole Callout**, then a
+  click on a hole made with **Hole**, calls it out as a shop drawing does: its
+  size and depth as the Hole feature says them ("⌀6.6 THRU", "⌀5 × 10 DEEP"),
+  a counterbore's or countersink's on a second line ("CBORE ⌀11 × 6.4 DEEP",
+  "CSK ⌀12 × 90°"), and how many of it the part has when a pattern or mirror
+  repeats it ("3× ⌀6.6 THRU"), on a leader from the hole, in the dimension
+  style's unit and precision. A callout follows its hole as the part changes,
+  is one undo step, and is removed with Remove Dimension. The AI assistant's
+  sheet tools have `add_hole_callout`, and `list_view_edges` marks the edges a
+  hole made. A sheet with callouts is written as drawing format 4; one
+  without stays format 3, so it still opens in earlier versions.
+
 - **The AI assistant changes drawing sheets.** On a sheet's tab, where it
   was switched off, it now has the sheet's tools: what the sheet shows
   (`get_sheet_info`), the edges a view shows by name (`list_view_edges`),

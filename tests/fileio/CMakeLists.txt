@@ -1,5 +1,6 @@
 add_executable(hz_fileio_tests
     test_FlatPattern.cpp
+    test_HoleCallouts.cpp
     test_AtomicFile.cpp
     test_LoadErrors.cpp
     test_MalformedInput.cpp

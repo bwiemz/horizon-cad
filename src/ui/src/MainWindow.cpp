@@ -789,6 +789,8 @@ void MainWindow::createMenus() {
                  [this] { m_drawings->onAddDimension(); });
     sketchAction(drawingMenu, tr("Remove Dime&nsion"), "action_remove_drawing_dimension",
                  [this] { m_drawings->onRemoveDimension(); });
+    sketchAction(drawingMenu, tr("Add &Hole Callout"), "action_add_hole_callout",
+                 [this] { m_drawings->onAddHoleCallout(); });
 
     // ---- Tools ----
     QMenu* toolsMenu = menuBar()->addMenu(tr("&Tools"));

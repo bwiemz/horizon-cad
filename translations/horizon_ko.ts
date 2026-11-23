@@ -26,7 +26,7 @@
         <translation type="unfinished">각도:</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+64"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+67"/>
         <source>Section %1-%1</source>
         <translation type="unfinished">단면 %1-%1</translation>
     </message>
@@ -257,12 +257,12 @@
     </message>
     <message>
         <location line="+2"/>
-        <location line="+208"/>
+        <location line="+219"/>
         <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
         <translation type="unfinished">부품 또는 변경 사항 설명… (Enter: 보내기, Shift+Enter: 줄 바꿈)</translation>
     </message>
     <message>
-        <location line="-202"/>
+        <location line="-213"/>
         <source>Undo This Response</source>
         <translation type="unfinished">이 응답 실행 취소</translation>
     </message>
@@ -287,12 +287,12 @@
         <translation type="unfinished">중지됨: 제공업체 또는 서버가 변경되었습니다. 요청을 다시 보내세요.</translation>
     </message>
     <message>
-        <location line="+40"/>
+        <location line="+44"/>
         <source>Stopped: the document changed.</source>
         <translation type="unfinished">중지됨: 문서가 변경되었습니다.</translation>
     </message>
     <message>
-        <location line="+75"/>
+        <location line="+82"/>
         <source>choose a model in Settings</source>
         <translation type="unfinished">설정에서 모델을 선택하십시오</translation>
     </message>
@@ -372,7 +372,7 @@ Send requests there?</source>
         <translation type="unfinished">어시스턴트</translation>
     </message>
     <message>
-        <location line="-561"/>
+        <location line="-572"/>
         <source>Looked at the %1 view</source>
         <translation type="unfinished">%1 뷰를 확인함</translation>
     </message>
@@ -1879,17 +1879,17 @@ Details are in the log:
 <context>
     <name>hz::ui::DrawingWorkbench</name>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+180"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+184"/>
         <source>%1 works on a drawing sheet: open one, or make one from a part</source>
         <translation type="unfinished">%1은(는) 도면 시트에서 사용합니다: 도면을 열거나 부품에서 새로 만드십시오</translation>
     </message>
     <message>
-        <location line="+170"/>
+        <location line="+174"/>
         <source>Dimensions whose edges the part no longer has are not drawn: %1</source>
         <translation type="unfinished">부품에 더 이상 없는 모서리의 치수는 그려지지 않습니다: %1</translation>
     </message>
     <message numerus="yes">
-        <location line="+40"/>
+        <location line="+42"/>
         <source>%n component(s) could not be drawn: their parts could not be read</source>
         <translation type="unfinished">
             <numerusform>구성 요소 %n개를 그릴 수 없습니다: 부품을 읽을 수 없습니다</numerusform>
@@ -1932,17 +1932,18 @@ Details are in the log:
         <translation type="unfinished">다시 읽을 수 없음</translation>
     </message>
     <message>
-        <location line="+65"/>
+        <location line="+70"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">&quot;%1&quot;의 도면을 다시 그릴 수 없습니다: %2</translation>
     </message>
     <message>
-        <location line="+32"/>
+        <location line="+87"/>
         <source>%1: the drawing could not be drawn again: %2</source>
         <translation type="unfinished">%1: 도면을 다시 그릴 수 없습니다: %2</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+103"/>
+        <location line="+296"/>
         <source>Title Block</source>
         <translation type="unfinished">표제란</translation>
     </message>
@@ -2007,31 +2008,49 @@ Details are in the log:
         <translation type="unfinished">세로</translation>
     </message>
     <message>
-        <location line="+27"/>
-        <location line="+37"/>
-        <location line="+186"/>
-        <location line="+348"/>
+        <location line="-311"/>
+        <location line="+18"/>
+        <location line="+118"/>
+        <location line="+92"/>
+        <location line="+319"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="-565"/>
+        <location line="-212"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">이 용지에는 모든 뷰를 배치할 공간이 없습니다: 공간이 없는 뷰는 용지 옆에 배치됩니다</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="-323"/>
+        <location line="+329"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">도면 축척</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="-132"/>
+        <location line="+613"/>
+        <source>Hole Callout</source>
+        <translation type="unfinished">구멍 주석</translation>
+    </message>
+    <message>
+        <location line="-592"/>
+        <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
+        <translation type="unfinished">%1: 그 모서리는 구멍(구멍 피처)의 것이 아닙니다</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>%1: that hole is called out already; Remove Dimension removes it</source>
+        <translation type="unfinished">%1: 그 구멍에는 이미 주석이 있습니다. 치수 제거로 제거할 수 있습니다</translation>
+    </message>
+    <message>
+        <location line="+107"/>
         <source>Largest that fits</source>
         <translation type="unfinished">맞는 최대 축척</translation>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+294"/>
+        <location line="+289"/>
         <source>Scale:</source>
         <translation type="unfinished">축척:</translation>
     </message>
@@ -2154,13 +2173,13 @@ Details are in the log:
         <translation type="unfinished">%1: 원 안에 뷰의 요소가 없습니다</translation>
     </message>
     <message>
-        <location line="+21"/>
-        <location line="+35"/>
+        <location line="-621"/>
+        <location line="+642"/>
         <source>Move View</source>
         <translation type="unfinished">뷰 이동</translation>
     </message>
     <message>
-        <location line="-28"/>
+        <location line="+7"/>
         <source>Click a view</source>
         <translation type="unfinished">뷰를 클릭하십시오</translation>
     </message>
@@ -2175,29 +2194,30 @@ Details are in the log:
         <translation type="unfinished">뷰가 있는 도면 위가 아닙니다</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="-650"/>
+        <location line="+693"/>
         <source>Remove View</source>
         <translation type="unfinished">뷰 제거</translation>
     </message>
     <message>
-        <location line="+5"/>
-        <location line="+26"/>
+        <location line="-677"/>
+        <location line="+682"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: 시트에는 뷰가 하나 이상 있어야 합니다</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+216"/>
+        <location line="+8"/>
+        <location line="+130"/>
         <source>View:</source>
         <translation type="unfinished">뷰:</translation>
     </message>
     <message>
-        <location line="-180"/>
+        <location line="-801"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: 이 뷰에서 파생된 뷰도 함께 제거되었습니다 (%2)</translation>
     </message>
     <message>
-        <location line="+41"/>
+        <location line="+714"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">뷰의 모서리를 클릭하십시오 (완료하면 Esc)</translation>
     </message>
@@ -2212,24 +2232,25 @@ Details are in the log:
         <translation type="unfinished">해당 위치에 모서리가 없습니다</translation>
     </message>
     <message>
-        <location line="+15"/>
-        <location line="+15"/>
+        <location line="-694"/>
+        <location line="+709"/>
         <source>Add Dimension</source>
         <translation type="unfinished">치수 추가</translation>
     </message>
     <message>
-        <location line="-8"/>
-        <location line="+74"/>
+        <location line="-630"/>
+        <location line="+652"/>
+        <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">치수 제거</translation>
     </message>
     <message>
-        <location line="-51"/>
+        <location line="-728"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: 이 모서리에는 이미 치수가 있습니다. 치수 제거로 제거할 수 있습니다</translation>
     </message>
     <message>
-        <location line="+36"/>
+        <location line="+42"/>
         <source>%1: that edge is curved, but not a circle or arc; its size is not stated</source>
         <translation type="unfinished">%1: 이 모서리는 원이나 호가 아닌 곡선이므로 크기를 표시할 수 없습니다</translation>
     </message>
@@ -2239,13 +2260,15 @@ Details are in the log:
         <translation type="unfinished">%1: 이 모서리에는 표시할 길이가 없습니다</translation>
     </message>
     <message>
-        <location line="+15"/>
-        <location line="+8"/>
+        <location line="+16"/>
+        <location line="+11"/>
+        <location line="+654"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: 이 모서리에는 치수가 없습니다</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="-755"/>
+        <location line="+763"/>
         <source>View Properties</source>
         <translation type="unfinished">뷰 속성</translation>
     </message>
@@ -2275,12 +2298,13 @@ Details are in the log:
         <translation type="unfinished">중심선:</translation>
     </message>
     <message>
-        <location line="+26"/>
+        <location line="+18"/>
         <source>Update from Part</source>
         <translation type="unfinished">부품에서 업데이트</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="-624"/>
+        <location line="+633"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">도면을 다시 그릴 수 없습니다: %1</translation>
     </message>
@@ -3050,7 +3074,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+452"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+457"/>
         <source>&amp;File</source>
         <translation>파일(&amp;F)</translation>
     </message>
@@ -3086,12 +3110,12 @@ begin building your part.</source>
         <translation type="unfinished">%2 주변, 패싯 %1개의 곡면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-282"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-286"/>
         <source>Close %1</source>
         <translation type="unfinished">%1 닫기</translation>
     </message>
     <message>
-        <location line="+885"/>
+        <location line="+891"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3310,15 +3334,15 @@ begin building your part.</source>
         <translation type="unfinished">뚫을 면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-835"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-841"/>
         <location line="+1"/>
-        <location line="+40"/>
-        <location line="+1224"/>
+        <location line="+44"/>
+        <location line="+1216"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-1170"/>
+        <location line="-1162"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -3826,6 +3850,11 @@ begin building your part.</source>
         <location line="+2"/>
         <source>Remove Dime&amp;nsion</source>
         <translation type="unfinished">치수 제거(&amp;N)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add &amp;Hole Callout</source>
+        <translation type="unfinished">구멍 주석 추가(&amp;H)</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -4459,19 +4488,14 @@ begin building your part.</source>
         <translation type="unfinished">전개도</translation>
     </message>
     <message numerus="yes">
-        <location line="+1443"/>
+        <location line="+1433"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>파일을 저장했습니다. 레이어 %n개는 DXF에서 허용하는 이름으로 저장했습니다.</numerusform>
         </translation>
     </message>
     <message>
-        <location line="-1162"/>
-        <source>The assistant works on parts and drawings, not drawing sheets</source>
-        <translation type="unfinished">어시스턴트는 도면 시트가 아니라 부품과 도면에서 작동합니다</translation>
-    </message>
-    <message>
-        <location line="+1597"/>
+        <location line="+435"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">확대/축소할 선택 항목이 없습니다. 전체 맞춤(F)은 전체를 표시합니다</translation>
     </message>
@@ -4520,7 +4544,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
     </message>
     <message>
-        <location line="-2630"/>
+        <location line="-2620"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -4746,7 +4770,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1062"/>
+        <location line="+1052"/>
         <location line="+488"/>
         <location line="+936"/>
         <location line="+601"/>
@@ -4755,7 +4779,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-3170"/>
+        <location line="-3160"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -4776,17 +4800,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2818"/>
+        <location line="+2808"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-2812"/>
+        <location line="-2802"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
     <message>
-        <location line="+384"/>
+        <location line="+374"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (복구됨)</translation>
     </message>
@@ -5887,7 +5911,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-3186"/>
+        <location line="-3176"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>

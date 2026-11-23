@@ -26,7 +26,7 @@
         <translation type="unfinished">角度:</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+64"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+67"/>
         <source>Section %1-%1</source>
         <translation type="unfinished">剖视图 %1-%1</translation>
     </message>
@@ -257,12 +257,12 @@
     </message>
     <message>
         <location line="+2"/>
-        <location line="+208"/>
+        <location line="+219"/>
         <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
         <translation type="unfinished">描述一个零件或一项更改…（Enter 发送，Shift+Enter 换行）</translation>
     </message>
     <message>
-        <location line="-202"/>
+        <location line="-213"/>
         <source>Undo This Response</source>
         <translation type="unfinished">撤销此回复</translation>
     </message>
@@ -287,12 +287,12 @@
         <translation type="unfinished">已停止：提供商或服务器已更改。请重新发送请求。</translation>
     </message>
     <message>
-        <location line="+40"/>
+        <location line="+44"/>
         <source>Stopped: the document changed.</source>
         <translation type="unfinished">已停止：文档已更改。</translation>
     </message>
     <message>
-        <location line="+75"/>
+        <location line="+82"/>
         <source>choose a model in Settings</source>
         <translation type="unfinished">请在设置中选择模型</translation>
     </message>
@@ -372,7 +372,7 @@ Send requests there?</source>
         <translation type="unfinished">助手</translation>
     </message>
     <message>
-        <location line="-561"/>
+        <location line="-572"/>
         <source>Looked at the %1 view</source>
         <translation type="unfinished">查看了 %1 视图</translation>
     </message>
@@ -1879,17 +1879,17 @@ Details are in the log:
 <context>
     <name>hz::ui::DrawingWorkbench</name>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+180"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+184"/>
         <source>%1 works on a drawing sheet: open one, or make one from a part</source>
         <translation type="unfinished">%1 用于工程图图纸：请打开一张，或从零件创建一张</translation>
     </message>
     <message>
-        <location line="+170"/>
+        <location line="+174"/>
         <source>Dimensions whose edges the part no longer has are not drawn: %1</source>
         <translation type="unfinished">以下尺寸所标注的边在零件中已不存在，因此未绘制：%1</translation>
     </message>
     <message numerus="yes">
-        <location line="+40"/>
+        <location line="+42"/>
         <source>%n component(s) could not be drawn: their parts could not be read</source>
         <translation type="unfinished">
             <numerusform>%n 个零部件无法绘制：无法读取其零件</numerusform>
@@ -1932,17 +1932,18 @@ Details are in the log:
         <translation type="unfinished">无法重新读取</translation>
     </message>
     <message>
-        <location line="+65"/>
+        <location line="+70"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">&quot;%1&quot; 的工程图无法重新生成：%2</translation>
     </message>
     <message>
-        <location line="+32"/>
+        <location line="+87"/>
         <source>%1: the drawing could not be drawn again: %2</source>
         <translation type="unfinished">%1：工程图无法重新生成：%2</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+103"/>
+        <location line="+296"/>
         <source>Title Block</source>
         <translation type="unfinished">标题栏</translation>
     </message>
@@ -2007,31 +2008,49 @@ Details are in the log:
         <translation type="unfinished">纵向</translation>
     </message>
     <message>
-        <location line="+27"/>
-        <location line="+37"/>
-        <location line="+186"/>
-        <location line="+348"/>
+        <location line="-311"/>
+        <location line="+18"/>
+        <location line="+118"/>
+        <location line="+92"/>
+        <location line="+319"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1：%2</translation>
     </message>
     <message>
-        <location line="-565"/>
+        <location line="-212"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">并非所有视图都能放在此图幅内：放不下的视图位于图纸旁边</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="-323"/>
+        <location line="+329"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">工程图比例</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="-132"/>
+        <location line="+613"/>
+        <source>Hole Callout</source>
+        <translation type="unfinished">孔标注</translation>
+    </message>
+    <message>
+        <location line="-592"/>
+        <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
+        <translation type="unfinished">%1：该边不属于孔（孔特征）</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>%1: that hole is called out already; Remove Dimension removes it</source>
+        <translation type="unfinished">%1：该孔已有标注；“删除尺寸”可将其删除</translation>
+    </message>
+    <message>
+        <location line="+107"/>
         <source>Largest that fits</source>
         <translation type="unfinished">最大适合比例</translation>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+294"/>
+        <location line="+289"/>
         <source>Scale:</source>
         <translation type="unfinished">比例:</translation>
     </message>
@@ -2154,13 +2173,13 @@ Details are in the log:
         <translation type="unfinished">%1：圆内不包含该视图的任何内容</translation>
     </message>
     <message>
-        <location line="+21"/>
-        <location line="+35"/>
+        <location line="-621"/>
+        <location line="+642"/>
         <source>Move View</source>
         <translation type="unfinished">移动视图</translation>
     </message>
     <message>
-        <location line="-28"/>
+        <location line="+7"/>
         <source>Click a view</source>
         <translation type="unfinished">单击一个视图</translation>
     </message>
@@ -2175,29 +2194,30 @@ Details are in the log:
         <translation type="unfinished">不在该视图所在的工程图上</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="-650"/>
+        <location line="+693"/>
         <source>Remove View</source>
         <translation type="unfinished">删除视图</translation>
     </message>
     <message>
-        <location line="+5"/>
-        <location line="+26"/>
+        <location line="-677"/>
+        <location line="+682"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1：图纸至少要保留一个视图</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+216"/>
+        <location line="+8"/>
+        <location line="+130"/>
         <source>View:</source>
         <translation type="unfinished">视图:</translation>
     </message>
     <message>
-        <location line="-180"/>
+        <location line="-801"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1：由其派生的视图也一并删除（%2）</translation>
     </message>
     <message>
-        <location line="+41"/>
+        <location line="+714"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">单击视图中的一条边（完成后按 Esc）</translation>
     </message>
@@ -2212,24 +2232,25 @@ Details are in the log:
         <translation type="unfinished">该处没有边</translation>
     </message>
     <message>
-        <location line="+15"/>
-        <location line="+15"/>
+        <location line="-694"/>
+        <location line="+709"/>
         <source>Add Dimension</source>
         <translation type="unfinished">添加尺寸</translation>
     </message>
     <message>
-        <location line="-8"/>
-        <location line="+74"/>
+        <location line="-630"/>
+        <location line="+652"/>
+        <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">删除尺寸</translation>
     </message>
     <message>
-        <location line="-51"/>
+        <location line="-728"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1：该边已标注尺寸；可用删除尺寸将其删除</translation>
     </message>
     <message>
-        <location line="+36"/>
+        <location line="+42"/>
         <source>%1: that edge is curved, but not a circle or arc; its size is not stated</source>
         <translation type="unfinished">%1：该边为曲线，但不是圆或圆弧；无法标注其尺寸</translation>
     </message>
@@ -2239,13 +2260,15 @@ Details are in the log:
         <translation type="unfinished">%1：该边没有可标注的长度</translation>
     </message>
     <message>
-        <location line="+15"/>
-        <location line="+8"/>
+        <location line="+16"/>
+        <location line="+11"/>
+        <location line="+654"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1：该边没有尺寸</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="-755"/>
+        <location line="+763"/>
         <source>View Properties</source>
         <translation type="unfinished">视图属性</translation>
     </message>
@@ -2275,12 +2298,13 @@ Details are in the log:
         <translation type="unfinished">中心线:</translation>
     </message>
     <message>
-        <location line="+26"/>
+        <location line="+18"/>
         <source>Update from Part</source>
         <translation type="unfinished">从零件更新</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="-624"/>
+        <location line="+633"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">工程图无法重新生成：%1</translation>
     </message>
@@ -3050,7 +3074,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+452"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+457"/>
         <source>&amp;File</source>
         <translation>文件(&amp;F)</translation>
     </message>
@@ -3086,12 +3110,12 @@ begin building your part.</source>
         <translation type="unfinished">由 %1 个小平面组成的曲面，位于 %2 附近</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-282"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-286"/>
         <source>Close %1</source>
         <translation type="unfinished">关闭 %1</translation>
     </message>
     <message>
-        <location line="+885"/>
+        <location line="+891"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3310,15 +3334,15 @@ begin building your part.</source>
         <translation type="unfinished">放置面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-835"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-841"/>
         <location line="+1"/>
-        <location line="+40"/>
-        <location line="+1224"/>
+        <location line="+44"/>
+        <location line="+1216"/>
         <source>Drawing 1</source>
         <translation type="unfinished">工程图 1</translation>
     </message>
     <message>
-        <location line="-1170"/>
+        <location line="-1162"/>
         <source>Command Palette…</source>
         <translation type="unfinished">命令面板…</translation>
     </message>
@@ -3826,6 +3850,11 @@ begin building your part.</source>
         <location line="+2"/>
         <source>Remove Dime&amp;nsion</source>
         <translation type="unfinished">删除尺寸(&amp;N)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add &amp;Hole Callout</source>
+        <translation type="unfinished">添加孔标注(&amp;H)</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -4459,19 +4488,14 @@ begin building your part.</source>
         <translation type="unfinished">展开图</translation>
     </message>
     <message numerus="yes">
-        <location line="+1443"/>
+        <location line="+1433"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>文件已保存；%n 个图层使用了 DXF 允许的名称。</numerusform>
         </translation>
     </message>
     <message>
-        <location line="-1162"/>
-        <source>The assistant works on parts and drawings, not drawing sheets</source>
-        <translation type="unfinished">助手适用于零件和工程图，不适用于工程图图纸</translation>
-    </message>
-    <message>
-        <location line="+1597"/>
+        <location line="+435"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">没有可缩放的选择：整屏显示 (F) 显示全部</translation>
     </message>
@@ -4520,7 +4544,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 未估计其误差：只测量了一次，未细分。</translation>
     </message>
     <message>
-        <location line="-2630"/>
+        <location line="-2620"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -4746,7 +4770,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1062"/>
+        <location line="+1052"/>
         <location line="+488"/>
         <location line="+936"/>
         <location line="+601"/>
@@ -4755,7 +4779,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-3170"/>
+        <location line="-3160"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -4776,17 +4800,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2818"/>
+        <location line="+2808"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-2812"/>
+        <location line="-2802"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
     <message>
-        <location line="+384"/>
+        <location line="+374"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (已恢复)</translation>
     </message>
@@ -5887,7 +5911,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
     </message>
     <message>
-        <location line="-3186"/>
+        <location line="-3176"/>
         <source>0 selected</source>
         <translation>已选择 0 个</translation>
     </message>

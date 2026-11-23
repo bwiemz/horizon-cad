@@ -62,6 +62,9 @@ public:
     void onAddDimension();
     /// An edge clicked: its dimensions removed.
     void onRemoveDimension();
+    /// A hole's edge clicked: the hole called out ("3× ⌀6.6 THRU"), its size
+    /// as its feature says, and how many of it the part has.
+    void onAddHoleCallout();
 
     // --- For the window ---
     /// Whether @p document is a sheet this workbench draws.
@@ -102,6 +105,9 @@ public:
     /// What it is drawn from: its part's solid, or its assembly's gathered,
     /// for naming and measuring edges. Null, with why.
     const topo::Solid* solidOf(doc::Document& document, std::string* error);
+    /// Its part's hole features, for their callouts: none for an assembly's.
+    /// Null, with why, when the part cannot be read.
+    const std::vector<io::HoleNote>* holesOf(doc::Document& document, std::string* error);
     /// Its title block and paper. On new paper its views are laid out again;
     /// @p fits false when some found no room.
     bool setTitleBlock(doc::Document& document, const model::TitleBlock& block,
@@ -121,7 +127,13 @@ public:
     /// from the part: a circle's diameter, an arc's radius, else its length.
     bool addEdgeDimension(doc::Document& document, std::size_t view, const std::string& edge,
                           std::string* error);
-    /// The dimensions of the edge named @p edge in view @p view removed.
+    /// The hole that made the edge named @p edge called out in view @p view:
+    /// its size, as its feature says, and how many of it the part has. Only
+    /// a part's sheet: an assembly's holes are its parts'.
+    bool addHoleCallout(doc::Document& document, std::size_t view, const std::string& edge,
+                        std::string* error);
+    /// The dimensions of the edge named @p edge in view @p view removed, and
+    /// its hole's callout.
     bool removeEdgeDimensions(doc::Document& document, std::size_t view, const std::string& edge,
                               std::string* error);
 
@@ -164,6 +176,9 @@ private:
         std::vector<std::pair<std::string, int>> balloons;
         std::vector<std::string> files;  ///< every file it was read from
         std::vector<uint64_t> missing;   ///< components with no part to draw
+        /// A part's hole features, for its holes' callouts; none for an
+        /// assembly.
+        std::vector<io::HoleNote> holes;
     };
     /// An edge clicked on a sheet: the view it is in, and its name.
     struct PickedEdge {
@@ -211,6 +226,7 @@ private:
                                                  const PickedEdge&));
     void addDimension(const std::weak_ptr<doc::Document>& document, const PickedEdge& picked);
     void removeDimensions(const std::weak_ptr<doc::Document>& document, const PickedEdge& picked);
+    void addHoleCalloutAt(const std::weak_ptr<doc::Document>& document, const PickedEdge& picked);
     /// A detail of view @p source of the sheet showing @p document, clicked
     /// at @p centre with @p radius on the sheet: its scale and label asked.
     void addDetail(const std::weak_ptr<doc::Document>& document, int source,

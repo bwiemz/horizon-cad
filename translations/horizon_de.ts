@@ -26,7 +26,7 @@
         <translation type="unfinished">Winkel:</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+64"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+67"/>
         <source>Section %1-%1</source>
         <translation type="unfinished">Schnitt %1-%1</translation>
     </message>
@@ -262,12 +262,12 @@
     </message>
     <message>
         <location line="+2"/>
-        <location line="+208"/>
+        <location line="+219"/>
         <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
         <translation type="unfinished">Beschreiben Sie ein Teil oder eine Änderung… (Eingabe sendet, Umschalt+Eingabe: neue Zeile)</translation>
     </message>
     <message>
-        <location line="-202"/>
+        <location line="-213"/>
         <source>Undo This Response</source>
         <translation type="unfinished">Diese Antwort rückgängig machen</translation>
     </message>
@@ -292,12 +292,12 @@
         <translation type="unfinished">Angehalten: Anbieter oder Server wurde geändert. Senden Sie die Anfrage erneut.</translation>
     </message>
     <message>
-        <location line="+40"/>
+        <location line="+44"/>
         <source>Stopped: the document changed.</source>
         <translation type="unfinished">Angehalten: Das Dokument wurde geändert.</translation>
     </message>
     <message>
-        <location line="+75"/>
+        <location line="+82"/>
         <source>choose a model in Settings</source>
         <translation type="unfinished">Modell in den Einstellungen wählen</translation>
     </message>
@@ -377,7 +377,7 @@ Anfragen dorthin senden?</translation>
         <translation type="unfinished">Assistent</translation>
     </message>
     <message>
-        <location line="-561"/>
+        <location line="-572"/>
         <source>Looked at the %1 view</source>
         <translation type="unfinished">Ansicht „%1“ betrachtet</translation>
     </message>
@@ -1890,17 +1890,17 @@ Details stehen im Protokoll:
 <context>
     <name>hz::ui::DrawingWorkbench</name>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+180"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+184"/>
         <source>%1 works on a drawing sheet: open one, or make one from a part</source>
         <translation type="unfinished">%1 wirkt auf ein Zeichnungsblatt: öffnen Sie eines oder erstellen Sie eines aus einem Teil</translation>
     </message>
     <message>
-        <location line="+170"/>
+        <location line="+174"/>
         <source>Dimensions whose edges the part no longer has are not drawn: %1</source>
         <translation type="unfinished">Bemaßungen, deren Kanten das Teil nicht mehr hat, werden nicht gezeichnet: %1</translation>
     </message>
     <message numerus="yes">
-        <location line="+40"/>
+        <location line="+42"/>
         <source>%n component(s) could not be drawn: their parts could not be read</source>
         <translation type="unfinished">
             <numerusform>%n Komponente konnte nicht gezeichnet werden: ihr Teil konnte nicht gelesen werden</numerusform>
@@ -1944,17 +1944,18 @@ Details stehen im Protokoll:
         <translation type="unfinished">Fehler beim erneuten Einlesen von</translation>
     </message>
     <message>
-        <location line="+65"/>
+        <location line="+70"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">Eine Zeichnung von &quot;%1&quot; konnte nicht neu gezeichnet werden: %2</translation>
     </message>
     <message>
-        <location line="+32"/>
+        <location line="+87"/>
         <source>%1: the drawing could not be drawn again: %2</source>
         <translation type="unfinished">%1: die Zeichnung konnte nicht neu gezeichnet werden: %2</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+103"/>
+        <location line="+296"/>
         <source>Title Block</source>
         <translation type="unfinished">Schriftfeld</translation>
     </message>
@@ -2019,31 +2020,49 @@ Details stehen im Protokoll:
         <translation type="unfinished">Hochformat</translation>
     </message>
     <message>
-        <location line="+27"/>
-        <location line="+37"/>
-        <location line="+186"/>
-        <location line="+348"/>
+        <location line="-311"/>
+        <location line="+18"/>
+        <location line="+118"/>
+        <location line="+92"/>
+        <location line="+319"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="-565"/>
+        <location line="-212"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">Nicht jede Ansicht passt auf dieses Papier: die übrigen liegen daneben</translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="-323"/>
+        <location line="+329"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">Zeichnungsmaßstab</translation>
     </message>
     <message>
-        <location line="+5"/>
+        <location line="-132"/>
+        <location line="+613"/>
+        <source>Hole Callout</source>
+        <translation type="unfinished">Bohrungsangabe</translation>
+    </message>
+    <message>
+        <location line="-592"/>
+        <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
+        <translation type="unfinished">%1: Diese Kante gehört zu keiner Bohrung (einem Bohrungs-Feature)</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>%1: that hole is called out already; Remove Dimension removes it</source>
+        <translation type="unfinished">%1: Diese Bohrung ist bereits angegeben; „Bemaßung entfernen“ entfernt die Angabe</translation>
+    </message>
+    <message>
+        <location line="+107"/>
         <source>Largest that fits</source>
         <translation type="unfinished">Größter passender</translation>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+294"/>
+        <location line="+289"/>
         <source>Scale:</source>
         <translation type="unfinished">Maßstab:</translation>
     </message>
@@ -2166,13 +2185,13 @@ Details stehen im Protokoll:
         <translation type="unfinished">%1: der Kreis enthält nichts von der Ansicht</translation>
     </message>
     <message>
-        <location line="+21"/>
-        <location line="+35"/>
+        <location line="-621"/>
+        <location line="+642"/>
         <source>Move View</source>
         <translation type="unfinished">Ansicht verschieben</translation>
     </message>
     <message>
-        <location line="-28"/>
+        <location line="+7"/>
         <source>Click a view</source>
         <translation type="unfinished">Klicken Sie auf eine Ansicht</translation>
     </message>
@@ -2187,29 +2206,30 @@ Details stehen im Protokoll:
         <translation type="unfinished">Nicht auf der Zeichnung, auf der die Ansicht liegt</translation>
     </message>
     <message>
-        <location line="+50"/>
+        <location line="-650"/>
+        <location line="+693"/>
         <source>Remove View</source>
         <translation type="unfinished">Ansicht entfernen</translation>
     </message>
     <message>
-        <location line="+5"/>
-        <location line="+26"/>
+        <location line="-677"/>
+        <location line="+682"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: ein Blatt behält mindestens eine Ansicht</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+216"/>
+        <location line="+8"/>
+        <location line="+130"/>
         <source>View:</source>
         <translation type="unfinished">Ansicht:</translation>
     </message>
     <message>
-        <location line="-180"/>
+        <location line="-801"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: die davon abgeleiteten Ansichten wurden mit entfernt (%2)</translation>
     </message>
     <message>
-        <location line="+41"/>
+        <location line="+714"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">Klicken Sie auf eine Kante einer Ansicht (Esc zum Beenden)</translation>
     </message>
@@ -2224,24 +2244,25 @@ Details stehen im Protokoll:
         <translation type="unfinished">Dort ist keine Kante</translation>
     </message>
     <message>
-        <location line="+15"/>
-        <location line="+15"/>
+        <location line="-694"/>
+        <location line="+709"/>
         <source>Add Dimension</source>
         <translation type="unfinished">Bemaßung hinzufügen</translation>
     </message>
     <message>
-        <location line="-8"/>
-        <location line="+74"/>
+        <location line="-630"/>
+        <location line="+652"/>
+        <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">Bemaßung entfernen</translation>
     </message>
     <message>
-        <location line="-51"/>
+        <location line="-728"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: diese Kante ist bereits bemaßt; Bemaßung entfernen entfernt die Bemaßung</translation>
     </message>
     <message>
-        <location line="+36"/>
+        <location line="+42"/>
         <source>%1: that edge is curved, but not a circle or arc; its size is not stated</source>
         <translation type="unfinished">%1: diese Kante ist gekrümmt, aber kein Kreis oder Bogen; ihre Größe wird nicht angegeben</translation>
     </message>
@@ -2251,13 +2272,15 @@ Details stehen im Protokoll:
         <translation type="unfinished">%1: diese Kante hat keine anzugebende Länge</translation>
     </message>
     <message>
-        <location line="+15"/>
-        <location line="+8"/>
+        <location line="+16"/>
+        <location line="+11"/>
+        <location line="+654"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: diese Kante hat keine Bemaßung</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="-755"/>
+        <location line="+763"/>
         <source>View Properties</source>
         <translation type="unfinished">Ansichtseigenschaften</translation>
     </message>
@@ -2287,12 +2310,13 @@ Details stehen im Protokoll:
         <translation type="unfinished">Mittellinien:</translation>
     </message>
     <message>
-        <location line="+26"/>
+        <location line="+18"/>
         <source>Update from Part</source>
         <translation type="unfinished">Aus Teil aktualisieren</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="-624"/>
+        <location line="+633"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">Die Zeichnung konnte nicht neu gezeichnet werden: %1</translation>
     </message>
@@ -3071,7 +3095,7 @@ um Ihr Teil aufzubauen.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+452"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+457"/>
         <source>&amp;File</source>
         <translation>&amp;Datei</translation>
     </message>
@@ -3107,12 +3131,12 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">eine gekrümmte Fläche aus %1 Facetten, um %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-282"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-286"/>
         <source>Close %1</source>
         <translation type="unfinished">%1 schließen</translation>
     </message>
     <message>
-        <location line="+885"/>
+        <location line="+891"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3331,15 +3355,15 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">In die Fläche</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-835"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-841"/>
         <location line="+1"/>
-        <location line="+40"/>
-        <location line="+1224"/>
+        <location line="+44"/>
+        <location line="+1216"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Zeichnung 1</translation>
     </message>
     <message>
-        <location line="-1170"/>
+        <location line="-1162"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Befehlspalette…</translation>
     </message>
@@ -3847,6 +3871,11 @@ um Ihr Teil aufzubauen.</translation>
         <location line="+2"/>
         <source>Remove Dime&amp;nsion</source>
         <translation type="unfinished">Bemaßung entfe&amp;rnen</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add &amp;Hole Callout</source>
+        <translation type="unfinished">&amp;Bohrungsangabe hinzufügen</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -4480,7 +4509,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Abwicklung</translation>
     </message>
     <message numerus="yes">
-        <location line="+1443"/>
+        <location line="+1433"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>Datei gespeichert; %n Layer unter einem Namen, den DXF zulässt.</numerusform>
@@ -4488,12 +4517,7 @@ um Ihr Teil aufzubauen.</translation>
         </translation>
     </message>
     <message>
-        <location line="-1162"/>
-        <source>The assistant works on parts and drawings, not drawing sheets</source>
-        <translation type="unfinished">Der Assistent arbeitet mit Teilen und Zeichnungen, nicht mit Zeichnungsblättern</translation>
-    </message>
-    <message>
-        <location line="+1597"/>
+        <location line="+435"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">Nichts ausgewählt zum Zoomen: Alles anzeigen (F) zeigt alles</translation>
     </message>
@@ -4544,7 +4568,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</translation>
     </message>
     <message>
-        <location line="-2630"/>
+        <location line="-2620"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -4770,7 +4794,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1062"/>
+        <location line="+1052"/>
         <location line="+488"/>
         <location line="+936"/>
         <location line="+601"/>
@@ -4779,7 +4803,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-3170"/>
+        <location line="-3160"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -4800,17 +4824,17 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2818"/>
+        <location line="+2808"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-2812"/>
+        <location line="-2802"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
     <message>
-        <location line="+384"/>
+        <location line="+374"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (wiederhergestellt)</translation>
     </message>
@@ -5916,7 +5940,7 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
     </message>
     <message>
-        <location line="-3186"/>
+        <location line="-3176"/>
         <source>0 selected</source>
         <translation>0 ausgewählt</translation>
     </message>

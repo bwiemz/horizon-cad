@@ -1,5 +1,6 @@
 #include "horizon/fileio/DrawingDocumentIO.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -7,11 +8,13 @@
 #include <locale>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "horizon/document/Document.h"
+#include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/modeling/Naming.h"
@@ -25,7 +28,11 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr int kVersion = 3;
+/// The newest format this version reads. A sheet is written as 3 unless it
+/// has what only 4 holds (hole callouts): one without them still opens in a
+/// version that reads up to 3.
+constexpr int kVersion = 4;
+constexpr int kVersionWithoutCallouts = 3;
 constexpr double kHatchSpacing = 3.0;  ///< sheet millimetres between a section's hatch lines
 
 // Each field read by its type, defaulted when missing or of another type: a
@@ -166,7 +173,10 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
 std::string DrawingDocumentIO::serialise(const std::string& path, const DrawingDocumentSpec& spec) {
     json root;
     root["format"] = "hzdwg";
-    root["version"] = kVersion;
+    const bool callouts =
+        std::any_of(spec.views.begin(), spec.views.end(),
+                    [](const DrawingViewSpec& v) { return !v.holeCallouts.empty(); });
+    root["version"] = callouts ? kVersion : kVersionWithoutCallouts;
 
     // The part beside or below the drawing is written relative to it, so a
     // folder of both can move.
@@ -224,6 +234,7 @@ std::string DrawingDocumentIO::serialise(const std::string& path, const DrawingD
                          {"detailRadius", v.detailRadius},
                          {"centreLines", v.showCentreLines},
                          {"dimensions", dimensionsJson(v.dimensions)}});
+        if (!v.holeCallouts.empty()) views.back()["holeCallouts"] = v.holeCallouts;
     }
     root["views"] = views;
     if (spec.annotations) {
@@ -435,6 +446,26 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                             }
                         }
                     }
+                    // Version 4: the holes called out, each by an edge of it.
+                    const auto callouts = v.find("holeCallouts");
+                    if (callouts != v.end() && callouts->is_array()) {
+                        if (callouts->size() > kMaxDimensions) {
+                            return fail(at + " has " + std::to_string(callouts->size()) +
+                                        " hole callouts; at most " +
+                                        std::to_string(kMaxDimensions) + " are read");
+                        }
+                        std::size_t calloutIndex = 0;
+                        for (const auto& c : *callouts) {
+                            ++calloutIndex;
+                            if (!c.is_string() || c.get<std::string>().empty()) {
+                                spec.leftOut.push_back(entry + ", hole callout " +
+                                                       std::to_string(calloutIndex) +
+                                                       ": it names no edge");
+                                continue;
+                            }
+                            view.holeCallouts.push_back(c.get<std::string>());
+                        }
+                    }
                 }
                 spec.views.push_back(view);
             }
@@ -506,15 +537,98 @@ bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSp
     if (!partDoc.rebuildModel() || partDoc.solid() == nullptr) {
         return fail("its part \"" + spec.partPath + "\" did not rebuild");
     }
+    const std::vector<HoleNote> holes = holesOf(partDoc);
     // A version 1 file: the four standard views, spaced by its gap, at 1:1.
     outDrawing = spec.version >= 2
-                     ? build(*partDoc.solid(), spec)
+                     ? build(*partDoc.solid(), spec, nullptr, &holes)
                      : model::DrawingGenerator::standardViews(*partDoc.solid(), spec.gap);
     return true;
 }
 
+namespace {
+
+/// How many holes @p hole made in @p solid: one, and each copy of it a
+/// pattern or a mirror made, each a wall of its own.
+int instancesOf(const topo::Solid& solid, const HoleNote& hole) {
+    const std::string wall = hole.feature + "/wall";
+    std::set<std::string> walls;
+    for (const topo::Face& face : solid.faces()) {
+        const std::string name = model::logicalFace(face.topoId.tag());
+        if (name.compare(0, wall.size(), wall) != 0) continue;
+        if (name.size() > wall.size() && name[wall.size()] != '/') continue;
+        // A wall cut into pieces is one wall.
+        walls.insert(model::withoutPiece(name));
+    }
+    return std::max(1, static_cast<int>(walls.size()));
+}
+
+}  // namespace
+
+std::vector<HoleNote> DrawingDocumentIO::holesOf(const doc::Document& part) {
+    std::vector<HoleNote> holes;
+    const auto& tree = part.featureTree();
+    for (std::size_t i = 0; i < tree.featureCount(); ++i) {
+        const auto* hole = dynamic_cast<const doc::HoleFeature*>(tree.feature(i));
+        if (hole == nullptr || hole->isSuppressed()) continue;
+        const auto sizes = hole->parameters();
+        const auto size = [&sizes](const char* name) {
+            const auto it = sizes.find(name);
+            return it != sizes.end() ? it->second : 0.0;
+        };
+        HoleNote note;
+        note.feature = hole->featureID();
+        switch (hole->type()) {
+            case doc::HoleFeature::Type::Simple:
+                note.kind = model::HoleCallout::Kind::Simple;
+                break;
+            case doc::HoleFeature::Type::Counterbore:
+                note.kind = model::HoleCallout::Kind::Counterbore;
+                break;
+            case doc::HoleFeature::Type::Countersink:
+                note.kind = model::HoleCallout::Kind::Countersink;
+                break;
+        }
+        switch (hole->extent()) {
+            case doc::HoleFeature::Extent::Blind:
+                note.depth = model::HoleCallout::Depth::Blind;
+                break;
+            case doc::HoleFeature::Extent::ThroughAll:
+                note.depth = model::HoleCallout::Depth::Through;
+                break;
+            case doc::HoleFeature::Extent::UpToFace:
+                note.depth = model::HoleCallout::Depth::UpToFace;
+                break;
+        }
+        note.diameter = size("diameter");
+        note.holeDepth = size("depth");
+        note.boreDiameter = size("boreDiameter");
+        note.boreDepth = size("boreDepth");
+        note.sinkDiameter = size("sinkDiameter");
+        note.sinkAngleDegrees = size("sinkAngle") * 180.0 / 3.14159265358979323846;
+        holes.push_back(std::move(note));
+    }
+    return holes;
+}
+
+const HoleNote* DrawingDocumentIO::holeOfEdge(const std::vector<HoleNote>& holes,
+                                              const std::string& edge) {
+    for (const HoleNote& hole : holes) {
+        // Its id, whole, at the start of a face's name in the edge's:
+        // "edge:hole_1/wall|…", "hole_1/edge:…", "…|hole_1/…" (not hole_11).
+        const std::string token = hole.feature + "/";
+        for (std::size_t at = edge.find(token); at != std::string::npos;
+             at = edge.find(token, at + 1)) {
+            if (at == 0 || edge[at - 1] == ':' || edge[at - 1] == '|' || edge[at - 1] == '/') {
+                return &hole;
+            }
+        }
+    }
+    return nullptr;
+}
+
 model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingDocumentSpec& spec,
-                                        std::vector<std::string>* lost) {
+                                        std::vector<std::string>* lost,
+                                        const std::vector<HoleNote>* holes) {
     if (spec.views.empty()) {
         return model::DrawingGenerator::sheetLayout(solid, spec.sheet, spec.titleBlock, spec.gap,
                                                     nullptr, spec.scale);
@@ -574,6 +688,35 @@ model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingD
                 lost->push_back("view " + std::to_string(drawing.views.size() + 1) + ": a " +
                                 dimensionKindName(d.kind));
             }
+        }
+        // Each hole called out, as its feature says now, on the edge it was
+        // called out on: one the view no longer shows, or no hole made, is said.
+        for (const std::string& callout : v.holeCallouts) {
+            const std::string named = model::withoutPiece(model::logicalEdge(callout));
+            const HoleNote* hole = holes != nullptr ? holeOfEdge(*holes, named) : nullptr;
+            const bool shown = std::any_of(
+                view.edges.begin(), view.edges.end(), [&named](const model::ProjectedEdge& e) {
+                    return model::withoutPiece(model::logicalEdge(e.sourceEdge.tag())) == named;
+                });
+            if (hole == nullptr || !shown) {
+                if (lost != nullptr) {
+                    lost->push_back("view " + std::to_string(drawing.views.size() + 1) +
+                                    ": a hole callout");
+                }
+                continue;
+            }
+            model::HoleCallout note;
+            note.edge = named;
+            note.count = instancesOf(solid, *hole);
+            note.kind = hole->kind;
+            note.depth = hole->depth;
+            note.diameter = hole->diameter;
+            note.holeDepth = hole->holeDepth;
+            note.boreDiameter = hole->boreDiameter;
+            note.boreDepth = hole->boreDepth;
+            note.sinkDiameter = hole->sinkDiameter;
+            note.sinkAngleDegrees = hole->sinkAngleDegrees;
+            view.holeCallouts.push_back(std::move(note));
         }
         drawing.views.push_back(std::move(view));
     }

@@ -7,6 +7,7 @@
 
 #include "horizon/math/Units.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/HoleCallout.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/TitleBlock.h"
 
@@ -59,6 +60,22 @@ struct DrawingViewSpec {
     double detailRadius = 0.0;
     bool showCentreLines = true;
     std::vector<DrawingDimensionSpec> dimensions;
+    /// The holes called out in it, each by an edge of the hole: its logical
+    /// name, without the piece of the circle (model::withoutPiece).
+    std::vector<std::string> holeCallouts;
+};
+
+/// What a hole feature of the part says of its holes, for their callouts.
+struct HoleNote {
+    std::string feature;  ///< its id ("hole_1"): every edge it makes names it
+    model::HoleCallout::Kind kind = model::HoleCallout::Kind::Simple;
+    model::HoleCallout::Depth depth = model::HoleCallout::Depth::Blind;
+    double diameter = 0.0;
+    double holeDepth = 0.0;
+    double boreDiameter = 0.0;
+    double boreDepth = 0.0;
+    double sinkDiameter = 0.0;
+    double sinkAngleDegrees = 90.0;
 };
 
 /// A drawing document's persisted specification: the part it draws, its
@@ -129,7 +146,14 @@ public:
     /// measured from it. A dimension whose edge the part no longer has is
     /// left out, and said in @p lost ("view 2: a length").
     static model::Drawing build(const topo::Solid& solid, const DrawingDocumentSpec& spec,
-                                std::vector<std::string>* lost = nullptr);
+                                std::vector<std::string>* lost = nullptr,
+                                const std::vector<HoleNote>* holes = nullptr);
+
+    /// The hole features of @p part that take part in its build.
+    static std::vector<HoleNote> holesOf(const doc::Document& part);
+    /// The hole of @p holes that made the edge named @p edge; null for an
+    /// edge no hole made.
+    static const HoleNote* holeOfEdge(const std::vector<HoleNote>& holes, const std::string& edge);
 
     /// The spec that saves @p drawing as it is laid out.
     static std::vector<DrawingViewSpec> viewsOf(const model::Drawing& drawing);

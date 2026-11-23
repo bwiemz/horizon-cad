@@ -10,6 +10,7 @@
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/GeometricTolerance.h"
+#include "horizon/modeling/HoleCallout.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/TitleBlock.h"
 
@@ -51,6 +52,7 @@ struct DrawingView {
     std::vector<FeatureControlFrame> tolerances;    ///< GD&T frames anchored to this view's edges
     std::vector<DatumFeature> datums;               ///< datum feature symbols anchored to edges
     std::vector<DrawingBalloon> balloons;           ///< BOM balloons anchored to this view's edges
+    std::vector<HoleCallout> holeCallouts;          ///< holes' sizes, on leaders from their edges
 
     // Section views (Phase 61): the cut profile and its hatching, in view
     // space. Empty for ordinary projection views.

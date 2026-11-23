@@ -30,6 +30,7 @@
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/HoleCallout.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/SectionView.h"
@@ -313,6 +314,10 @@ std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceOf(const
         const topo::Solid* part = partSolid(path, holder, error);
         if (part == nullptr) return nullptr;
         source->solid = model::Pattern::transformed(*part, math::Mat4::identity());  // its own copy
+        // Its holes as the document drawn from has them: its tab's, or its file's.
+        const auto open = m_host.documents().findByPath(path);
+        source->holes = io::DrawingDocumentIO::holesOf(
+            open != nullptr && open->solid() != nullptr ? *open : holder);
         return source;
     }
 
@@ -429,7 +434,7 @@ void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
         titleBlock.scale = model::DrawingGenerator::scaleName(chosen);
     } else {
         std::vector<std::string> lost;
-        drawing = io::DrawingDocumentIO::build(*solid, spec, &lost);
+        drawing = io::DrawingDocumentIO::build(*solid, spec, &lost, &source.holes);
         // Kept, and drawn again should the part have the edges again.
         if (!lost.empty()) {
             QStringList which;
@@ -864,6 +869,17 @@ const topo::Solid* DrawingWorkbench::solidOf(doc::Document& document, std::strin
     return source ? source->solid.get() : nullptr;
 }
 
+const std::vector<io::HoleNote>* DrawingWorkbench::holesOf(doc::Document& document,
+                                                           std::string* error) {
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) {
+        refused(kNotASheet, error);
+        return nullptr;
+    }
+    const auto source = sourceFor(*sheet, error);
+    return source ? &source->holes : nullptr;
+}
+
 bool DrawingWorkbench::setTitleBlock(doc::Document& document, const model::TitleBlock& block,
                                      const model::Sheet& paper, bool* fits, std::string* error) {
     const QString verb = tr("Title Block");
@@ -1074,9 +1090,55 @@ bool DrawingWorkbench::removeEdgeDimensions(doc::Document& document, std::size_t
     }
     auto& dimensions = sheet->spec.views[view].dimensions;
     const std::string tag = model::logicalEdge(edge);
-    const auto removed =
+    auto removed =
         std::erase_if(dimensions, [&](const io::DrawingDimensionSpec& d) { return d.edge == tag; });
+    // The callout on that edge's hole too.
+    const std::string named = model::withoutPiece(tag);
+    removed += std::erase_if(sheet->spec.views[view].holeCallouts, [&](const std::string& c) {
+        return model::withoutPiece(model::logicalEdge(c)) == named;
+    });
     if (removed == 0) return refused(m_host, tr("%1: that edge has no dimension").arg(verb), error);
+    kept.drawing();
+    return redraw(*sheet, verb, error);
+}
+
+bool DrawingWorkbench::addHoleCallout(doc::Document& document, std::size_t view,
+                                      const std::string& edge, std::string* error) {
+    const QString verb = tr("Hole Callout");
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return refused(kNotASheet, error);
+    SpecKept kept(sheet->spec);
+    listViews(*sheet);
+    if (view >= sheet->spec.views.size()) return refused(noView(view), error);
+    const std::string named = model::withoutPiece(model::logicalEdge(edge));
+    if (view >= sheet->drawing.views.size() ||
+        std::none_of(sheet->drawing.views[view].edges.begin(),
+                     sheet->drawing.views[view].edges.end(), [&](const model::ProjectedEdge& e) {
+                         return model::withoutPiece(model::logicalEdge(e.sourceEdge.tag())) ==
+                                named;
+                     })) {
+        return refused("view " + std::to_string(view) + " shows no edge named \"" + edge +
+                           "\" (list_view_edges names those it shows)",
+                       error);
+    }
+    std::string why;
+    const auto source = sourceFor(*sheet, &why);
+    if (!source) return refused(m_host, tr("%1: %2").arg(verb, QString::fromStdString(why)), error);
+    if (io::DrawingDocumentIO::holeOfEdge(source->holes, named) == nullptr) {
+        return refused(m_host, tr("%1: that edge is not a hole's (a Hole feature's)").arg(verb),
+                       error);
+    }
+    auto& callouts = sheet->spec.views[view].holeCallouts;
+    if (std::any_of(callouts.begin(), callouts.end(), [&](const std::string& c) {
+            return model::withoutPiece(model::logicalEdge(c)) == named;
+        })) {
+        return refused(
+            m_host,
+            tr("%1: that hole is called out already; Remove Dimension removes it").arg(verb),
+            error);
+    }
+    callouts.push_back(named);
+    sheet->spec.version = 3;
     kept.drawing();
     return redraw(*sheet, verb, error);
 }
@@ -1652,6 +1714,21 @@ void DrawingWorkbench::onAddDimension() {
     const Sheet* active = activeSheet(verb);
     if (active == nullptr) return;
     pickEdges(verb, active->document, &DrawingWorkbench::addDimension);
+}
+
+void DrawingWorkbench::onAddHoleCallout() {
+    const QString verb = tr("Hole Callout");
+    const Sheet* active = activeSheet(verb);
+    if (active == nullptr) return;
+    pickEdges(verb, active->document, &DrawingWorkbench::addHoleCalloutAt);
+}
+
+void DrawingWorkbench::addHoleCalloutAt(const std::weak_ptr<doc::Document>& document,
+                                        const PickedEdge& picked) {
+    const std::shared_ptr<doc::Document> shown = document.lock();
+    if (!shown || picked.view < 0) return;
+    addHoleCallout(*shown, static_cast<std::size_t>(picked.view), picked.edge.tag(),
+                   nullptr);  // said
 }
 
 void DrawingWorkbench::onRemoveDimension() {

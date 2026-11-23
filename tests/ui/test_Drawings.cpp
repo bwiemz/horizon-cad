@@ -22,6 +22,7 @@
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -1101,4 +1102,89 @@ TEST(DrawingsTest, ASheetReadAgainAfterAnUndoWithoutItsPartMovesNotesWithViews) 
     drive.click({at.x - 20.0, at.y - 15.0});
     ASSERT_TRUE(waitUntil([&] { return selecting(w); }, 5000));
     EXPECT_GT(std::abs(note->start().x - (at.x - 1.0)), 10.0) << "the note moved with its view";
+}
+
+namespace {
+
+/// A 60 x 20 x 10 plate with three counterbored holes through it, 20 apart
+/// (one Hole and a pattern of it), saved at @p path.
+void saveHoledPlate(const QString& path) {
+    hz::doc::Document part;
+    part.setType(hz::doc::DocumentType::Part);
+    auto box = hz::doc::PrimitiveFeature::makeBox(60, 20, 10);
+    const std::string top = box->featureID() + "/top";
+    part.featureTree().addFeature(std::move(box));
+    auto drill = hz::doc::HoleFeature::make(top, Vec3(10, 10, 99), 6.6, 10);
+    ASSERT_TRUE(drill->setParameter("type", 1.0));    // counterbore
+    ASSERT_TRUE(drill->setParameter("extent", 1.0));  // through all
+    ASSERT_TRUE(drill->setParameter("boreDiameter", 11.0));
+    ASSERT_TRUE(drill->setParameter("boreDepth", 6.4));
+    const std::string hole = drill->featureID();
+    part.featureTree().addFeature(std::move(drill));
+    auto three = hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 20.0, 3);
+    three->setTargets({hole});
+    part.featureTree().addFeature(std::move(three));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), part));
+}
+
+}  // namespace
+
+// A hole's edge clicked: the hole called out with its size, its counterbore
+// and how many the part has, as one undo step; Remove Dimension on it takes
+// the callout away.
+TEST(DrawingsTest, AHoleIsCalledOutWithItsSizeAndCount) {
+    QTemporaryDir dir;
+    const QString plate = dir.filePath(QStringLiteral("plate.hzpart"));
+    saveHoledPlate(plate);
+    const hz::model::Drawing layout = layoutOf(plate);
+    // A point on the first hole's counterbore rim, in the top view.
+    std::optional<hz::math::Vec2> onRim;
+    for (const auto& view : layout.views) {
+        if (view.kind != hz::model::StandardView::Top) continue;
+        for (const auto& e : view.edges) {
+            const std::string name = hz::model::logicalEdge(e.sourceEdge.tag());
+            if (e.visibility != hz::model::ProjectedEdge::Visibility::Visible ||
+                name.find("/bore|") == std::string::npos ||
+                name.find("pattern") != std::string::npos) {
+                continue;
+            }
+            onRim = view.toSheet({(e.a.x + e.b.x) / 2.0, (e.a.y + e.b.y) / 2.0});
+            break;
+        }
+    }
+    ASSERT_TRUE(onRim.has_value());
+
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, plate);
+    ASSERT_NE(sheet, nullptr);
+    const std::size_t steps = sheet->undoStack().undoCount();
+    ToolDriver drive(w);
+    trigger(w, "action_add_hole_callout");
+    drive.click(*onRim);
+    const auto calledOut = [&] {
+        const QStringList texts = dimensionTexts(*sheet);
+        return texts.filter(QStringLiteral("CBORE")).size() == 1;
+    };
+    ASSERT_TRUE(waitUntil(calledOut, 5000))
+        << w.statusBar()->currentMessage().toStdString() << " / "
+        << dimensionTexts(*sheet).join(", ").toStdString();
+    const QStringList texts = dimensionTexts(*sheet);
+    EXPECT_EQ(texts.filter(QStringLiteral("3× ⌀6.6")).size(), 1) << texts.join(", ").toStdString();
+    EXPECT_EQ(sheet->undoStack().undoCount(), steps + 1);
+
+    trigger(w, "action_undo");
+    EXPECT_TRUE(dimensionTexts(*sheet).filter(QStringLiteral("CBORE")).isEmpty());
+    trigger(w, "action_redo");
+    EXPECT_TRUE(calledOut());
+
+    // Called out already: said, nothing added.
+    drive.click(*onRim);
+    ASSERT_TRUE(waitUntil(
+        [&] { return w.statusBar()->currentMessage().contains(QStringLiteral("already")); }, 5000));
+    drive.key(Qt::Key_Escape);
+    trigger(w, "action_remove_drawing_dimension");
+    drive.click(*onRim);
+    ASSERT_TRUE(waitUntil(
+        [&] { return dimensionTexts(*sheet).filter(QStringLiteral("CBORE")).isEmpty(); }, 5000));
 }

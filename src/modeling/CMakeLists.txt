@@ -34,6 +34,7 @@ add_library(hz_modeling STATIC
     src/DrawingProjection.cpp
     src/SectionView.cpp
     src/DrawingView.cpp
+    src/HoleCallout.cpp
     src/DrawingDimension.cpp
     src/GeometricTolerance.cpp
     src/Sheet.cpp
