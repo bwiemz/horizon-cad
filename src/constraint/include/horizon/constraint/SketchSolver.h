@@ -60,6 +60,8 @@ public:
 private:
     /// solve(), which may throw for a constraint its entity cannot hold.
     SolveResult solveFrom(ParameterTable& params, const ConstraintSystem& constraints);
+    /// solveFrom() for a sketch of many parameters, its Jacobian sparse.
+    SolveResult solveSparse(ParameterTable& params, const ConstraintSystem& constraints);
 
     Eigen::VectorXd buildResiduals(const ParameterTable& params,
                                    const ConstraintSystem& constraints) const;

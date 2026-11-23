@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -56,6 +58,63 @@ public:
                                                 const topo::Solid& solidB, BooleanType type,
                                                 std::string* reason = nullptr,
                                                 NamingScheme naming = NamingScheme::Positional);
+};
+
+/// Limits on the work of each Boolean run on this thread while it lives, in
+/// place of the defaults: for a preview that should give up sooner, and for
+/// tests. A Boolean over its limits fails, saying so, rather than going on
+/// for an hour or until memory runs out. @p work: how many polygon corners
+/// it may test against a plane; @p splits: how many times it may cut a
+/// polygon in two. Zero leaves that limit as it was.
+class BooleanWorkLimits {
+public:
+    BooleanWorkLimits(std::size_t work, std::size_t splits);
+    ~BooleanWorkLimits();
+    BooleanWorkLimits(const BooleanWorkLimits&) = delete;
+    BooleanWorkLimits& operator=(const BooleanWorkLimits&) = delete;
+
+private:
+    std::size_t m_savedWork;
+    std::size_t m_savedSplits;
+};
+
+/// While it lives, the Booleans run on this thread share one budget of work
+/// as well as each having its own: a pattern of 10,000 copies that overlap
+/// one another joins them one at a time, each join well within its limits,
+/// and all of them for hours. Past it, a Boolean fails saying the copies are
+/// too many to combine. Each Boolean is charged for the polygons it is given
+/// as well as for the ones it cuts, for a join to a body grown to a million
+/// polygons reads, merges and sews all of them again. @p work: how many
+/// polygon corners they may test against a plane together, zero for the
+/// default. Within another series, it is that series that counts.
+class BooleanSeries {
+public:
+    explicit BooleanSeries(std::size_t work = 0);
+    ~BooleanSeries();
+    BooleanSeries(const BooleanSeries&) = delete;
+    BooleanSeries& operator=(const BooleanSeries&) = delete;
+
+    /// The work charged to it so far (none within another series).
+    [[nodiscard]] std::size_t work() const { return m_work; }
+
+private:
+    std::size_t m_work = 0;
+    bool m_outermost = false;
+};
+
+/// While it lives, each Boolean run on this thread stops as soon as
+/// @p cancelled is set, failing with the reason "cancelled", rather than at
+/// its end: a rebuild of a part of tens of thousands of facets could run
+/// for minutes after the user had moved on, and the window waited for it.
+class BooleanCancellation {
+public:
+    explicit BooleanCancellation(const std::atomic<bool>* cancelled);
+    ~BooleanCancellation();
+    BooleanCancellation(const BooleanCancellation&) = delete;
+    BooleanCancellation& operator=(const BooleanCancellation&) = delete;
+
+private:
+    const std::atomic<bool>* m_saved;
 };
 
 }  // namespace hz::model

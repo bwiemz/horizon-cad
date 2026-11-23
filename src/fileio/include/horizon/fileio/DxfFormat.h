@@ -2,20 +2,36 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 #include "horizon/document/Document.h"
 #include "horizon/fileio/ImportReport.h"
 
 namespace hz::io {
 
+/// What a DXF export could not write as the drawing has it.
+struct DxfWriteReport {
+    /// Entities not written, each with why: "entity 7: a circle with no
+    /// radius", or a value that is not a finite number. Readers refuse such
+    /// an entity, and some the whole file with it.
+    std::vector<std::string> leftOut;
+    /// Layers written under another name, as DXF allows one: without the
+    /// characters it refuses, not empty, and apart from the others whatever
+    /// their case.
+    std::vector<std::string> renamed;
+
+    bool empty() const { return leftOut.empty() && renamed.empty(); }
+};
+
 /// Import/export Document to/from DXF (AC1027/R2013) files.
 /// Supports a practical subset of DXF entities for 2D CAD interop.
 class DxfFormat {
 public:
     /// Write document to a DXF file. On failure returns false, with the
-    /// reason in `error` when given.
+    /// reason in `error` when given. With @p report, what the file could not
+    /// hold as it is, and so left out or renamed, is listed there.
     static bool save(const std::string& filePath, const doc::Document& doc,
-                     std::string* error = nullptr);
+                     std::string* error = nullptr, DxfWriteReport* report = nullptr);
 
     /// Read a DXF file and populate the document. On failure returns false,
     /// with the reason in `error` when given; never throws.

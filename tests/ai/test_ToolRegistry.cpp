@@ -67,8 +67,11 @@ TEST(ToolRegistry, HandlerExceptionBecomesAnError) {
     EXPECT_NE(result.content.find("kaboom"), std::string::npos);
 
     // A nlohmann type error, as a handler reading a string as a number throws.
+    // Read before the reply is built: GCC 11 leaks the elements of an
+    // initializer list already made when one throws (fixed in GCC 13).
     registry.add(spec("types"), ToolAccess::Read, [](const json& in) {
-        return ToolResult::ok(json{{"y", in.at("x").get<double>()}});
+        const double y = in.at("x").get<double>();
+        return ToolResult::ok(json{{"y", y}});
     });
     EXPECT_TRUE(registry.run("types", json{{"x", "ten"}}).isError);
 }

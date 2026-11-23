@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
+#include <vector>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/topology/HalfEdge.h"
@@ -250,19 +252,20 @@ std::vector<Vec3> BoundaryMesh::keyholePolygon(const std::vector<Vec3>& outer,
     return poly;
 }
 
-std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vector<Vec3>& points) {
-    std::vector<std::array<Vec3, 3>> tris;
+std::vector<std::array<size_t, 3>> BoundaryMesh::triangulatePolygonCorners(
+    const std::vector<Vec3>& points) {
+    std::vector<std::array<size_t, 3>> tris;
     const size_t n = points.size();
     if (n < 3) return tris;
     if (n == 3) {
-        tris.push_back({points[0], points[1], points[2]});
+        tris.push_back({0, 1, 2});
         return tris;
     }
 
     Basis2D basis = planeBasis(points);
     if (!basis.valid) {
         // Degenerate normal — emit a fan and let downstream drop zero-area triangles.
-        for (size_t i = 1; i + 1 < n; ++i) tris.push_back({points[0], points[i], points[i + 1]});
+        for (size_t i = 1; i + 1 < n; ++i) tris.push_back({0, i, i + 1});
         return tris;
     }
 
@@ -276,9 +279,10 @@ std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vec
     }
     const double areaEps = std::max(1e-30, scale * scale * 1e-14);
 
-    // Work on an index list so output triangles use the original 3D points.
-    std::vector<size_t> idx(n);
-    for (size_t i = 0; i < n; ++i) idx[i] = i;
+    // The order the loop is clipped in: its own, or reversed so it runs
+    // counterclockwise. Output triangles use the original 3D points.
+    std::vector<size_t> order(n);
+    for (size_t i = 0; i < n; ++i) order[i] = i;
 
     // The projected polygon is CCW by construction (basis derived from the
     // loop's own Newell normal), but guard against numerical sign flips.
@@ -290,27 +294,121 @@ std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vec
     }
     const bool reversed = area2 < 0.0;
     if (reversed) {
-        for (size_t i = 0; i < n / 2; ++i) std::swap(idx[i], idx[n - 1 - i]);
+        for (size_t i = 0; i < n / 2; ++i) std::swap(order[i], order[n - 1 - i]);
     }
 
     auto emit = [&](size_t a, size_t b, size_t c) {
         // Preserve the caller's original winding.
         if (reversed) {
-            tris.push_back({points[c], points[b], points[a]});
+            tris.push_back({c, b, a});
         } else {
-            tris.push_back({points[a], points[b], points[c]});
+            tris.push_back({a, b, c});
         }
+    };
+
+    // The loop still to clip, as a ring of positions in `order`, walked from
+    // the first left: the order the clipping takes ears in is as when it
+    // erased each from a list, and so are the triangles. (Erasing moved the
+    // rest of the list each time.)
+    std::vector<size_t> nextOf(n);
+    std::vector<size_t> prevOf(n);
+    for (size_t k = 0; k < n; ++k) {
+        nextOf[k] = (k + 1) % n;
+        prevOf[k] = (k + n - 1) % n;
+    }
+    size_t first = 0;
+    size_t left = n;
+
+    // The points by where they are, on a grid of about two to a cell: an
+    // ear is tested against the points that could lie in it, not all of
+    // them. Which those are follows from the test (pointInTri2): with the
+    // ear's corners at barycentric weights, it holds where every weight is
+    // above -eps / (twice the area), or, for an ear almost flat, every
+    // weight below eps / (twice the area); outside both triangles so
+    // bounded no point passes. A loop of N points was clipped in time N
+    // squared at best, and one of 30,000 took seconds.
+    double lowX = pts2[0].x, lowY = pts2[0].y, highX = pts2[0].x, highY = pts2[0].y;
+    for (const P2& p : pts2) {
+        lowX = std::min(lowX, p.x);
+        lowY = std::min(lowY, p.y);
+        highX = std::max(highX, p.x);
+        highY = std::max(highY, p.y);
+    }
+    const size_t side = std::max<size_t>(
+        1, static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(n) / 2.0))));
+    const double spanX = std::max(highX - lowX, 1e-300);
+    const double spanY = std::max(highY - lowY, 1e-300);
+    const auto cellOf = [&](double v, double low, double span) {
+        const double c = std::floor((v - low) / span * static_cast<double>(side));
+        if (!(c > 0.0)) return size_t{0};  // below, or not a number
+        return std::min(static_cast<size_t>(c), side - 1);
+    };
+    std::vector<std::vector<size_t>> cells(side * side);
+    for (size_t i = 0; i < n; ++i) {
+        cells[cellOf(pts2[i].y, lowY, spanY) * side + cellOf(pts2[i].x, lowX, spanX)].push_back(i);
+    }
+    std::vector<bool> gone(n, false);  // by point: clipped off the loop
+    // Whether any point still on the loop, other than the ear's own corners
+    // (or a point where one of them is, as a keyhole repeats its bridge's
+    // ends), lies in the ear abc, whose doubled area is `twice`.
+    const auto blocked = [&](size_t iPrev, size_t iCur, size_t iNext, double twice) {
+        const P2& a = pts2[iPrev];
+        const P2& b = pts2[iCur];
+        const P2& c = pts2[iNext];
+        double boxLowX = std::numeric_limits<double>::infinity();
+        double boxLowY = boxLowX;
+        double boxHighX = -boxLowX;
+        double boxHighY = -boxLowX;
+        const auto include = [&](double x, double y) {
+            boxLowX = std::min(boxLowX, x);
+            boxLowY = std::min(boxLowY, y);
+            boxHighX = std::max(boxHighX, x);
+            boxHighY = std::max(boxHighY, y);
+        };
+        const double t = areaEps / twice;
+        const P2* corner[3] = {&a, &b, &c};
+        for (int k = 0; k < 3; ++k) {
+            const P2& v = *corner[k];
+            const P2& u = *corner[(k + 1) % 3];
+            const P2& w = *corner[(k + 2) % 3];
+            // Weight 1 + 2t here and -t at the others; and, almost flat,
+            // 1 - 2t here and t at the others.
+            include(v.x * (1 + 2 * t) - t * (u.x + w.x), v.y * (1 + 2 * t) - t * (u.y + w.y));
+            if (3.0 * t >= 1.0) {
+                include(v.x * (1 - 2 * t) + t * (u.x + w.x), v.y * (1 - 2 * t) + t * (u.y + w.y));
+            }
+        }
+        // And more, for rounding in the test: the box need only hold every
+        // point that could pass, and a few more cost little.
+        const double slack = 1e-6 * scale + 1e-300;
+        const size_t x0 = cellOf(boxLowX - slack, lowX, spanX);
+        const size_t x1 = cellOf(boxHighX + slack, lowX, spanX);
+        const size_t y0 = cellOf(boxLowY - slack, lowY, spanY);
+        const size_t y1 = cellOf(boxHighY + slack, lowY, spanY);
+        const bool everywhere = !std::isfinite(boxLowX + boxLowY + boxHighX + boxHighY);
+        for (size_t cy = everywhere ? 0 : y0; cy <= (everywhere ? side - 1 : y1); ++cy) {
+            for (size_t cx = everywhere ? 0 : x0; cx <= (everywhere ? side - 1 : x1); ++cx) {
+                for (const size_t iOther : cells[cy * side + cx]) {
+                    if (gone[iOther]) continue;
+                    if (iOther == iPrev || iOther == iCur || iOther == iNext) continue;
+                    const P2& o = pts2[iOther];
+                    if (samePoint(o, a) || samePoint(o, b) || samePoint(o, c)) continue;
+                    if (pointInTri2(o, a, b, c, areaEps)) return true;
+                }
+            }
+        }
+        return false;
     };
 
     size_t guard = 0;
     const size_t maxIterations = n * n + 16;
-    while (idx.size() > 3 && guard++ < maxIterations) {
+    while (left > 3 && guard++ < maxIterations) {
         bool clipped = false;
-        const size_t m = idx.size();
-        for (size_t i = 0; i < m; ++i) {
-            const size_t iPrev = idx[(i + m - 1) % m];
-            const size_t iCur = idx[i];
-            const size_t iNext = idx[(i + 1) % m];
+        size_t k = first;
+        for (size_t step = 0; step < left; ++step, k = nextOf[k]) {
+            const size_t iPrev = order[prevOf[k]];
+            const size_t iCur = order[k];
+            const size_t iNext = order[nextOf[k]];
             const P2& a = pts2[iPrev];
             const P2& b = pts2[iCur];
             const P2& c = pts2[iNext];
@@ -318,34 +416,39 @@ std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vec
             const double convexity = cross2(a, b, c);
             if (convexity < areaEps) continue;  // reflex or degenerate corner
 
-            bool containsOther = false;
-            for (size_t j = 0; j < m; ++j) {
-                const size_t iOther = idx[j];
-                if (iOther == iPrev || iOther == iCur || iOther == iNext) continue;
-                // A point at one of the ear's corners — a keyhole polygon
-                // visits each bridge end twice — does not block it.
-                const P2& o = pts2[iOther];
-                if (samePoint(o, a) || samePoint(o, b) || samePoint(o, c)) continue;
-                if (pointInTri2(o, a, b, c, areaEps)) {
-                    containsOther = true;
-                    break;
-                }
-            }
-            if (containsOther) continue;
+            // A point at one of the ear's corners — a keyhole polygon
+            // visits each bridge end twice — does not block it.
+            if (blocked(iPrev, iCur, iNext, convexity)) continue;
 
             emit(iPrev, iCur, iNext);
-            idx.erase(idx.begin() + static_cast<std::ptrdiff_t>(i));
+            gone[iCur] = true;
+            nextOf[prevOf[k]] = nextOf[k];
+            prevOf[nextOf[k]] = prevOf[k];
+            if (k == first) first = nextOf[k];
+            --left;
             clipped = true;
             break;
         }
         if (!clipped) {
             // No ear found (collinear runs or numerically flat region) —
             // fall back to a fan over the remainder.
-            for (size_t i = 1; i + 1 < idx.size(); ++i) emit(idx[0], idx[i], idx[i + 1]);
+            const size_t fanFrom = order[first];
+            size_t at = nextOf[first];
+            for (size_t i = 1; i + 1 < left; ++i, at = nextOf[at]) {
+                emit(fanFrom, order[at], order[nextOf[at]]);
+            }
             return tris;
         }
     }
-    if (idx.size() == 3) emit(idx[0], idx[1], idx[2]);
+    if (left == 3) emit(order[first], order[nextOf[first]], order[nextOf[nextOf[first]]]);
+    return tris;
+}
+
+std::vector<std::array<Vec3, 3>> BoundaryMesh::triangulatePolygon(const std::vector<Vec3>& points) {
+    std::vector<std::array<Vec3, 3>> tris;
+    const auto corners = triangulatePolygonCorners(points);
+    tris.reserve(corners.size());
+    for (const auto& [a, b, c] : corners) tris.push_back({points[a], points[b], points[c]});
     return tris;
 }
 

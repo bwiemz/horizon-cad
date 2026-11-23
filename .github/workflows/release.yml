@@ -312,7 +312,7 @@ jobs:
 
   macos:
     name: macOS (disk image)
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 180
     env:
       VCPKG_DEFAULT_TRIPLET: arm64-osx

@@ -9,7 +9,7 @@ edited (see [Sketches and constraints](sketches.md)).
 
 Every drawing tool takes points by clicking. You can also type a point and
 press **Enter**; it counts as a click there. Tools that take typed points:
-Line, Circle, Arc, Rectangle, Polyline, Spline, Ellipse, and the linear
+Line, Circle, Arc, Rectangle, Polygon, Polyline, Spline, Ellipse, and the linear
 dimensions.
 
 | Type | To place the point |
@@ -50,6 +50,7 @@ Nothing on a hidden or locked layer is snapped to, selected or changed.
 | Circle | **C** | Click the centre, then a point on the circle, or type the radius and press **Enter**. |
 | Arc | **A** | Click the centre, then the start (this sets the radius), then the end. The arc runs counter-clockwise. |
 | Rectangle | **R** | Click one corner, then the opposite one (or type `@width,height`). |
+| Polygon | **Shift+P** | A regular polygon. Click the centre, then a corner, which sets its size and how it is turned (or type the distance to a corner). **Up** and **Down** add and take away a side, with **Shift** ten at a time, from 3 to 1,024; the next polygon has as many. It is a closed polyline, which extrudes into a prism: a hexagon for a nut. |
 | Polyline | **P** | Click the vertices; finish with **Enter** or a double-click. **Escape** discards it. |
 | Spline | **S** | Click four or more control points; finish with **Enter** or a double-click. |
 | Ellipse | **E** | Click the centre, the end of the major axis, then a point that sets the minor radius. |
@@ -83,12 +84,14 @@ With the Select tool (**Space**):
 | Chamfer | | Click two lines. For a distance other than the one shown, type it and press **Enter** first. |
 | Stretch | **W** | Click two corners of a crossing window, then a base point and where it goes. Points inside the window move. |
 | Polyline Edit | | Click a polyline. Drag a vertex to move it; press **A** and click a segment to add a vertex, **D** and click a vertex to remove it, **C** to close or open it, **J** and click another polyline to join them. **Enter** finishes. |
+| Match Properties | | Click the entity to copy from, then each entity to change: each takes its layer, colour, width and line type, one undo step apiece. With one entity selected as you start, that one is copied from. **Escape** picks another; the one copied from may be on a locked layer. |
 
 **Rect Array** and **Polar Array** copy the selection in rows and columns,
 or around a centre, from a dialog.
 
-On the Edit menu: **Duplicate** (**Ctrl+D**) copies the selection beside
-itself. **Copy** and **Paste** place copies with each click until you change
+On the Edit menu: **Select All** (**Ctrl+A**) selects everything on the
+layers that are shown and unlocked, as a box round the whole drawing would.
+**Duplicate** (**Ctrl+D**) copies the selection beside itself. **Copy** and **Paste** place copies with each click until you change
 tool. **Group** (**Ctrl+G**) makes the selection select as one;
 **Ungroup** (**Ctrl+Shift+G**) undoes that.
 
@@ -124,10 +127,24 @@ another layer moves its geometry to "0".
 An entity's colour, width and line type are ByLayer (taken from its layer)
 until you set them in Properties.
 
+**Edit ▸ Purge Unused** clears out what a drawing carries but does not use,
+as AutoCAD's PURGE does: every layer nothing is on and every block nothing
+inserts, in one step you can undo. Layer "0" and the current layer stay, as
+does a layer or block that only a sketch or a kept block uses. A DXF from
+elsewhere often brings thousands of empty layers; this takes them out.
+
+**Edit ▸ Delete Duplicates** takes out every entity that repeats one before
+it, as AutoCAD's OVERKILL does: the same kind, on the same layer, in the same
+colour, width and line type, and the same shape, whichever way round it was
+drawn (a line from either end, an open polyline either way). It works on the
+selection, or on the whole drawing when nothing is selected, keeps the first
+of each, and is one step to undo. A copy pasted on itself breaks the closed
+outline a sketch needs to extrude; this mends it.
+
 ## Blocks
 
 - **Block ▸ Create Block...** turns the selection into a named block, with a
   base point, and puts one copy of it where the geometry was.
 - **Block ▸ Insert Block...** places copies of a block, at a rotation and
   scale, with each click.
-- **Block ▸ Explode** turns selected blocks back into geometry.
+- **Block ▸ Explode** turns selected blocks back into geometry, and selected polylines and rectangles into the lines of their sides.

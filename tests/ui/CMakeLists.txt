@@ -68,6 +68,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_Drafting2D.cpp
         test_AppEssentials.cpp
         test_ToolEdits.cpp
+        test_ToolSequences.cpp
         test_DraftingTools.cpp
         test_Smoke.cpp
         test_RenderEfficiency.cpp

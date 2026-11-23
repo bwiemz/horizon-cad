@@ -14,10 +14,13 @@ On macOS, **Ctrl** is **Cmd**, and the guide is **Cmd+?** rather than F1.
 | **Ctrl+S** | Save |
 | **Ctrl+Z** | Undo |
 | **Ctrl+Y** or **Ctrl+Shift+Z** | Redo (depends on the system) |
+| **Ctrl+A** | Select all (on layers shown and unlocked) |
 | **Ctrl+D** | Duplicate |
 | **Ctrl+G**, **Ctrl+Shift+G** | Group, Ungroup |
 | **Ctrl+,** | Preferences |
 | **F** | Fit all in the view |
+| **Shift+F** | Zoom to the selection |
+| **Ctrl++**, **Ctrl+-** | Zoom in, zoom out |
 | **Space** | Select tool |
 | **Escape** | Cancel the tool's current step |
 | **Delete** | Delete the selection |
@@ -40,6 +43,7 @@ On macOS, **Ctrl** is **Cmd**, and the guide is **Cmd+?** rather than F1.
 | **A** | Arc | **Shift+S** | Scale |
 | **R** | Rectangle | **Shift+M** | Mirror |
 | **P** | Polyline | **O** | Offset |
+| **Shift+P** | Polygon | | |
 | **S** | Spline | **X** | Trim |
 | **E** | Ellipse | **Shift+E** | Extend |
 | **T** | Text | **B** | Break |

@@ -447,11 +447,39 @@ void ExchangeCommands::onExportDxf() {
         askExportPath(tr("DXF"), tr("DXF Files (*.dxf)"), QStringLiteral(".dxf"));
     if (fileName.isEmpty()) return;
     std::string error;
-    if (!io::DxfFormat::save(fileName.toStdString(), *m_host.currentDocument(), &error)) {
+    io::DxfWriteReport report;
+    if (!io::DxfFormat::save(fileName.toStdString(), *m_host.currentDocument(), &error, &report)) {
         m_host.reportFileError(tr("Could not export"), fileName.toStdString(), error);
         return;
     }
     m_host.setPrompt(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));
+    showDxfWriteReport(report, m_host.dialogParent());
+}
+
+void ExchangeCommands::showDxfWriteReport(const io::DxfWriteReport& report, QWidget* parent) {
+    if (report.empty()) return;
+    QStringList lines;
+    for (const std::string& why : report.leftOut) {
+        lines << tr("Left out: %1").arg(QString::fromStdString(why));
+    }
+    for (const std::string& what : report.renamed) {
+        lines << tr("Renamed: %1").arg(QString::fromStdString(what));
+    }
+    const auto leftOut = static_cast<int>(report.leftOut.size());
+    const auto renamed = static_cast<int>(report.renamed.size());
+    QStringList said;
+    if (leftOut > 0) {
+        said << tr("%n entity(s) could not be written as DXF holds them, and were left out.",
+                   nullptr, leftOut);
+    }
+    if (renamed > 0) {
+        said << tr("%n layer(s) were written under a name DXF allows.", nullptr, renamed);
+    }
+    QMessageBox box(leftOut > 0 ? QMessageBox::Warning : QMessageBox::Information, tr("Export DXF"),
+                    said.join(QLatin1Char(' ')), QMessageBox::Ok, parent);
+    box.setInformativeText(tr("The drawing itself is unchanged."));
+    box.setDetailedText(lines.join(QLatin1Char('\n')));
+    box.exec();
 }
 
 namespace {

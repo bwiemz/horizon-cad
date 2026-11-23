@@ -20,6 +20,7 @@
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
+#include "horizon/math/RTree.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
@@ -65,7 +66,11 @@ std::vector<std::string> Feature::parameterChoices(const std::string& name) cons
 
 Feature::ParameterKind Feature::parameterKind(const std::string& name) const {
     if (name == "angle") return ParameterKind::Angle;
-    if (name == "segments" || name == "arcSegments" || name == "count") return ParameterKind::Count;
+    // A pattern's count along its second direction is a count, not a length:
+    // read as one, 2 in an inch document was 50.8 rows.
+    if (name == "segments" || name == "arcSegments" || name == "count" || name == "count2") {
+        return ParameterKind::Count;
+    }
     if (name == "operation") return ParameterKind::Choice;
     return ParameterKind::Length;
 }
@@ -135,7 +140,7 @@ std::map<std::string, double> ExtrudeFeature::parameters() const {
 }
 
 bool ExtrudeFeature::setParameter(const std::string& name, double value) {
-    if (name == "distance" && value > 0.0) {
+    if (name == "distance" && std::isfinite(value) && value > 0.0) {
         m_distance = value;
         return true;
     }
@@ -328,7 +333,7 @@ std::map<std::string, double> RevolveFeature::parameters() const {
 }
 
 bool RevolveFeature::setParameter(const std::string& name, double value) {
-    if (name == "angle" && value > 0.0) {
+    if (name == "angle" && std::isfinite(value) && value > 0.0) {
         m_angle = value;
         return true;
     }
@@ -590,7 +595,7 @@ std::map<std::string, double> DraftFeature::parameters() const {
 }
 
 bool DraftFeature::setParameter(const std::string& name, double value) {
-    if (name == "angle") {
+    if (name == "angle" && std::isfinite(value)) {
         m_angle = value;
         return true;
     }
@@ -653,7 +658,7 @@ std::map<std::string, double> ShellFeature::parameters() const {
 }
 
 bool ShellFeature::setParameter(const std::string& name, double value) {
-    if (name == "thickness" && value > 0.0) {
+    if (name == "thickness" && std::isfinite(value) && value > 0.0) {
         m_thickness = value;
         return true;
     }
@@ -714,7 +719,7 @@ std::map<std::string, double> FilletFeature::parameters() const {
 }
 
 bool FilletFeature::setParameter(const std::string& name, double value) {
-    if (name == "radius" && value > 0.0) {
+    if (name == "radius" && std::isfinite(value) && value > 0.0) {
         m_radius = value;
         return true;
     }
@@ -779,7 +784,7 @@ std::map<std::string, double> ChamferFeature::parameters() const {
 }
 
 bool ChamferFeature::setParameter(const std::string& name, double value) {
-    if (name == "distance" && value > 0.0) {
+    if (name == "distance" && std::isfinite(value) && value > 0.0) {
         m_distance = value;
         return true;
     }
@@ -944,16 +949,43 @@ void PatternFeature::restoreFeatureID(const std::string& id) {
 }
 
 std::map<std::string, double> PatternFeature::parameters() const {
-    return {{"count", static_cast<double>(m_count)}, {"spacing", m_scalar}};
+    if (m_kind == Kind::Circular) {
+        return {{"count", static_cast<double>(m_count)}, {"spacing", m_scalar}};
+    }
+    return {{"count", static_cast<double>(m_count)},
+            {"spacing", m_scalar},
+            {"count2", static_cast<double>(m_count2)},
+            {"spacing2", m_scalar2}};
 }
 
 bool PatternFeature::setParameter(const std::string& name, double value) {
-    if (name == "count") return countParameter(value, 1, kMaxPatternCount, m_count);
-    if (name == "spacing") {
+    // The grid's instances together are held to the limit of one pattern.
+    if (name == "count") {
+        return countParameter(value, 1, std::max(1, kMaxPatternCount / m_count2), m_count);
+    }
+    if (name == "spacing" && std::isfinite(value)) {
         m_scalar = value;
         return true;
     }
+    if (m_kind != Kind::Linear) return false;
+    if (name == "count2") {
+        return countParameter(value, 1, std::max(1, kMaxPatternCount / m_count), m_count2);
+    }
+    if (name == "spacing2" && std::isfinite(value)) {
+        m_scalar2 = value;
+        return true;
+    }
     return false;
+}
+
+bool PatternFeature::setSecondDirection(const math::Vec3& direction, double spacing, int count) {
+    if (m_kind != Kind::Linear || !std::isfinite(spacing)) return false;
+    const auto unit = unitDirection(direction);
+    if (!unit) return false;
+    m_vecC = *unit;
+    m_scalar2 = spacing;
+    m_count2 = std::clamp(count, 1, std::max(1, kMaxPatternCount / m_count));
+    return true;
 }
 
 Feature::ParameterKind PatternFeature::parameterKind(const std::string& name) const {
@@ -964,12 +996,18 @@ Feature::ParameterKind PatternFeature::parameterKind(const std::string& name) co
 
 std::map<std::string, math::Vec3> PatternFeature::vectors() const {
     if (m_kind == Kind::Circular) return {{"axisPoint", m_vecA}, {"axisDirection", m_vecB}};
-    return {{"direction", m_vecA}};
+    return {{"direction", m_vecA}, {"direction2", m_vecC}};
 }
 
 bool PatternFeature::setVector(const std::string& name, const math::Vec3& value) {
     if (m_kind == Kind::Circular && name == "axisPoint" && finite(value)) {
         m_vecA = value;
+        return true;
+    }
+    if (m_kind == Kind::Linear && name == "direction2") {
+        const auto unit = unitDirection(value);
+        if (!unit) return false;
+        m_vecC = *unit;
         return true;
     }
     const bool direction = m_kind == Kind::Circular ? name == "axisDirection" : name == "direction";
@@ -988,12 +1026,26 @@ std::unique_ptr<topo::Solid> PatternFeature::execute(std::unique_ptr<topo::Solid
     const model::NamingScheme join = naming() == model::NamingScheme::Stable
                                          ? model::NamingScheme::Stable
                                          : model::NamingScheme::Positional;
-    auto solid =
-        m_kind == Kind::Linear
-            ? model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed, join)
-            : model::Pattern::circular(*inputSolid, m_vecA, m_vecB, m_scalar, m_count, m_suppressed,
-                                       join);
-    if (!solid) return failWith(reason, "overlapping instances could not be merged into one body");
+    std::unique_ptr<topo::Solid> solid;
+    std::string why;
+    if (m_kind == Kind::Circular) {
+        solid = model::Pattern::circular(*inputSolid, m_vecA, m_vecB, m_scalar, m_count,
+                                         m_suppressed, join, m_together, &why);
+    } else if (m_count2 > 1) {
+        solid = model::Pattern::grid(*inputSolid, m_vecA, m_scalar, m_count, m_vecC, m_scalar2,
+                                     m_count2, m_suppressed, join, m_together, &why);
+    } else {
+        solid = model::Pattern::linear(*inputSolid, m_vecA, m_scalar, m_count, m_suppressed, join,
+                                       m_together, &why);
+    }
+    // Why the instances would not join, which may say what to change (too
+    // many facets: a coarser chord tolerance).
+    if (!solid) {
+        return failWith(reason,
+                        why.empty()
+                            ? "overlapping instances could not be merged into one body"
+                            : "overlapping instances could not be merged into one body: " + why);
+    }
     return solid;
 }
 
@@ -1114,6 +1166,9 @@ bool PrimitiveFeature::setParameter(const std::string& name, double value) {
     if (name == "chordTolerance") {
         return isFaceted() && setChordTolerance(m_chordTolerance, value);
     }
+    // A size that is not a finite number makes no solid, only one whose
+    // every point is undefined.
+    if (!std::isfinite(value)) return false;
     switch (m_kind) {
         case Kind::Box:
             if (name == "width") return (m_p0 = value, true);
@@ -1485,6 +1540,18 @@ math::BoundingBox boxOf(const topo::Solid& solid) {
     return box;
 }
 
+/// Whether no two of @p solids have boxes that meet: then none touches
+/// another, and together they are one tool of separate skins.
+bool apart(const std::vector<std::unique_ptr<topo::Solid>>& solids) {
+    math::RTree<size_t> placed;
+    for (size_t i = 0; i < solids.size(); ++i) {
+        const math::BoundingBox box = boxOf(*solids[i]);
+        if (!box.isValid() || !placed.query(box).empty()) return false;
+        placed.insert(i, box);
+    }
+    return true;
+}
+
 /// The reasons BooleanOp gives for a result that is empty, which is no
 /// failure when the tool is combined with one body of several.
 constexpr const char* kCutRemovesAll = "the cut removes the whole body";
@@ -1723,8 +1790,14 @@ void PatternFeature::setTargets(std::vector<std::string> targets) {
 
 math::Mat4 PatternFeature::instanceTransform(int k) const {
     const double at = static_cast<double>(k);
-    if (m_kind == Kind::Linear)
-        return math::Mat4::translation(m_vecA.normalized() * (m_scalar * at));
+    if (m_kind == Kind::Linear) {
+        // Column k % count of row k / count: whole rows, as an int.
+        const int whole = k / m_count;
+        const double column = static_cast<double>(k % m_count);
+        const double row = static_cast<double>(whole);
+        return math::Mat4::translation(m_vecA.normalized() * (m_scalar * column) +
+                                       m_vecC.normalized() * (m_scalar2 * row));
+    }
     return math::Mat4::translation(m_vecA) *
            math::Mat4::rotation(
                math::Quaternion::fromAxisAngle(m_vecB.normalized(), m_scalar * at)) *
@@ -1734,6 +1807,9 @@ math::Mat4 PatternFeature::instanceTransform(int k) const {
 std::unique_ptr<topo::Solid> PatternFeature::executeIn(const BuildContext& context,
                                                        std::unique_ptr<topo::Solid> inputSolid,
                                                        std::string* reason) const {
+    // The cuts or joins of all its copies share one budget: 10,000 copies,
+    // each well within its own limits, took hours.
+    const model::BooleanSeries series;
     if (m_targets.empty()) return execute(std::move(inputSolid), reason);
     if (!inputSolid) return failWith(reason, "there is no body to pattern");
     std::unique_ptr<topo::Solid> part = std::move(inputSolid);
@@ -1759,7 +1835,8 @@ std::unique_ptr<topo::Solid> PatternFeature::executeIn(const BuildContext& conte
         std::string why;
         auto tool = target->executeIn(targetContext, nullptr, &why);
         if (!tool) return failWith(reason, target->name() + " to repeat: " + why);
-        for (int k = 1; k < m_count; ++k) {
+        std::vector<std::unique_ptr<topo::Solid>> copies;
+        for (int k = 1; k < instanceCount(); ++k) {
             if (std::find(m_suppressed.begin(), m_suppressed.end(), k) != m_suppressed.end()) {
                 continue;
             }
@@ -1774,7 +1851,30 @@ std::unique_ptr<topo::Solid> PatternFeature::executeIn(const BuildContext& conte
             for (auto& edge : copy->edges()) {
                 if (edge.topoId.isValid()) edge.topoId = edge.topoId.child(featureID(), k);
             }
-            part = combine(target->operation(), std::move(part), std::move(copy), reason, naming());
+            copies.push_back(std::move(copy));
+        }
+        // Copies clear of one another are one tool, combined with the part
+        // at once: a cut or a join of each in turn rebuilt, merged and sewed
+        // all of the part for every copy, and a plate of 100 holes took 13
+        // s, 400 holes minutes. Cutting their union is cutting each, and
+        // joining it joining each; an intersection is not, and copies that
+        // meet would be one tool of overlapping skins, which the CSG cannot
+        // read. Positional names follow the order of the cuts, and a pattern
+        // from an older file keeps its cuts in turn (combinesTogether()).
+        const BodyOperation operation = target->operation();
+        if (m_together && copies.size() > 1 && model::namesFromGeometry(naming()) &&
+            (operation == BodyOperation::Cut || operation == BodyOperation::Join) &&
+            apart(copies)) {
+            auto together = std::make_unique<topo::Solid>();
+            for (const auto& copy : copies) {
+                model::Pattern::append(*together, *copy, math::Mat4::identity());
+            }
+            part = combine(operation, std::move(part), std::move(together), reason, naming());
+            if (!part) return nullptr;
+            continue;
+        }
+        for (auto& copy : copies) {
+            part = combine(operation, std::move(part), std::move(copy), reason, naming());
             if (!part) return nullptr;
         }
     }
@@ -2269,6 +2369,9 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
             if (projected.empty()) result.projections.erase(id);
         }
     };
+    // A Boolean in it stops as soon as the build is cancelled, not only the
+    // build between features.
+    const model::BooleanCancellation stop(control != nullptr ? &control->cancel : nullptr);
     for (int i = 0; i < limit; ++i) {
         if (control) {
             if (control->cancel) {
