@@ -701,10 +701,12 @@ bool DrawingWorkbench::drawAgain(Sheet& sheet, std::string* error, Carried* carr
     if (!source) return false;
     model::Drawing drawing;
     draw(*document, sheet.spec, *source, &drawing);
-    Carried moved = carryAnnotations(*document, sheet.drawing, drawing);
+    Carried moved =
+        sheet.viewsBehind ? Carried{} : carryAnnotations(*document, sheet.drawing, drawing);
     if (carried != nullptr) *carried = std::move(moved);
     sheet.drawing = std::move(drawing);
     sheet.drawn = sheet.spec;
+    sheet.viewsBehind = false;
     // An assembly's parts may be others now: each is watched.
     for (const std::string& file : source->files) m_host.documents().watch(file);
     sheet.files = source->files;
@@ -769,9 +771,15 @@ void DrawingWorkbench::redraw(Sheet& sheet, const QString& verb) {
                               .arg(verb, QString::fromStdString(error)));
         return;
     }
-    document->undoStack().push(
-        std::make_unique<SheetEditCommand>(*this, sheet.document, std::move(before), sheet.spec,
-                                           std::move(carried), verb.toStdString()));
+    // A form accepted as it was changes nothing: no step, nothing to save.
+    const bool same =
+        carried.empty() && io::DrawingDocumentIO::serialise(sheet.spec.partPath, before) ==
+                               io::DrawingDocumentIO::serialise(sheet.spec.partPath, sheet.spec);
+    if (!same) {
+        document->undoStack().push(
+            std::make_unique<SheetEditCommand>(*this, sheet.document, std::move(before), sheet.spec,
+                                               std::move(carried), verb.toStdString()));
+    }
     m_host.refreshModifiedIndicators();
     m_host.viewport().update();
 }
@@ -780,17 +788,11 @@ void DrawingWorkbench::replay(doc::Document& document, const io::DrawingDocument
                               const Carried& carried, double sign) {
     Sheet* sheet = sheetOf(&document);
     if (sheet == nullptr) return;
+    // The step is taken whether or not the views can be drawn now: the spec,
+    // and what the change carried with its views (back, or again: just
+    // that), follow the undo stack.
     sheet->spec = spec;
-    std::string error;
-    const auto source = sourceFor(*sheet, &error);
-    if (!source) {
-        m_host.showStatus(
-            tr("The drawing could not be drawn again: %1").arg(QString::fromStdString(error)));
-        return;
-    }
-    model::Drawing drawing;
-    draw(document, sheet->spec, *source, &drawing);
-    // What the change carried with its views, back (or again): just that.
+    sheet->drawn = spec;
     auto& draft = document.draftDocument();
     for (const auto& [id, by] : carried) {
         if (draft::DraftEntity* entity = draft.findEntity(id)) {
@@ -798,8 +800,20 @@ void DrawingWorkbench::replay(doc::Document& document, const io::DrawingDocument
             draft.updateEntityBounds(id);
         }
     }
-    sheet->drawing = std::move(drawing);
-    sheet->drawn = sheet->spec;
+    std::string error;
+    const auto source = sourceFor(*sheet, &error);
+    if (source) {
+        model::Drawing drawing;
+        draw(document, sheet->spec, *source, &drawing);
+        sheet->drawing = std::move(drawing);
+        sheet->drawn = sheet->spec;
+        sheet->viewsBehind = false;
+    } else {
+        // Drawn where they stand when the part can be read again.
+        sheet->viewsBehind = true;
+        m_host.showStatus(
+            tr("The drawing could not be drawn again: %1").arg(QString::fromStdString(error)));
+    }
     m_host.refreshModifiedIndicators();
     m_host.viewport().update();
 }

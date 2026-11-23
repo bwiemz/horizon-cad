@@ -969,3 +969,69 @@ TEST(DrawingsTest, AMovedViewTakesItsNotesBackWhenUndone) {
     EXPECT_NEAR(inView->start().x, moved.x, 1e-9);
     EXPECT_NEAR(there->start().x, to.x - 1.0, 1e-9);
 }
+
+// A form accepted as it was changes nothing: no step, and the sheet is not
+// modified.
+TEST(DrawingsTest, AFormAcceptedUnchangedIsNoStep) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, block);
+    ASSERT_NE(sheet, nullptr);
+    sheet->setDirty(false);
+    {
+        FormFiller form(QStringLiteral("Title Block"), FormAnswers());
+        trigger(w, "action_drawing_title_block");
+        ASSERT_TRUE(form.seen());
+    }
+    EXPECT_EQ(sheet->undoStack().undoCount(), 0u);
+    EXPECT_FALSE(sheet->isDirty());
+}
+
+// An undo when the part cannot be read still takes its step: the sheet's
+// notes go back at once, and the redo, once the part is back, brings them
+// forward once.
+TEST(DrawingsTest, AnUndoWhileThePartCannotBeReadStillTakesItsStep) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    const hz::model::Drawing layout = layoutOf(block);
+    const hz::model::DrawingView& iso = layout.views[3];
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, block);
+    ASSERT_NE(sheet, nullptr);
+    // The part's tab closed: the sheet is drawn from its file.
+    QTabBar* tabs = tabBar(w);
+    for (int i = 0; i < tabs->count(); ++i) {
+        if (tabs->tabText(i).startsWith(QStringLiteral("block.hzpart"))) {
+            emit tabs->tabCloseRequested(i);
+            break;
+        }
+    }
+    ASSERT_EQ(w.activeDocument(), sheet);
+    const hz::math::Vec2 at{iso.placement.x + iso.sheetWidth() / 2.0,
+                            iso.placement.y + iso.sheetHeight() / 2.0};
+    auto note = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(at.x - 1.0, at.y),
+                                                       hz::math::Vec2(at.x + 1.0, at.y));
+    sheet->addEntity(note);
+    ToolDriver drive(w);
+    trigger(w, "action_move_view");
+    drive.click(at);
+    drive.click({at.x - 20.0, at.y - 15.0});
+    ASSERT_TRUE(waitUntil([&] { return selecting(w); }, 5000));
+    const hz::math::Vec2 moved = note->start();
+    ASSERT_GT(std::abs(moved.x - (at.x - 1.0)), 10.0);
+
+    // The part's file gone, and the sheet asked to read it again.
+    ASSERT_TRUE(QFile::remove(block));
+    trigger(w, "action_update_drawing");
+    trigger(w, "action_undo");
+    EXPECT_NEAR(note->start().x, at.x - 1.0, 1e-9) << "back, though the views were not drawn";
+    EXPECT_NEAR(note->start().y, at.y, 1e-9);
+
+    saveBlock(block, 10);
+    trigger(w, "action_redo");
+    EXPECT_NEAR(note->start().x, moved.x, 1e-9) << "forward once, not twice";
+    EXPECT_NEAR(note->start().y, moved.y, 1e-9);
+}

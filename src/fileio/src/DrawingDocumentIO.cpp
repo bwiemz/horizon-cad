@@ -160,6 +160,10 @@ json dimensionsJson(const std::vector<DrawingDimensionSpec>& dimensions) {
 }  // namespace
 
 bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec& spec) {
+    return writeFileAtomically(pathFromUtf8(path), serialise(path, spec));
+}
+
+std::string DrawingDocumentIO::serialise(const std::string& path, const DrawingDocumentSpec& spec) {
     json root;
     root["format"] = "hzdwg";
     root["version"] = kVersion;
@@ -237,8 +241,7 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
         root["frames"] = frames;
     }
 
-    return writeFileAtomically(pathFromUtf8(path),
-                               root.dump(2, ' ', false, json::error_handler_t::replace));
+    return root.dump(2, ' ', false, json::error_handler_t::replace);
 }
 
 bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& outSpec,

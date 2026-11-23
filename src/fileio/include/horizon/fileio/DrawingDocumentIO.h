@@ -107,6 +107,9 @@ public:
     /// Write a `.hzdwg` describing @p spec. The part's path is written relative
     /// to the drawing's folder when it can be. Returns false on I/O failure.
     static bool save(const std::string& path, const DrawingDocumentSpec& spec);
+    /// What save() writes for @p spec at @p path: two specs that serialise
+    /// alike are the same drawing.
+    static std::string serialise(const std::string& path, const DrawingDocumentSpec& spec);
 
     /// Load a `.hzdwg`: read the spec, open and rebuild the referenced part, and
     /// project its views into @p outDrawing. @p outSpec receives the spec, its

@@ -110,6 +110,10 @@ private:
         /// What it was drawn from, kept until one of its files changes;
         /// null: read again at the next drawing.
         std::shared_ptr<const Source> source;
+        /// Its views are not drawn where its spec has them (an undo or redo
+        /// when its part could not be read): the next drawing does not carry
+        /// notes from where they are drawn.
+        bool viewsBehind = false;
     };
     /// What a sheet is drawn from (Phase 150): a part's solid, or an
     /// assembly's components gathered into one, with its parts list and a
