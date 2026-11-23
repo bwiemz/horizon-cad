@@ -19,6 +19,16 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Changes to a drawing sheet can be undone.** A sheet's title block,
+  paper, scale, views (added, moved, removed, their settings) and
+  dimensions were changed outside the undo stack: Undo did nothing, and the
+  guide said so. Each change is now one undo step, made by the same command
+  whatever made the change. Undone back to where the sheet was saved, it is
+  no longer marked modified. Notes drawn by hand inside a view, which move
+  with it, go back exactly as far as they went, and a note lying where the
+  view went is left where it is. This is what the AI assistant's sheet
+  tools will build on.
+
 - **Sheet metal: a base flange, and its flat pattern for cutting.** The
   sheet-metal maths (bends, K-factor, bend allowance) was a library no user
   could reach. **3D ▸ Sheet Metal ▸ Base Flange** now folds an open sketch of

@@ -5,12 +5,14 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QLineEdit>
+#include <QPointer>
 #include <QTimer>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <utility>
 
 #include "horizon/document/AssemblyDocument.h"
@@ -188,8 +190,10 @@ model::Drawing drawingOf(const std::vector<io::DrawingViewFrame>& frames) {
 /// What was drawn by hand inside a view moves with the view: each view of
 /// @p before found in @p after (by what it is), and what lay in its
 /// footprint carried by as far as it moved.
-void carryAnnotations(doc::Document& sheet, const model::Drawing& before,
-                      const model::Drawing& after) {
+std::vector<std::pair<uint64_t, math::Vec2>> carryAnnotations(doc::Document& sheet,
+                                                              const model::Drawing& before,
+                                                              const model::Drawing& after) {
+    std::vector<std::pair<uint64_t, math::Vec2>> moved;
     std::vector<bool> taken(after.views.size(), false);
     std::vector<bool> carried(sheet.draftDocument().entities().size(), false);
     for (const model::DrawingView& was : before.views) {
@@ -224,8 +228,10 @@ void carryAnnotations(doc::Document& sheet, const model::Drawing& before,
             entity->translate(delta);
             sheet.draftDocument().updateEntityBounds(entity->id());
             carried[k] = true;
+            moved.emplace_back(entity->id(), delta);
         }
     }
+    return moved;
 }
 
 }  // namespace
@@ -445,7 +451,9 @@ void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
     for (const auto& entity : document.draftDocument().entities()) {
         if (ownLayer(entity->layer())) before.push_back(entity->id());
     }
-    const bool wasDirty = document.isDirty();
+    // Its mark alone: inside an undo or a redo, setDirty() would move the
+    // undo stack's saved state.
+    const bool wasDirty = document.changedOutsideUndo();
     // The sheet's layers as they were set (shown or not, their colours):
     // populate() makes them anew.
     std::vector<draft::LayerProperties> set;
@@ -481,7 +489,7 @@ void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
         if (auto* layer = document.layerManager().getLayer(name)) layer->locked = true;
     }
     // Drawn from the part: the sheet's file is no more out of date than it was.
-    document.setDirty(wasDirty);
+    document.restoreChangedOutsideUndo(wasDirty);
     if (drawn != nullptr) *drawn = std::move(drawing);
 }
 
@@ -525,7 +533,7 @@ bool DrawingWorkbench::newDrawing(io::DrawingDocumentSpec spec, bool behind, QSt
     for (const std::string& file : source->files) m_host.documents().watch(file);
     if (drawn != nullptr) *drawn = drawing;
     m_sheets.push_back(
-        std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing), source->files,
+        std::make_unique<Sheet>(Sheet{document, spec, spec, std::move(drawing), source->files,
                                       listedHeight(source->partsList), source}));
     const QString title = tr("Drawing of %1").arg(stem);
     if (behind) {
@@ -572,7 +580,7 @@ bool DrawingWorkbench::open(const QString& fileName) {
     const std::vector<std::string> leftOut = std::move(spec.leftOut);
     spec.leftOut.clear();
     m_sheets.push_back(
-        std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing), source->files,
+        std::make_unique<Sheet>(Sheet{document, spec, spec, std::move(drawing), source->files,
                                       listedHeight(source->partsList), source}));
     m_host.documents().noteSaved(document);  // found by its path, and watched
     m_host.addTab(document, QFileInfo(fileName).fileName());
@@ -632,6 +640,7 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     const std::vector<std::string> leftOut = std::move(spec.leftOut);
     spec.leftOut.clear();
     sheet->spec = std::move(spec);
+    sheet->drawn = sheet->spec;
     sheet->drawing = std::move(drawing);
     for (const std::string& file : source->files) m_host.documents().watch(file);
     sheet->files = source->files;
@@ -685,15 +694,19 @@ void DrawingWorkbench::refreshDrawingsOf(const std::string& path) {
     if (redrawn > 0) m_host.viewport().update();
 }
 
-bool DrawingWorkbench::drawAgain(Sheet& sheet, std::string* error) {
+bool DrawingWorkbench::drawAgain(Sheet& sheet, std::string* error, Carried* carried) {
     const auto document = sheet.document.lock();
     if (!document) return false;
     const auto source = sourceFor(sheet, error);
     if (!source) return false;
     model::Drawing drawing;
     draw(*document, sheet.spec, *source, &drawing);
-    carryAnnotations(*document, sheet.drawing, drawing);
+    Carried moved =
+        sheet.viewsBehind ? Carried{} : carryAnnotations(*document, sheet.drawing, drawing);
+    if (carried != nullptr) *carried = std::move(moved);
     sheet.drawing = std::move(drawing);
+    sheet.drawn = sheet.spec;
+    sheet.viewsBehind = false;
     // An assembly's parts may be others now: each is watched.
     for (const std::string& file : source->files) m_host.documents().watch(file);
     sheet.files = source->files;
@@ -701,16 +714,106 @@ bool DrawingWorkbench::drawAgain(Sheet& sheet, std::string* error) {
     return true;
 }
 
+/// One change to a sheet (its title block, paper, scale, views or
+/// dimensions), as one undo step: the sheet's spec before and after it, and
+/// what was drawn by hand that it carried with the views. Undone or redone,
+/// the sheet is drawn again from its part as the spec has it.
+class SheetEditCommand final : public doc::Command {
+public:
+    SheetEditCommand(DrawingWorkbench& workbench, std::weak_ptr<doc::Document> document,
+                     io::DrawingDocumentSpec before, io::DrawingDocumentSpec after,
+                     DrawingWorkbench::Carried carried, std::string description)
+        : m_workbench(&workbench),
+          m_document(std::move(document)),
+          m_before(std::move(before)),
+          m_after(std::move(after)),
+          m_carried(std::move(carried)),
+          m_description(std::move(description)) {}
+
+    void execute() override {
+        // Pushed with the change already drawn: the first execute is a redo
+        // only after an undo.
+        if (m_drawn) {
+            m_drawn = false;
+            return;
+        }
+        apply(m_after, 1.0);
+    }
+    void undo() override { apply(m_before, -1.0); }
+    std::string description() const override { return m_description; }
+
+private:
+    void apply(const io::DrawingDocumentSpec& spec, double sign) {
+        const auto document = m_document.lock();
+        // The window may have let the workbench go first, closing.
+        if (m_workbench && document) m_workbench->replay(*document, spec, m_carried, sign);
+    }
+
+    QPointer<DrawingWorkbench> m_workbench;
+    std::weak_ptr<doc::Document> m_document;
+    io::DrawingDocumentSpec m_before;
+    io::DrawingDocumentSpec m_after;
+    DrawingWorkbench::Carried m_carried;
+    std::string m_description;
+    bool m_drawn = true;
+};
+
 void DrawingWorkbench::redraw(Sheet& sheet, const QString& verb) {
     const auto document = sheet.document.lock();
     if (!document) return;
+    io::DrawingDocumentSpec before = sheet.drawn;
+    Carried carried;
     std::string error;
-    if (!drawAgain(sheet, &error)) {
+    if (!drawAgain(sheet, &error, &carried)) {
+        // Not drawn, not made: the sheet stays as it is shown.
+        sheet.spec = std::move(before);
         m_host.showStatus(tr("%1: the drawing could not be drawn again: %2")
                               .arg(verb, QString::fromStdString(error)));
         return;
     }
-    document->setDirty(true);
+    // A form accepted as it was changes nothing: no step, nothing to save.
+    const bool same =
+        carried.empty() && io::DrawingDocumentIO::serialise(sheet.spec.partPath, before) ==
+                               io::DrawingDocumentIO::serialise(sheet.spec.partPath, sheet.spec);
+    if (!same) {
+        document->undoStack().push(
+            std::make_unique<SheetEditCommand>(*this, sheet.document, std::move(before), sheet.spec,
+                                               std::move(carried), verb.toStdString()));
+    }
+    m_host.refreshModifiedIndicators();
+    m_host.viewport().update();
+}
+
+void DrawingWorkbench::replay(doc::Document& document, const io::DrawingDocumentSpec& spec,
+                              const Carried& carried, double sign) {
+    Sheet* sheet = sheetOf(&document);
+    if (sheet == nullptr) return;
+    // The step is taken whether or not the views can be drawn now: the spec,
+    // and what the change carried with its views (back, or again: just
+    // that), follow the undo stack.
+    sheet->spec = spec;
+    sheet->drawn = spec;
+    auto& draft = document.draftDocument();
+    for (const auto& [id, by] : carried) {
+        if (draft::DraftEntity* entity = draft.findEntity(id)) {
+            entity->translate(by * sign);
+            draft.updateEntityBounds(id);
+        }
+    }
+    std::string error;
+    const auto source = sourceFor(*sheet, &error);
+    if (source) {
+        model::Drawing drawing;
+        draw(document, sheet->spec, *source, &drawing);
+        sheet->drawing = std::move(drawing);
+        sheet->drawn = sheet->spec;
+        sheet->viewsBehind = false;
+    } else {
+        // Drawn where they stand when the part can be read again.
+        sheet->viewsBehind = true;
+        m_host.showStatus(
+            tr("The drawing could not be drawn again: %1").arg(QString::fromStdString(error)));
+    }
     m_host.refreshModifiedIndicators();
     m_host.viewport().update();
 }
