@@ -41,7 +41,13 @@ work, not "post-1.0".
   check ran out of its 15 minutes on every Release build. Each count is
   read into a variable first, and the check takes a second. And the
   AddressSanitizer build links its window tests again: the AI Assistant's
-  tests told LeakSanitizer of Qt's singletons a second time.
+  tests told LeakSanitizer of Qt's singletons a second time. The Windows
+  build compiles the main window again: the assistant's selection callback,
+  returning a JSON value, was declared as a Qt slot, and MSVC could not
+  describe its type. And `horizon-mcp`'s session tests pass on macOS and
+  Windows, whose temporary folders are named through a link (/var) and in
+  short names (RUNNER~1), where the session reports the files it saves by
+  their real paths.
 
 - **The AI Assistant panel.** Home ▸ AI Assistant (Ctrl+Shift+A) opens a
   chat beside Properties and Layers that builds and changes the active part or

@@ -169,8 +169,6 @@ private slots:
     void onCommandPalette();
     /// Show the AI assistant and put the cursor in its request box.
     void showAssistant();
-    /// What is selected, for the assistant's get_selection tool.
-    nlohmann::json assistantSelection() const;
     void onNewFile();
     void onNewPart();
     void onNewAssembly();
@@ -280,6 +278,11 @@ private slots:
     void onRollbackChanged(int newIndex);
 
 private:
+    /// What is selected, for the assistant's get_selection tool. Not a slot:
+    /// moc describes every slot's types, and MSVC failed on nlohmann::json's
+    /// ("'tagMSG': an undefined class", from its conversion to anything).
+    nlohmann::json assistantSelection() const;
+
     /// One open document tab. Part/drawing tabs hold `document`; assembly
     /// tabs additionally hold `assembly` (with `document` acting as a blank
     /// backing document so the shared viewport always has one).
