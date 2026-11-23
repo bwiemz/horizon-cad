@@ -306,29 +306,9 @@ void AssemblyWorkbench::onInsertComponent() {
 bool AssemblyWorkbench::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool reportSuccess) {
     if (asmDoc.mates().empty()) return true;
 
-    // Frames come from B-Rep faces, so mate solving needs resolved parts.
-    const std::string asmDir = assemblyDir(asmDoc);
-    for (auto& comp : asmDoc.components()) {
-        if (comp.solid() == nullptr) {
-            m_host.documents().resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
-        }
-    }
-    std::string why;
-    const auto mates = doc::AssemblyMates::gather(asmDoc, &why);
-    if (!mates) {
-        QString message = QString::fromStdString(why);
-        if (!message.isEmpty()) message[0] = message[0].toUpper();
-        m_host.showStatus(message);
-        return false;
-    }
-    const auto result = mates->solve();
-
-    if (result.status == model::AssemblySolveStatus::Success) {
-        for (auto& comp : asmDoc.components()) {
-            auto it = result.transforms.find(comp.id);
-            if (it != result.transforms.end()) comp.transform = it->second;
-        }
-        asmDoc.updatePatterns();  // their instances follow the seeds (Phase 161)
+    const doc::MatePlacement placement = doc::placeByMates(asmDoc, m_host.documents());
+    if (placement.placed) {
+        const model::AssemblySolveResult& result = placement.result;
         QString status = tr("Mates solved (%1 iterations)").arg(result.iterations);
         if (result.redundantCount > 0) {
             status += tr("; %1 redundant constraint(s)").arg(result.redundantCount);
@@ -340,10 +320,14 @@ bool AssemblyWorkbench::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool r
         if (reportSuccess) m_host.showStatus(status);
         return true;
     }
-
-    m_host.showStatus(tr("Mate solve failed: %1")
-                          .arg(QString::fromStdString(result.message.empty() ? "did not converge"
-                                                                             : result.message)));
+    if (placement.gathered) {
+        m_host.showStatus(tr("Mate solve failed: %1").arg(QString::fromStdString(placement.why)));
+        return false;
+    }
+    // Geometry a mate names that is not found: said as gather() says it.
+    QString message = QString::fromStdString(placement.why);
+    if (!message.isEmpty()) message[0] = message[0].toUpper();
+    m_host.showStatus(message);
     return false;
 }
 
@@ -571,52 +555,8 @@ void AssemblyWorkbench::showPlacements(const doc::AssemblyDocument& asmDoc) {
 }
 
 AssemblyWorkbench::StepExport AssemblyWorkbench::stepExport() {
-    StepExport out;
-    if (!assembly()) return out;
-    // Each part read once, by its file, however many components place it.
-    const std::string dir = assemblyDir(*assembly());
-    std::map<std::string, std::size_t> partOf;
-    // A subassembly (Phase 159) is written as its own parts, each placed by
-    // its transform within it composed with the subassembly's: one level.
-    std::function<void(const doc::ComponentInstance&, const std::string&, const math::Mat4&,
-                       const std::string&)>
-        place = [&](const doc::ComponentInstance& comp, const std::string& in,
-                    const math::Mat4& outer, const std::string& name) {
-            const std::string file =
-                std::filesystem::path(partFile(comp, in)).lexically_normal().string();
-            if (comp.resolvedAssembly) {
-                const std::string subDir = std::filesystem::path(file).parent_path().string();
-                for (const auto& child : comp.resolvedAssembly->components()) {
-                    if (!child.suppressed) {
-                        place(child, subDir, outer * comp.transform, name + "/" + child.name);
-                    }
-                }
-                return;
-            }
-            const topo::Solid* solid = comp.solid();
-            if (solid == nullptr) {
-                out.unread.push_back(name);
-                return;
-            }
-            // A mirrored one (Phase 162) is a part of its own: its mirror.
-            const auto [known, added] =
-                partOf.emplace(comp.mirrored ? file + "#mirrored" : file, out.parts.size());
-            if (added) {
-                std::string partName =
-                    QFileInfo(QString::fromStdString(file)).completeBaseName().toStdString();
-                if (comp.mirrored) partName += " (mirrored)";
-                out.parts.push_back({std::move(partName), {solid}});
-            }
-            out.occurrences.push_back({known->second, name, outer * comp.transform});
-        };
-    for (auto& comp : assembly()->components()) {
-        if (comp.suppressed) continue;
-        if (comp.solid() == nullptr) {
-            m_host.documents().resolveComponent(comp, doc::ComponentState::Resolved, dir);
-        }
-        place(comp, dir, math::Mat4::identity(), comp.name);
-    }
-    return out;
+    if (!assembly()) return {};
+    return io::gatherAssemblyStep(*assembly(), m_host.documents());
 }
 
 void AssemblyWorkbench::onCheckInterference() {

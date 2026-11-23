@@ -1,6 +1,6 @@
 // horizon-mcp: Horizon CAD's tools served over the Model Context Protocol on
 // standard input and output, for MCP clients (Claude Desktop, Claude Code,
-// Cursor, and others) to build and change parts and drawings with.
+// Cursor, and others) to build and change parts, assemblies and drawings with.
 //
 //   horizon-mcp [--root DIR] [--open FILE] [--drawing]
 //
@@ -40,7 +40,7 @@ void usage(std::ostream& out) {
            "Serves Horizon CAD's CAD tools over the Model Context Protocol (stdio).\n"
            "  --root DIR    the folder files may be opened, saved and exported in\n"
            "                (default: Documents/Horizon CAD MCP in the home folder)\n"
-           "  --open FILE   start with FILE (.hzpart, .hcad or .dxf)\n"
+           "  --open FILE   start with FILE (.hzpart, .hcad, .hzasm or .dxf)\n"
            "  --drawing     start with an empty 2D drawing (default: an empty part)\n"
            "  --version     print the version\n"
            "  --help        print this\n";

@@ -2,9 +2,11 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <random>
 #include <string>
 
+#include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/mcp/McpSession.h"
@@ -123,7 +125,7 @@ TEST_F(McpSessionTest, BadFilesAreErrors) {
     fails(session, "open_document", {{"path", (dir / "junk.hzpart").string()}});
     fails(session, "save_document", {{"path", (dir / "x.step").string()}});
     fails(session, "export_document", {{"path", (dir / "x.step").string()}});  // no solid yet
-    fails(session, "new_document", {{"type", "assembly"}});
+    fails(session, "new_document", {{"type", "sheet"}});
     session.applyPending();
     EXPECT_EQ(session.document().type(), hz::doc::DocumentType::Part);
 }
@@ -231,4 +233,93 @@ TEST_F(McpSessionTest, AFileReadInPartIsNotSavedOverUnasked) {
     EXPECT_NE(kept.find("hologram"), std::string::npos);  // untouched
     ok(session, "save_document", {{"path", "copy.hcad"}});
     EXPECT_FALSE(ok(session, "get_session_info").contains("left_out"));
+}
+
+// The whole of an assembly from outside: parts made and saved, a new
+// assembly that takes them from the folder, mated, saved, exported as STEP
+// with its parts and placements, and opened again.
+TEST_F(McpSessionTest, AssemblesPartsSavesAndExportsThem) {
+    McpSession session(true, dir);
+    box(session);
+    ok(session, "save_document", {{"path", "block.hzpart"}});
+    ok(session, "new_document", {{"type", "part"}});
+    session.applyPending();
+    ok(session, "add_primitive", {{"shape", "cylinder"}, {"radius", 2}, {"height", 8}});
+    ok(session, "save_document", {{"path", "pin.hzpart"}});
+
+    ok(session, "new_document", {{"type", "assembly"}});
+    session.applyPending();
+    ASSERT_NE(session.assembly(), nullptr);
+    EXPECT_TRUE(session.tools().has("add_mate"));
+    EXPECT_FALSE(session.tools().has("extrude"));
+    EXPECT_EQ(ok(session, "get_session_info")["type"], "assembly");
+    // Unsaved, it takes its parts from the server's folder.
+    const json info = ok(session, "get_assembly_info");
+    EXPECT_EQ(info["files_in_folder"], json::array({"block.hzpart", "pin.hzpart"}));
+    const auto block =
+        ok(session, "insert_component", {{"file", "block.hzpart"}})["inserted"]["id"];
+    const auto pin = ok(session, "insert_component",
+                        {{"file", "pin.hzpart"}, {"position", {30, 0, 0}}})["inserted"]["id"];
+    ok(session, "add_mate", {{"type", "fixed"}, {"a", {{"component", block}}}});
+    ok(session, "add_mate",
+       {{"type", "coincident"},
+        {"a", {{"component", block}, {"geometry", "top"}}},
+        {"b", {{"component", pin}, {"geometry", "bottom"}}}});
+    EXPECT_TRUE(ok(session, "get_session_info")["modified"].get<bool>());
+
+    EXPECT_NE(fails(session, "save_document", {{"path", "rig.hzpart"}}).find(".hzasm"),
+              std::string::npos);
+    ok(session, "save_document", {{"path", "rig.hzasm"}});
+    EXPECT_FALSE(ok(session, "get_session_info")["modified"].get<bool>());
+
+    const json step = ok(session, "export_document", {{"path", "rig.step"}});
+    EXPECT_EQ(step["parts"], 2);
+    EXPECT_EQ(step["components"], 2);
+    std::ifstream written(dir / "rig.step");
+    const std::string text((std::istreambuf_iterator<char>(written)),
+                           std::istreambuf_iterator<char>());
+    EXPECT_NE(text.find("NEXT_ASSEMBLY_USAGE_OCCURRENCE"), std::string::npos);
+    ok(session, "export_document", {{"path", "rig.stl"}});
+    EXPECT_GT(fs::file_size(dir / "rig.stl"), 0u);
+    EXPECT_NE(fails(session, "export_document", {{"path", "rig.dxf"}}).find(".step"),
+              std::string::npos);
+
+    ok(session, "new_document", {{"type", "part"}});
+    session.applyPending();
+    EXPECT_EQ(session.assembly(), nullptr);
+    EXPECT_TRUE(session.tools().has("extrude"));
+    const json opened = ok(session, "open_document", {{"path", "rig.hzasm"}});
+    EXPECT_EQ(opened["components"], 2);
+    session.applyPending();
+    ASSERT_NE(session.assembly(), nullptr);
+    EXPECT_EQ(session.assembly()->mates().size(), 2u);
+    EXPECT_FALSE(ok(session, "get_session_info")["modified"].get<bool>());
+}
+
+// An assembly in the folder may place parts from anywhere: opened by a tool,
+// what it places is kept to the folder too, checked before any is read.
+TEST_F(McpSessionTest, AnAssemblyReachingOutOfTheFolderIsNotOpened) {
+    const fs::path outside = dir.parent_path() / (dir.filename().string() + "_outside");
+    fs::create_directories(outside);
+    {
+        McpSession maker(true, outside);
+        box(maker);
+        ok(maker, "save_document", {{"path", "secret.hzpart"}});
+    }
+    McpSession session(true, dir);
+    ok(session, "new_document", {{"type", "assembly"}});
+    session.applyPending();
+    {
+        // Written as a hand-made file would be: its component outside.
+        hz::doc::ComponentInstance far;
+        far.partPath = (outside / "secret.hzpart").string();
+        session.assembly()->addComponent(far);
+    }
+    ok(session, "save_document", {{"path", "reach.hzasm"}});
+    const std::string why = fails(session, "open_document", {{"path", "reach.hzasm"}});
+    EXPECT_NE(why.find("outside the server's folder"), std::string::npos) << why;
+    // On the command line, the user's own choice, it opens.
+    std::string error;
+    EXPECT_TRUE(session.open((dir / "reach.hzasm").string(), &error)) << error;
+    fs::remove_all(outside);
 }

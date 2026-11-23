@@ -14,14 +14,17 @@
 #include <QSettings>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <optional>
 
 #include "../ai/FakeTransport.h"
 #include "UiTestSupport.h"
+#include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/fileio/NativeFormat.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AiAssistantPanel.h"
@@ -211,6 +214,55 @@ TEST(AiAssistantTest, FollowsTheActiveTab) {
     ASSERT_TRUE(panel->submit(QStringLiteral("a box")));
     EXPECT_EQ(second->featureTree().featureCount(), 1u);
     EXPECT_EQ(first->featureTree().featureCount(), 0u);
+}
+
+// In an assembly's tab the assistant has the assembly tools, not the part's:
+// it places a part, as one undo step "Undo this response" takes back.
+TEST(AiAssistantTest, WorksOnAnAssembly) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    {
+        hz::doc::Document part;
+        part.setType(hz::doc::DocumentType::Part);
+        part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_TRUE(hz::io::NativeFormat::save(block.toStdString(), part));
+    }
+    MainWindow window;
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    auto* newAssembly = window.findChild<QAction*>(QStringLiteral("action_new_assembly"));
+    ASSERT_NE(newAssembly, nullptr);
+    newAssembly->trigger();
+    hz::doc::AssemblyDocument* assembly = window.activeAssembly();
+    ASSERT_NE(assembly, nullptr);
+    // Saved beside its part: the assistant inserts parts from its folder.
+    assembly->setFilePath(dir.filePath(QStringLiteral("rig.hzasm")).toStdString());
+
+    transport.replies.push_back(
+        toolCall("c1", "insert_component",
+                 {{"file", block.toStdString()}, {"name", "Block"}, {"position", {0, 0, 5}}}));
+    transport.replies.push_back(text("Placed the block."));
+    ASSERT_TRUE(panel->submit(QStringLiteral("put the block in")));
+    ASSERT_EQ(assembly->components().size(), 1u) << panel->transcriptText().toStdString();
+    EXPECT_EQ(assembly->components().front().name, "Block");
+    EXPECT_DOUBLE_EQ(assembly->components().front().transform.at(2, 3), 5.0);
+
+    std::vector<std::string> names;
+    const json request = transport.body(0);  // held: the loop is over a part of it
+    for (const auto& tool : request["tools"]) {
+        names.push_back(tool["function"]["name"].get<std::string>());
+    }
+    const auto offered = [&names](const char* name) {
+        return std::find(names.begin(), names.end(), name) != names.end();
+    };
+    EXPECT_TRUE(offered("add_mate"));
+    EXPECT_TRUE(offered("get_selection"));
+    EXPECT_FALSE(offered("add_primitive"));  // a part's, not an assembly's
+
+    ASSERT_TRUE(panel->undoLastResponse());
+    EXPECT_TRUE(assembly->components().empty());
 }
 
 TEST(AiAssistantTest, StopLeavesThePanelReady) {

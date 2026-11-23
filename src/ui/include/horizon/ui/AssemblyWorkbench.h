@@ -13,6 +13,7 @@
 
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/AssemblyMates.h"
+#include "horizon/fileio/AssemblyStepExport.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/ComponentDragger.h"
@@ -99,11 +100,7 @@ public:
     /// solids are the resolved components' own: valid while the assembly
     /// is not changed. A subassembly's parts are placed in one level with
     /// the rest, their transforms composed with its (Phase 159).
-    struct StepExport {
-        std::vector<io::StepWritePart> parts;
-        std::vector<io::StepOccurrence> occurrences;
-        std::vector<std::string> unread;
-    };
+    using StepExport = io::AssemblyStepExport;
     StepExport stepExport();
     void onBillOfMaterials();
 

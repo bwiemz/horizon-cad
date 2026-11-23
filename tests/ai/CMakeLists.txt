@@ -1,6 +1,7 @@
 add_executable(hz_ai_tests
     test_AgentSession.cpp
     test_AnthropicAdapter.cpp
+    test_AssemblyTools.cpp
     test_CadTools.cpp
     test_GeminiAdapter.cpp
     test_McpServer.cpp
@@ -14,6 +15,7 @@ target_link_libraries(hz_ai_tests
         Horizon::AI
         Horizon::Document
         Horizon::Drafting
+        Horizon::FileIO
         GTest::gtest
         GTest::gtest_main
 )

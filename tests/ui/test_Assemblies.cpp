@@ -419,6 +419,27 @@ TEST(AssembliesTest, ClickedCylindersBecomeConcentric) {
     EXPECT_NEAR(std::hypot(second.x, second.y), 0.0, 1e-6) << "on the first's axis";
 }
 
+// A Fixed mate as the first mate leaves nothing to solve: it is added, the
+// component kept where it is (it was refused, as "did not converge").
+TEST(AssembliesTest, AFirstFixedMateIsAdded) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10));
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    insert(w, block);
+    insert(w, block);
+    const Vec3 second = translationOf(assembly.components()[1]);
+    {
+        FormFiller mate(QStringLiteral("Add Mate"), FormAnswers().choose("type", "Fixed"));
+        trigger(w, "action_add_mate");
+        ASSERT_TRUE(mate.seen());
+    }
+    ASSERT_EQ(assembly.mates().size(), 1u) << w.statusBar()->currentMessage().toStdString();
+    EXPECT_EQ(assembly.mates().front().type, hz::doc::MateType::Fixed);
+    EXPECT_NEAR(translationOf(assembly.components()[1]).x, second.x, 1e-12);
+}
+
 // A part saved in its tab shows saved in the assembly: both blocks taller,
 // and the one on top moved up with the other's top (the mate solved again).
 TEST(AssembliesTest, SavingAPartChangesTheAssembly) {

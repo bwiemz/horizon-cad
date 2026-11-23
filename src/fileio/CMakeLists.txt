@@ -31,6 +31,7 @@ add_library(hz_fileio STATIC
     src/StlExporter.cpp
     src/StepFormat.cpp
     src/StepAssemblyFiles.cpp
+    src/AssemblyStepExport.cpp
     src/GltfExport.cpp
     src/StlExport.cpp
     src/DxfFormat.cpp
