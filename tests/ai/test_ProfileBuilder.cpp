@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <tuple>
 
 #include "horizon/ai/ProfileBuilder.h"
 #include "horizon/drafting/DraftArc.h"
@@ -201,4 +202,32 @@ TEST(ProfileBuilder, GarbledNumbersAndMissingKeysAreSaidPlainly) {
     EXPECT_NE(errorOf(json::array({{{"type", "circle"}, {"center", {1e9, 0}}, {"radius", 1}}}))
                   .find("beyond"),
               std::string::npos);
+}
+
+TEST(ProfileBuilder, RectanglesInTheFormsModelsWriteThem) {
+    const auto corners = [](const json& entity) {
+        const auto out = buildEntities(json::array({entity}), false);
+        const auto* rect = dynamic_cast<const DraftRectangle*>(out.at(0).get());
+        EXPECT_NE(rect, nullptr) << entity.dump();
+        return rect ? std::make_pair(rect->corner1(), rect->corner2())
+                    : std::make_pair(hz::math::Vec2(), hz::math::Vec2());
+    };
+    // No corner: from the origin.
+    auto [a, b] = corners({{"type", "rectangle"}, {"width", 60}, {"height", 40}});
+    EXPECT_DOUBLE_EQ(a.x, 0.0);
+    EXPECT_DOUBLE_EQ(b.x, 60.0);
+    EXPECT_DOUBLE_EQ(b.y, 40.0);
+    std::tie(a, b) = corners({{"type", "rectangle"}, {"size", {60, 40}}, {"corner", {5, 5}}});
+    EXPECT_DOUBLE_EQ(b.x, 65.0);
+    EXPECT_DOUBLE_EQ(b.y, 45.0);
+    std::tie(a, b) = corners({{"type", "rectangle"}, {"width", 60}, {"length", 40}});
+    EXPECT_DOUBLE_EQ(b.y, 40.0);
+    std::tie(a, b) = corners({{"type", "rectangle"}, {"from", {60, 40}}, {"to", {0, 0}}});
+    EXPECT_DOUBLE_EQ(a.x, 0.0);
+    EXPECT_DOUBLE_EQ(b.y, 40.0);
+    // Still no guessing at a missing size.
+    EXPECT_NE(errorOf(json::array({{{"type", "rectangle"}, {"width", 60}}})).find("height"),
+              std::string::npos);
+    EXPECT_NE(errorOf(json::array({{{"type", "rectangle"}, {"from", {0, 0}}, {"to", {5, 0}}}})),
+              "");
 }

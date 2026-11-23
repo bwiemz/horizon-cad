@@ -92,7 +92,7 @@ QString summariseResult(const ai::ToolResult& result) {
     } else if (has("ids", json::value_t::array)) {
         summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Shapes drawn: %n", "",
                                               count("ids"));
-    } else if (value.contains("variables")) {
+    } else if (result.changedModel && value.contains("variables")) {
         summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Set the variables");
     } else if (has("edges", json::value_t::array)) {
         summary = QCoreApplication::translate("hz::ui::AiAssistantPanel", "Edges read: %n", "",
