@@ -642,6 +642,10 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     sheet->spec = std::move(spec);
     sheet->drawn = sheet->spec;
     sheet->drawing = std::move(drawing);
+    // The views are drawn again, from the file: the notes follow them again.
+    // Left set by an undo made while the part could not be read, the next
+    // view moved left its notes behind.
+    sheet->viewsBehind = false;
     for (const std::string& file : source->files) m_host.documents().watch(file);
     sheet->files = source->files;
     sheet->partsListHeight = listedHeight(source->partsList);

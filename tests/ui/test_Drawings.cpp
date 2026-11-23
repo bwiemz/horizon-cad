@@ -1035,3 +1035,64 @@ TEST(DrawingsTest, AnUndoWhileThePartCannotBeReadStillTakesItsStep) {
     EXPECT_NEAR(note->start().x, moved.x, 1e-9) << "forward once, not twice";
     EXPECT_NEAR(note->start().y, moved.y, 1e-9);
 }
+
+// A sheet read again from its file draws its views afresh, and a note in a
+// view moves with it again. An undo made while the part could not be read
+// leaves the views behind their notes; read again after it, the next view
+// moved left its notes where they were.
+TEST(DrawingsTest, ASheetReadAgainAfterAnUndoWithoutItsPartMovesNotesWithViews) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    const hz::model::Drawing layout = layoutOf(block);
+    const hz::model::DrawingView& iso = layout.views[3];
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, block);
+    ASSERT_NE(sheet, nullptr);
+    QTabBar* tabs = tabBar(w);
+    for (int i = 0; i < tabs->count(); ++i) {
+        if (tabs->tabText(i).startsWith(QStringLiteral("block.hzpart"))) {
+            emit tabs->tabCloseRequested(i);
+            break;
+        }
+    }
+    ASSERT_EQ(w.activeDocument(), sheet);
+    const QString sheetFile = dir.filePath(QStringLiteral("block.hzdwg"));
+    hz::io::DrawingDocumentSpec spec = savedSpec(w, sheetFile);
+    ASSERT_FALSE(sheet->isDirty());
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+
+    // A view moved, and the move undone while the part cannot be read.
+    const hz::math::Vec2 at{iso.placement.x + iso.sheetWidth() / 2.0,
+                            iso.placement.y + iso.sheetHeight() / 2.0};
+    ToolDriver drive(w);
+    trigger(w, "action_move_view");
+    drive.click(at);
+    drive.click({at.x - 20.0, at.y - 15.0});
+    ASSERT_TRUE(waitUntil([&] { return selecting(w); }, 5000));
+    ASSERT_TRUE(QFile::remove(block));
+    trigger(w, "action_update_drawing");
+    trigger(w, "action_undo");
+
+    // The part back, and the sheet's file changed by another program: read
+    // again, drawn from what it says.
+    saveBlock(block, 10);
+    ASSERT_FALSE(sheet->isDirty());
+    spec.titleBlock.title = "Read again";
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(sheetFile.toStdString(), spec));
+    const std::filesystem::path path(sheetFile.toStdString());
+    std::filesystem::last_write_time(
+        path, std::filesystem::last_write_time(path) + std::chrono::seconds(2));
+    ASSERT_TRUE(waitUntil(
+        [&] { return titleBlockText(*sheet).contains(QStringLiteral("Read again")); }, 5000));
+
+    // A note in the view, and the view moved: the note goes with it.
+    auto note = std::make_shared<hz::draft::DraftLine>(hz::math::Vec2(at.x - 1.0, at.y),
+                                                       hz::math::Vec2(at.x + 1.0, at.y));
+    sheet->addEntity(note);
+    trigger(w, "action_move_view");
+    drive.click(at);
+    drive.click({at.x - 20.0, at.y - 15.0});
+    ASSERT_TRUE(waitUntil([&] { return selecting(w); }, 5000));
+    EXPECT_GT(std::abs(note->start().x - (at.x - 1.0)), 10.0) << "the note moved with its view";
+}
