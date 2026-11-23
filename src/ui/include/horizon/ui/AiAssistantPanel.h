@@ -5,6 +5,7 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 
+#include "horizon/ai/CadTools.h"
 #include "horizon/ai/ToolRegistry.h"
 #include "horizon/ui/AiSettings.h"
 
@@ -57,6 +58,9 @@ public:
         /// An assembly tool is about to change the assembly: a drag in the
         /// view is put back first.
         std::function<void()> beforeAssemblyChange;
+        /// Make a drawing sheet of the part or assembly (make_drawing), in
+        /// a tab behind this one. Unset: no such tool.
+        ai::MakeDrawing makeDrawing;
     };
     void setHost(Host host) { m_host = std::move(host); }
 

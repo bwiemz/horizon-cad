@@ -43,6 +43,7 @@
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <numbers>
 #include <optional>
@@ -51,11 +52,13 @@
 
 #include "horizon/Revision.h"
 #include "horizon/Version.h"
+#include "horizon/ai/CadTools.h"
 #include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/fileio/BomExport.h"
+#include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/GltfExport.h"
 #include "horizon/fileio/NativeFormat.h"
@@ -71,6 +74,7 @@
 #include "horizon/math/Quantity.h"
 #include "horizon/modeling/AssemblySolver.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/EdgeProjection.h"
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/MassProperties.h"
@@ -79,6 +83,7 @@
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/SolidTessellator.h"
+#include "horizon/modeling/TitleBlock.h"
 #include "horizon/render/SceneGraph.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AiAssistantPanel.h"
@@ -254,23 +259,25 @@ MainWindow::MainWindow(QWidget* parent)
     m_aiPanel = new AiAssistantPanel(this);
     addDockWidget(Qt::RightDockWidgetArea, m_aiPanel);
     tabifyDockWidget(m_layerPanel, m_aiPanel);
-    m_aiPanel->setHost({[this] {
-                            if (DocTab* tab = activeTab()) tab->modelStale = false;
-                            showBuildResult();
-                        },
-                        [this] {
-                            m_layerPanel->refresh();
-                            onSelectionChanged();
-                            m_viewport->update();
-                        },
-                        [this] { onUndo(); }, [this] { return assistantSelection(); },
-                        [this] {
-                            // As an Assembly menu command leaves it: the scene,
-                            // and with it the assembly tree.
-                            rebuildScene();
-                            updateWindowTitle();
-                        },
-                        [this] { m_viewport->cancelComponentDrag(); }});
+    m_aiPanel->setHost(
+        {[this] {
+             if (DocTab* tab = activeTab()) tab->modelStale = false;
+             showBuildResult();
+         },
+         [this] {
+             m_layerPanel->refresh();
+             onSelectionChanged();
+             m_viewport->update();
+         },
+         [this] { onUndo(); }, [this] { return assistantSelection(); },
+         [this] {
+             // As an Assembly menu command leaves it: the scene,
+             // and with it the assembly tree.
+             rebuildScene();
+             updateWindowTitle();
+         },
+         [this] { m_viewport->cancelComponentDrag(); },
+         [this](const ai::DrawingRequest& request) { return makeDrawingForAssistant(request); }});
     m_aiPanel->setDocument(m_document, tr("Drawing 1"));
     m_propertyPanel->raise();
 
@@ -1300,7 +1307,7 @@ QString MainWindow::tabTitleForPath(const std::string& path, const QString& fall
 
 int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
                                std::shared_ptr<doc::AssemblyDocument> assembly,
-                               const QString& title) {
+                               const QString& title, bool behind) {
     watchDocument(document);
     document->undoStack().setLimit(static_cast<std::size_t>(Preferences::current().undoLimit));
     // An assembly's backing document shows its unit: the view's tools ask it.
@@ -1316,7 +1323,7 @@ int MainWindow::addDocumentTab(std::shared_ptr<doc::Document> document,
     m_tabs.push_back(std::move(tab));
     int index = m_tabBar->addTab(title);
     nameCloseButton(*m_tabBar, index);
-    m_tabBar->setCurrentIndex(index);  // triggers onTabChanged
+    if (!behind) m_tabBar->setCurrentIndex(index);  // triggers onTabChanged
     return index;
 }
 
@@ -1366,6 +1373,57 @@ void MainWindow::activateTabDocument() {
 
 void MainWindow::addTab(std::shared_ptr<doc::Document> document, const QString& title) {
     addDocumentTab(std::move(document), nullptr, title);
+}
+
+void MainWindow::addTabBehind(std::shared_ptr<doc::Document> document, const QString& title) {
+    addDocumentTab(std::move(document), nullptr, title, true);
+}
+
+ai::DrawingMade MainWindow::makeDrawingForAssistant(const ai::DrawingRequest& request) {
+    ai::DrawingMade made;
+    if (!m_drawings) {
+        made.error = "Drawing sheets are not available in this window.";
+        return made;
+    }
+    io::DrawingDocumentSpec spec;
+    spec.partPath = request.source;
+    static const std::map<std::string, model::PaperSize> kPapers = {
+        {"a0", model::PaperSize::A0},        {"a1", model::PaperSize::A1},
+        {"a2", model::PaperSize::A2},        {"a3", model::PaperSize::A3},
+        {"a4", model::PaperSize::A4},        {"ansi_a", model::PaperSize::AnsiA},
+        {"ansi_b", model::PaperSize::AnsiB}, {"ansi_c", model::PaperSize::AnsiC},
+        {"ansi_d", model::PaperSize::AnsiD}};
+    if (const auto paper = kPapers.find(request.paper); paper != kPapers.end()) {
+        spec.sheet.size = paper->second;
+    }
+    spec.sheet.orientation =
+        request.portrait ? model::Orientation::Portrait : model::Orientation::Landscape;
+    spec.scale = request.scale;
+    model::TitleBlock& block = spec.titleBlock;
+    block.title = request.title;
+    block.partNumber = request.partNumber;
+    if (!request.revision.empty()) block.revision = request.revision;
+    block.drawnBy = request.drawnBy;
+    block.date = request.date;
+    block.material = request.material;
+    block.company = request.company;
+
+    QString tab;
+    model::Drawing drawing;
+    std::string error;
+    if (!m_drawings->newDrawing(std::move(spec), true, &tab, &drawing, &error)) {
+        made.error = "The drawing could not be made: " + error;
+        return made;
+    }
+    made.tab = tab.toStdString();
+    static const char* const kViewNames[] = {"front", "top", "right", "isometric"};
+    for (const model::DrawingView& view : drawing.views) {
+        if (view.role != model::ViewRole::Projection) continue;
+        if (made.scale.empty()) made.scale = model::DrawingGenerator::scaleName(view.scale);
+        const auto kind = static_cast<std::size_t>(view.kind);
+        if (kind < std::size(kViewNames)) made.views.emplace_back(kViewNames[kind]);
+    }
+    return made;
 }
 
 QString MainWindow::currentTitle() {

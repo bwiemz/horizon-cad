@@ -1,6 +1,8 @@
 #pragma once
 
 #include <functional>
+#include <string>
+#include <vector>
 
 #include "horizon/ai/ToolRegistry.h"
 
@@ -12,6 +14,38 @@ class DocumentManager;
 
 namespace hz::ai {
 
+/// A drawing sheet of a part or an assembly, as make_drawing asks the host for
+/// one: the standard views (front, top, right, isometric) laid out over the
+/// title block, as the menu's New Drawing from Part makes them.
+struct DrawingRequest {
+    std::string source;  ///< the part's or assembly's file, saved as it is shown
+    /// a0, a1, a2, a3, a4, ansi_a (Letter), ansi_b (Tabloid), ansi_c, ansi_d.
+    std::string paper = "a3";
+    bool portrait = false;
+    double scale = 0.0;  ///< sheet mm per model mm; 0: the largest standard one that fits
+    // The title block; an empty title is the file's name.
+    std::string title;
+    std::string partNumber;
+    std::string revision;
+    std::string drawnBy;
+    std::string date;
+    std::string material;
+    std::string company;
+};
+
+/// What the host made of a DrawingRequest.
+struct DrawingMade {
+    std::string error;               ///< why there is no sheet; empty when there is
+    std::string tab;                 ///< the title of the sheet's tab
+    std::string scale;               ///< as the title block states it: "1:2"
+    std::vector<std::string> views;  ///< "front", "top", "right", "isometric"
+};
+
+/// Makes the sheet, in a tab of its own that is not made current (a tab
+/// switch would stop the request), unsaved: the user looks at it and saves
+/// it.
+using MakeDrawing = std::function<DrawingMade(const DrawingRequest&)>;
+
 /// What the host (the window, the MCP server) is told when a tool changes the
 /// document, so it can show the change.
 struct CadToolHooks {
@@ -20,6 +54,8 @@ struct CadToolHooks {
     std::function<void()> modelChanged;
     /// The 2D drawing or its layers changed.
     std::function<void()> drawingChanged;
+    /// Make a drawing sheet of the part (make_drawing); unset: no such tool.
+    MakeDrawing makeDrawing;
 };
 
 /// Add the CAD tools, acting on @p document, to @p registry: queries of the
@@ -41,6 +77,9 @@ struct AssemblyToolHooks {
     /// root). Empty: none, so it must be saved beside them first. A saved
     /// one takes them from its own folder.
     std::string unsavedFolder;
+    /// Make a drawing sheet of the assembly (make_drawing); unset: no such
+    /// tool.
+    MakeDrawing makeDrawing;
 };
 
 /// Add the assembly tools, acting on @p assembly, to @p registry: what it

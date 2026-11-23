@@ -6,6 +6,7 @@ add_library(hz_ai STATIC
     src/AnthropicAdapter.cpp
     src/CadAdvancedTools.cpp
     src/CadAssemblyTools.cpp
+    src/CadDrawingTools.cpp
     src/CadDraftTools.cpp
     src/CadModelTools.cpp
     src/CadQueryTools.cpp

@@ -19,6 +19,16 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **The AI assistant makes drawings.** Asked for a drawing of the part or the
+  assembly, it makes the sheet the Drawing menu makes (front, top, right and
+  isometric views over a title block) with the paper, orientation, scale and
+  title block it was asked for (`make_drawing`). The sheet opens in a tab of
+  its own behind the part's (a tab switch would have stopped the request),
+  unsaved, for the user to look at and save. A part never saved is refused,
+  since the sheet refers to its file; one with unsaved changes is drawn as
+  its tab has it, and the user is told to save it too. Changing a sheet once
+  made is not the assistant's yet: its edits are not undo steps.
+
 - **A DXF ellipse over more than a turn is read whole.** An ELLIPSE whose
   end parameter was 60 million radians (found by the DXF fuzzer) was drawn
   as a polyline of 600 million points, asking for 9.8 GB. Parameters more

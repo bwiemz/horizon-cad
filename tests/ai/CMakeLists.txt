@@ -6,6 +6,7 @@ add_executable(hz_ai_tests
     test_AssemblyTools.cpp
     test_CadTools.cpp
     test_GeminiAdapter.cpp
+    test_MakeDrawing.cpp
     test_McpServer.cpp
     test_OpenAIAdapter.cpp
     test_ProfileBuilder.cpp

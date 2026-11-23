@@ -504,25 +504,37 @@ void DrawingWorkbench::onNewDrawingFromPart() {
 
     io::DrawingDocumentSpec spec;
     spec.partPath = partPath;
-    const QString stem = QFileInfo(QString::fromStdString(partPath)).completeBaseName();
-    spec.titleBlock.title = stem.toStdString();
-
     std::string error;
-    const auto source = sourceOf(partPath, &error);
-    if (!source) {
+    if (!newDrawing(std::move(spec), false, nullptr, nullptr, &error)) {
         m_host.reportFileError(tr("Could not make a drawing of"), partPath, error);
         return;
     }
+    m_host.setPrompt(tr("Drawing made."));
+}
+
+bool DrawingWorkbench::newDrawing(io::DrawingDocumentSpec spec, bool behind, QString* tab,
+                                  model::Drawing* drawn, std::string* error) {
+    const QString stem = QFileInfo(QString::fromStdString(spec.partPath)).completeBaseName();
+    if (spec.titleBlock.title.empty()) spec.titleBlock.title = stem.toStdString();
+    const auto source = sourceOf(spec.partPath, error);
+    if (!source) return false;
     auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
     model::Drawing drawing;
     draw(*document, spec, *source, &drawing);
     document->setDirty(true);  // new, and not saved
     for (const std::string& file : source->files) m_host.documents().watch(file);
+    if (drawn != nullptr) *drawn = drawing;
     m_sheets.push_back(
         std::make_unique<Sheet>(Sheet{document, spec, std::move(drawing), source->files,
                                       listedHeight(source->partsList), source}));
-    m_host.addTab(document, tr("Drawing of %1").arg(stem));
-    m_host.setPrompt(tr("Drawing made."));
+    const QString title = tr("Drawing of %1").arg(stem);
+    if (behind) {
+        m_host.addTabBehind(document, title);
+    } else {
+        m_host.addTab(document, title);
+    }
+    if (tab != nullptr) *tab = title;
+    return true;
 }
 
 bool DrawingWorkbench::open(const QString& fileName) {

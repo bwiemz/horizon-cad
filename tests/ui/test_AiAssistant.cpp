@@ -13,6 +13,8 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QSettings>
+#include <QStringList>
+#include <QTabBar>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -28,6 +30,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
@@ -273,6 +276,73 @@ TEST(AiAssistantTest, WorksOnAnAssembly) {
 // the provider takes images, and the user sees it in the transcript. Off (a
 // compatible server's default: its model may read no images), there is no
 // such tool.
+TEST(AiAssistantTest, MakesADrawingOfThePartBehindItsTab) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("plate.hzpart"));
+    {
+        hz::doc::Document part;
+        part.setType(hz::doc::DocumentType::Part);
+        part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(80, 40, 6));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), part));
+    }
+    MainWindow window;
+    ASSERT_TRUE(window.openPath(path));
+    ASSERT_TRUE(waitFor([&window] { return !window.backgroundWorkRunning(); }, 10000));
+    hz::doc::Document* part = window.activeDocument();
+    ASSERT_NE(part, nullptr);
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    transport.replies.push_back(toolCall(
+        "c1", "make_drawing", {{"title", "Mounting plate"}, {"paper", "a4"}, {"scale", "1:2"}}));
+    transport.replies.push_back(text("The drawing is in a tab of its own."));
+
+    ASSERT_TRUE(panel->submit(QStringLiteral("make a drawing of it")));
+    EXPECT_FALSE(panel->busy());
+    // Behind the part's tab: a switch would have stopped the request.
+    EXPECT_EQ(window.activeDocument(), part);
+    const QString shown = panel->transcriptText();
+    EXPECT_FALSE(shown.contains(QStringLiteral("Stopped"))) << shown.toStdString();
+    EXPECT_TRUE(shown.contains(QStringLiteral("The drawing is in a tab of its own.")))
+        << shown.toStdString();
+    // The model was told what was made.
+    ASSERT_EQ(transport.requests.size(), 2u);
+    // Held: a range over a member of a temporary would read freed memory.
+    const json second = transport.body(1);
+    std::string told;
+    for (const json& message : second["messages"]) {
+        if (message.value("role", "") == "tool") told = message.value("content", "");
+    }
+    EXPECT_NE(told.find("Drawing of plate"), std::string::npos) << told;
+    EXPECT_NE(told.find("\"scale\":\"1:2\""), std::string::npos) << told;
+    EXPECT_NE(told.find("isometric"), std::string::npos) << told;
+
+    // The sheet: unsaved, its views drawn, its title block as asked.
+    auto* tabs = window.findChild<QTabBar*>(QStringLiteral("documentTabs"));
+    ASSERT_NE(tabs, nullptr);
+    int sheetTab = -1;
+    for (int i = 0; i < tabs->count(); ++i) {
+        if (tabs->tabText(i) == QStringLiteral("Drawing of plate")) sheetTab = i;
+    }
+    ASSERT_GE(sheetTab, 0);
+    tabs->setCurrentIndex(sheetTab);
+    hz::doc::Document* sheet = window.activeDocument();
+    ASSERT_NE(sheet, part);
+    EXPECT_TRUE(sheet->isDirty());
+    QStringList titleBlock;
+    for (const auto& entity : sheet->draftDocument().entities()) {
+        if (entity->layer() != "TitleBlock") continue;
+        if (const auto* words = dynamic_cast<const hz::draft::DraftText*>(entity.get())) {
+            titleBlock << QString::fromStdString(words->text());
+        }
+    }
+    EXPECT_TRUE(titleBlock.contains(QStringLiteral("Mounting plate")))
+        << titleBlock.join(QLatin1Char('|')).toStdString();
+    EXPECT_GT(sheet->draftDocument().entities().size(), 20u);
+}
+
 TEST(AiAssistantTest, TheModelSeesWhatItMade) {
     MainWindow window;
     FakeTransport transport;

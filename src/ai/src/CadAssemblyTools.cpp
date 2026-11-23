@@ -1218,6 +1218,11 @@ void registerAssemblyTools(ToolRegistry& registry, doc::AssemblyDocument& assemb
          "Remove a component pattern and its instances; its seeds stay.",
          object({{"pattern", integerSchema("the pattern's id")}}, {"pattern"})},
         ToolAccess::Modify, &deletePattern);
+    registerDrawingTool(registry, context->hooks.makeDrawing, [context] {
+        const doc::AssemblyDocument& assembly = context->assembly;
+        return DrawingSource{"assembly", assembly.filePath(), assembly.isDirty(),
+                             assembly.components().empty()};
+    });
 }
 
 }  // namespace hz::ai

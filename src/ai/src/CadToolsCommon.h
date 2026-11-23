@@ -134,6 +134,19 @@ json rebuildAndReport(const CadContext& context);
 /// One drawing entity as a model reads it: id, layer, type, geometry.
 json describeEntity(const draft::DraftEntity& entity);
 
+/// What make_drawing draws: the part or the assembly, as its tab has it.
+struct DrawingSource {
+    std::string what;      ///< "part" or "assembly"
+    std::string path;      ///< its file; empty when it was never saved
+    bool unsaved = false;  ///< changed since it was saved: said, so it is saved too
+    bool empty = false;    ///< nothing to draw: no solid, no component
+};
+
+/// Add make_drawing, which asks @p make for a sheet of what @p source says
+/// the tab shows. Nothing is added when either is unset.
+void registerDrawingTool(ToolRegistry& registry, MakeDrawing make,
+                         std::function<DrawingSource()> source);
+
 void registerQueryTools(ToolRegistry& registry, const Context& context);
 void registerModelTools(ToolRegistry& registry, const Context& context);
 void registerDraftTools(ToolRegistry& registry, const Context& context);

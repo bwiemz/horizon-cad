@@ -69,6 +69,14 @@ public:
     /// Open the `.hzdwg` at @p fileName in a tab of its own. False, said to
     /// the user, when it or its part cannot be read.
     bool open(const QString& fileName);
+    /// A new sheet drawn by @p spec, of the part or assembly at its
+    /// partPath (from its tab when it is open, else its file), in a tab
+    /// "Drawing of <name>", unsaved. Made the active tab unless @p behind.
+    /// An empty title is the file's name. The tab's title in @p tab and what
+    /// was drawn in @p drawn, when given. False, with why in @p error, when
+    /// the part or assembly cannot be read.
+    bool newDrawing(io::DrawingDocumentSpec spec, bool behind, QString* tab, model::Drawing* drawn,
+                    std::string* error);
     /// Save the sheet @p document to @p path. False, with the reason.
     bool save(doc::Document& document, const std::string& path, std::string* error);
     /// The sheet @p document's file, changed by another program: read again,

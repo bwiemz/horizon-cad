@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/ai/CadTools.h"
@@ -28,8 +29,10 @@ protected:
     int drawingChanges = 0;
 
     void SetUp() override {
-        ai::registerCadTools(tools, document,
-                             {[this] { ++modelChanges; }, [this] { ++drawingChanges; }});
+        ai::CadToolHooks hooks;
+        hooks.modelChanged = [this] { ++modelChanges; };
+        hooks.drawingChanged = [this] { ++drawingChanges; };
+        ai::registerCadTools(tools, document, std::move(hooks));
     }
 
     /// Run a tool that must succeed; its result as JSON.
