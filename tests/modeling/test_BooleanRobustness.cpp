@@ -665,6 +665,40 @@ TEST(BooleanRobustnessTest, ACancelledBooleanStopsSayingSo) {
         << why;
 }
 
+// The work done around a Boolean stops for a cancel too. A join of two boxes
+// cuts too few corners for its cut to ask (it asks every 65,536), but the
+// merging and sewing after it ask. A pattern asks between its copies and
+// its rounds, here of copies clear of one another, joined by no Boolean:
+// copying 40 instances of a cylinder of 1,024 facets took seconds in a
+// debug build, and a build cancelled then ran on through them.
+TEST(BooleanRobustnessTest, TheWorkAroundABooleanStopsForACancel) {
+    const auto box = PrimitiveFactory::makeBox(2, 2, 2);
+    const auto other = moved(*PrimitiveFactory::makeBox(2, 2, 2), Mat4::translation(Vec3(1, 1, 1)));
+    const auto pin = PrimitiveFactory::makeCylinder(1.0, 2.0, 64);
+    std::atomic<bool> cancelled{true};
+    {
+        const hz::model::BooleanCancellation stop(&cancelled);
+        EXPECT_TRUE(hz::model::BooleanCancellation::requested());
+        std::string why;
+        EXPECT_EQ(BooleanOp::execute(*box, *other, BooleanType::Union, &why, NamingScheme::Stable),
+                  nullptr);
+        EXPECT_EQ(why, "cancelled");
+        why.clear();
+        EXPECT_EQ(
+            Pattern::linear(*pin, Vec3(1, 0, 0), 3.0, 4, {}, NamingScheme::Stable, true, &why),
+            nullptr);
+        EXPECT_EQ(why, "cancelled");
+    }
+    EXPECT_FALSE(hz::model::BooleanCancellation::requested());
+    std::string why;
+    EXPECT_NE(BooleanOp::execute(*box, *other, BooleanType::Union, &why, NamingScheme::Stable),
+              nullptr)
+        << why;
+    EXPECT_NE(Pattern::linear(*pin, Vec3(1, 0, 0), 3.0, 4, {}, NamingScheme::Stable, true, &why),
+              nullptr)
+        << why;
+}
+
 // The work of building a convex body's tree counts as its cuts do: a
 // cylinder of 4,096 facets, its tree a chain of as many planes, each
 // checked against its every point, and a box that barely meets it. Its cuts
