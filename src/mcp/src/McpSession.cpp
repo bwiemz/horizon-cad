@@ -126,7 +126,7 @@ std::optional<std::filesystem::path> McpSession::resolve(const std::string& give
     // First by its words alone, then on the disk, where links are followed.
     if (!within(m_root, lexical) && !within(m_rootAsGiven, lexical)) return refuse(outside);
     std::error_code ec;
-    const fs::path resolved = fs::weakly_canonical(lexical, ec);
+    fs::path resolved = fs::weakly_canonical(lexical, ec);  // not const: it is returned
     if (ec) return refuse("the path cannot be resolved: " + ec.message());
     if (!within(m_root, resolved)) return refuse(outside);
     // A link left as the last part (one to nothing, which the resolving
