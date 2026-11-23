@@ -19,6 +19,15 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **`horizon-mcp`: Horizon CAD over the Model Context Protocol.** A headless
+  executable, installed beside `horizon` on Windows and Linux, that serves the
+  CAD tools over MCP (JSON-RPC 2.0 on stdio; protocol versions 2025-06-18,
+  2025-03-26, 2024-11-05) to Claude Desktop, Claude Code, Cursor and other
+  clients, with `get_session_info`, `new_document`, `open_document`,
+  `save_document` and `export_document` (STEP, STL, glTF, DXF) for its one
+  document. Tools carry read-only and open-world hints. Setup:
+  `docs/ai/mcp.md`.
+
 - **The AI Assistant panel.** Home ▸ AI Assistant (Ctrl+Shift+A) opens a
   chat beside Properties and Layers that builds and changes the active part or
   drawing. Settings choose the provider (Anthropic, OpenAI, Gemini, or a local

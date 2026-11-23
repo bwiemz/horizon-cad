@@ -91,3 +91,11 @@ It works on the active part or drawing:
 
 It does not work on assemblies or drawing sheets yet. It cannot open, save
 or export files.
+
+## Automating from outside
+
+Other AI applications can drive Horizon CAD too. `horizon-mcp`, installed
+beside Horizon CAD, serves the same tools over the Model Context Protocol, so
+Claude Desktop, Claude Code, Cursor and other MCP clients can build, save and
+export parts without the window. Its setup is in `docs/ai/mcp.md` in the
+source tree.
