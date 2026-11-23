@@ -13,7 +13,7 @@ namespace hz::ai {
 
 /// The wire formats Horizon speaks. OpenAICompatible is every server that
 /// takes OpenAI's chat completions: Ollama, LM Studio, llama.cpp, vLLM,
-/// LocalAI, Jan, OpenRouter, Groq, Mistral, DeepSeek, xAI…
+/// LocalAI, Jan, OpenRouter, Groq, Mistral, DeepSeek, xAI...
 enum class ProviderKind { Anthropic, OpenAI, Gemini, OpenAICompatible };
 
 inline constexpr ProviderKind kAllProviders[] = {ProviderKind::Anthropic, ProviderKind::OpenAI,
@@ -46,7 +46,7 @@ ProviderConfig defaultConfig(ProviderKind kind);
 /// "openai", "gemini", "openai-compatible".
 const char* providerName(ProviderKind kind);
 std::optional<ProviderKind> providerFromName(std::string_view name);
-/// How the provider is shown to a person: "Anthropic Claude", …
+/// How the provider is shown to a person: "Anthropic Claude", ...
 const char* providerTitle(ProviderKind kind);
 /// The environment variables that hold its API key, in the order they are
 /// read; none for OpenAICompatible.

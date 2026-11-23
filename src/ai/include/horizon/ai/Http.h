@@ -23,7 +23,7 @@ struct HttpRequest {
 struct HttpResponse {
     int status = 0;  ///< 0 when no response arrived
     std::string body;
-    std::string networkError;  ///< why nothing arrived (refused, timed out, TLS…)
+    std::string networkError;  ///< why nothing arrived (refused, timed out, TLS...)
 };
 
 /// Sends requests and calls back with what came back. Asynchronous: send()

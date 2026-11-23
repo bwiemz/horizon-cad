@@ -159,7 +159,7 @@ std::string snippet(const std::string& body, std::size_t limit) {
     std::string out;
     for (const char c : body) {
         if (out.size() >= limit) {
-            out += "…";
+            out += "...";
             break;
         }
         out += (c == '\n' || c == '\r' || c == '\t') ? ' ' : c;
@@ -182,16 +182,16 @@ std::string httpErrorMessage(std::string_view provider, const HttpResponse& resp
     switch (response.status) {
         case 401:
         case 403:
-            message += " — check the API key in the assistant's settings.";
+            message += " - check the API key in the assistant's settings.";
             break;
         case 404:
-            message += " — check the model name and the server address.";
+            message += " - check the model name and the server address.";
             break;
         case 429:
-            message += " — the rate or spending limit was reached; wait and try again.";
+            message += " - the rate or spending limit was reached; wait and try again.";
             break;
         default:
-            if (response.status >= 500) message += " — the service had a problem; try again.";
+            if (response.status >= 500) message += " - the service had a problem; try again.";
             break;
     }
     return message;
