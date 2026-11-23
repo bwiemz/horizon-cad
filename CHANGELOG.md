@@ -19,6 +19,14 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **A DXF ellipse over more than a turn is read whole.** An ELLIPSE whose
+  end parameter was 60 million radians (found by the DXF fuzzer) was drawn
+  as a polyline of 600 million points, asking for 9.8 GB. Parameters more
+  than a turn apart, or so far apart their difference overflows, now bring
+  the ellipse in whole, and the import report says so; an axis long enough
+  to overflow is not read. The input is in the DXF fuzz corpus, replayed by
+  every build.
+
 - **The AI assistant works on assemblies.** In an assembly's tab it has
   assembly tools instead of the part's: what the assembly holds (components,
   mates, patterns, the part files in its folder), inserting a part or a

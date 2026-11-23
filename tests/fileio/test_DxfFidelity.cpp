@@ -174,6 +174,30 @@ TEST(DxfFidelityTest, APartialEllipseIsItsArcNotTheWholeEllipse) {
     EXPECT_TRUE(contains(in.report.approximated, "1 ELLIPSE entity: partial"));
 }
 
+// Found by fuzzing: an ELLIPSE whose end parameter (42) is 60 million
+// radians was drawn as a polyline of 600 million points, a 9.8 GB request.
+// More than a turn apart, its parameters bound the whole ellipse.
+TEST(DxfFidelityTest, AnEllipseOverMoreThanATurnIsTheWholeEllipse) {
+    Loaded in(
+        dxf("0\nELLIPSE\n8\n0\n10\n0\n20\n0\n11\n4\n21\n0\n40\n0.5\n41\n0\n42\n60283185\n"
+            "0\nELLIPSE\n8\n0\n10\n0\n20\n0\n11\n4\n21\n0\n40\n0.5\n41\n1e300\n42\n-1e300\n"
+            "0\nELLIPSE\n8\n0\n10\n0\n20\n0\n11\n1e300\n21\n1e300\n40\n0.5\n"));
+    ASSERT_TRUE(in.ok) << in.error;
+    EXPECT_EQ(in.all<hz::draft::DraftEllipse>().size(), 2u);
+    EXPECT_TRUE(in.all<hz::draft::DraftPolyline>().empty());
+    EXPECT_TRUE(contains(in.report.approximated, "2 ELLIPSE entities: parameters more than a turn"))
+        << "said";
+
+    // A part of a turn written past one (start 7, end 8: one radian) is that
+    // part, drawn from where it starts.
+    Loaded part(dxf("0\nELLIPSE\n8\n0\n10\n0\n20\n0\n11\n4\n21\n0\n40\n0.5\n41\n7\n42\n8\n"));
+    ASSERT_TRUE(part.ok) << part.error;
+    const auto polys = part.all<hz::draft::DraftPolyline>();
+    ASSERT_EQ(polys.size(), 1u);
+    EXPECT_TRUE(near(polys[0]->points().front(), Vec2(4 * std::cos(7.0), 2 * std::sin(7.0)), 1e-9));
+    EXPECT_TRUE(near(polys[0]->points().back(), Vec2(4 * std::cos(8.0), 2 * std::sin(8.0)), 1e-9));
+}
+
 TEST(DxfFidelityTest, InsertsKeepTheirScalesExactly) {
     const std::string block =
         "0\nBLOCK\n8\n0\n2\nTick\n70\n0\n10\n0\n20\n0\n"
