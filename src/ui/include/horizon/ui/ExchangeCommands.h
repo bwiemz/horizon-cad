@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/StepAssemblyFiles.h"
 #include "horizon/fileio/StepFormat.h"
@@ -55,6 +56,11 @@ public:
     /// The drawing plotted to a PDF (@p pdf) or an SVG, on a paper, scale and
     /// colours chosen in a form.
     void onExportPlot(bool pdf);
+
+    /// What a DXF export or save could not write as the drawing has it: the
+    /// entities left out and the layers renamed, said in a box over
+    /// @p parent; nothing when it wrote everything as it is.
+    static void showDxfWriteReport(const io::DxfWriteReport& report, QWidget* parent);
 
     /// A STEP file this big or more is read on a worker in Auto; a STEP
     /// assembly is, whatever its size.

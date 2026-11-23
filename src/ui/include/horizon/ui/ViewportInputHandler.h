@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QPoint>
+#include <QPointF>
 
 class QMouseEvent;
 class QWheelEvent;
@@ -25,7 +26,7 @@ public:
 private:
     bool m_orbiting = false;
     bool m_panning = false;
-    QPoint m_lastMousePos;
+    QPointF m_lastMousePos;
 };
 
 }  // namespace hz::ui

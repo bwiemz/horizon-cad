@@ -553,6 +553,74 @@ TEST(ModelCommandsTest, APatternOfAFeatureRepeatsOnlyIt) {
     EXPECT_NE(missing.doc.lastBuildMessage().find("extrude_999"), std::string::npos);
 }
 
+// A pattern in two directions, SolidWorks' Direction 1 and 2: a hole
+// repeated as a 3 by 3 grid through the box, nine holes; the middle one left
+// out, eight. Each instance sits where instanceTransform puts it.
+TEST(ModelCommandsTest, APatternInTwoDirectionsMakesAGrid) {
+    BoxPart part;
+    auto hole = std::make_unique<ExtrudeFeature>(squareAt(1, 1, 2, 10), Vec3(0, 0, -1), 1.0);
+    hole->setExtent(hz::doc::ExtrudeFeature::Extent::ThroughAll);
+    hole->setOperation(BodyOperation::Cut);
+    const Feature* cut = add(part.doc, std::move(hole));
+    auto grid = hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 3.0, 3);
+    ASSERT_TRUE(grid->setSecondDirection(Vec3(0, 1, 0), 3.0, 3));
+    EXPECT_EQ(grid->instanceCount(), 9);
+    // Its count is a count in any unit: read as a length, 2 rows in an inch
+    // document were 50.8.
+    EXPECT_EQ(grid->parameterKind("count2"), Feature::ParameterKind::Count);
+    EXPECT_EQ(grid->parameterKind("spacing2"), Feature::ParameterKind::Length);
+    const Vec3 last = grid->instanceTransform(8).transformPoint(Vec3());
+    EXPECT_NEAR(last.x, 6.0, 1e-12);
+    EXPECT_NEAR(last.y, 6.0, 1e-12);
+    const Vec3 second = grid->instanceTransform(3).transformPoint(Vec3());
+    EXPECT_NEAR(second.x, 0.0, 1e-12) << "the second row starts over the first";
+    EXPECT_NEAR(second.y, 3.0, 1e-12);
+    grid->setTargets({cut->featureID()});
+    const Feature* placed = add(part.doc, std::move(grid));
+    EXPECT_NEAR(volume(part.doc), 1000.0 - 9 * 40.0, 1e-6);
+
+    // Edited as any parameter: the rows and their spacing.
+    ASSERT_TRUE(const_cast<Feature*>(placed)->setParameter("count2", 2));
+    part.doc.featureTree().markChanged();
+    ASSERT_TRUE(part.doc.rebuildModel()) << part.doc.lastBuildMessage();
+    EXPECT_NEAR(volume(part.doc), 1000.0 - 6 * 40.0, 1e-6);
+
+    // Neither count takes the grid past one pattern's limit.
+    auto huge = hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 1.0, 5000);
+    huge->setSecondDirection(Vec3(0, 1, 0), 1.0, 5000);
+    EXPECT_LE(huge->instanceCount(), hz::doc::kMaxPatternCount);
+    EXPECT_FALSE(huge->setSecondDirection(Vec3(), 1.0, 2)) << "no direction";
+    auto turn = hz::doc::PatternFeature::makeCircular(Vec3(), Vec3(0, 0, 1), 1.0, 3);
+    EXPECT_FALSE(turn->setSecondDirection(Vec3(0, 1, 0), 1.0, 2)) << "a circular pattern";
+}
+
+// A pattern's copies clear of one another are cut together, in one
+// Boolean: the same part as cut in turn, the 36 holes of a plate. A pattern
+// from an older file cuts in turn, so the pieces of the faces the holes
+// split, and their edges, keep the names that what follows refers to.
+TEST(ModelCommandsTest, CopiesCutTogetherMakeThePartCutInTurnMakes) {
+    double volumes[2] = {0.0, 0.0};
+    for (const bool together : {true, false}) {
+        Document doc;
+        add(doc, extrude(rectangle(0, 0, 70, 70), 4.0, BodyOperation::NewBody));
+        auto hole = std::make_unique<ExtrudeFeature>(squareAt(4, 4, 2, 4), Vec3(0, 0, -1), 1.0);
+        hole->setExtent(hz::doc::ExtrudeFeature::Extent::ThroughAll);
+        hole->setOperation(BodyOperation::Cut);
+        const Feature* cut = add(doc, std::move(hole));
+        auto grid = hz::doc::PatternFeature::makeLinear(Vec3(1, 0, 0), 10.0, 6);
+        grid->setSecondDirection(Vec3(0, 1, 0), 10.0, 6);
+        EXPECT_TRUE(grid->combinesTogether()) << "a pattern made now";
+        grid->setCombinesTogether(together);
+        grid->setTargets({cut->featureID()});
+        add(doc, std::move(grid));
+        ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+        EXPECT_TRUE(doc.solid()->isValid()) << doc.solid()->validationReport();
+        volumes[together ? 0 : 1] = volume(doc);
+    }
+    EXPECT_NEAR(volumes[0], 70.0 * 70.0 * 4.0 - 36 * 16.0, 1e-6);
+    EXPECT_NEAR(volumes[0], volumes[1], 1e-6);
+}
+
 // Two patterns of one separate body name their copies apart. Named alike, a
 // fillet on one copy's edge could find the other copy's after a rebuild.
 TEST(ModelCommandsTest, TwoPatternsOfOneBodyNameTheirCopiesApart) {

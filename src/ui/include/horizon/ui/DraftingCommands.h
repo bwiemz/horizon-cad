@@ -31,6 +31,16 @@ public:
     void onCut();
     /// The Paste tool, when something is copied.
     void onPaste();
+    /// Everything in the active drawing on a layer that is shown and
+    /// unlocked, selected: what a box round all of it would take.
+    void onSelectAll();
+    /// The layers nothing is on and the blocks nothing inserts, taken out as
+    /// one step (PurgeCommand), and said in the status bar.
+    void onPurge();
+    /// Entities that repeat one before them (draft::duplicateEntities),
+    /// taken out as one step: of the selection, or of the whole drawing
+    /// when nothing is selected, on layers shown and unlocked.
+    void onDeleteDuplicates();
     void onGroupEntities();
     void onUngroupEntities();
 

@@ -11,10 +11,17 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <vector>
 
+#include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Commands.h"
+#include "horizon/document/ConstraintCommands.h"
 #include "horizon/document/Document.h"
 #include "horizon/drafting/DraftBlockRef.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/DraftPolyline.h"
+#include "horizon/drafting/DraftRectangle.h"
+#include "horizon/drafting/Duplicates.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/MathUtils.h"
@@ -30,6 +37,26 @@
 #include "horizon/ui/WorkbenchHost.h"
 
 namespace hz::ui {
+
+namespace {
+
+/// Into @p step, the removal of every constraint of @p constraints on one of
+/// @p ids, each once: a constraint on an entity gone constrains nothing, and
+/// stays in the sketch's list, saved with it.
+void removeConstraintsOn(doc::CompositeCommand& step, cstr::ConstraintSystem& constraints,
+                         const std::vector<uint64_t>& ids) {
+    std::set<uint64_t> removed;
+    for (const uint64_t id : ids) {
+        for (const auto* constraint : constraints.constraintsForEntity(id)) {
+            if (removed.insert(constraint->id()).second) {
+                step.addCommand(
+                    std::make_unique<doc::RemoveConstraintCommand>(constraints, constraint->id()));
+            }
+        }
+    }
+}
+
+}  // namespace
 
 DraftingCommands::DraftingCommands(WorkbenchHost& host, QObject* parent)
     : QObject(parent), m_host(host) {}
@@ -100,6 +127,76 @@ void DraftingCommands::onCut() {
 void DraftingCommands::onPaste() {
     if (!m_clipboard.hasContent()) return;
     m_host.runTool(std::make_unique<PasteTool>(&m_clipboard));
+}
+
+void DraftingCommands::onSelectAll() {
+    doc::Document* document = m_host.currentDocument();
+    if (document == nullptr) return;
+    const auto& layers = document->layerManager();
+    std::vector<uint64_t> ids;
+    for (const auto& entity : document->activeDrawing().entities()) {
+        const auto* layer = layers.getLayer(entity->layer());
+        if (!layer || !layer->visible || layer->locked) continue;
+        ids.push_back(entity->id());
+    }
+    selectOnly(ids);
+}
+
+void DraftingCommands::onPurge() {
+    doc::Document* document = m_host.currentDocument();
+    if (document == nullptr) return;
+    auto purge =
+        std::make_unique<doc::PurgeCommand>(document->layerManager(), document->drawings());
+    purge->plan();
+    if (purge->purgesNothing()) {
+        m_host.showStatus(tr("Nothing to purge: every layer and block is in use."), 5000);
+        return;
+    }
+    const auto layers = static_cast<int>(purge->layersPurged());
+    const auto blocks = static_cast<int>(purge->blocksPurged());
+    document->undoStack().push(std::move(purge));
+    m_host.refreshPanels();
+    m_host.showStatus(tr("Purged %n unused layer(s)", nullptr, layers) + QStringLiteral(", ") +
+                          tr("%n unused block(s).", nullptr, blocks),
+                      8000);
+}
+
+void DraftingCommands::onDeleteDuplicates() {
+    doc::Document* document = m_host.currentDocument();
+    if (document == nullptr) return;
+    auto& drawing = document->activeDrawing();
+    const auto& layers = document->layerManager();
+    const auto& sel = m_host.viewport().selectionManager();
+    const bool all = sel.empty();
+    std::vector<std::shared_ptr<draft::DraftEntity>> among;
+    math::BoundingBox extent;
+    for (const auto& entity : drawing.entities()) {
+        if (!all && !sel.isSelected(entity->id())) continue;
+        const auto* layer = layers.getLayer(entity->layer());
+        if (!layer || !layer->visible || layer->locked) continue;
+        among.push_back(entity);
+        const auto box = entity->boundingBox();
+        if (box.isValid()) extent.expand(box);
+    }
+    // To within a billionth of what is compared: copies made as copies are
+    // the same to the last digit, and a drawing's own rounding is far less.
+    const double size = extent.isValid() ? (extent.max() - extent.min()).length() : 1.0;
+    const std::vector<uint64_t> copies =
+        draft::duplicateEntities(among, 1e-9 * std::max(size, 1e-3));
+    if (copies.empty()) {
+        m_host.showStatus(
+            all ? tr("No duplicates in the drawing.") : tr("No duplicates in the selection."),
+            5000);
+        return;
+    }
+    // Their constraints with them, as Delete takes them.
+    auto step = std::make_unique<doc::CompositeCommand>("Delete Duplicates");
+    removeConstraintsOn(*step, document->activeConstraints(), copies);
+    step->addCommand(std::make_unique<doc::RemoveEntitiesCommand>(drawing, copies));
+    document->undoStack().push(std::move(step));
+    selectOnly({});
+    m_host.showStatus(tr("Deleted %n duplicate(s).", nullptr, static_cast<int>(copies.size())),
+                      8000);
 }
 
 void DraftingCommands::onGroupEntities() {
@@ -321,7 +418,9 @@ void DraftingCommands::onExplode() {
     doc::Document& document = *m_host.currentDocument();
     auto& drawing = document.activeDrawing();
 
-    // The block references among the selection.
+    // The block references among the selection, and the polylines and
+    // rectangles on layers that can be edited, which come apart into their
+    // sides, as AutoCAD's EXPLODE takes them apart.
     std::vector<uint64_t> blockRefIds;
     for (const auto& entity : drawing.entities()) {
         if (sel.isSelected(entity->id()) &&
@@ -329,9 +428,42 @@ void DraftingCommands::onExplode() {
             blockRefIds.push_back(entity->id());
         }
     }
-    if (blockRefIds.empty()) {
-        QMessageBox::information(m_host.dialogParent(), tr("Explode"),
-                                 tr("Select one or more block references to explode."));
+    std::vector<uint64_t> outlineIds;
+    std::vector<std::shared_ptr<draft::DraftEntity>> sides;
+    for (const uint64_t id : editableSelection()) {
+        const auto entity = drawing.sharedEntity(id);
+        if (!entity) continue;
+        std::vector<math::Vec2> corners;
+        bool closed = false;
+        if (const auto* poly = dynamic_cast<const draft::DraftPolyline*>(entity.get())) {
+            corners = poly->points();
+            closed = poly->closed();
+        } else if (const auto* rect = dynamic_cast<const draft::DraftRectangle*>(entity.get())) {
+            const auto c = rect->corners();
+            corners.assign(c.begin(), c.end());
+            closed = true;
+        } else {
+            continue;
+        }
+        const size_t count = corners.size();
+        const size_t segments = closed ? count : (count > 0 ? count - 1 : 0);
+        std::vector<std::shared_ptr<draft::DraftEntity>> made;
+        for (size_t i = 0; i < segments; ++i) {
+            const math::Vec2& a = corners[i];
+            const math::Vec2& b = corners[(i + 1) % count];
+            if (a.distanceTo(b) <= 0.0) continue;  // a corner given twice: no side
+            auto line = std::make_shared<draft::DraftLine>(a, b);
+            line->copyStyleFrom(*entity);
+            made.push_back(std::move(line));
+        }
+        if (made.empty()) continue;  // a point: nothing to take apart
+        outlineIds.push_back(id);
+        sides.insert(sides.end(), made.begin(), made.end());
+    }
+    if (blockRefIds.empty() && outlineIds.empty()) {
+        QMessageBox::information(
+            m_host.dialogParent(), tr("Explode"),
+            tr("Select block references, polylines or rectangles to explode."));
         return;
     }
     auto composite = std::make_unique<doc::CompositeCommand>("Explode");
@@ -341,14 +473,24 @@ void DraftingCommands::onExplode() {
         explodeCmds.push_back(cmd.get());
         composite->addCommand(std::move(cmd));
     }
+    if (!outlineIds.empty()) {
+        // A constraint on an outline (a vertex held, a side horizontal)
+        // goes with it, as Delete takes it: its lines are new entities.
+        removeConstraintsOn(*composite, document.activeConstraints(), outlineIds);
+        composite->addCommand(std::make_unique<doc::RemoveEntitiesCommand>(drawing, outlineIds));
+        for (const auto& side : sides) {
+            composite->addCommand(std::make_unique<doc::AddEntityCommand>(drawing, side));
+        }
+    }
     document.undoStack().push(std::move(composite));
 
-    // What they held, selected.
+    // What they held, and the sides, selected.
     std::vector<uint64_t> exploded;
     for (auto* cmd : explodeCmds) {
         const auto& ids = cmd->explodedIds();
         exploded.insert(exploded.end(), ids.begin(), ids.end());
     }
+    for (const auto& side : sides) exploded.push_back(side->id());
     selectOnly(exploded);
 }
 

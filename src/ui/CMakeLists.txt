@@ -52,6 +52,8 @@ add_library(hz_ui STATIC
     include/horizon/ui/SplineTool.h
     include/horizon/ui/HatchTool.h
     include/horizon/ui/EllipseTool.h
+    include/horizon/ui/MatchPropertiesTool.h
+    include/horizon/ui/PolygonTool.h
     include/horizon/ui/GripManager.h
     include/horizon/ui/MeasureDistanceTool.h
     include/horizon/ui/MeasureAngleTool.h
@@ -161,6 +163,8 @@ add_library(hz_ui STATIC
     src/SplineTool.cpp
     src/HatchTool.cpp
     src/EllipseTool.cpp
+    src/MatchPropertiesTool.cpp
+    src/PolygonTool.cpp
     src/GripManager.cpp
     src/MeasureDistanceTool.cpp
     src/MeasureAngleTool.cpp

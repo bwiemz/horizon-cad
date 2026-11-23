@@ -35,7 +35,7 @@ command and shows its shortcut.
 |---|---|
 | Orbit | Drag with the middle mouse button |
 | Pan | Hold **Shift** and drag with the middle mouse button |
-| Zoom | Turn the mouse wheel; it zooms about the cursor |
+| Zoom | Turn the mouse wheel; it zooms about the cursor. **Ctrl++** and **Ctrl+-** zoom about the middle, and **Shift+F** zooms to what is selected |
 | See everything | Press **F** (Fit All) |
 | Look along an axis | Click a face of the ViewCube (top right), or use View ▸ Front, Top, Right, and so on |
 | Go back to the isometric view | Click **HOME** under the ViewCube |

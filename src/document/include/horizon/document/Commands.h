@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -337,6 +338,35 @@ private:
     draft::LayerProperties m_savedProps;
     std::unordered_set<uint64_t> m_movedEntities;  ///< IDs of what was on it
     bool m_wasCurrentLayer = false;
+};
+
+/// Purge (AutoCAD's PURGE): the layers nothing is on and the blocks nothing
+/// inserts, taken out together, as one step to undo. A layer is kept while
+/// an entity of @p drawings, or of a block of theirs that is kept, is on it,
+/// and so are the default layer "0" and the current one. A block is kept
+/// while an entity of its drawing, or of a block that is itself kept,
+/// inserts it: a block only an unused block inserts goes too, and so does a
+/// layer only an unused block's entities are on.
+class PurgeCommand : public Command {
+public:
+    PurgeCommand(draft::LayerManager& layers, std::vector<draft::DraftDocument*> drawings);
+    void execute() override;
+    void undo() override;
+    std::string description() const override;
+
+    /// Find what it takes out, as the drawings stand now: done by the first
+    /// execute when not before, and once only.
+    void plan();
+    std::size_t layersPurged() const { return m_layers.size(); }
+    std::size_t blocksPurged() const { return m_blocks.size(); }
+    bool purgesNothing() const { return m_layers.empty() && m_blocks.empty(); }
+
+private:
+    draft::LayerManager& m_layerMgr;
+    std::vector<draft::DraftDocument*> m_drawings;
+    bool m_planned = false;
+    std::vector<draft::LayerProperties> m_layers;
+    std::vector<std::pair<draft::DraftDocument*, std::shared_ptr<draft::BlockDefinition>>> m_blocks;
 };
 
 /// Command to modify layer properties.

@@ -12,6 +12,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QStackedWidget>
+#include <QStringList>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <cmath>
@@ -398,9 +399,19 @@ void PropertyPanel::refreshLayerList() {
     // edit of its own.
     const bool wasUpdating = std::exchange(m_updatingUI, true);
     QString currentText = m_layerCombo->currentText();
-    m_layerCombo->clear();
+    // Added at once, and only when the layers are not those listed: this
+    // runs at every change of selection, and with ten thousand layers,
+    // added one at a time, each selection took that long.
+    QStringList names;
     for (const auto& name : viewport->document()->layerManager().layerNames()) {
-        m_layerCombo->addItem(QString::fromStdString(name));
+        names.append(QString::fromStdString(name));
+    }
+    QStringList listed;
+    listed.reserve(m_layerCombo->count());
+    for (int i = 0; i < m_layerCombo->count(); ++i) listed.append(m_layerCombo->itemText(i));
+    if (listed != names) {
+        m_layerCombo->clear();
+        m_layerCombo->addItems(names);
     }
     int idx = m_layerCombo->findText(currentText);
     if (idx >= 0) m_layerCombo->setCurrentIndex(idx);

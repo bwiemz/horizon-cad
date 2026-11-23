@@ -51,8 +51,10 @@ jobs:
             config: Release
           # macOS on Apple silicon (Phase 169), against Homebrew's Qt; vcpkg
           # builds the rest. Apple clang's warnings are reported, not failed
-          # on, until they have been counted, as MSVC's are.
-          - os: macos-14
+          # on, until they have been counted, as MSVC's are. (macos-14 is no
+          # longer a runner GitHub offers: "the configuration
+          # 'macos-14-arm64-us-default' is not supported".)
+          - os: macos-15
             preset: macos-debug
             triplet: arm64-osx
             werror: 'OFF'

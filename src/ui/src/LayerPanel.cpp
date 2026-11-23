@@ -5,12 +5,15 @@
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QList>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <string>
+#include <vector>
 
 #include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
@@ -80,11 +83,18 @@ void LayerPanel::refresh() {
     const auto& layerMgr = viewport->document()->layerManager();
     std::string current = layerMgr.currentLayer();
 
-    for (const auto& name : layerMgr.layerNames()) {
+    // Made apart from the tree and put in it at once: one at a time, each
+    // told the view of itself, and a drawing of ten thousand layers took
+    // that much longer at every undo.
+    QList<QTreeWidgetItem*> items;
+    const std::vector<std::string> names = layerMgr.layerNames();
+    items.reserve(static_cast<qsizetype>(names.size()));
+    for (const auto& name : names) {
         const auto* lp = layerMgr.getLayer(name);
         if (!lp) continue;
 
-        auto* item = new QTreeWidgetItem(m_tree);
+        auto* item = new QTreeWidgetItem();
+        items.append(item);
         item->setText(0, QString::fromStdString(name));
         item->setData(0, Qt::UserRole, QString::fromStdString(name));
 
@@ -115,6 +125,7 @@ void LayerPanel::refresh() {
         // Line type.
         item->setText(5, QString::fromUtf8(draft::lineTypeName(lp->lineType)));
     }
+    m_tree->addTopLevelItems(items);
 
     m_refreshing = false;
 }
