@@ -411,8 +411,12 @@ jobs:
           perl -e 'alarm shift; exec @ARGV' 60 \
             "${mount}/HorizonCAD.app/Contents/MacOS/HorizonCAD" --self-test 2>&1 | tee self-test.log
           status=${PIPESTATUS[0]}
+          # horizon-mcp, beside it in the bundle, answers an AI client.
+          bash packaging/macos/check-mcp.sh "${mount}/HorizonCAD.app"
+          mcp=$?
           set -e
           hdiutil detach "${mount}"
+          test "${mcp}" -eq 0
           if [[ "${status}" -eq 3 ]]; then
             # The runner is a virtual machine; its OpenGL may not draw.
             echo "::warning::the application started, but its viewport could not draw on this runner"

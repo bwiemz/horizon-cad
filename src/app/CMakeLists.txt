@@ -73,6 +73,13 @@ install(TARGETS horizon
     RUNTIME DESTINATION bin
     BUNDLE DESTINATION .
 )
+# horizon-mcp, for an AI client to drive Horizon CAD with, goes inside the
+# bundle beside the application (elsewhere, src/mcp installs it in bin). It
+# links Qt, so Qt's deployment below is told of it, and it uses the bundle's
+# Qt. Installed before that deployment runs.
+if (APPLE)
+    install(TARGETS horizon-mcp RUNTIME DESTINATION "${HZ_BUNDLE_NAME}.app/Contents/MacOS")
+endif()
 if (WIN32)
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION bin)
     include(InstallRequiredSystemLibraries)
@@ -94,7 +101,8 @@ if ((WIN32 OR APPLE) AND COMMAND qt_generate_deploy_app_script)
     set(_hz_deploy_options)
     if (APPLE)
         set(_hz_plugins_dir "${HZ_BUNDLE_NAME}.app/Contents/PlugIns")
-        set(_hz_deploy_options DEPLOY_TOOL_OPTIONS -no-plugins)
+        set(_hz_deploy_options DEPLOY_TOOL_OPTIONS -no-plugins
+            "-executable=${HZ_BUNDLE_NAME}.app/Contents/MacOS/horizon-mcp")
         set(_hz_mac_plugins platforms Qt6::QCocoaIntegrationPlugin styles Qt6::QMacStylePlugin)
         # The AI assistant's https: the TLS backend this Qt has.
         if (TARGET Qt6::QSecureTransportBackendPlugin)

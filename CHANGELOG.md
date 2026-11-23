@@ -19,6 +19,14 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **`horizon-mcp` ships in the macOS application.** It was installed beside
+  Horizon CAD on Windows and Linux only; on a Mac it had to be built from
+  source. It is now inside the bundle, at
+  `HorizonCAD.app/Contents/MacOS/horizon-mcp`, using the bundle's Qt, and
+  signed with it. The release build and the install check start it from the
+  disk image and have it answer an MCP client (initialize, then the list of
+  its tools).
+
 - **A DXF ellipse over more than a turn is read whole.** An ELLIPSE whose
   end parameter was 60 million radians (found by the DXF fuzzer) was drawn
   as a polyline of 600 million points, asking for 9.8 GB. Parameters more
