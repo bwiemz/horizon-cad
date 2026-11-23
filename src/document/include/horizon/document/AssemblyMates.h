@@ -13,6 +13,29 @@
 namespace hz::doc {
 
 class DatumFeature;
+class DocumentManager;
+
+/// What placing an assembly by its mates came to (placeByMates).
+struct MatePlacement {
+    /// The mates hold: each component is where they put it.
+    bool placed = false;
+    /// The geometry every mate names was found, and they were solved (held
+    /// or not); false when a mate names geometry that is not there.
+    bool gathered = false;
+    /// Why not, when not: geometry a mate names that cannot be found, or the
+    /// solver's word ("did not converge").
+    std::string why;
+    /// The solve's own result, when there was one (none without mates).
+    model::AssemblySolveResult result;
+};
+
+/// Place @p assembly by its mates: each component's part read whole from
+/// @p documents first (a mate's faces are found there), the mates gathered
+/// and solved, and, when they hold, each component moved where they put it
+/// and the patterns' instances after their seeds. The Assembly menu's
+/// commands and the AI assistant's tools place an assembly this one way. An
+/// assembly with no mates is placed as it is.
+MatePlacement placeByMates(AssemblyDocument& assembly, DocumentManager& documents);
 
 /// The frame a mate takes of @p datum (Phase 160): a plane's origin and
 /// normal, an axis's origin and direction, a point's position, in its part.

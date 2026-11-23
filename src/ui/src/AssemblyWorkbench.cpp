@@ -306,29 +306,9 @@ void AssemblyWorkbench::onInsertComponent() {
 bool AssemblyWorkbench::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool reportSuccess) {
     if (asmDoc.mates().empty()) return true;
 
-    // Frames come from B-Rep faces, so mate solving needs resolved parts.
-    const std::string asmDir = assemblyDir(asmDoc);
-    for (auto& comp : asmDoc.components()) {
-        if (comp.solid() == nullptr) {
-            m_host.documents().resolveComponent(comp, doc::ComponentState::Resolved, asmDir);
-        }
-    }
-    std::string why;
-    const auto mates = doc::AssemblyMates::gather(asmDoc, &why);
-    if (!mates) {
-        QString message = QString::fromStdString(why);
-        if (!message.isEmpty()) message[0] = message[0].toUpper();
-        m_host.showStatus(message);
-        return false;
-    }
-    const auto result = mates->solve();
-
-    if (result.status == model::AssemblySolveStatus::Success) {
-        for (auto& comp : asmDoc.components()) {
-            auto it = result.transforms.find(comp.id);
-            if (it != result.transforms.end()) comp.transform = it->second;
-        }
-        asmDoc.updatePatterns();  // their instances follow the seeds (Phase 161)
+    const doc::MatePlacement placement = doc::placeByMates(asmDoc, m_host.documents());
+    if (placement.placed) {
+        const model::AssemblySolveResult& result = placement.result;
         QString status = tr("Mates solved (%1 iterations)").arg(result.iterations);
         if (result.redundantCount > 0) {
             status += tr("; %1 redundant constraint(s)").arg(result.redundantCount);
@@ -340,10 +320,14 @@ bool AssemblyWorkbench::solveAssemblyMates(doc::AssemblyDocument& asmDoc, bool r
         if (reportSuccess) m_host.showStatus(status);
         return true;
     }
-
-    m_host.showStatus(tr("Mate solve failed: %1")
-                          .arg(QString::fromStdString(result.message.empty() ? "did not converge"
-                                                                             : result.message)));
+    if (placement.gathered) {
+        m_host.showStatus(tr("Mate solve failed: %1").arg(QString::fromStdString(placement.why)));
+        return false;
+    }
+    // Geometry a mate names that is not found: said as gather() says it.
+    QString message = QString::fromStdString(placement.why);
+    if (!message.isEmpty()) message[0] = message[0].toUpper();
+    m_host.showStatus(message);
     return false;
 }
 

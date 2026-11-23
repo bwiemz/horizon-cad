@@ -141,3 +141,68 @@ TEST(AssemblyMatesIntegrationTest, MatedStackSolvesAfterReload) {
 
     fs::remove_all(dir);
 }
+
+// One way to place an assembly by its mates, for the Assembly menu and the AI
+// assistant both. Only Fixed mates leave nothing to solve: that is placed as
+// it is, not a failure (the Add Mate form refused a first, Fixed mate, as
+// "did not converge").
+TEST(AssemblyMatesIntegrationTest, PlaceByMatesHoldsAFixedMateAlone) {
+    fs::path dir = fs::temp_directory_path() / "hz_test_asm_place_by_mates";
+    fs::create_directories(dir);
+    const std::string partPath = (dir / "plate.hzpart").string();
+    std::string featureTag;
+    {
+        Document part;
+        part.setType(DocumentType::Part);
+        auto sketch = makeRectSketch(20.0, 10.0);
+        part.addSketch(sketch);
+        auto feature = std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 2.0);
+        featureTag = feature->featureID();
+        part.featureTree().addFeature(std::move(feature));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_TRUE(NativeFormat::save(partPath, part));
+    }
+    DocumentManager mgr;
+    wireToNativeFormat(mgr);
+    AssemblyDocument asmDoc;
+    asmDoc.setFilePath((dir / "rig.hzasm").string());
+    ComponentInstance first;
+    first.partPath = "plate.hzpart";  // from the assembly's folder
+    first.transform = Mat4::translation(Vec3(5, 6, 7));
+    const uint64_t a = asmDoc.addComponent(first);
+    ComponentInstance second;
+    second.partPath = partPath;
+    second.transform = Mat4::translation(Vec3(0, 0, 40));
+    const uint64_t b = asmDoc.addComponent(second);
+
+    Mate ground;
+    ground.type = MateType::Fixed;
+    ground.a.componentId = a;
+    asmDoc.addMate(ground);
+    MatePlacement placement = placeByMates(asmDoc, mgr);
+    EXPECT_TRUE(placement.placed) << placement.why;
+    EXPECT_NE(asmDoc.component(a)->resolvedPart, nullptr);  // its part read whole
+    EXPECT_DOUBLE_EQ(asmDoc.component(a)->transform.at(2, 3), 7.0);
+
+    // A mate that holds moves b; one naming a face not there is said.
+    Mate stack;
+    stack.type = MateType::Coincident;
+    stack.a = {a, hz::topo::TopologyID::make(featureTag, "cap_top")};
+    stack.b = {b, hz::topo::TopologyID::make(featureTag, "cap_bottom")};
+    asmDoc.addMate(stack);
+    placement = placeByMates(asmDoc, mgr);
+    EXPECT_TRUE(placement.placed) << placement.why;
+    EXPECT_NEAR(asmDoc.component(b)->transform.at(2, 3), 9.0, 1e-6);
+
+    Mate lost;
+    lost.type = MateType::Coincident;
+    lost.a = {a, hz::topo::TopologyID::make(featureTag, "no_such_face")};
+    lost.b = {b, hz::topo::TopologyID::make(featureTag, "cap_bottom")};
+    asmDoc.addMate(lost);
+    placement = placeByMates(asmDoc, mgr);
+    EXPECT_FALSE(placement.placed);
+    EXPECT_FALSE(placement.gathered);
+    EXPECT_NE(placement.why.find("could not be resolved"), std::string::npos) << placement.why;
+
+    fs::remove_all(dir);
+}

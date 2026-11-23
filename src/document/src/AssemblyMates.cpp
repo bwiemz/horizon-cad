@@ -1,8 +1,10 @@
 #include "horizon/document/AssemblyMates.h"
 
 #include <algorithm>
+#include <filesystem>
 
 #include "horizon/document/Document.h"
+#include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/modeling/MateGeometry.h"
 
@@ -149,6 +151,46 @@ void AssemblyMates::place(const std::map<uint64_t, math::Mat4>& transforms) {
         const auto found = transforms.find(sc.id);
         if (found != transforms.end()) sc.transform = found->second;
     }
+}
+
+MatePlacement placeByMates(AssemblyDocument& assembly, DocumentManager& documents) {
+    MatePlacement out;
+    if (assembly.mates().empty()) {
+        out.placed = out.gathered = true;
+        return out;
+    }
+    // A mate's frames come from its components' faces: their parts are read
+    // whole. A relative part path is taken from the assembly's folder.
+    const std::string dir = assembly.filePath().empty()
+                                ? std::string()
+                                : std::filesystem::path(assembly.filePath()).parent_path().string();
+    for (auto& comp : assembly.components()) {
+        if (comp.solid() == nullptr) {
+            documents.resolveComponent(comp, ComponentState::Resolved, dir);
+        }
+    }
+    const auto mates = AssemblyMates::gather(assembly, &out.why);
+    if (!mates) return out;
+    out.gathered = true;
+    out.result = mates->solve();
+    // Only Fixed mates leave the solver nothing to solve: each component
+    // stays where it is, as it is grounded. Not a failure (the Add Mate form
+    // refused a first, Fixed mate, as "did not converge").
+    if (out.result.status == model::AssemblySolveStatus::NoMates) {
+        out.placed = true;
+        return out;
+    }
+    if (out.result.status != model::AssemblySolveStatus::Success) {
+        out.why = out.result.message.empty() ? "did not converge" : out.result.message;
+        return out;
+    }
+    for (auto& comp : assembly.components()) {
+        const auto it = out.result.transforms.find(comp.id);
+        if (it != out.result.transforms.end()) comp.transform = it->second;
+    }
+    assembly.updatePatterns();  // their instances follow the seeds (Phase 161)
+    out.placed = true;
+    return out;
 }
 
 }  // namespace hz::doc
