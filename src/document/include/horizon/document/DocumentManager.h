@@ -138,7 +138,8 @@ public:
                           const std::vector<std::string>& within = {});
 
     /// Whether every file the assembly at @p path places, at any depth,
-    /// passes @p allowed (given each one's path, absolute), read from the
+    /// passes @p allowed (given each one's path as resolveComponent would
+    /// open it: @p allowed should resolve its links), read from the
     /// assembly files alone: no part is read, and no assembly @p allowed
     /// refuses. False too, failing closed, when one of the assemblies cannot
     /// be read (or no assembly loader is set) or they nest deeper than

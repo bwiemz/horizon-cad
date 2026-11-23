@@ -210,9 +210,13 @@ bool DocumentManager::placesOnly(const std::string& path,
         if (!m_assemblyLoader(file, read)) return false;
         const std::filesystem::path dir = std::filesystem::path(file).parent_path();
         for (const auto& comp : read.components()) {
+            // The path exactly as resolveComponent will open it: joined, not
+            // normalized by its words (a link followed by ".." is another
+            // file to the system than to the words). @p allowed resolves it
+            // as the system does.
             std::filesystem::path placed(comp.partPath);
             if (placed.is_relative()) placed = dir / placed;
-            const std::string full = placed.lexically_normal().string();
+            const std::string full = placed.string();
             if (!allowed(full)) return false;
             if (comp.isAssembly() && !walk(full, depth + 1)) return false;
         }
