@@ -36,6 +36,7 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
@@ -436,6 +437,56 @@ TEST(AiAssistantTest, ChangesADrawingSheetOneUndoStepAtATime) {
     EXPECT_EQ(sheet->undoStack().undoCount(), 0u);
     EXPECT_EQ(titleBlock(), titleWas);
     EXPECT_EQ(dimensions(), 0);
+}
+
+// A change the sheet refuses (an edge it does not show, a dimension it does
+// not have) leaves it as it was: no step, and a sheet laid out by itself is
+// still laid out by itself.
+TEST(AiAssistantTest, ARefusedSheetChangeLeavesTheSheetAsItWas) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("plate.hzpart"));
+    std::string edge;
+    {
+        hz::doc::Document part;
+        part.setType(hz::doc::DocumentType::Part);
+        part.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(80, 40, 6));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), part));
+        const auto front =
+            hz::model::DrawingGenerator::makeView(*part.solid(), hz::model::StandardView::Front);
+        ASSERT_FALSE(front.edges.empty());
+        edge = hz::model::logicalEdge(front.edges.front().sourceEdge.tag());
+    }
+    MainWindow window;
+    ASSERT_TRUE(window.openPath(path));
+    ASSERT_TRUE(waitFor([&window] { return !window.backgroundWorkRunning(); }, 10000));
+    window.findChild<QAction*>(QStringLiteral("action_new_drawing_from_part"))->trigger();
+    hz::doc::Document* sheet = window.activeDocument();
+    ASSERT_NE(sheet, nullptr);
+
+    FakeTransport transport;
+    AiAssistantPanel* panel = localPanel(window, transport);
+    ASSERT_NE(panel, nullptr);
+    transport.replies.push_back(
+        toolCall("c1", "add_dimension", {{"view", 0}, {"edge", "no-such-edge"}}));
+    transport.replies.push_back(toolCall("c2", "remove_dimension", {{"view", 0}, {"edge", edge}}));
+    transport.replies.push_back(toolCall("c3", "move_view", {{"view", 1}, {"by", {0, 0}}}));
+    transport.replies.push_back(text("Nothing to do."));
+    ASSERT_TRUE(panel->submit(QStringLiteral("dimension it")));
+    EXPECT_EQ(sheet->undoStack().undoCount(), 0u);
+    const json second = transport.body(1);
+    EXPECT_NE(second["messages"].back().value("content", "").find("no edge named"),
+              std::string::npos);
+
+    const QString file = dir.filePath(QStringLiteral("plate.hzdwg"));
+    {
+        hz::test::FilePicker picker(file);
+        window.findChild<QAction*>(QStringLiteral("action_save"))->trigger();
+    }
+    hz::io::DrawingDocumentSpec saved;
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::readSpec(file.toStdString(), saved));
+    EXPECT_TRUE(saved.views.empty()) << "still laid out by itself";
 }
 
 TEST(AiAssistantTest, TheModelSeesWhatItMade) {

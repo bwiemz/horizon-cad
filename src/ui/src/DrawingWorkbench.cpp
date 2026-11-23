@@ -812,6 +812,27 @@ bool refused(const std::string& message, std::string* error) {
 
 constexpr const char* kNotASheet = "it is not a drawing sheet";
 
+/// Puts a sheet's spec back as it was when it goes, unless the change it
+/// guards reached the drawing (redraw, which keeps or puts back the spec
+/// itself): a change refused part-way leaves the sheet as it was, its
+/// automatic layout too.
+class SpecKept {
+public:
+    explicit SpecKept(io::DrawingDocumentSpec& spec) : m_spec(spec), m_saved(spec) {}
+    ~SpecKept() {
+        if (!m_drawing) m_spec = std::move(m_saved);
+    }
+    SpecKept(const SpecKept&) = delete;
+    SpecKept& operator=(const SpecKept&) = delete;
+    /// The change goes on to be drawn.
+    void drawing() { m_drawing = true; }
+
+private:
+    io::DrawingDocumentSpec& m_spec;
+    io::DrawingDocumentSpec m_saved;
+    bool m_drawing = false;
+};
+
 /// A view number a caller gave that the sheet does not have.
 std::string noView(std::size_t view) {
     return "the sheet has no view " + std::to_string(view) + " (get_sheet_info lists them)";
@@ -858,7 +879,9 @@ bool DrawingWorkbench::setTitleBlock(doc::Document& document, const model::Title
         }
     }
     if (!redraw(*sheet, verb, error)) return false;
-    if (m_host.currentDocument() == &document) shown(document);
+    // New paper, in view; the same paper is left as the user has it.
+    const bool newPaper = paper.size != paperWas.size || paper.orientation != paperWas.orientation;
+    if (newPaper && m_host.currentDocument() == &document) shown(document);
     return true;
 }
 
@@ -879,11 +902,15 @@ bool DrawingWorkbench::moveView(doc::Document& document, std::size_t view, const
                                 std::string* error) {
     Sheet* sheet = sheetOf(&document);
     if (sheet == nullptr) return refused(kNotASheet, error);
+    if (view >= sheet->drawing.views.size()) return refused(noView(view), error);
+    if (std::abs(by.x) < 1e-9 && std::abs(by.y) < 1e-9) return true;  // nowhere: no change
+    SpecKept kept(sheet->spec);
     listViews(*sheet);
     if (view >= sheet->spec.views.size()) return refused(noView(view), error);
     math::Vec2& at = sheet->spec.views[view].placement;
     at = {at.x + by.x, at.y + by.y};
     sheet->spec.version = 3;
+    kept.drawing();
     return redraw(*sheet, tr("Move View"), error);
 }
 
@@ -892,6 +919,7 @@ bool DrawingWorkbench::removeView(doc::Document& document, std::size_t view, int
     const QString verb = tr("Remove View");
     Sheet* sheet = sheetOf(&document);
     if (sheet == nullptr) return refused(kNotASheet, error);
+    SpecKept kept(sheet->spec);
     listViews(*sheet);
     auto& views = sheet->spec.views;
     if (view >= views.size()) return refused(noView(view), error);
@@ -907,18 +935,19 @@ bool DrawingWorkbench::removeView(doc::Document& document, std::size_t view, int
         return refused(m_host, tr("%1: a sheet keeps at least one view").arg(verb), error);
     }
     std::vector<int> renumbered(views.size(), -1);
-    std::vector<io::DrawingViewSpec> kept;
+    std::vector<io::DrawingViewSpec> remaining;
     for (std::size_t i = 0; i < views.size(); ++i) {
         if (gone[i]) continue;
-        renumbered[i] = static_cast<int>(kept.size());
-        kept.push_back(views[i]);
+        renumbered[i] = static_cast<int>(remaining.size());
+        remaining.push_back(views[i]);
     }
-    for (io::DrawingViewSpec& v : kept) {
+    for (io::DrawingViewSpec& v : remaining) {
         if (v.source >= 0) v.source = renumbered[static_cast<std::size_t>(v.source)];
     }
     const auto with = std::count(gone.begin(), gone.end(), true) - 1;
-    views = std::move(kept);
+    views = std::move(remaining);
     sheet->spec.version = 3;
+    kept.drawing();
     if (!redraw(*sheet, verb, error)) return false;
     if (taken != nullptr) *taken = static_cast<int>(with);
     if (with > 0) {
@@ -932,6 +961,13 @@ bool DrawingWorkbench::setViewSwitches(doc::Document& document, std::size_t view
                                        bool tangent, bool centreLines, std::string* error) {
     Sheet* sheet = sheetOf(&document);
     if (sheet == nullptr) return refused(kNotASheet, error);
+    if (view >= sheet->drawing.views.size()) return refused(noView(view), error);
+    const model::DrawingView& now = sheet->drawing.views[view];
+    if (now.showHidden == hidden && now.showTangentEdges == tangent &&
+        now.showCentreLines == centreLines) {
+        return true;  // as it is: no change
+    }
+    SpecKept kept(sheet->spec);
     listViews(*sheet);
     if (view >= sheet->spec.views.size()) return refused(noView(view), error);
     io::DrawingViewSpec& chosen = sheet->spec.views[view];
@@ -939,6 +975,7 @@ bool DrawingWorkbench::setViewSwitches(doc::Document& document, std::size_t view
     chosen.showTangentEdges = tangent;
     chosen.showCentreLines = centreLines;
     sheet->spec.version = 3;
+    kept.drawing();
     return redraw(*sheet, tr("View Properties"), error);
 }
 
@@ -947,6 +984,7 @@ bool DrawingWorkbench::addEdgeDimension(doc::Document& document, std::size_t vie
     const QString verb = tr("Add Dimension");
     Sheet* sheet = sheetOf(&document);
     if (sheet == nullptr) return refused(kNotASheet, error);
+    SpecKept kept(sheet->spec);
     listViews(*sheet);
     if (view >= sheet->spec.views.size()) return refused(noView(view), error);
     // A curve is dimensioned whole, by its own name, not one chord's.
@@ -1016,6 +1054,7 @@ bool DrawingWorkbench::addEdgeDimension(doc::Document& document, std::size_t vie
     }
     dimensions.push_back(std::move(dimension));
     sheet->spec.version = 3;
+    kept.drawing();
     return redraw(*sheet, verb, error);
 }
 
@@ -1024,6 +1063,7 @@ bool DrawingWorkbench::removeEdgeDimensions(doc::Document& document, std::size_t
     const QString verb = tr("Remove Dimension");
     Sheet* sheet = sheetOf(&document);
     if (sheet == nullptr) return refused(kNotASheet, error);
+    SpecKept kept(sheet->spec);
     listViews(*sheet);
     if (view >= sheet->spec.views.size()) {
         return refused(m_host, tr("%1: that edge has no dimension").arg(verb), error);
@@ -1033,6 +1073,7 @@ bool DrawingWorkbench::removeEdgeDimensions(doc::Document& document, std::size_t
     const auto removed =
         std::erase_if(dimensions, [&](const io::DrawingDimensionSpec& d) { return d.edge == tag; });
     if (removed == 0) return refused(m_host, tr("%1: that edge has no dimension").arg(verb), error);
+    kept.drawing();
     return redraw(*sheet, verb, error);
 }
 
