@@ -223,16 +223,15 @@ protected:
             if (block == nullptr || delta == data.end() || !delta->is_object()) return {};
             const std::string kind = stringAt(*delta, "type");
             if (kind == "text_delta") {
-                const std::string text = stringAt(*delta, "text");
-                (*block)["text"] = stringAt(*block, "text") + text;
+                std::string text = stringAt(*delta, "text");
+                appendAt(*block, "text", text);
                 return text;
             }
             if (kind == "thinking_delta") {
-                (*block)["thinking"] = stringAt(*block, "thinking") + stringAt(*delta, "thinking");
+                appendAt(*block, "thinking", stringAt(*delta, "thinking"));
             } else if (kind == "signature_delta") {
                 // Lost, the thinking is refused when it is sent back.
-                (*block)["signature"] =
-                    stringAt(*block, "signature") + stringAt(*delta, "signature");
+                appendAt(*block, "signature", stringAt(*delta, "signature"));
             } else if (kind == "input_json_delta") {
                 m_input[positionOf(data)] += stringAt(*delta, "partial_json");
             } else if (kind == "citations_delta") {

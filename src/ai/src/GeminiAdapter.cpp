@@ -167,12 +167,14 @@ ChatResponse parseContent(const HttpResponse& http) {
     return response;
 }
 
-/// Whether @p part is text and nothing else: one that may join the text
-/// before it. A part with a thought signature is kept as it came.
-bool isPlainText(const json& part) {
+/// Whether @p part is a piece of text (with, perhaps, a thought signature):
+/// one that joins the text before it. A function call is never one.
+bool isTextPiece(const json& part) {
     if (!part.is_object() || !part.contains("text") || !part["text"].is_string()) return false;
     for (auto it = part.begin(); it != part.end(); ++it) {
-        if (it.key() != "text" && it.key() != "thought") return false;
+        if (it.key() != "text" && it.key() != "thought" && it.key() != "thoughtSignature") {
+            return false;
+        }
     }
     return true;
 }
@@ -222,10 +224,15 @@ protected:
             if (!isThought(part)) text += stringAt(part, "text");
             // Text comes in many small parts; one part for it, as a reply
             // sent whole has (a message's text blocks are joined by a blank
-            // line).
-            if (isPlainText(part) && !m_parts.empty() && isPlainText(m_parts.back()) &&
+            // line). A signature on any piece goes on the whole, where a reply
+            // sent whole carries it.
+            if (isTextPiece(part) && !m_parts.empty() && isTextPiece(m_parts.back()) &&
                 isThought(part) == isThought(m_parts.back())) {
-                m_parts.back()["text"] = stringAt(m_parts.back(), "text") + stringAt(part, "text");
+                json& whole = m_parts.back();
+                appendAt(whole, "text", stringAt(part, "text"));
+                if (const auto signature = part.find("thoughtSignature"); signature != part.end()) {
+                    whole["thoughtSignature"] = *signature;
+                }
             } else {
                 m_parts.push_back(part);
             }

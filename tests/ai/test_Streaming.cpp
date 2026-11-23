@@ -305,6 +305,17 @@ TEST(AnthropicStreamTest, AStreamThatStopsShortIsNotTheReply) {
     EXPECT_NE(read.response.error.find("the connection was reset"), std::string::npos);
 }
 
+TEST(AnthropicStreamTest, AStreamThatStopsBeforeAnythingCameIsCutOff) {
+    // The connection closed after the headers: nothing to read, which is not
+    // "a reply that is not JSON".
+    const auto reader = makeAdapter(ProviderKind::Anthropic)->makeStreamReader();
+    const ChatResponse response = reader->finish({200, "", "the server closed the connection"});
+    EXPECT_EQ(response.stop, StopReason::Error);
+    EXPECT_NE(response.error.find("stopped before it was complete"), std::string::npos)
+        << response.error;
+    EXPECT_NE(response.error.find("the server closed the connection"), std::string::npos);
+}
+
 TEST(AnthropicStreamTest, AReplySentWholeOrAnErrorIsReadWhole) {
     // A server that took no notice of "stream": the whole message.
     const HttpResponse whole = anthropicReply("Done.");
@@ -481,6 +492,31 @@ TEST(GeminiStreamTest, TextIsOnePartAndASignatureKeepsItsOwn) {
     EXPECT_EQ(response.message.blocks[3].raw["thoughtSignature"], "sig-2");
     EXPECT_EQ(response.usage.inputTokens, 50);
     EXPECT_EQ(response.usage.outputTokens, 13);
+}
+
+TEST(GeminiStreamTest, ASignatureOnAPieceOfTextKeepsTheTextWhole) {
+    // Sent whole, the text is one part with the signature on it. Streamed,
+    // the signature may come on any piece: on the last, or on one between.
+    const auto piece = [](const std::string& text, const std::string& signature = "",
+                          const std::string& finish = "") {
+        json part = {{"text", text}};
+        if (!signature.empty()) part["thoughtSignature"] = signature;
+        json candidate = {{"content", {{"role", "model"}, {"parts", {part}}}}};
+        if (!finish.empty()) candidate["finishReason"] = finish;
+        return data({{"candidates", {candidate}}});
+    };
+    const Read last =
+        readStream(ProviderKind::Gemini, sse({piece("Hel"), piece("lo", "sig-last", "STOP")}));
+    ASSERT_EQ(last.response.stop, StopReason::EndTurn) << last.response.error;
+    ASSERT_EQ(last.response.message.blocks.size(), 1u);
+    EXPECT_EQ(last.response.message.text(), "Hello");
+    EXPECT_EQ(last.response.message.blocks[0].raw["thoughtSignature"], "sig-last");
+
+    const Read middle = readStream(
+        ProviderKind::Gemini, sse({piece("A "), piece("B ", "sig-mid"), piece("C", "", "STOP")}));
+    ASSERT_EQ(middle.response.message.blocks.size(), 1u);
+    EXPECT_EQ(middle.response.message.text(), "A B C");
+    EXPECT_EQ(middle.response.message.blocks[0].raw["thoughtSignature"], "sig-mid");
 }
 
 TEST(GeminiStreamTest, ABlockedPromptErrorsAndAStreamCutShort) {

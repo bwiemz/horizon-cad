@@ -98,57 +98,62 @@ ai::HttpTransport::RequestId QtHttpTransport::start(const ai::HttpRequest& reque
         reply = m_manager->post(networkRequest, QByteArray::fromStdString(request.body));
     }
     m_replies.insert(id, reply);
-    // What a streamed reply's pieces were, for its whole body at the end.
+    // The body as it came; a stream's pieces are handed over as they come.
+    const bool streamed = static_cast<bool>(part);
     auto received = std::make_shared<std::string>();
-    if (part) {
-        connect(reply, &QNetworkReply::readyRead, this, [reply, part = std::move(part), received] {
-            if (reply->property(kCancelled).toBool()) return;
-            const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            const QByteArray bytes = reply->readAll();
-            received->append(bytes.constData(), static_cast<std::size_t>(bytes.size()));
-            // An error's body is not a stream: it comes whole, at the end.
-            if (status < 200 || status >= 300 || bytes.isEmpty()) return;
-            try {
-                part(std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())));
-            } catch (const std::exception& e) {
-                spdlog::error("AI assistant: a reply's handler failed: {}", e.what());
-            }
+    const auto take = [reply, received, part = std::move(part)] {
+        const QByteArray bytes = reply->readAll();
+        if (bytes.isEmpty()) return;
+        received->append(bytes.constData(), static_cast<std::size_t>(bytes.size()));
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        // An error's body is not a stream: it is read whole, at the end.
+        if (!part || status < 200 || status >= 300) return;
+        try {
+            part(std::string_view(bytes.constData(), static_cast<std::size_t>(bytes.size())));
+        } catch (const std::exception& e) {
+            spdlog::error("AI assistant: a reply's handler failed: {}", e.what());
+        }
+    };
+    if (streamed) {
+        connect(reply, &QNetworkReply::readyRead, this, [reply, take] {
+            if (!reply->property(kCancelled).toBool()) take();
         });
     }
-    connect(
-        reply, &QNetworkReply::finished, this, [this, id, reply, received, done = std::move(done)] {
-            m_replies.remove(id);
-            reply->deleteLater();
-            if (reply->property(kCancelled).toBool()) return;
-            ai::HttpResponse response;
-            response.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            received->append(reply->readAll().toStdString());
-            response.body = std::move(*received);
-            const auto failure = reply->error();
-            if (response.status == 0) {
-                // No HTTP answer at all. The error text names the host, never a
-                // header: no key reaches it.
-                response.networkError = failure == QNetworkReply::OperationCanceledError ||
-                                                failure == QNetworkReply::TimeoutError
-                                            ? "no reply within the time limit"
-                                            : reply->errorString().toStdString();
-            } else if (failure == QNetworkReply::RemoteHostClosedError ||
-                       failure == QNetworkReply::TimeoutError ||
-                       failure == QNetworkReply::OperationCanceledError) {
-                // An answer that stopped part-way (a stream): its reader says
-                // the reply is incomplete, and why.
-                response.networkError = failure == QNetworkReply::RemoteHostClosedError
-                                            ? "the server closed the connection"
-                                            : "nothing more came within the time limit";
-            }
-            try {
-                done(response);
-            } catch (const std::exception& e) {
-                // The session's callback does not throw; a transport never lets
-                // an exception into Qt's event loop.
-                spdlog::error("AI assistant: a reply's handler failed: {}", e.what());
-            }
-        });
+    connect(reply, &QNetworkReply::finished, this,
+            [this, id, reply, received, take, done = std::move(done)] {
+                m_replies.remove(id);
+                reply->deleteLater();
+                if (reply->property(kCancelled).toBool()) return;
+                take();  // what is left: a stream's last piece too, before the end
+                ai::HttpResponse response;
+                response.status =
+                    reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                response.body = std::move(*received);
+                const auto failure = reply->error();
+                if (response.status == 0) {
+                    // No HTTP answer at all. The error text names the host, never a
+                    // header: no key reaches it.
+                    response.networkError = failure == QNetworkReply::OperationCanceledError ||
+                                                    failure == QNetworkReply::TimeoutError
+                                                ? "no reply within the time limit"
+                                                : reply->errorString().toStdString();
+                } else if (failure == QNetworkReply::RemoteHostClosedError ||
+                           failure == QNetworkReply::TimeoutError ||
+                           failure == QNetworkReply::OperationCanceledError) {
+                    // An answer that stopped part-way (a stream): its reader says
+                    // the reply is incomplete, and why.
+                    response.networkError = failure == QNetworkReply::RemoteHostClosedError
+                                                ? "the server closed the connection"
+                                                : "nothing more came within the time limit";
+                }
+                try {
+                    done(response);
+                } catch (const std::exception& e) {
+                    // The session's callback does not throw; a transport never lets
+                    // an exception into Qt's event loop.
+                    spdlog::error("AI assistant: a reply's handler failed: {}", e.what());
+                }
+            });
     return id;
 }
 

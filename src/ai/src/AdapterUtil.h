@@ -39,6 +39,11 @@ std::string httpErrorMessage(std::string_view provider, const HttpResponse& resp
 /// A ChatResponse that failed with @p message.
 ChatResponse failed(std::string message);
 
+/// Add @p more to the string @p object[@p key] where it is (one that is not a
+/// string yet is made one): a reply's text grows by many small pieces, and
+/// building it again for each would take time as the square of its length.
+void appendAt(nlohmann::json& object, const char* key, std::string_view more);
+
 /// Serialise @p value for a request body; invalid UTF-8 is replaced, never
 /// thrown on.
 std::string dump(const nlohmann::json& value);

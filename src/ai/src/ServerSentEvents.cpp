@@ -16,6 +16,12 @@ constexpr std::string_view kByteOrderMark = "\xEF\xBB\xBF";
 
 }  // namespace
 
+void appendAt(nlohmann::json& object, const char* key, std::string_view more) {
+    nlohmann::json& value = object[key];
+    if (!value.is_string()) value = std::string();
+    value.get_ref<std::string&>().append(more);
+}
+
 std::vector<SseEvent> SseParser::feed(std::string_view bytes) {
     std::vector<SseEvent> out;
     if (!m_started) {
@@ -117,8 +123,15 @@ ChatResponse SseStreamReader::finish(const HttpResponse& http) {
             onEvent(event);
         }
         if (!m_broken.empty()) return failed("The reply could not be read: " + m_broken);
-        // A server that took no notice of the request to stream answers whole.
-        if (!m_events) return parseWhole(http);
+        if (!m_events) {
+            // Nothing came after the headers: the connection closed first.
+            if (http.body.find_first_not_of(" \t\r\n") == std::string::npos) {
+                return cutOff(http);
+            }
+            // A server that took no notice of the request to stream answers
+            // whole.
+            return parseWhole(http);
+        }
         return finishStream(http);
     } catch (const std::exception& e) {
         return failed(std::string("The reply could not be read: ") + e.what());
