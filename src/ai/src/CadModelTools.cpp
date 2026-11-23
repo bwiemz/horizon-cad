@@ -141,10 +141,32 @@ ToolResult createSketch(const CadContext& context, const json& in) {
 
 ToolResult extrude(const CadContext& context, const json& in) {
     auto sketch = sketchOf(context.document, in, "sketch_id");
-    const std::string extent =
+    std::string extent =
         choice(in, "extent", {"blind", "symmetric", "through_all", "through_all_both"},
                std::string("blind"));
+    json extra = json::object();
+    // Through all goes through the part there is. Asked of a part's first
+    // extrude, with a distance, it is a plate of that thickness the model
+    // means (seen in small local models, which ask it again and again): it is
+    // made so, and said.
+    if ((extent == "through_all" || extent == "through_all_both") &&
+        context.document.solid() == nullptr) {
+        if (!has(in, "distance")) {
+            throw ArgError("there is no part yet for \"" + extent +
+                           "\" to go through: a first extrude is blind, so give \"distance\" "
+                           "(how far, in mm), as {\"sketch_id\": " +
+                           std::to_string(sketch->id()) + ", \"distance\": 5}");
+        }
+        extent = extent == "through_all" ? "blind" : "symmetric";
+        extra["note"] = "There is no part yet to go through, so it was extruded " + extent +
+                        " by \"distance\".";
+    }
     const bool through = extent == "through_all" || extent == "through_all_both";
+    if (!through && !has(in, "distance")) {
+        throw ArgError(
+            "\"distance\" is required: how far to extrude, in mm (for example "
+            "\"distance\": 5)");
+    }
     const double distance = through ? positive(in, "distance", 1.0) : positive(in, "distance");
     const doc::BodyOperation operation = operationOf(context, in);
     // A cut from a sketch on a face goes into the part by default.
@@ -160,9 +182,9 @@ ToolResult extrude(const CadContext& context, const json& in) {
                        : extent == "through_all_both" ? Extent::ThroughAllBoth
                                                       : Extent::Blind);
     feature->setOperation(operation);
-    return addFeature(
-        context, std::move(feature), "Extrude",
-        {{"direction", toJson(dir)}, {"operation", doc::bodyOperationName(operation)}});
+    extra["direction"] = toJson(dir);
+    extra["operation"] = doc::bodyOperationName(operation);
+    return addFeature(context, std::move(feature), "Extrude", std::move(extra));
 }
 
 ToolResult revolve(const CadContext& context, const json& in) {
