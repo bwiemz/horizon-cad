@@ -29,6 +29,17 @@ work, not "post-1.0".
   change is one undo step, its mates solved as the Assembly menu solves them,
   and a change they cannot hold is not made. Fixed: a Fixed mate added as an
   assembly's first mate was refused as "did not converge".
+- **The AI sees what it made.** A `get_view_image` tool draws the part
+  or assembly from any side or in iso: shaded, its edges dark, the axes
+  marked. It is drawn in software, so the same model always gives the same
+  picture, with no GPU. A model that reads images looks at it to check its
+  work, and the panel shows the user each picture the model saw. Each
+  provider is sent the picture in the form it takes: inside the tool result
+  for Claude, in a following user message for OpenAI and compatible
+  servers, beside the function response for Gemini, and as image content
+  over MCP. Only the newest three pictures go with each request. The
+  assistant's settings turn it on or off per provider; it starts off for a
+  local server, whose model may read no images.
 - **`horizon-mcp` builds assemblies.** `new_document` makes an assembly,
   `open_document` and `--open` read a `.hzasm`, `save_document` writes one,
   and `export_document` writes it as STEP with its parts and placements, or

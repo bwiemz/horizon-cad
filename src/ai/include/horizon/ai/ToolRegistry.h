@@ -23,6 +23,8 @@ struct ToolResult {
     /// Steps it added to the document's undo stack: one for a change (each
     /// change is one step), none for a query or a change that was refused.
     int undoSteps = 0;
+    /// Shown to the model with the content: a view of the part.
+    std::vector<Image> images;
 
     /// @p changedModel: it changed the document, as one undo step.
     static ToolResult ok(const nlohmann::json& value, bool changedModel = false);

@@ -62,15 +62,32 @@ public:
             if (message.role == Role::User) {
                 // Results first: each must follow the assistant message that
                 // asked for it.
+                json shown = json::array();  // their images, which a tool message cannot hold
                 for (const auto& block : message.blocks) {
                     if (block.kind != ContentBlock::Kind::ToolResult) continue;
                     std::string content = block.text.empty() ? "(no output)" : block.text;
                     if (block.isError) content = "Error: " + content;
                     messages.push_back(
                         {{"role", "tool"}, {"tool_call_id", block.id}, {"content", content}});
+                    for (const auto& image : block.images) {
+                        shown.push_back({{"type", "text"},
+                                         {"text", "The image " + block.name + " (" + block.id +
+                                                      ") returned:"}});
+                        shown.push_back(
+                            {{"type", "image_url"},
+                             {"image_url",
+                              {{"url", "data:" + image.mediaType + ";base64," + image.base64}}}});
+                    }
                 }
                 const std::string text = message.text();
-                if (!text.empty()) messages.push_back({{"role", "user"}, {"content", text}});
+                if (!shown.empty()) {
+                    // After the results, in a user message: the only place the
+                    // chat API takes an image.
+                    if (!text.empty()) shown.push_back({{"type", "text"}, {"text", text}});
+                    messages.push_back({{"role", "user"}, {"content", std::move(shown)}});
+                } else if (!text.empty()) {
+                    messages.push_back({{"role", "user"}, {"content", text}});
+                }
                 continue;
             }
             json calls = json::array();

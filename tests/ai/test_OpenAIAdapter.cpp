@@ -211,3 +211,26 @@ TEST(OpenAIAdapter, ParsesModelList) {
         {200, json{{"data", {{{"id", "qwen3:8b"}}, {{"id", "llama3.1"}}}}}.dump(), {}}, &error);
     EXPECT_EQ(models, (std::vector<std::string>{"llama3.1", "qwen3:8b"}));
 }
+
+// A tool message holds text only: its picture follows the results, in a
+// user message, the one place the chat API takes an image.
+TEST(OpenAIAdapter, AToolsImageFollowsTheResults) {
+    const auto adapter = makeAdapter(ProviderKind::OpenAI);
+    ChatRequest chat = chatWithToolRound();
+    chat.messages.back().blocks[1].images = {{"image/png", "iVBORw0KGgo="}};
+    const json body = json::parse(adapter->buildRequest(chat, official()).body);
+    const json& messages = body["messages"];
+    // system, user, assistant, tool, tool, user (the picture)
+    ASSERT_EQ(messages.size(), 6u);
+    EXPECT_EQ(messages[3]["role"], "tool");
+    EXPECT_EQ(messages[4]["role"], "tool");
+    EXPECT_TRUE(messages[4]["content"].is_string());
+    const json& shown = messages[5];
+    EXPECT_EQ(shown["role"], "user");
+    ASSERT_EQ(shown["content"].size(), 2u);
+    EXPECT_EQ(shown["content"][0]["type"], "text");
+    EXPECT_NE(shown["content"][0]["text"].get<std::string>().find("call_b"), std::string::npos);
+    EXPECT_EQ(shown["content"][1],
+              (json{{"type", "image_url"},
+                    {"image_url", {{"url", "data:image/png;base64,iVBORw0KGgo="}}}}));
+}
