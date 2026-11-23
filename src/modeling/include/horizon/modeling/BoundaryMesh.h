@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -54,6 +55,12 @@ public:
     /// dominant plane, preserving winding.  Handles non-convex polygons.
     /// Falls back to a fan when ear clipping cannot proceed.
     static std::vector<std::array<math::Vec3, 3>> triangulatePolygon(
+        const std::vector<math::Vec3>& points);
+    /// The same triangles, each as the indices of its corners in @p points:
+    /// for a caller that joins triangles back together along their shared
+    /// sides, which positions alone cannot tell where a polygon touches
+    /// itself.
+    static std::vector<std::array<size_t, 3>> triangulatePolygonCorners(
         const std::vector<math::Vec3>& points);
 
     /// A face loop's points: its vertices in loop order and, with

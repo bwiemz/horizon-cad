@@ -99,7 +99,11 @@ static std::string dumpJson(const json& root, int indent) {
 /// construction and group; a block comes after the blocks it places. An
 /// older build would leave those entities out of the block, and lose the
 /// rest's construction and group without a word.
-static constexpr int kFormatVersion = 30;
+/// 31: a linear pattern may have a second direction, "vecC", "scalar2" and
+/// "count2", and a pattern may combine its copies "together". An older
+/// build would build one row of the grid, and name the pieces of the faces
+/// the copies split otherwise, so that what refers to them would miss.
+static constexpr int kFormatVersion = 31;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -140,6 +144,11 @@ static std::string jsonMessage(const std::exception& e) {
     if (what.rfind("[json.exception.", 0) == 0) {
         const auto end = what.find("] ");
         if (end != std::string::npos) what.erase(0, end + 2);
+    }
+    // A number written as null: JSON has no NaN or infinity, and a value
+    // that was one when it was saved comes back as nothing.
+    if (what.find("must be number, but is null") != std::string::npos) {
+        return "a number in it is missing (it was not a finite number when it was saved)";
     }
     return what;
 }
@@ -879,7 +888,17 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             fObj["vecB"] = {pat->vecB().x, pat->vecB().y, pat->vecB().z};
             fObj["scalar"] = pat->scalar();
             fObj["count"] = pat->count();
+            // A grid's second direction; a pattern of one row is saved as
+            // it always was.
+            if (pat->secondCount() > 1) {
+                const math::Vec3& c = pat->secondDirection();
+                fObj["vecC"] = {c.x, c.y, c.z};
+                fObj["scalar2"] = pat->secondSpacing();
+                fObj["count2"] = pat->secondCount();
+            }
             fObj["suppressed"] = pat->suppressedInstances();
+            // Absent: each copy combined in turn, as every file before it.
+            if (pat->combinesTogether()) fObj["together"] = true;
             // The features it repeats (Phase 134); none, the whole part.
             if (!pat->targets().empty()) fObj["features"] = pat->targets();
         } else if (const auto* hole = dynamic_cast<const doc::HoleFeature*>(feat)) {
@@ -1698,6 +1717,11 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     math::Vec3 vecB = readVec("vecB");
                     double scalar = fObj.value("scalar", 0.0);
                     const int count = clampedCount(fObj, "count", 1, 1, doc::kMaxPatternCount);
+                    // A grid's rows (a second direction): their instances
+                    // and the first's together within one pattern's limit.
+                    const int count2 = clampedCount(fObj, "count2", 1, 1,
+                                                    std::max(1, doc::kMaxPatternCount / count));
+                    const int instances = count * count2;
                     std::vector<int> suppressed;
                     if (fObj.contains("suppressed")) {
                         for (const json& index : fObj.at("suppressed")) {
@@ -1705,7 +1729,7 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                             // suppresses nothing, so it is dropped.
                             if (!index.is_number()) continue;
                             const double d = index.get<double>();
-                            if (std::isfinite(d) && d >= 0.0 && d < count) {
+                            if (std::isfinite(d) && d >= 0.0 && d < instances) {
                                 suppressed.push_back(static_cast<int>(d));
                             }
                         }
@@ -1717,7 +1741,20 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     } else {
                         feat = doc::PatternFeature::makeLinear(vecA, scalar, count,
                                                                std::move(suppressed));
+                        if (count2 > 1) {
+                            const double scalar2 = fObj.value("scalar2", 0.0);
+                            // A second direction that is not one is the
+                            // first's: a grid of one line, not a lost row.
+                            if (!feat->setSecondDirection(readVec("vecC"), scalar2, count2)) {
+                                feat->setSecondDirection(vecA, scalar2, count2);
+                            }
+                        }
                     }
+                    // A pattern of a file made before copies were combined
+                    // together combines them in turn, as it was built then.
+                    const auto together = fObj.find("together");
+                    feat->setCombinesTogether(together != fObj.end() && together->is_boolean() &&
+                                              together->get<bool>());
                     if (const auto targets = fObj.find("features");
                         targets != fObj.end() && targets->is_array()) {
                         std::vector<std::string> ids;

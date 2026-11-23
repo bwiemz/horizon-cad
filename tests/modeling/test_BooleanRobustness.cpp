@@ -10,6 +10,7 @@
 #include <pthread.h>
 #endif
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -26,6 +27,7 @@
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/InterferenceChecker.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -496,4 +498,242 @@ TEST(BooleanRobustnessTest, AFinelyFacetedPinCutsQuickly) {
 #else
     (void)seconds;
 #endif
+}
+
+// A part of many facets cut by another: a hole through a cylinder of 2,048
+// facets, made with another as fine. Each cap, fanned into slivers, was cut
+// by every plane of the other into hundreds of thousands of fragments, merged
+// back after: 10 s in a build with some optimisation, where it now takes
+// under one. A convex face now goes into the cut whole, what lies clear of
+// the other operand is not cut, and what is left is not cut again.
+TEST(BooleanRobustnessTest, ACylinderOfManyFacetsIsBoredQuickly) {
+    constexpr int kFacets = 2048;
+    const auto rod = PrimitiveFactory::makeCylinder(10.0, 20.0, kFacets);
+    const auto drill = moved(*PrimitiveFactory::makeCylinder(4.0, 40.0, kFacets),
+                             Mat4::translation(Vec3(0, 0, -10)));
+    const auto start = std::chrono::steady_clock::now();
+    std::string why;
+    const auto result =
+        BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable);
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    ASSERT_NE(result, nullptr) << why;
+    EXPECT_TRUE(result->isValid()) << result->validationReport();
+    EXPECT_TRUE(hz::topo::GeometryValidator::isGeometricallyValid(*result))
+        << hz::topo::GeometryValidator::report(*result);
+    // Two inscribed polygons' areas apart, through the rod's height.
+    const double ring = 0.5 * kFacets * (100.0 - 16.0) * std::sin(2.0 * std::numbers::pi / kFacets);
+    EXPECT_NEAR(volumeOf(*result), 20.0 * ring, 1e-6);
+    // The rod's sides, the bore's sides, and each ring cap in two: a face
+    // has one loop, so a cap with a hole is cut through it (FragmentMerge).
+    // As many faces as the cut made before it was faster.
+    EXPECT_EQ(result->faces().size(), static_cast<size_t>(2 * kFacets + 4));
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    // About 0.7 s alone; CI's release build, four tests at a time on two
+    // cores, once took more than 1.5. It took 48 s before the cut was made
+    // faster, which this still tells apart.
+    EXPECT_LT(seconds, 5.0);
+#else
+    // CI's debug build runs it unoptimized, four tests at a time: 15 s
+    // there. It took 48 s optimized before the cut was made faster.
+    EXPECT_LT(seconds, 45.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
+#endif
+#else
+    (void)seconds;
+#endif
+}
+
+// The faster cut is the same cut: for a cylinder through a box at a slant,
+// with faces that are not all convex once a hole is in them, the pieces
+// merged agree with the volume the operands give, three ways.
+TEST(BooleanRobustnessTest, ACutOfFewerPiecesConservesVolume) {
+    const auto box = PrimitiveFactory::makeBox(20, 20, 10);
+    const auto pin = moved(
+        *PrimitiveFactory::makeCylinder(4.0, 30.0, 96),
+        Mat4::translation(Vec3(10, 10, -8)) *
+            Mat4::rotation(hz::math::Quaternion::fromAxisAngle(Vec3(1, 1, 0).normalized(), 0.3)));
+    expectSound(*box, *pin, 20.0, "slanted pin");
+    // Bored, then bored again across the first hole: faces with holes, and
+    // faces no longer convex, go in as triangles.
+    const auto bored =
+        BooleanOp::execute(*box, *pin, BooleanType::Subtract, nullptr, NamingScheme::Stable);
+    ASSERT_NE(bored, nullptr);
+    const auto cross = moved(
+        *PrimitiveFactory::makeCylinder(3.0, 30.0, 64),
+        Mat4::translation(Vec3(-5, 10, 5)) * Mat4::rotation(hz::math::Quaternion::fromAxisAngle(
+                                                 Vec3(0, 1, 0), std::numbers::pi / 2)));
+    expectSound(*bored, *cross, 20.0, "cross-bored");
+}
+
+// A pattern of finely faceted cylinders, each overlapping the one before:
+// each union cut every face of the part along the planes of the next
+// cylinder, however far off, and eight of 4,096 facets took most of two
+// minutes. A face clear of every face of the other body is kept or left out
+// whole now, by where one point of it lies. Each step joins soundly, and
+// the last, three ways, conserves volume.
+TEST(BooleanRobustnessTest, APatternOfOverlappingCylindersJoinsSoundly) {
+    constexpr int kFacets = 512;
+    constexpr int kCount = 6;
+    const auto cylinder = PrimitiveFactory::makeCylinder(5.0, 10.0, kFacets);
+    std::unique_ptr<hz::topo::Solid> part = moved(*cylinder, Mat4::translation(Vec3()));
+    for (int i = 1; i < kCount; ++i) {
+        const auto next = moved(*cylinder, Mat4::translation(Vec3(3.0 * i, 1.0 * i, 0.5 * i)));
+        if (i == kCount - 1) expectSound(*part, *next, 30.0, "the last of the pattern");
+        std::string why;
+        auto joined =
+            BooleanOp::execute(*part, *next, BooleanType::Union, &why, NamingScheme::Stable);
+        ASSERT_NE(joined, nullptr) << "instance " << i << ": " << why;
+        EXPECT_TRUE(joined->isValid()) << joined->validationReport();
+        EXPECT_GT(volumeOf(*joined), volumeOf(*part));
+        part = std::move(joined);
+    }
+}
+
+// Pieces clear of the other body, kept or left out whole: a box inside
+// another touches none of its faces, and a box in the notch of an L lies
+// in its bounds but outside it. Each combines three ways, conserving volume.
+TEST(BooleanRobustnessTest, BodiesNearNoFaceOfEachOtherCombineSoundly) {
+    const auto outer = PrimitiveFactory::makeBox(10, 10, 10);
+    const auto inner = moved(*PrimitiveFactory::makeBox(2, 2, 2), Mat4::translation(Vec3(4, 4, 4)));
+    expectSound(*outer, *inner, 10.0, "a box inside a box");
+    std::string why;
+    const auto joined =
+        BooleanOp::execute(*outer, *inner, BooleanType::Union, &why, NamingScheme::Stable);
+    ASSERT_NE(joined, nullptr) << why;
+    EXPECT_NEAR(volumeOf(*joined), 1000.0, 1e-9) << "the inner box is inside: nothing added";
+    const auto common =
+        BooleanOp::execute(*outer, *inner, BooleanType::Intersect, &why, NamingScheme::Stable);
+    ASSERT_NE(common, nullptr) << why;
+    EXPECT_NEAR(volumeOf(*common), 8.0, 1e-9);
+
+    // An L: two boxes joined, and a third in its notch, within its bounds.
+    const auto foot = PrimitiveFactory::makeBox(10, 3, 3);
+    const auto leg = PrimitiveFactory::makeBox(3, 10, 3);
+    const auto ell =
+        BooleanOp::execute(*foot, *leg, BooleanType::Union, &why, NamingScheme::Stable);
+    ASSERT_NE(ell, nullptr) << why;
+    const auto notch =
+        moved(*PrimitiveFactory::makeBox(2, 2, 2), Mat4::translation(Vec3(6, 6, 0.5)));
+    expectSound(*ell, *notch, 10.0, "a box in the notch of an L");
+}
+
+// Bodies too finely faceted to combine in time are refused, saying why,
+// where the cut ran on for an hour or until memory ran out; and an
+// interference check that cannot finish reports the pair, to be looked at,
+// rather than passing it as clear. (Here, under limits far below the
+// defaults, a small cut does.)
+TEST(BooleanRobustnessTest, ACutTooLargeToMakeIsRefusedWithAReason) {
+    const auto rod = PrimitiveFactory::makeCylinder(10.0, 20.0, 256);
+    const auto drill =
+        moved(*PrimitiveFactory::makeCylinder(4.0, 40.0, 256), Mat4::translation(Vec3(1, 0, -10)));
+    {
+        const hz::model::BooleanWorkLimits limits(20'000, 100);
+        std::string why;
+        const auto result =
+            BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable);
+        EXPECT_EQ(result, nullptr);
+        EXPECT_NE(why.find("too many facets"), std::string::npos) << why;
+        EXPECT_TRUE(hz::model::InterferenceChecker::solidsInterfere(*rod, *drill));
+    }
+    std::string why;
+    const auto result =
+        BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable);
+    ASSERT_NE(result, nullptr) << "the limits are lifted with their scope: " << why;
+    EXPECT_TRUE(result->isValid());
+}
+
+// A Boolean whose work is cancelled stops, saying so: here cancelled before
+// it begins, so it stops at its first check. Out of the cancellation's
+// scope, the same Boolean runs to its end.
+TEST(BooleanRobustnessTest, ACancelledBooleanStopsSayingSo) {
+    const auto rod = PrimitiveFactory::makeCylinder(10.0, 20.0, 2048);
+    const auto drill =
+        moved(*PrimitiveFactory::makeCylinder(4.0, 40.0, 2048), Mat4::translation(Vec3(1, 0, -10)));
+    std::atomic<bool> cancelled{true};
+    {
+        const hz::model::BooleanCancellation stop(&cancelled);
+        std::string why;
+        EXPECT_EQ(
+            BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable),
+            nullptr);
+        EXPECT_EQ(why, "cancelled");
+    }
+    std::string why;
+    EXPECT_NE(BooleanOp::execute(*rod, *drill, BooleanType::Subtract, &why, NamingScheme::Stable),
+              nullptr)
+        << why;
+}
+
+// The work of building a convex body's tree counts as its cuts do: a
+// cylinder of 4,096 facets, its tree a chain of as many planes, each
+// checked against its every point, and a box that barely meets it. Its cuts
+// take about 10 million corners and its chain several times that: under a
+// limit of 20 million the union is refused (it was made, the chain's work
+// uncounted, uncancellable); without one it is made. A whole-part pattern
+// refused so says why, with its remedy.
+TEST(BooleanRobustnessTest, AConvexBodysTreeCountsAgainstTheLimit) {
+    const auto rod = PrimitiveFactory::makeCylinder(10.0, 20.0, 4096);
+    const auto corner =
+        moved(*PrimitiveFactory::makeBox(2, 2, 2), Mat4::translation(Vec3(9.5, -1, 5)));
+    {
+        const hz::model::BooleanWorkLimits limits(20'000'000, 0);
+        std::string why;
+        EXPECT_EQ(BooleanOp::execute(*rod, *corner, BooleanType::Union, &why, NamingScheme::Stable),
+                  nullptr);
+        EXPECT_NE(why.find("too many facets"), std::string::npos) << why;
+    }
+    {
+        // Three overlapping cylinders of 1,024 facets: each join's cuts
+        // take under half a million corners, its chain millions.
+        const hz::model::BooleanWorkLimits limits(2'000'000, 0);
+        const auto ring = PrimitiveFactory::makeCylinder(5.0, 10.0, 1024);
+        std::string why;
+        const auto pattern =
+            Pattern::linear(*ring, Vec3(1, 0, 0), 4.0, 3, {}, NamingScheme::Stable, true, &why);
+        EXPECT_EQ(pattern, nullptr);
+        EXPECT_NE(why.find("too many facets"), std::string::npos) << why;
+    }
+    std::string why;
+    EXPECT_NE(BooleanOp::execute(*rod, *corner, BooleanType::Union, &why, NamingScheme::Stable),
+              nullptr)
+        << why;
+}
+
+// Copies that all overlap one another are joined one at a time, each to all
+// joined before: 10,000 of them (the model fuzzer, seed 168), each join
+// well within its own limits, ran for hours. A pattern's joins share one
+// budget, which the polygons each is given count against as well as those
+// it cuts: under a small one, twelve such copies are refused, saying why;
+// under the default, they are joined.
+TEST(BooleanRobustnessTest, APatternsJoinsShareOneBudget) {
+    // A bar across the axis, turned by a step no whole number of which is
+    // a turn: every copy crosses every other, and none is where another is.
+    const auto bar =
+        moved(*PrimitiveFactory::makeBox(10, 1, 1), Mat4::translation(Vec3(-5, -0.5, 0)));
+    {
+        // One join is far within the budget below.
+        const hz::model::BooleanWorkLimits limits(1'000'000, 0);
+        const auto turned =
+            moved(*bar, Mat4::rotation(hz::math::Quaternion::fromAxisAngle(Vec3(0, 0, 1), 1.0)));
+        std::string why;
+        EXPECT_NE(BooleanOp::execute(*bar, *turned, BooleanType::Union, &why, NamingScheme::Stable),
+                  nullptr)
+            << why;
+    }
+    {
+        const hz::model::BooleanSeries series(1'000'000);
+        std::string why;
+        EXPECT_EQ(Pattern::circular(*bar, Vec3(0, 0, 0), Vec3(0, 0, 1), 1.0, 12, {},
+                                    NamingScheme::Stable, true, &why),
+                  nullptr);
+        EXPECT_NE(why.find("copies are too many"), std::string::npos) << why;
+    }
+    const hz::model::BooleanSeries series;
+    std::string why;
+    const auto pattern = Pattern::circular(*bar, Vec3(0, 0, 0), Vec3(0, 0, 1), 1.0, 12, {},
+                                           NamingScheme::Stable, true, &why);
+    ASSERT_NE(pattern, nullptr) << why;
+    EXPECT_TRUE(pattern->isValid()) << pattern->validationReport();
+    EXPECT_GT(series.work(), 1'000'000U) << "the joins of the pattern are charged to it";
 }

@@ -4,9 +4,12 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QCoreApplication>
 #include <QDoubleSpinBox>
+#include <QKeyEvent>
 #include <QLabel>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,6 +28,7 @@
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/PolygonTool.h"
 #include "horizon/ui/Preferences.h"
 #include "horizon/ui/Tool.h"
 #include "horizon/ui/ViewportWidget.h"
@@ -568,4 +572,271 @@ TEST(ToolEditsTest, ALineWithNoLengthTakesOneFromThePanel) {
     const auto lines = all<hz::draft::DraftLine>(w);
     ASSERT_EQ(lines.size(), 1u);
     EXPECT_TRUE(near(lines[0]->end(), Vec2(8, 3)));
+}
+
+// A regular polygon (Phase 168): Up and Down change how many sides, the
+// centre and a corner place it, and it is one closed polyline, every corner
+// as far from the centre, undone in one step. The count is kept for the
+// next, between 3 and 1,024.
+TEST(ToolEditsTest, APolygonIsDrawnWithTheSidesAsked) {
+    MainWindow w;
+    ToolDriver drive(w);
+    trigger(w, "tool_polygon");
+    auto& view = drive.viewport();
+    ASSERT_NE(view.activeTool(), nullptr);
+    ASSERT_EQ(view.activeTool()->name(), "Polygon");
+    drive.key(Qt::Key_Up);
+    drive.key(Qt::Key_Up);  // eight
+    drive.click(Vec2(0, 0));
+    drive.click(Vec2(10, 0));
+    auto polygons = all<hz::draft::DraftPolyline>(w);
+    ASSERT_EQ(polygons.size(), 1u);
+    EXPECT_TRUE(polygons[0]->closed());
+    ASSERT_EQ(polygons[0]->points().size(), 8u);
+    for (const Vec2& corner : polygons[0]->points()) {
+        EXPECT_NEAR(corner.length(), 10.0, 1e-9);
+    }
+    EXPECT_TRUE(near(polygons[0]->points().front(), Vec2(10, 0))) << "a corner where clicked";
+
+    // Shift takes ten at a time, and no fewer than three are left.
+    QKeyEvent shiftDown(QEvent::KeyPress, Qt::Key_Down, Qt::ShiftModifier);
+    QCoreApplication::sendEvent(&view, &shiftDown);
+    QCoreApplication::sendEvent(&view, &shiftDown);
+    drive.click(Vec2(30, 0));
+    drive.click(Vec2(30, 5));
+    polygons = all<hz::draft::DraftPolyline>(w);
+    ASSERT_EQ(polygons.size(), 2u);
+    EXPECT_EQ(polygons[1]->points().size(), 3u);
+
+    // A corner on the centre is no polygon: nothing, and the tool waits.
+    drive.click(Vec2(50, 0));
+    drive.click(Vec2(50, 0));
+    EXPECT_EQ(all<hz::draft::DraftPolyline>(w).size(), 2u);
+    drive.key(Qt::Key_Escape);
+
+    w.activeDocument()->undoStack().undo();
+    EXPECT_EQ(all<hz::draft::DraftPolyline>(w).size(), 1u) << "one step each";
+}
+
+// The polygon's corners, worked out: as many as asked within the limits, on
+// the circle through the corner given, and none for a corner on the centre
+// or one that is not a finite number.
+TEST(ToolEditsTest, APolygonsCornersAreOnItsCircle) {
+    using hz::ui::PolygonTool;
+    const auto hexagon = PolygonTool::corners(Vec2(1, 2), Vec2(4, 6), 6);
+    ASSERT_EQ(hexagon.size(), 6u);
+    for (size_t i = 0; i < hexagon.size(); ++i) {
+        EXPECT_NEAR((hexagon[i] - Vec2(1, 2)).length(), 5.0, 1e-12);
+        const Vec2 side = hexagon[(i + 1) % 6] - hexagon[i];
+        EXPECT_NEAR(side.length(), 5.0, 1e-9) << "a hexagon's side is its radius";
+    }
+    EXPECT_EQ(PolygonTool::corners(Vec2(0, 0), Vec2(1, 0), 2).size(), 3u);
+    EXPECT_EQ(PolygonTool::corners(Vec2(0, 0), Vec2(1, 0), 100'000).size(),
+              static_cast<size_t>(PolygonTool::kMostSides));
+    EXPECT_TRUE(PolygonTool::corners(Vec2(3, 3), Vec2(3, 3), 6).empty());
+    EXPECT_TRUE(
+        PolygonTool::corners(Vec2(0, 0), Vec2(std::numeric_limits<double>::infinity(), 0), 6)
+            .empty());
+}
+
+// The view zooms by command too (Phase 168): to what is selected, filling
+// the view with it wherever it is and however small, and in and out a step
+// at a time; with nothing selected, it says so and stays.
+TEST(ToolEditsTest, TheViewZoomsToTheSelectionAndInAndOut) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& view = drive.viewport();
+    auto& drawing = w.activeDocument()->draftDocument();
+    auto speck = std::make_shared<hz::draft::DraftCircle>(Vec2(5000, -3000), 0.01);
+    drawing.addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(10, 0)));
+    drawing.addEntity(speck);
+
+    const auto eyeBefore = view.camera().eye();
+    trigger(w, "action_zoom_selection");
+    EXPECT_NEAR((view.camera().eye() - eyeBefore).length(), 0.0, 1e-12) << "nothing selected";
+
+    view.selectionManager().select(speck->id());
+    trigger(w, "action_zoom_selection");
+    const QPointF centre = view.worldToScreen(Vec2(5000, -3000));
+    EXPECT_NEAR(centre.x(), view.width() / 2.0, 2.0);
+    EXPECT_NEAR(centre.y(), view.height() / 2.0, 2.0);
+    const double across = std::abs(view.worldToScreen(Vec2(5000.01, -3000)).x() - centre.x());
+    EXPECT_GT(across, 0.1 * view.height()) << "the speck fills much of the view";
+
+    const double distance = (view.camera().eye() - view.camera().target()).length();
+    trigger(w, "action_zoom_in");
+    EXPECT_NEAR((view.camera().eye() - view.camera().target()).length(), distance / 1.25,
+                1e-9 * distance);
+    trigger(w, "action_zoom_out");
+    trigger(w, "action_zoom_out");
+    EXPECT_NEAR((view.camera().eye() - view.camera().target()).length(), distance * 1.25,
+                1e-9 * distance);
+}
+
+// Edit ▸ Select All (Ctrl+A) takes everything a box round the drawing would:
+// what is on a hidden or locked layer stays out, as it does from a box. Then
+// Delete takes what is selected, as one step undone whole.
+TEST(ToolEditsTest, SelectAllTakesWhatABoxRoundEverythingWould) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& view = drive.viewport();
+    auto* doc = w.activeDocument();
+    auto& drawing = doc->draftDocument();
+    for (const char* name : {"Hidden", "Locked"}) {
+        hz::draft::LayerProperties props;
+        props.name = name;
+        props.visible = std::string(name) != "Hidden";
+        props.locked = std::string(name) == "Locked";
+        doc->layerManager().addLayer(props);
+    }
+    std::vector<uint64_t> free;
+    for (int i = 0; i < 5; ++i) {
+        auto line = std::make_shared<hz::draft::DraftLine>(Vec2(i, 0), Vec2(i, 1));
+        drawing.addEntity(line);
+        free.push_back(line->id());
+    }
+    auto hidden = std::make_shared<hz::draft::DraftCircle>(Vec2(0, 5), 1.0);
+    hidden->setLayer("Hidden");
+    auto locked = std::make_shared<hz::draft::DraftCircle>(Vec2(5, 5), 1.0);
+    locked->setLayer("Locked");
+    drawing.addEntity(hidden);
+    drawing.addEntity(locked);
+
+    auto* selectAll = w.findChild<QAction*>(QStringLiteral("action_select_all"));
+    ASSERT_NE(selectAll, nullptr);
+    EXPECT_EQ(selectAll->shortcut(), QKeySequence(QKeySequence::SelectAll));
+    selectAll->trigger();
+    auto& sel = view.selectionManager();
+    EXPECT_EQ(sel.count(), free.size());
+    for (uint64_t id : free) EXPECT_TRUE(sel.isSelected(id));
+    EXPECT_FALSE(sel.isSelected(hidden->id()));
+    EXPECT_FALSE(sel.isSelected(locked->id()));
+
+    drive.key(Qt::Key_Delete);
+    EXPECT_EQ(drawing.entities().size(), 2u) << "the hidden and the locked are kept";
+    trigger(w, "action_undo");
+    EXPECT_EQ(drawing.entities().size(), 7u) << "one step undone whole";
+}
+
+// Match Properties: click an entity, then each that is to look like it. Each
+// click is one step to undo, and gives the layer, colour, width and line type
+// together; what is on a locked layer is not changed, though the first may
+// be on one.
+TEST(ToolEditsTest, MatchPropertiesGivesOnesStyleToOthers) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto* doc = w.activeDocument();
+    auto& drawing = doc->draftDocument();
+    for (const char* name : {"Walls", "Locked"}) {
+        hz::draft::LayerProperties props;
+        props.name = name;
+        props.locked = std::string(name) == "Locked";
+        doc->layerManager().addLayer(props);
+    }
+    auto source = std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(10, 0));
+    source->setLayer("Locked");
+    source->setColor(0xFFFF0000u);
+    source->setLineWidth(0.7);
+    source->setLineType(2);
+    auto target = std::make_shared<hz::draft::DraftCircle>(Vec2(0, 20), 5.0);
+    target->setLayer("Walls");
+    auto held = std::make_shared<hz::draft::DraftLine>(Vec2(0, 40), Vec2(10, 40));
+    held->setLayer("Locked");
+    drawing.addEntity(source);
+    drawing.addEntity(target);
+    drawing.addEntity(held);
+    const uint32_t heldColor = held->color();
+
+    trigger(w, "tool_match-properties");
+    auto& view = drive.viewport();
+    drive.click(Vec2(5, 0));   // the source, on a locked layer: only read
+    drive.click(Vec2(5, 20));  // a point of the circle
+    EXPECT_EQ(target->layer(), "Locked");
+    EXPECT_EQ(target->color(), 0xFFFF0000u);
+    EXPECT_DOUBLE_EQ(target->lineWidth(), 0.7);
+    EXPECT_EQ(target->lineType(), 2);
+
+    trigger(w, "action_undo");
+    EXPECT_EQ(target->layer(), "Walls") << "one step undone whole";
+    EXPECT_NE(target->color(), 0xFFFF0000u);
+    EXPECT_EQ(target->lineType(), 0);
+    trigger(w, "action_redo");
+    EXPECT_EQ(target->color(), 0xFFFF0000u);
+
+    source->setColor(0xFF00FF00u);  // a locked one is never changed
+    held->setLayer("Locked");
+    drive.click(Vec2(5, 40));
+    EXPECT_EQ(held->color(), heldColor);
+
+    // Escape picks another first; with one selected as it starts, that one
+    // is the first.
+    drive.key(Qt::Key_Escape);
+    view.selectionManager().clearSelection();
+    view.selectionManager().select(target->id());
+    trigger(w, "tool_select");
+    trigger(w, "tool_match-properties");
+    auto source2 = std::make_shared<hz::draft::DraftLine>(Vec2(30, 0), Vec2(40, 0));
+    drawing.addEntity(source2);
+    drive.click(Vec2(35, 0));
+    EXPECT_EQ(source2->color(), 0xFFFF0000u) << "the selected circle was the first";
+    EXPECT_EQ(source2->layer(), "Locked");
+}
+
+// Edit ▸ Purge Unused takes out the layers nothing is on, as one step, and
+// says so; with nothing to take, it changes nothing and says that.
+TEST(ToolEditsTest, PurgeUnusedTakesOutEmptyLayers) {
+    MainWindow w;
+    auto* doc = w.activeDocument();
+    for (int i = 0; i < 50; ++i) {
+        hz::draft::LayerProperties props;
+        props.name = "Imported " + std::to_string(i);
+        doc->layerManager().addLayer(props);
+    }
+    auto line = std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(1, 0));
+    line->setLayer("Imported 7");
+    doc->draftDocument().addEntity(line);
+    const size_t before = doc->layerManager().layerNames().size();
+
+    trigger(w, "action_purge");
+    EXPECT_EQ(doc->layerManager().layerNames().size(), 2u) << "0 and the one in use";
+    EXPECT_NE(doc->layerManager().getLayer("Imported 7"), nullptr);
+    trigger(w, "action_undo");
+    EXPECT_EQ(doc->layerManager().layerNames().size(), before) << "one step undone whole";
+    trigger(w, "action_redo");
+    trigger(w, "action_purge");
+    EXPECT_EQ(doc->layerManager().layerNames().size(), 2u) << "nothing more to purge";
+    EXPECT_FALSE(doc->undoStack().canRedo());
+}
+
+// Edit ▸ Delete Duplicates takes out each copy, as one step, keeping the
+// first; with a selection, only among what is selected.
+TEST(ToolEditsTest, DeleteDuplicatesKeepsTheFirstOfEach) {
+    MainWindow w;
+    ToolDriver drive(w);
+    auto& drawing = w.activeDocument()->draftDocument();
+    auto first = std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(10, 0));
+    auto again = std::make_shared<hz::draft::DraftLine>(Vec2(10, 0), Vec2(0, 0));
+    auto circle = std::make_shared<hz::draft::DraftCircle>(Vec2(5, 5), 2.0);
+    auto circleAgain = std::make_shared<hz::draft::DraftCircle>(Vec2(5, 5), 2.0);
+    for (const std::shared_ptr<hz::draft::DraftEntity>& e :
+         std::vector<std::shared_ptr<hz::draft::DraftEntity>>{first, again, circle, circleAgain}) {
+        drawing.addEntity(e);
+    }
+
+    // Only the circles selected: only their copy goes.
+    auto& sel = drive.viewport().selectionManager();
+    sel.select(circle->id());
+    sel.select(circleAgain->id());
+    trigger(w, "action_delete_duplicates");
+    EXPECT_EQ(drawing.entities().size(), 3u);
+    EXPECT_EQ(drawing.findEntity(circleAgain->id()), nullptr);
+
+    // Nothing selected: the whole drawing.
+    sel.clearSelection();
+    trigger(w, "action_delete_duplicates");
+    EXPECT_EQ(drawing.entities().size(), 2u);
+    EXPECT_NE(drawing.findEntity(first->id()), nullptr) << "the first kept";
+    EXPECT_EQ(drawing.findEntity(again->id()), nullptr);
+    trigger(w, "action_undo");
+    EXPECT_EQ(drawing.entities().size(), 3u) << "one step undone whole";
 }

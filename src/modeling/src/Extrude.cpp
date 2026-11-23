@@ -3,7 +3,9 @@
 #include <cassert>
 #include <cmath>
 #include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "RingStack.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
@@ -165,42 +167,80 @@ static PrismBuild buildPrismTopology(Solid& solid, const std::vector<Vec3>& bott
     auto [v0, fOuter, shell] = euler::makeVertexFaceSolid(solid, bottomPts[0]);
     pb.bottomVerts[0] = v0;
 
-    // Step 2: MEV to create bottom polygon vertices v1..v(N-1).
+    // Each step below takes the half-edge it needs from what the step before
+    // it made, where findHE walked the face's whole loop for it: a profile of
+    // N points took time in N squared, and one of 20,000 most of a minute.
+    // At every step the vertex has one outgoing half-edge on the face, so it
+    // is the one findHE would find; a debug build checks that on small
+    // prisms, where checking costs little.
+    constexpr size_t kCheckUpTo = 64;
+    [[maybe_unused]] const auto agrees = [N](HalfEdge* he, Face* face, Vertex* v) {
+        return N > kCheckUpTo || he == findHE(face, v);
+    };
+
+    // Step 2: MEV to create bottom polygon vertices v1..v(N-1). The tip of
+    // the chain so far has one half-edge, back along it.
     for (size_t i = 1; i < N; ++i) {
-        HalfEdge* hePrev = findHE(fOuter, pb.bottomVerts[i - 1]);
-        auto [edge, vi] =
-            euler::makeEdgeVertex(solid, (i == 1) ? nullptr : hePrev, fOuter, bottomPts[i]);
+        HalfEdge* hePrev = i == 1 ? nullptr : pb.bottomVerts[i - 1]->halfEdge;
+        assert(i == 1 || agrees(hePrev, fOuter, pb.bottomVerts[i - 1]));
+        auto [edge, vi] = euler::makeEdgeVertex(solid, hePrev, fOuter, bottomPts[i]);
         pb.bottomVerts[i] = vi;
     }
 
-    // Step 3: MEF to close the bottom polygon (vN-1 → v0).
-    HalfEdge* heLast = findHE(fOuter, pb.bottomVerts[N - 1]);
-    HalfEdge* heFirst = findHE(fOuter, pb.bottomVerts[0]);
+    // Step 3: MEF to close the bottom polygon (vN-1 → v0): the chain's two
+    // ends, each with its one half-edge.
+    HalfEdge* heLast = pb.bottomVerts[N - 1]->halfEdge;
+    HalfEdge* heFirst = pb.bottomVerts[0]->halfEdge;
+    assert(agrees(heLast, fOuter, pb.bottomVerts[N - 1]));
+    assert(agrees(heFirst, fOuter, pb.bottomVerts[0]));
     auto [eClose, fBottom] = euler::makeEdgeFace(solid, heLast, heFirst);
     // fOuter is now the bottom face (N HEs), fBottom is the remaining face.
     pb.bottomFace = fOuter;
     Face* fRemaining = fBottom;
 
     // Step 4: MEV to create vertical edges from each bottom vertex to its top counterpart.
-    // We create them in order 0, 1, 2, ..., N-1.
+    // We create them in order 0, 1, 2, ..., N-1. Each bottom vertex has one
+    // half-edge on the remaining face, found in one walk round it: an MEV
+    // elsewhere adds half-edges but leaves those.
+    std::unordered_map<const Vertex*, HalfEdge*> onRemaining;
+    onRemaining.reserve(N);
+    {
+        HalfEdge* start = fRemaining->outerLoop->halfEdge;
+        HalfEdge* cur = start;
+        do {
+            onRemaining.emplace(cur->origin, cur);
+            cur = cur->next;
+        } while (cur != start);
+    }
     for (size_t i = 0; i < N; ++i) {
-        HalfEdge* heAtBotI = findHE(fRemaining, pb.bottomVerts[i]);
+        HalfEdge* heAtBotI = onRemaining.at(pb.bottomVerts[i]);
+        assert(agrees(heAtBotI, fRemaining, pb.bottomVerts[i]));
         auto [eVert, topV] = euler::makeEdgeVertex(solid, heAtBotI, fRemaining, topPts[i]);
         pb.topVerts[i] = topV;
     }
 
     // Step 5: MEF to create lateral faces and the top face.
     // For each lateral face i, connect topVerts[i] to topVerts[(i+1)%N].
-    // The last MEF also closes the top face.
+    // The last MEF also closes the top face. A top vertex's one half-edge
+    // on the remaining face is the edge down to its bottom vertex until a
+    // lateral face is cut off beside it; then it is the new edge's half on
+    // the remaining face (the twin of the one that stays on the old face).
+    // Each cut leaves the large face as the new one: its half-edges are told
+    // their faces once, after the last cut, not at every cut.
+    HalfEdge* heTopI = pb.topVerts[0]->halfEdge;
     for (size_t i = 0; i < N; ++i) {
         size_t next = (i + 1) % N;
-        HalfEdge* heTopI = findHE(fRemaining, pb.topVerts[i]);
-        HalfEdge* heTopNext = findHE(fRemaining, pb.topVerts[next]);
-        auto [eLat, fLat] = euler::makeEdgeFace(solid, heTopI, heTopNext);
+        HalfEdge* heTopNext = pb.topVerts[next]->halfEdge;
+        assert(agrees(heTopI, fRemaining, pb.topVerts[i]));
+        assert(agrees(heTopNext, fRemaining, pb.topVerts[next]));
+        auto [eLat, fLat] = euler::makeEdgeFaceUnlabelled(solid, fRemaining, heTopI, heTopNext);
         // Old face (fRemaining) becomes the lateral face for this quad.
         pb.lateralFaces[i] = fRemaining;
         fRemaining = fLat;
+        heTopI = eLat->halfEdge->twin;
     }
+    for (Face* lateral : pb.lateralFaces) euler::labelLoop(lateral);
+    euler::labelLoop(fRemaining);
     // After the last MEF, fRemaining is the top face.
     pb.topFace = fRemaining;
 

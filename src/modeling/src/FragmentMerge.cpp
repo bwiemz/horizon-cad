@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -59,6 +60,23 @@ public:
         return id;
     }
 
+    /// The point within `tol` of @p p, if one was indexed; none is added.
+    std::optional<int> find(const Vec3& p) const {
+        const Key key = cellOf(p);
+        for (int64_t dx = -1; dx <= 1; ++dx) {
+            for (int64_t dy = -1; dy <= 1; ++dy) {
+                for (int64_t dz = -1; dz <= 1; ++dz) {
+                    const auto it = m_grid.find({key.x + dx, key.y + dy, key.z + dz});
+                    if (it == m_grid.end()) continue;
+                    for (const int id : it->second) {
+                        if ((m_points[static_cast<size_t>(id)] - p).length() <= m_tol) return id;
+                    }
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
     const std::vector<Vec3>& points() const { return m_points; }
 
 private:
@@ -92,9 +110,17 @@ bool inStraightRun(const Vec3& a, const Vec3& b, const Vec3& c, double tol) {
     return (b - a).cross(ac).length() / len <= tol && (b - a).dot(c - b) > 0.0;
 }
 
+/// Which points must stay corners of a merged loop: those another face has
+/// a corner at. A face of many facets (a curve faceted finely, or near where
+/// it turns from bending one way to the other) has corners in a run so
+/// nearly straight that they fall within the tolerance of it; dropped from
+/// the merged face beside them, each left a corner of the facets meeting the
+/// middle of one of its edges, and the result did not sew.
+using KeepCorner = std::function<bool(const Vec3&)>;
+
 /// Drop vertices that stand in a straight run between their neighbours, a
-/// whole pass at a time.
-void removeCollinear(Loop& loop, double tol) {
+/// whole pass at a time, but none @p keep says to keep.
+void removeCollinear(Loop& loop, double tol, const KeepCorner& keep) {
     bool changed = true;
     while (changed && loop.size() > 3) {
         changed = false;
@@ -103,7 +129,7 @@ void removeCollinear(Loop& loop, double tol) {
         kept.reserve(n);
         for (size_t i = 0; i < n; ++i) {
             const Vec3& before = kept.empty() ? loop[n - 1] : kept.back();
-            if (inStraightRun(before, loop[i], loop[(i + 1) % n], tol)) {
+            if (inStraightRun(before, loop[i], loop[(i + 1) % n], tol) && !keep(loop[i])) {
                 changed = true;
                 continue;
             }
@@ -216,7 +242,8 @@ struct Region {
     std::vector<Loop> holes;
 };
 
-Region mergeRegion(const std::vector<Loop>& polys, const Vec3& normal, double tol) {
+Region mergeRegion(const std::vector<Loop>& polys, const Vec3& normal, double tol,
+                   const KeepCorner& keep) {
     Region region;
     Welder welder(tol);
     std::vector<std::vector<int>> loops;
@@ -271,7 +298,7 @@ Region mergeRegion(const std::vector<Loop>& polys, const Vec3& normal, double to
             if (it == next.end()) return region;
             at = it->second;
         } while (at != start);
-        removeCollinear(loop, tol);
+        removeCollinear(loop, tol, keep);
         if (loop.size() < 3) continue;
         (newell(loop).dot(normal) > 0.0 ? region.outer : region.holes).push_back(std::move(loop));
     }
@@ -307,8 +334,8 @@ std::pair<Loop, Loop> splitConvex(const Loop& loop, const Vec3& side, double off
 /// Merge one face's coplanar fragments into the fewest simple loops, cutting
 /// through any hole; nullopt when they do not merge cleanly.
 std::optional<std::vector<Loop>> mergeGroup(const std::vector<Loop>& polys, const Vec3& normal,
-                                            double tol) {
-    Region whole = mergeRegion(polys, normal, tol);
+                                            double tol, const KeepCorner& keep) {
+    Region whole = mergeRegion(polys, normal, tol, keep);
     if (!whole.ok) return std::nullopt;
     if (whole.holes.empty()) return whole.outer;
 
@@ -399,7 +426,7 @@ std::optional<std::vector<Loop>> mergeGroup(const std::vector<Loop>& polys, cons
     for (auto& piece : pieces) cells[piece.cell].push_back(std::move(piece.loop));
     std::vector<Loop> merged;
     for (const auto& entry : cells) {
-        Region part = mergeRegion(entry.second, normal, tol);
+        Region part = mergeRegion(entry.second, normal, tol, keep);
         if (!part.ok || !part.holes.empty()) return std::nullopt;
         for (auto& loop : part.outer) merged.push_back(std::move(loop));
     }
@@ -408,7 +435,18 @@ std::optional<std::vector<Loop>> mergeGroup(const std::vector<Loop>& polys, cons
 
 }  // namespace
 
-std::vector<CsgPolygon> mergeFragments(std::vector<CsgPolygon> fragments, double tol) {
+namespace {
+
+/// A face, as the merge tells them apart: its name and its operand.
+using FaceKey = std::pair<std::string, bool>;
+
+/// Whether to keep, on the face named, a corner at the point, though it
+/// stands in a straight run of the face's merged outline.
+using KeepOnFace = std::function<bool(const FaceKey&, const Vec3&)>;
+
+/// mergeFragments, keeping the corners @p keep names.
+std::vector<CsgPolygon> mergeWith(std::vector<CsgPolygon> fragments, double tol,
+                                  const KeepOnFace& keep) {
     std::vector<CsgPolygon> out;
     out.reserve(fragments.size());
 
@@ -462,7 +500,9 @@ std::vector<CsgPolygon> mergeFragments(std::vector<CsgPolygon> fragments, double
             std::vector<Loop> polys;
             polys.reserve(plane.members.size());
             for (const size_t i : plane.members) polys.push_back(fragments[i].points);
-            const auto merged = mergeGroup(polys, plane.normal, tol);
+            const FaceKey& face = entry.first;
+            const KeepCorner keepHere = [&keep, &face](const Vec3& p) { return keep(face, p); };
+            const auto merged = mergeGroup(polys, plane.normal, tol, keepHere);
             if (!merged) {
                 for (const size_t i : plane.members) out.push_back(std::move(fragments[i]));
                 continue;
@@ -478,6 +518,54 @@ std::vector<CsgPolygon> mergeFragments(std::vector<CsgPolygon> fragments, double
         }
     }
     return out;
+}
+
+}  // namespace
+
+std::vector<CsgPolygon> mergeFragments(std::vector<CsgPolygon> fragments, double tol) {
+    // Merged once as a face alone would be, noting each corner dropped from
+    // a straight run of its outline.
+    std::vector<std::pair<FaceKey, Vec3>> dropped;
+    std::vector<CsgPolygon> merged =
+        mergeWith(fragments, tol, [&dropped](const FaceKey& face, const Vec3& p) {
+            dropped.emplace_back(face, p);
+            return false;
+        });
+    if (dropped.empty()) return merged;
+
+    // The corners each face is left with. Where one face dropped a corner
+    // that a face beside it kept (a facet's corner, where a finely faceted
+    // curve's next facet meets the face merged beside it, in a run straight
+    // within the tolerance), the faces would not meet corner to corner:
+    // merged again, the face keeps it. A corner dropped by every face it is
+    // on (where a plane of the other operand cut along an edge) stays out.
+    Welder points(tol);
+    std::vector<std::pair<FaceKey, bool>> faces;  // a face with a corner there; and others?
+    for (size_t i = 0; i < merged.size(); ++i) {
+        const FaceKey face = merged[i].topoId.isValid()
+                                 ? FaceKey(merged[i].topoId.tag(), merged[i].fromA)
+                                 : FaceKey("\x01unnamed " + std::to_string(i), false);
+        for (const Vec3& p : merged[i].points) {
+            const size_t id = static_cast<size_t>(points.index(p));
+            if (id == faces.size()) {
+                faces.emplace_back(face, false);
+            } else if (faces[id].first != face) {
+                faces[id].second = true;
+            }
+        }
+    }
+    const auto anotherFaceKeeps = [&points, &faces](const FaceKey& face, const Vec3& p) {
+        const std::optional<int> id = points.find(p);
+        if (!id) return false;
+        const auto& [first, others] = faces[static_cast<size_t>(*id)];
+        return others || first != face;
+    };
+    if (std::none_of(dropped.begin(), dropped.end(), [&](const auto& corner) {
+            return anotherFaceKeeps(corner.first, corner.second);
+        })) {
+        return merged;
+    }
+    return mergeWith(std::move(fragments), tol, anotherFaceKeeps);
 }
 
 }  // namespace hz::model

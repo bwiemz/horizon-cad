@@ -648,6 +648,14 @@ void PartCommands::onLinearPattern() {
     auto* spacing = form.length(QStringLiteral("spacing"), tr("Spacing:"), 20.0, 0.001, 1e6);
     auto* count =
         form.count(QStringLiteral("count"), tr("Instances:"), 3, 2, doc::kMaxPatternCount);
+    // A second direction makes a grid (SolidWorks' Direction 2): each row
+    // of the first repeated along it. One instance along it is none.
+    auto* direction2 = directionChoice(form, QStringLiteral("direction2"), tr("Second direction:"),
+                                       QStringLiteral("+Y"));
+    auto* spacing2 =
+        form.length(QStringLiteral("spacing2"), tr("Second spacing:"), 20.0, 0.001, 1e6);
+    auto* count2 = form.count(QStringLiteral("count2"), tr("Instances along it (1: none):"), 1, 1,
+                              doc::kMaxPatternCount);
     const auto repeatable = repeatableFeatures(part().featureTree());
     auto* targets = targetList(form, repeatable);
     if (!form.exec()) return;
@@ -656,9 +664,23 @@ void PartCommands::onLinearPattern() {
         m_host.showStatus(tr("%1 not added: a feature it repeats is gone").arg(verb));
         return;
     }
+    if (count2->value() > 1 &&
+        chosenDirection(direction2).cross(chosenDirection(direction)).lengthSquared() < 1e-12) {
+        m_host.showStatus(tr("%1 not added: its second direction runs along its first").arg(verb));
+        return;
+    }
+    if (static_cast<long long>(count->value()) * count2->value() > doc::kMaxPatternCount) {
+        m_host.showStatus(
+            tr("%1 not added: more than %2 instances in all").arg(verb).arg(doc::kMaxPatternCount));
+        return;
+    }
 
     auto pattern = doc::PatternFeature::makeLinear(chosenDirection(direction), spacing->value(),
                                                    count->value());
+    if (count2->value() > 1) {
+        pattern->setSecondDirection(chosenDirection(direction2), spacing2->value(),
+                                    count2->value());
+    }
     pattern->setTargets(*chosen);
     m_host.addFeature(std::move(pattern), verb);
 }

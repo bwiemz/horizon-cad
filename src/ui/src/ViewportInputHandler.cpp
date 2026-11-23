@@ -4,6 +4,8 @@
 #include <QMouseEvent>
 #include <QOpenGLWidget>
 #include <QWheelEvent>
+#include <algorithm>
+#include <cmath>
 
 #include "horizon/document/Document.h"
 #include "horizon/ui/Tool.h"
@@ -13,7 +15,7 @@
 namespace hz::ui {
 
 void ViewportInputHandler::handleMousePress(QMouseEvent* event, ViewportWidget* viewport) {
-    m_lastMousePos = event->pos();
+    m_lastMousePos = event->position();
 
     if (event->button() == Qt::MiddleButton) {
         if (event->modifiers() & Qt::ShiftModifier) {
@@ -38,13 +40,15 @@ void ViewportInputHandler::handleMousePress(QMouseEvent* event, ViewportWidget* 
 }
 
 void ViewportInputHandler::handleMouseMove(QMouseEvent* event, ViewportWidget* viewport) {
-    QPoint delta = event->pos() - m_lastMousePos;
+    // In doubles: a point far out of the view is a whole pixel position
+    // past what an int holds, and the difference of two overflowed.
+    const QPointF delta = event->position() - m_lastMousePos;
 
     if (m_orbiting) {
         double yaw = static_cast<double>(delta.x()) * 0.005;
         double pitch = static_cast<double>(delta.y()) * 0.005;
         viewport->camera().orbit(yaw, pitch);
-        m_lastMousePos = event->pos();
+        m_lastMousePos = event->position();
         viewport->update();
         return;
     }
@@ -53,7 +57,7 @@ void ViewportInputHandler::handleMouseMove(QMouseEvent* event, ViewportWidget* v
         double dx = static_cast<double>(delta.x()) * 0.01;
         double dy = static_cast<double>(delta.y()) * 0.01;
         viewport->camera().pan(dx, -dy);  // negate Y because screen Y is flipped
-        m_lastMousePos = event->pos();
+        m_lastMousePos = event->position();
         viewport->update();
         return;
     }
@@ -73,7 +77,7 @@ void ViewportInputHandler::handleMouseMove(QMouseEvent* event, ViewportWidget* v
         }
     }
 
-    m_lastMousePos = event->pos();
+    m_lastMousePos = event->position();
 }
 
 void ViewportInputHandler::handleMouseRelease(QMouseEvent* event, ViewportWidget* viewport) {
@@ -100,8 +104,13 @@ void ViewportInputHandler::handleWheel(QWheelEvent* event, ViewportWidget* viewp
     math::Vec2 worldBefore = viewport->worldPositionAtCursor(
         static_cast<int>(event->position().x()), static_cast<int>(event->position().y()));
 
-    double delta = event->angleDelta().y() / 120.0;
-    double factor = 1.0 + delta * 0.1;
+    // Each notch zooms by a tenth, compounded: a wheel spun fast, or a
+    // trackpad that reports many notches at once, zooms further but always
+    // by a factor above nothing. A step of 1 + 0.1 * notches reached zero at
+    // ten notches, and turned the view inside out past them.
+    const double delta = std::clamp(event->angleDelta().y() / 120.0, -50.0, 50.0);
+    if (delta == 0.0) return;
+    const double factor = std::pow(1.1, delta);
     viewport->camera().zoom(factor);
 
     math::Vec2 worldAfter = viewport->worldPositionAtCursor(

@@ -17,6 +17,16 @@
 #define HZ_TIME_LIMITS 1
 #endif
 
+/// How many times longer an unoptimized build takes on this compiler than
+/// with GCC or Clang: MSVC's debug build checks every iterator and every
+/// allocation, and ran the large modeling tests about five times slower
+/// again. A limit for an unoptimized build is multiplied by it.
+#if defined(_MSC_VER) && defined(_DEBUG)
+#define HZ_UNOPTIMIZED_SLOWDOWN 8.0
+#else
+#define HZ_UNOPTIMIZED_SLOWDOWN 1.0
+#endif
+
 /// For a test that measures nothing but time.
 #define HZ_SKIP_WITHOUT_TIME_LIMITS()                                                \
     if (!HZ_TIME_LIMITS)                                                             \

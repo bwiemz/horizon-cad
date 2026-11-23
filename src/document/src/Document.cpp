@@ -198,6 +198,12 @@ void Document::applyExpressions() {
                         break;
                 }
             }
+            // An expression can make a value with no size (1 / 0, 0 / 0),
+            // which no feature can be built at.
+            if (value && !std::isfinite(*value)) {
+                why = "it is not a finite number";
+                value.reset();
+            }
             if (value && !feature->setParameter(name, *value)) {
                 why = "the feature cannot take " + std::to_string(*value);
                 value.reset();
