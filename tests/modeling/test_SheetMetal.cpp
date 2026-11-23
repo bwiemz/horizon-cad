@@ -205,4 +205,3 @@ TEST(BaseFlangeStrip, ABendEitherWayTakesItsAllowance) {
     EXPECT_NEAR(developedLength(down, p), developedLength(up, p), 1e-12);
     EXPECT_NEAR(developedLength(down, p), 30.0 + bendAllowance(kPi / 2, p), 1e-12);
 }
-
