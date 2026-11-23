@@ -555,52 +555,8 @@ void AssemblyWorkbench::showPlacements(const doc::AssemblyDocument& asmDoc) {
 }
 
 AssemblyWorkbench::StepExport AssemblyWorkbench::stepExport() {
-    StepExport out;
-    if (!assembly()) return out;
-    // Each part read once, by its file, however many components place it.
-    const std::string dir = assemblyDir(*assembly());
-    std::map<std::string, std::size_t> partOf;
-    // A subassembly (Phase 159) is written as its own parts, each placed by
-    // its transform within it composed with the subassembly's: one level.
-    std::function<void(const doc::ComponentInstance&, const std::string&, const math::Mat4&,
-                       const std::string&)>
-        place = [&](const doc::ComponentInstance& comp, const std::string& in,
-                    const math::Mat4& outer, const std::string& name) {
-            const std::string file =
-                std::filesystem::path(partFile(comp, in)).lexically_normal().string();
-            if (comp.resolvedAssembly) {
-                const std::string subDir = std::filesystem::path(file).parent_path().string();
-                for (const auto& child : comp.resolvedAssembly->components()) {
-                    if (!child.suppressed) {
-                        place(child, subDir, outer * comp.transform, name + "/" + child.name);
-                    }
-                }
-                return;
-            }
-            const topo::Solid* solid = comp.solid();
-            if (solid == nullptr) {
-                out.unread.push_back(name);
-                return;
-            }
-            // A mirrored one (Phase 162) is a part of its own: its mirror.
-            const auto [known, added] =
-                partOf.emplace(comp.mirrored ? file + "#mirrored" : file, out.parts.size());
-            if (added) {
-                std::string partName =
-                    QFileInfo(QString::fromStdString(file)).completeBaseName().toStdString();
-                if (comp.mirrored) partName += " (mirrored)";
-                out.parts.push_back({std::move(partName), {solid}});
-            }
-            out.occurrences.push_back({known->second, name, outer * comp.transform});
-        };
-    for (auto& comp : assembly()->components()) {
-        if (comp.suppressed) continue;
-        if (comp.solid() == nullptr) {
-            m_host.documents().resolveComponent(comp, doc::ComponentState::Resolved, dir);
-        }
-        place(comp, dir, math::Mat4::identity(), comp.name);
-    }
-    return out;
+    if (!assembly()) return {};
+    return io::gatherAssemblyStep(*assembly(), m_host.documents());
 }
 
 void AssemblyWorkbench::onCheckInterference() {
