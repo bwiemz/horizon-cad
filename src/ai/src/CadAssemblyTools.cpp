@@ -360,14 +360,17 @@ doc::ComponentInstance& componentOf(const AssemblyContext& c, const json& in, co
     if (!has(in, key)) throw ArgError(std::string("\"") + key + "\" is required");
     const json& v = in[key];
     doc::ComponentInstance* found = nullptr;
-    if (v.is_string() && !v.get<std::string>().empty() &&
-        !std::all_of(v.get<std::string>().begin(), v.get<std::string>().end(),
-                     [](char ch) { return ch >= '0' && ch <= '9'; })) {
-        const std::string name = lower(v.get<std::string>());
+    // Read once: get<std::string>() makes a new string each time, and the
+    // begin of one with the end of another is no range (MSVC's checked
+    // iterators abort on it; GCC's ran on by luck).
+    const std::string given = v.is_string() ? v.get<std::string>() : std::string();
+    if (!given.empty() &&
+        !std::all_of(given.begin(), given.end(), [](char ch) { return ch >= '0' && ch <= '9'; })) {
+        const std::string name = lower(given);
         for (auto& comp : c.assembly.components()) {
             if (lower(comp.name) != name) continue;
             if (found != nullptr) {
-                throw ArgError("more than one component is called \"" + v.get<std::string>() +
+                throw ArgError("more than one component is called \"" + given +
                                "\"; name it by its id: " + componentList(c.assembly));
             }
             found = &comp;
