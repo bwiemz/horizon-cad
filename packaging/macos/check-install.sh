@@ -37,6 +37,9 @@ done < <(find "${app}" -type f -print0)
 test "${outside}" -eq 0
 codesign --verify --deep --strict "${app}"
 
+# horizon-mcp, inside the bundle, answers an AI client.
+bash "$(dirname "${BASH_SOURCE[0]}")/check-mcp.sh" "${app}"
+
 set +e
 perl -e 'alarm shift; exec @ARGV' 120 "${app}/Contents/MacOS/HorizonCAD" --self-test 2>&1 \
     | tee self-test.log

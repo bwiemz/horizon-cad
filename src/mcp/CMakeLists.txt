@@ -27,8 +27,8 @@ add_library(Horizon::MCP ALIAS hz_mcp)
 add_executable(horizon-mcp main.cpp)
 target_link_libraries(horizon-mcp PRIVATE Horizon::MCP Horizon::Version)
 
-# Beside the application in a Windows or Linux package. (A macOS bundle has
-# one program; build horizon-mcp from source there.)
+# Beside the application in a Windows or Linux package. On macOS it goes in
+# the application's bundle, with the bundle's Qt (src/app).
 if (NOT APPLE)
     install(TARGETS horizon-mcp RUNTIME DESTINATION bin)
 endif()
