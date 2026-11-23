@@ -38,6 +38,9 @@ public:
     /// Add a tool. A later tool of the same name replaces the earlier one.
     void add(ToolSpec spec, ToolAccess access, Handler handler);
 
+    /// Remove every tool (to register them again for another document).
+    void clear() { m_entries.clear(); }
+
     std::vector<ToolSpec> specs() const;
     std::optional<ToolAccess> access(const std::string& name) const;
     bool has(const std::string& name) const { return find(name) != nullptr; }

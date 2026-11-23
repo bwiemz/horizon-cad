@@ -41,7 +41,8 @@ include(CompilerWarnings)
 include(Sanitizers)
 
 # Find packages (provided by vcpkg)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGLWidgets)
+# Network: the AI assistant talks to its model over HTTP(S).
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGLWidgets Network)
 find_package(OpenGL REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)

@@ -25,5 +25,7 @@ page for what you are working on.
   the title block.
 - [Files](files.md): the kinds of document, opening and saving, importing
   and exporting, autosave and recovery, and crash reports.
+- [The AI assistant](ai-assistant.md): parts and drawings built and changed
+  from what you type, with Claude, GPT, Gemini or a model on your own computer.
 - [Settings](settings.md): preferences, units and languages.
 - [Keyboard shortcuts](shortcuts.md).

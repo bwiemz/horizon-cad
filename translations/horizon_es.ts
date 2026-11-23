@@ -97,6 +97,492 @@
     </message>
 </context>
 <context>
+    <name>hz::ui::AiAssistantPanel</name>
+    <message>
+        <location filename="../src/ui/src/AiAssistantPanel.cpp" line="+75"/>
+        <source>Done</source>
+        <translation type="unfinished">Terminar</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Added %1</source>
+        <translation type="unfinished">Añadió %1</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Made a sketch</source>
+        <translation type="unfinished">Creó un croquis</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Edited a feature</source>
+        <translation type="unfinished">Editó una operación</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Deleted %1</source>
+        <translation type="unfinished">Eliminó %1</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Set the variables</source>
+        <translation type="unfinished">Definió las variables</translation>
+    </message>
+    <message numerus="yes">
+        <location line="-46"/>
+        <source>list of %n</source>
+        <translation type="unfinished">
+            <numerusform>%n elemento</numerusform>
+            <numerusform>%n elementos</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+43"/>
+        <source>Shapes drawn: %n</source>
+        <translation type="unfinished">
+            <numerusform>Dibujó %n forma</numerusform>
+            <numerusform>Dibujó %n formas</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+5"/>
+        <source>Edges read: %n</source>
+        <translation type="unfinished">
+            <numerusform>Examinó %n arista</numerusform>
+            <numerusform>Examinó %n aristas</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>Faces read: %n</source>
+        <translation type="unfinished">
+            <numerusform>Examinó %n cara</numerusform>
+            <numerusform>Examinó %n caras</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>Features read: %n</source>
+        <translation type="unfinished">
+            <numerusform>Examinó %n operación</numerusform>
+            <numerusform>Examinó %n operaciones</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Measured the mass</source>
+        <translation type="unfinished">Midió la masa</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Changed the document</source>
+        <translation type="unfinished">Modificó el documento</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Looked at the document</source>
+        <translation type="unfinished">Examinó el documento</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>feature %1 fails</source>
+        <translation type="unfinished">la operación %1 falla</translation>
+    </message>
+    <message>
+        <location line="+28"/>
+        <source>%1 tokens in, %2 out</source>
+        <translation type="unfinished">%1 tokens de entrada, %2 de salida</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>AI Assistant</source>
+        <translation type="unfinished">Asistente de IA</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>New</source>
+        <translation type="unfinished">Nuevo</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Start a new conversation</source>
+        <translation type="unfinished">Iniciar una nueva conversación</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>New conversation</source>
+        <translation type="unfinished">Nueva conversación</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Settings…</source>
+        <translation type="unfinished">Ajustes…</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Choose the provider, model and API key</source>
+        <translation type="unfinished">Elegir el proveedor, el modelo y la clave de API</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Assistant settings</source>
+        <translation type="unfinished">Ajustes del asistente</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Describe a part or a change, and the assistant builds it from ordinary features you can edit and undo. For example:
+
+• A 60 × 40 × 5 mm plate with a 5 mm hole 8 mm in from each corner
+• Fillet the top edges of the part by 1 mm
+• Make the plate&apos;s thickness a variable called wall
+• What does this part weigh in aluminium?
+• Draw a 100 × 70 mm border on a layer called FRAME</source>
+        <translation type="unfinished">Describa una pieza o un cambio, y el asistente lo construye con operaciones normales que puede editar y deshacer. Por ejemplo:
+
+• Una placa de 60 × 40 × 5 mm con un taladro de 5 mm a 8 mm de cada esquina
+• Redondea 1 mm las aristas superiores de la pieza
+• Convierte el espesor de la placa en una variable llamada pared
+• ¿Cuánto pesa esta pieza en aluminio?
+• Dibuja un marco de 100 × 70 mm en una capa llamada MARCO</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Conversation</source>
+        <translation type="unfinished">Conversación</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Working</source>
+        <translation type="unfinished">Trabajando</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Request to the assistant</source>
+        <translation type="unfinished">Solicitud al asistente</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <location line="+154"/>
+        <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
+        <translation type="unfinished">Describa una pieza o un cambio… (Intro envía, Mayús+Intro: nueva línea)</translation>
+    </message>
+    <message>
+        <location line="-148"/>
+        <source>Undo This Response</source>
+        <translation type="unfinished">Deshacer esta respuesta</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Undo every change the last request made</source>
+        <translation type="unfinished">Deshacer todos los cambios que hizo la última solicitud</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Stop</source>
+        <translation type="unfinished">Detener</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Send</source>
+        <translation type="unfinished">Enviar</translation>
+    </message>
+    <message>
+        <location line="+57"/>
+        <source>Stopped: the provider or server changed. Send the request again.</source>
+        <translation type="unfinished">Detenido: cambió el proveedor o el servidor. Envíe la solicitud de nuevo.</translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Stopped: the document changed.</source>
+        <translation type="unfinished">Detenido: el documento ha cambiado.</translation>
+    </message>
+    <message>
+        <location line="+39"/>
+        <source>choose a model in Settings</source>
+        <translation type="unfinished">elija un modelo en Ajustes</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>add an API key in Settings</source>
+        <translation type="unfinished">añada una clave de API en Ajustes</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>Open a part or a drawing</source>
+        <translation type="unfinished">Abra una pieza o un dibujo</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Send to %1?</source>
+        <translation type="unfinished">¿Enviar a %1?</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The assistant sends your requests, and what it reads of the open document (its features, sketches, faces, edges and drawing), to %1. That provider&apos;s terms and privacy policy apply to what it receives.
+
+Send requests there?</source>
+        <translation type="unfinished">El asistente envía sus solicitudes, y lo que lee del documento abierto (sus operaciones, croquis, caras, aristas y dibujo), a %1. Las condiciones y la política de privacidad de ese proveedor se aplican a lo que recibe.
+
+¿Enviar las solicitudes allí?</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>Open a part or a drawing first.</source>
+        <translation type="unfinished">Abra primero una pieza o un dibujo.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Choose a model in the assistant&apos;s Settings first.</source>
+        <translation type="unfinished">Elija primero un modelo en los Ajustes del asistente.</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Add your %1 API key in the assistant&apos;s Settings first.</source>
+        <translation type="unfinished">Añada primero su clave de API de %1 en los Ajustes del asistente.</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>Working…</source>
+        <translation type="unfinished">Trabajando…</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Stopped. Changes already made stay; Undo This Response takes them back.</source>
+        <translation type="unfinished">Detenido. Los cambios ya realizados se mantienen; Deshacer esta respuesta los revierte.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>The last response&apos;s changes cannot be undone here: the document has changed since. Use Edit ▸ Undo.</source>
+        <translation type="unfinished">Los cambios de la última respuesta no se pueden deshacer aquí: el documento ha cambiado desde entonces. Use Edición ▸ Deshacer.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Undid the last response&apos;s changes.</source>
+        <translation type="unfinished">Se deshicieron los cambios de la última respuesta.</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>The API key could not be saved: %1</source>
+        <translation type="unfinished">No se pudo guardar la clave de API: %1</translation>
+    </message>
+    <message>
+        <location line="+47"/>
+        <source>You</source>
+        <translation type="unfinished">Usted</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Assistant</source>
+        <translation type="unfinished">Asistente</translation>
+    </message>
+</context>
+<context>
+    <name>hz::ui::AiSettingsDialog</name>
+    <message>
+        <location filename="../src/ui/src/AiSettingsDialog.cpp" line="+21"/>
+        <source>AI Assistant Settings</source>
+        <translation type="unfinished">Ajustes del asistente de IA</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Provider</source>
+        <translation type="unfinished">Proveedor</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Provider:</source>
+        <translation type="unfinished">Proveedor:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Server address</source>
+        <translation type="unfinished">Dirección del servidor</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Server:</source>
+        <translation type="unfinished">Servidor:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Model</source>
+        <translation type="unfinished">Modelo</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Fetch Models</source>
+        <translation type="unfinished">Obtener modelos</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>List the models this server and key can use</source>
+        <translation type="unfinished">Mostrar los modelos que pueden usar este servidor y esta clave</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Model:</source>
+        <translation type="unfinished">Modelo:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>API key</source>
+        <translation type="unfinished">Clave de API</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>API key:</source>
+        <translation type="unfinished">Clave de API:</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Effort</source>
+        <translation type="unfinished">Esfuerzo</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Model default</source>
+        <translation type="unfinished">Predeterminado del modelo</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Low (quick)</source>
+        <translation type="unfinished">Bajo (rápido)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Medium</source>
+        <translation type="unfinished">Medio</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>High</source>
+        <translation type="unfinished">Alto</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Extra high</source>
+        <translation type="unfinished">Muy alto</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Max (slow)</source>
+        <translation type="unfinished">Máximo (lento)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Effort:</source>
+        <translation type="unfinished">Esfuerzo:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Retry a declined request on Anthropic&apos;s fallback model</source>
+        <translation type="unfinished">Reintentar una solicitud rechazada con el modelo alternativo de Anthropic</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>When a safety classifier declines a request, Anthropic re-runs it on its recommended fallback model (for the models that offer it).</source>
+        <translation type="unfinished">Cuando un clasificador de seguridad rechaza una solicitud, Anthropic la vuelve a ejecutar con su modelo alternativo recomendado (en los modelos que lo ofrecen).</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Longest reply</source>
+        <translation type="unfinished">Longitud máxima de la respuesta</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source> tokens</source>
+        <translation type="unfinished"> tokens</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Longest reply:</source>
+        <translation type="unfinished">Longitud máxima de la respuesta:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Steps per request</source>
+        <translation type="unfinished">Pasos por solicitud</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>How many rounds of tool calls one request may take</source>
+        <translation type="unfinished">Cuántas rondas de llamadas a herramientas puede realizar una solicitud</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Steps per request:</source>
+        <translation type="unfinished">Pasos por solicitud:</translation>
+    </message>
+    <message>
+        <location line="+60"/>
+        <source>Set by %1</source>
+        <translation type="unfinished">Definida por %1</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The key comes from the environment variable %1.</source>
+        <translation type="unfinished">La clave procede de la variable de entorno %1.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Not needed for a local server</source>
+        <translation type="unfinished">No es necesaria para un servidor local</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Saved only on this computer, readable only by you.</source>
+        <translation type="unfinished">Se guarda solo en este equipo y solo usted puede leerla.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Paste your API key</source>
+        <translation type="unfinished">Pegue su clave de API</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Saved (type to replace)</source>
+        <translation type="unfinished">Guardada (escriba para reemplazarla)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Saved only on this computer, readable only by you, in %1. Or set %2 in the environment.</source>
+        <translation type="unfinished">Se guarda solo en este equipo, en %1, y solo usted puede leerla. O defina %2 en el entorno.</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Claude models from Anthropic. Get a key at console.anthropic.com.</source>
+        <translation type="unfinished">Modelos Claude de Anthropic. Obtenga una clave en console.anthropic.com.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>GPT models from OpenAI. Get a key at platform.openai.com.</source>
+        <translation type="unfinished">Modelos GPT de OpenAI. Obtenga una clave en platform.openai.com.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Gemini models from Google. Get a key at aistudio.google.com.</source>
+        <translation type="unfinished">Modelos Gemini de Google. Obtenga una clave en aistudio.google.com.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>A model on this computer, or any server with OpenAI&apos;s chat API. Ollama: http://localhost:11434/v1. LM Studio: http://localhost:1234/v1. llama.cpp: http://localhost:8080/v1. Choose a model that can call tools (functions).</source>
+        <translation type="unfinished">Un modelo en este equipo, o cualquier servidor con la API de chat de OpenAI. Ollama: http://localhost:11434/v1. LM Studio: http://localhost:1234/v1. llama.cpp: http://localhost:8080/v1. Elija un modelo que pueda llamar a herramientas (funciones).</translation>
+    </message>
+    <message>
+        <location line="+42"/>
+        <source>Asking the server for its models…</source>
+        <translation type="unfinished">Consultando los modelos del servidor…</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+20"/>
+        <source>Models listed: %n</source>
+        <translation type="unfinished">
+            <numerusform>Se encontró %n modelo.</numerusform>
+            <numerusform>Se encontraron %n modelos.</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::Application</name>
     <message>
         <location filename="../src/ui/src/Application.cpp" line="+35"/>
@@ -2570,7 +3056,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">una cara curva de %1 facetas, en torno a %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-210"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-234"/>
         <source>Close %1</source>
         <translation type="unfinished">Cerrar %1</translation>
     </message>
@@ -2786,7 +3272,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Paleta de comandos…</translation>
     </message>
     <message>
-        <location line="+77"/>
+        <location line="+83"/>
         <source>New &amp;Part</source>
         <translation type="unfinished">Nueva &amp;pieza</translation>
     </message>
@@ -3041,7 +3527,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Si&amp;n sección</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+11"/>
         <source>&amp;Model</source>
         <translation type="unfinished">&amp;Modelo</translation>
     </message>
@@ -3626,11 +4112,12 @@ empezar a construir su pieza.</translation>
         <location line="+5"/>
         <location line="+10"/>
         <location line="+6"/>
+        <location line="+4"/>
         <source>Home</source>
         <translation type="unfinished">Inicio</translation>
     </message>
     <message>
-        <location line="-21"/>
+        <location line="-25"/>
         <source>File</source>
         <translation type="unfinished">Archivo</translation>
     </message>
@@ -3693,6 +4180,16 @@ empezar a construir su pieza.</translation>
         <location line="+2"/>
         <source>Ungroup</source>
         <translation type="unfinished">Desagrupar</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Assistant</source>
+        <translation type="unfinished">Asistente</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>AI Assistant</source>
+        <translation type="unfinished">Asistente de IA</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -3896,6 +4393,16 @@ empezar a construir su pieza.</translation>
             <numerusform>Archivo guardado; %n capa con un nombre que DXF admite.</numerusform>
             <numerusform>Archivo guardado; %n capas con un nombre que DXF admite.</numerusform>
         </translation>
+    </message>
+    <message>
+        <location line="+311"/>
+        <source>The assistant works on parts and drawings, not assemblies</source>
+        <translation type="unfinished">El asistente trabaja con piezas y dibujos, no con ensamblajes</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>The assistant works on parts and drawings, not drawing sheets</source>
+        <translation type="unfinished">El asistente trabaja con piezas y dibujos, no con hojas de dibujo</translation>
     </message>
     <message>
         <location line="+435"/>
@@ -4239,7 +4746,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">¿Desea guardarlos antes de cerrar?</translation>
     </message>
     <message>
-        <location line="+38"/>
+        <location line="+41"/>
         <source>Autosave off</source>
         <translation type="unfinished">Autoguardado desactivado</translation>
     </message>

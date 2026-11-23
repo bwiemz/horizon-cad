@@ -97,6 +97,486 @@
     </message>
 </context>
 <context>
+    <name>hz::ui::AiAssistantPanel</name>
+    <message>
+        <location filename="../src/ui/src/AiAssistantPanel.cpp" line="+75"/>
+        <source>Done</source>
+        <translation type="unfinished">완료</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Added %1</source>
+        <translation type="unfinished">%1을(를) 추가했습니다</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Made a sketch</source>
+        <translation type="unfinished">스케치를 만들었습니다</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Edited a feature</source>
+        <translation type="unfinished">피처를 편집했습니다</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Deleted %1</source>
+        <translation type="unfinished">%1을(를) 삭제했습니다</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Set the variables</source>
+        <translation type="unfinished">변수를 설정했습니다</translation>
+    </message>
+    <message numerus="yes">
+        <location line="-46"/>
+        <source>list of %n</source>
+        <translation type="unfinished">
+            <numerusform>항목 %n개</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+43"/>
+        <source>Shapes drawn: %n</source>
+        <translation type="unfinished">
+            <numerusform>도형 %n개를 그렸습니다</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+5"/>
+        <source>Edges read: %n</source>
+        <translation type="unfinished">
+            <numerusform>모서리 %n개를 확인했습니다</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>Faces read: %n</source>
+        <translation type="unfinished">
+            <numerusform>면 %n개를 확인했습니다</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>Features read: %n</source>
+        <translation type="unfinished">
+            <numerusform>피처 %n개를 확인했습니다</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Measured the mass</source>
+        <translation type="unfinished">질량을 측정했습니다</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Changed the document</source>
+        <translation type="unfinished">문서를 변경했습니다</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Looked at the document</source>
+        <translation type="unfinished">문서를 확인했습니다</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>feature %1 fails</source>
+        <translation type="unfinished">피처 %1 실패</translation>
+    </message>
+    <message>
+        <location line="+28"/>
+        <source>%1 tokens in, %2 out</source>
+        <translation type="unfinished">입력 토큰 %1개, 출력 %2개</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>AI Assistant</source>
+        <translation type="unfinished">AI 어시스턴트</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>New</source>
+        <translation type="unfinished">새로 만들기</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Start a new conversation</source>
+        <translation type="unfinished">새 대화 시작</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>New conversation</source>
+        <translation type="unfinished">새 대화</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Settings…</source>
+        <translation type="unfinished">설정…</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Choose the provider, model and API key</source>
+        <translation type="unfinished">제공업체, 모델 및 API 키 선택</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Assistant settings</source>
+        <translation type="unfinished">어시스턴트 설정</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Describe a part or a change, and the assistant builds it from ordinary features you can edit and undo. For example:
+
+• A 60 × 40 × 5 mm plate with a 5 mm hole 8 mm in from each corner
+• Fillet the top edges of the part by 1 mm
+• Make the plate&apos;s thickness a variable called wall
+• What does this part weigh in aluminium?
+• Draw a 100 × 70 mm border on a layer called FRAME</source>
+        <translation type="unfinished">부품이나 변경 사항을 설명하면 어시스턴트가 편집하고 실행 취소할 수 있는 일반 피처로 만들어 줍니다. 예:
+
+• 각 코너에서 8 mm 안쪽에 5 mm 구멍이 있는 60 × 40 × 5 mm 판
+• 부품의 위쪽 모서리에 1 mm 필렛 적용
+• 판의 두께를 wall이라는 변수로 만들기
+• 이 부품을 알루미늄으로 만들면 무게가 얼마입니까?
+• FRAME이라는 레이어에 100 × 70 mm 테두리 그리기</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>Conversation</source>
+        <translation type="unfinished">대화</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Working</source>
+        <translation type="unfinished">작업 중</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Request to the assistant</source>
+        <translation type="unfinished">어시스턴트에 보낼 요청</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <location line="+154"/>
+        <source>Describe a part or a change… (Enter sends, Shift+Enter: new line)</source>
+        <translation type="unfinished">부품 또는 변경 사항 설명… (Enter: 보내기, Shift+Enter: 줄 바꿈)</translation>
+    </message>
+    <message>
+        <location line="-148"/>
+        <source>Undo This Response</source>
+        <translation type="unfinished">이 응답 실행 취소</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Undo every change the last request made</source>
+        <translation type="unfinished">마지막 요청으로 인한 모든 변경 사항 실행 취소</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Stop</source>
+        <translation type="unfinished">중지</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Send</source>
+        <translation type="unfinished">보내기</translation>
+    </message>
+    <message>
+        <location line="+57"/>
+        <source>Stopped: the provider or server changed. Send the request again.</source>
+        <translation type="unfinished">중지됨: 제공업체 또는 서버가 변경되었습니다. 요청을 다시 보내세요.</translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Stopped: the document changed.</source>
+        <translation type="unfinished">중지됨: 문서가 변경되었습니다.</translation>
+    </message>
+    <message>
+        <location line="+39"/>
+        <source>choose a model in Settings</source>
+        <translation type="unfinished">설정에서 모델을 선택하십시오</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>add an API key in Settings</source>
+        <translation type="unfinished">설정에서 API 키를 추가하십시오</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>Open a part or a drawing</source>
+        <translation type="unfinished">부품 또는 도면을 여십시오</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Send to %1?</source>
+        <translation type="unfinished">%1에 보내시겠습니까?</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The assistant sends your requests, and what it reads of the open document (its features, sketches, faces, edges and drawing), to %1. That provider&apos;s terms and privacy policy apply to what it receives.
+
+Send requests there?</source>
+        <translation type="unfinished">어시스턴트는 사용자의 요청과 열린 문서에서 읽은 내용(피처, 스케치, 면, 모서리 및 도면)을 %1에 보냅니다. 해당 제공업체가 받은 내용에는 그 제공업체의 약관과 개인정보 처리방침이 적용됩니다.
+
+이 제공업체로 요청을 보내시겠습니까?</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>Open a part or a drawing first.</source>
+        <translation type="unfinished">먼저 부품 또는 도면을 여십시오.</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Choose a model in the assistant&apos;s Settings first.</source>
+        <translation type="unfinished">먼저 어시스턴트 설정에서 모델을 선택하십시오.</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Add your %1 API key in the assistant&apos;s Settings first.</source>
+        <translation type="unfinished">먼저 어시스턴트 설정에서 %1 API 키를 추가하십시오.</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>Working…</source>
+        <translation type="unfinished">작업 중…</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Stopped. Changes already made stay; Undo This Response takes them back.</source>
+        <translation type="unfinished">중지했습니다. 이미 적용된 변경 사항은 유지되며, &apos;이 응답 실행 취소&apos;로 되돌릴 수 있습니다.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>The last response&apos;s changes cannot be undone here: the document has changed since. Use Edit ▸ Undo.</source>
+        <translation type="unfinished">마지막 응답의 변경 사항은 여기에서 실행 취소할 수 없습니다: 그 이후 문서가 변경되었습니다. 편집 ▸ 실행 취소를 사용하십시오.</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Undid the last response&apos;s changes.</source>
+        <translation type="unfinished">마지막 응답의 변경 사항을 실행 취소했습니다.</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>The API key could not be saved: %1</source>
+        <translation type="unfinished">API 키를 저장할 수 없습니다: %1</translation>
+    </message>
+    <message>
+        <location line="+47"/>
+        <source>You</source>
+        <translation type="unfinished">사용자</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Assistant</source>
+        <translation type="unfinished">어시스턴트</translation>
+    </message>
+</context>
+<context>
+    <name>hz::ui::AiSettingsDialog</name>
+    <message>
+        <location filename="../src/ui/src/AiSettingsDialog.cpp" line="+21"/>
+        <source>AI Assistant Settings</source>
+        <translation type="unfinished">AI 어시스턴트 설정</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Provider</source>
+        <translation type="unfinished">제공업체</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Provider:</source>
+        <translation type="unfinished">제공업체:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Server address</source>
+        <translation type="unfinished">서버 주소</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Server:</source>
+        <translation type="unfinished">서버:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Model</source>
+        <translation type="unfinished">모델</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Fetch Models</source>
+        <translation type="unfinished">모델 가져오기</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>List the models this server and key can use</source>
+        <translation type="unfinished">이 서버와 키로 사용할 수 있는 모델 나열</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Model:</source>
+        <translation type="unfinished">모델:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>API key</source>
+        <translation type="unfinished">API 키</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>API key:</source>
+        <translation type="unfinished">API 키:</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Effort</source>
+        <translation type="unfinished">추론 강도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Model default</source>
+        <translation type="unfinished">모델 기본값</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Low (quick)</source>
+        <translation type="unfinished">낮음 (빠름)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Medium</source>
+        <translation type="unfinished">중간</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>High</source>
+        <translation type="unfinished">높음</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Extra high</source>
+        <translation type="unfinished">매우 높음</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Max (slow)</source>
+        <translation type="unfinished">최대 (느림)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Effort:</source>
+        <translation type="unfinished">추론 강도:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Retry a declined request on Anthropic&apos;s fallback model</source>
+        <translation type="unfinished">거부된 요청을 Anthropic의 대체 모델로 다시 시도</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>When a safety classifier declines a request, Anthropic re-runs it on its recommended fallback model (for the models that offer it).</source>
+        <translation type="unfinished">안전 분류기가 요청을 거부하면 Anthropic이 권장 대체 모델로 요청을 다시 실행합니다(이 기능을 제공하는 모델에 한함).</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Longest reply</source>
+        <translation type="unfinished">최대 응답 길이</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source> tokens</source>
+        <translation type="unfinished"> 토큰</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Longest reply:</source>
+        <translation type="unfinished">최대 응답 길이:</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Steps per request</source>
+        <translation type="unfinished">요청당 단계 수</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>How many rounds of tool calls one request may take</source>
+        <translation type="unfinished">요청 하나가 수행할 수 있는 도구 호출 라운드 수</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Steps per request:</source>
+        <translation type="unfinished">요청당 단계 수:</translation>
+    </message>
+    <message>
+        <location line="+60"/>
+        <source>Set by %1</source>
+        <translation type="unfinished">%1에서 설정됨</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The key comes from the environment variable %1.</source>
+        <translation type="unfinished">키를 환경 변수 %1에서 가져옵니다.</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Not needed for a local server</source>
+        <translation type="unfinished">로컬 서버에는 필요하지 않음</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Saved only on this computer, readable only by you.</source>
+        <translation type="unfinished">이 컴퓨터에만 저장되며 본인만 읽을 수 있습니다.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Paste your API key</source>
+        <translation type="unfinished">API 키 붙여넣기</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Saved (type to replace)</source>
+        <translation type="unfinished">저장됨 (바꾸려면 입력)</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Saved only on this computer, readable only by you, in %1. Or set %2 in the environment.</source>
+        <translation type="unfinished">이 컴퓨터의 %1에만 저장되며 본인만 읽을 수 있습니다. 또는 환경 변수 %2을(를) 설정하십시오.</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Claude models from Anthropic. Get a key at console.anthropic.com.</source>
+        <translation type="unfinished">Anthropic의 Claude 모델입니다. console.anthropic.com에서 키를 발급받으십시오.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>GPT models from OpenAI. Get a key at platform.openai.com.</source>
+        <translation type="unfinished">OpenAI의 GPT 모델입니다. platform.openai.com에서 키를 발급받으십시오.</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Gemini models from Google. Get a key at aistudio.google.com.</source>
+        <translation type="unfinished">Google의 Gemini 모델입니다. aistudio.google.com에서 키를 발급받으십시오.</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>A model on this computer, or any server with OpenAI&apos;s chat API. Ollama: http://localhost:11434/v1. LM Studio: http://localhost:1234/v1. llama.cpp: http://localhost:8080/v1. Choose a model that can call tools (functions).</source>
+        <translation type="unfinished">이 컴퓨터의 모델 또는 OpenAI 채팅 API를 제공하는 모든 서버입니다. Ollama: http://localhost:11434/v1. LM Studio: http://localhost:1234/v1. llama.cpp: http://localhost:8080/v1. 도구(함수)를 호출할 수 있는 모델을 선택하십시오.</translation>
+    </message>
+    <message>
+        <location line="+42"/>
+        <source>Asking the server for its models…</source>
+        <translation type="unfinished">서버에 모델 목록을 요청하는 중…</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+20"/>
+        <source>Models listed: %n</source>
+        <translation type="unfinished">
+            <numerusform>모델 %n개를 나열했습니다.</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::Application</name>
     <message>
         <location filename="../src/ui/src/Application.cpp" line="+35"/>
@@ -2556,7 +3036,7 @@ begin building your part.</source>
         <translation type="unfinished">%2 주변, 패싯 %1개의 곡면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-210"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-234"/>
         <source>Close %1</source>
         <translation type="unfinished">%1 닫기</translation>
     </message>
@@ -2772,7 +3252,7 @@ begin building your part.</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
     <message>
-        <location line="+77"/>
+        <location line="+83"/>
         <source>New &amp;Part</source>
         <translation type="unfinished">새 부품(&amp;P)</translation>
     </message>
@@ -3027,7 +3507,7 @@ begin building your part.</source>
         <translation type="unfinished">단면 없음(&amp;N)</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+11"/>
         <source>&amp;Model</source>
         <translation type="unfinished">모델(&amp;M)</translation>
     </message>
@@ -3612,11 +4092,12 @@ begin building your part.</source>
         <location line="+5"/>
         <location line="+10"/>
         <location line="+6"/>
+        <location line="+4"/>
         <source>Home</source>
         <translation type="unfinished">홈</translation>
     </message>
     <message>
-        <location line="-21"/>
+        <location line="-25"/>
         <source>File</source>
         <translation type="unfinished">파일</translation>
     </message>
@@ -3679,6 +4160,16 @@ begin building your part.</source>
         <location line="+2"/>
         <source>Ungroup</source>
         <translation type="unfinished">그룹 해제</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Assistant</source>
+        <translation type="unfinished">어시스턴트</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>AI Assistant</source>
+        <translation type="unfinished">AI 어시스턴트</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -3881,6 +4372,16 @@ begin building your part.</source>
         <translation type="unfinished">
             <numerusform>파일을 저장했습니다. 레이어 %n개는 DXF에서 허용하는 이름으로 저장했습니다.</numerusform>
         </translation>
+    </message>
+    <message>
+        <location line="+311"/>
+        <source>The assistant works on parts and drawings, not assemblies</source>
+        <translation type="unfinished">어시스턴트는 어셈블리가 아니라 부품과 도면에서 작동합니다</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>The assistant works on parts and drawings, not drawing sheets</source>
+        <translation type="unfinished">어시스턴트는 도면 시트가 아니라 부품과 도면에서 작동합니다</translation>
     </message>
     <message>
         <location line="+435"/>
@@ -4222,7 +4723,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">닫기 전에 저장하시겠습니까?</translation>
     </message>
     <message>
-        <location line="+38"/>
+        <location line="+41"/>
         <source>Autosave off</source>
         <translation type="unfinished">자동 저장 꺼짐</translation>
     </message>

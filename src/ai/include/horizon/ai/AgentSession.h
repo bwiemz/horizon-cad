@@ -84,6 +84,9 @@ public:
     bool busy() const { return m_busy; }
     /// Forget the conversation.
     void reset();
+    /// Tell the model @p note with the next request ("the user switched to
+    /// another document"). Notes add up until then.
+    void addNote(const std::string& note);
     const std::vector<Message>& messages() const { return m_messages; }
 
     /// Whether the last request changed the document and nothing has been
@@ -93,6 +96,9 @@ public:
     /// Undo every change the last request made. False, changing nothing,
     /// unless canUndoLastResponse(). The model is told at the next request.
     bool undoLastResponse();
+    /// Stop offering to undo the last request's changes: the document they
+    /// were made to is no longer the one the hooks see.
+    void forgetLastResponse() { m_aiSteps = 0; }
 
 private:
     void requestNext();

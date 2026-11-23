@@ -2,6 +2,10 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 add_library(hz_ui STATIC
+    include/horizon/ui/AiAssistantPanel.h
+    include/horizon/ui/AiSettings.h
+    include/horizon/ui/AiSettingsDialog.h
+    include/horizon/ui/QtHttpTransport.h
     include/horizon/ui/Application.h
     include/horizon/ui/Logging.h
     include/horizon/ui/MainWindow.h
@@ -89,6 +93,10 @@ add_library(hz_ui STATIC
     include/horizon/ui/PdfExport.h
     include/horizon/ui/SelfTest.h
     include/horizon/ui/ChainDimensionTool.h
+    src/AiAssistantPanel.cpp
+    src/AiSettings.cpp
+    src/AiSettingsDialog.cpp
+    src/QtHttpTransport.cpp
     src/Application.cpp
     src/CrashReport.cpp
     src/HelpWindow.cpp
@@ -195,6 +203,8 @@ target_link_libraries(hz_ui
         Qt6::Gui
         Qt6::Widgets
         Qt6::OpenGLWidgets
+        Qt6::Network
+        Horizon::AI
         spdlog::spdlog
 )
 

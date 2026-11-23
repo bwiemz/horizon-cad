@@ -1,0 +1,128 @@
+#include "horizon/ui/QtHttpTransport.h"
+
+#include <spdlog/spdlog.h>
+
+#include <QByteArray>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QTimer>
+#include <QUrl>
+#include <exception>
+#include <utility>
+
+#if QT_CONFIG(ssl)
+#include <QSslSocket>
+#endif
+
+namespace hz::ui {
+
+namespace {
+
+constexpr const char* kCancelled = "hzCancelled";
+
+}  // namespace
+
+QtHttpTransport::QtHttpTransport(QObject* parent)
+    : QObject(parent), m_manager(new QNetworkAccessManager(this)) {}
+
+QtHttpTransport::~QtHttpTransport() {
+    cancelAll();
+}
+
+bool QtHttpTransport::supportsTls() {
+#if QT_CONFIG(ssl)
+    return QSslSocket::supportsSsl();
+#else
+    return false;
+#endif
+}
+
+ai::HttpTransport::RequestId QtHttpTransport::send(const ai::HttpRequest& request,
+                                                   std::function<void(ai::HttpResponse)> done) {
+    const RequestId id = ++m_nextId;
+    const QUrl url(QString::fromStdString(request.url));
+    const auto failLater = [this, id, done](const std::string& why) {
+        // Called back later, as a reply would be (the caller is not yet ready
+        // for an answer while send() runs), unless it is cancelled first.
+        m_failing.insert(id);
+        QTimer::singleShot(0, this, [this, id, done, why] {
+            if (!m_failing.remove(id)) return;
+            ai::HttpResponse response;
+            response.networkError = why;
+            done(response);
+        });
+    };
+    if (!url.isValid() ||
+        (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https"))) {
+        failLater("the server address is not an http or https URL");
+        return id;
+    }
+    if (url.scheme() == QLatin1String("https") && !supportsTls()) {
+        failLater(
+            "this build of Horizon CAD cannot make secure (https) connections: no TLS library "
+            "was found. A local server over http still works.");
+        return id;
+    }
+
+    QNetworkRequest networkRequest(url);
+    networkRequest.setTransferTimeout(m_timeoutMs);
+    // A redirect is followed only to the same scheme, host and port: the
+    // request carries an API key in its headers, which must never go to a
+    // host the user did not choose. A model's API does not redirect elsewhere.
+    networkRequest.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                                QNetworkRequest::SameOriginRedirectPolicy);
+    for (const auto& [name, value] : request.headers) {
+        networkRequest.setRawHeader(QByteArray::fromStdString(name),
+                                    QByteArray::fromStdString(value));
+    }
+    QNetworkReply* reply = nullptr;
+    if (request.method == "GET") {
+        reply = m_manager->get(networkRequest);
+    } else {
+        reply = m_manager->post(networkRequest, QByteArray::fromStdString(request.body));
+    }
+    m_replies.insert(id, reply);
+    connect(reply, &QNetworkReply::finished, this, [this, id, reply, done = std::move(done)] {
+        m_replies.remove(id);
+        reply->deleteLater();
+        if (reply->property(kCancelled).toBool()) return;
+        ai::HttpResponse response;
+        response.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        response.body = reply->readAll().toStdString();
+        if (response.status == 0) {
+            // No HTTP answer at all. The error text names the host, never a
+            // header: no key reaches it.
+            const auto failure = reply->error();
+            response.networkError = failure == QNetworkReply::OperationCanceledError ||
+                                            failure == QNetworkReply::TimeoutError
+                                        ? "no reply within the time limit"
+                                        : reply->errorString().toStdString();
+        }
+        try {
+            done(response);
+        } catch (const std::exception& e) {
+            // The session's callback does not throw; a transport never lets
+            // an exception into Qt's event loop.
+            spdlog::error("AI assistant: a reply's handler failed: {}", e.what());
+        }
+    });
+    return id;
+}
+
+void QtHttpTransport::cancel(RequestId id) {
+    m_failing.remove(id);
+    // abort() finishes the reply at once; marked first, it calls no one.
+    const QPointer<QNetworkReply> reply = m_replies.take(id);
+    if (!reply) return;
+    reply->setProperty(kCancelled, true);
+    reply->abort();
+}
+
+void QtHttpTransport::cancelAll() {
+    m_failing.clear();
+    const auto ids = m_replies.keys();
+    for (const RequestId id : ids) cancel(id);
+}
+
+}  // namespace hz::ui

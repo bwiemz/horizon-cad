@@ -207,6 +207,11 @@ void AgentSession::reset() {
     m_note.clear();
 }
 
+void AgentSession::addNote(const std::string& note) {
+    if (note.empty()) return;
+    m_note = m_note.empty() ? note : m_note + "\n" + note;
+}
+
 bool AgentSession::canUndoLastResponse() const {
     if (m_busy || m_aiSteps <= 0 || m_interleaved) return false;
     if (!m_undo.undoCount || !m_undo.revision || !m_undo.undo) return false;

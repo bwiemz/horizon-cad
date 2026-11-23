@@ -136,6 +136,7 @@ private:
     static QIcon drawPatternCircular(int s);
     static QIcon drawMirror3d(int s);
     static QIcon drawHole(int s);
+    static QIcon drawAssistant(int s);
 };
 
 }  // namespace hz::ui
