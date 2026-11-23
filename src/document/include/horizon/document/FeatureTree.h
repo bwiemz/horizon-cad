@@ -19,6 +19,7 @@
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/ReferenceGeometry.h"
 #include "horizon/modeling/Revolve.h"
+#include "horizon/modeling/SheetMetal.h"
 #include "horizon/modeling/Sweep.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
@@ -148,6 +149,7 @@ public:
         Angle,   ///< kept in radians; shown and typed in degrees
         Count,   ///< a whole number
         Choice,  ///< the code of one of a few named choices (a Boolean's operation)
+        Number,  ///< a plain number, of no unit (a sheet's K-factor)
     };
     /// The names of a Choice parameter's values, in code order.
     virtual std::vector<std::string> parameterChoices(const std::string& name) const;
@@ -802,6 +804,54 @@ private:
 /// torus). A base feature — it ignores the input solid — so toolbar primitives
 /// become parametric, editable tree features that persist and rebuild instead
 /// of one-shot scene edits.
+/// Base flange (sheet metal): an open sketch of lines, end to end, folded into
+/// a sheet of a thickness, each corner a bend of an inside radius, extruded
+/// to a width along the sketch's normal. The lines are the virtual sharps of
+/// the sheet's surface its thickness grows from; the material is to the left
+/// of the lines as they run, or to the right when flipped. Its flat pattern
+/// is strip() developed (model::developedLength, bendLinePositions).
+class SheetMetalFeature : public Feature {
+public:
+    SheetMetalFeature(std::shared_ptr<Sketch> sketch, double thickness, double bendRadius,
+                      double width);
+
+    std::string name() const override;
+    std::string featureID() const override;
+    void restoreFeatureID(const std::string& id) override;
+    std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
+                                         std::string* reason = nullptr) const override;
+    std::vector<std::shared_ptr<Sketch>> sketches() const override { return {m_sketch}; }
+    bool createsNewBody() const override { return true; }
+    /// thickness, bendRadius, kFactor, width, bendSegments (chords per bend) and
+    /// flip (the material's side: 0 left of the lines, 1 right).
+    std::map<std::string, double> parameters() const override;
+    bool setParameter(const std::string& name, double value) override;
+    ParameterKind parameterKind(const std::string& name) const override;
+    std::vector<std::string> parameterChoices(const std::string& name) const override;
+
+    const std::shared_ptr<Sketch>& sketch() const { return m_sketch; }
+    model::SheetMetalParams params() const { return m_params; }
+    double width() const { return m_width; }
+    bool flipped() const { return m_flip; }
+    int segmentsPerBend() const { return m_segments; }
+    /// The strip its sketch folds into; nullopt, with why, when it folds into
+    /// none (lines that do not join, too short for their bends...).
+    std::optional<model::SheetMetalStrip> strip(std::string* why = nullptr) const;
+    /// Its sketch's lines in order, end to end, in the sketch plane (the
+    /// virtual sharps); empty, with why, when they are not one open chain.
+    std::vector<math::Vec2> profile(std::string* why = nullptr) const;
+
+private:
+    std::shared_ptr<Sketch> m_sketch;
+    model::SheetMetalParams m_params;
+    double m_width;
+    bool m_flip = false;
+    int m_segments = 8;
+    std::string m_featureID;
+
+    static math::IdCounter<int> s_nextID;
+};
+
 class PrimitiveFeature : public Feature {
 public:
     enum class Kind { Box, Cylinder, Sphere, Cone, Torus };

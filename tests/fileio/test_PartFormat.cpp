@@ -130,6 +130,48 @@ TEST(PartFormatTest, RevolveRoundTripPreservesAxis) {
     std::remove(path.c_str());
 }
 
+// A base flange (sheet metal) comes back with its sketch and every size, and
+// builds the same sheet.
+TEST(PartFormatTest, ABaseFlangeRoundTrips) {
+    Document original;
+    original.setType(DocumentType::Part);
+    auto sketch = std::make_shared<Sketch>();
+    sketch->setName("Bracket");
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(50, 0)));
+    sketch->addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(50, 0), Vec2(50, 30)));
+    original.addSketch(sketch);
+    auto flange = std::make_unique<hz::doc::SheetMetalFeature>(sketch, 2.0, 1.5, 20.0);
+    ASSERT_TRUE(flange->setParameter("kFactor", 0.33));
+    ASSERT_TRUE(flange->setParameter("flip", 1.0));
+    ASSERT_TRUE(flange->setParameter("bendSegments", 12.0));
+    const std::string id = flange->featureID();
+    original.featureTree().addFeature(std::move(flange));
+    ASSERT_TRUE(original.rebuildModel()) << original.lastBuildMessage();
+    const double volume = hz::model::MassPropertiesCalculator::compute(*original.solid()).volume;
+
+    const std::string path = tempPath("hz_test_base_flange.hzpart");
+    ASSERT_TRUE(NativeFormat::save(path, original));
+    Document loaded;
+    ASSERT_TRUE(NativeFormat::load(path, loaded));
+    ASSERT_EQ(loaded.featureTree().featureCount(), 1u);
+    const auto* back =
+        dynamic_cast<const hz::doc::SheetMetalFeature*>(loaded.featureTree().feature(0));
+    ASSERT_NE(back, nullptr);
+    EXPECT_EQ(back->featureID(), id);
+    ASSERT_NE(back->sketch(), nullptr);
+    EXPECT_EQ(back->sketch()->name(), "Bracket");
+    const auto sizes = back->parameters();
+    EXPECT_EQ(sizes.at("thickness"), 2.0);
+    EXPECT_EQ(sizes.at("bendRadius"), 1.5);
+    EXPECT_EQ(sizes.at("kFactor"), 0.33);
+    EXPECT_EQ(sizes.at("width"), 20.0);
+    EXPECT_EQ(sizes.at("flip"), 1.0);
+    EXPECT_EQ(sizes.at("bendSegments"), 12.0);
+    ASSERT_TRUE(loaded.rebuildModel()) << loaded.lastBuildMessage();
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*loaded.solid()).volume, volume, 1e-9);
+    std::remove(path.c_str());
+}
+
 // ---------------------------------------------------------------------------
 // TessellationCacheIsWrittenForBuiltParts
 // ---------------------------------------------------------------------------

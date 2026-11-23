@@ -509,6 +509,9 @@ void MainWindow::createMenus() {
         exportMenu->addAction(tr("&PDF..."), this, [this] { m_exchange->onExportPlot(true); });
     QAction* exportSvg =
         exportMenu->addAction(tr("S&VG..."), this, [this] { m_exchange->onExportPlot(false); });
+    QAction* exportFlat = exportMenu->addAction(tr("&Flat Pattern (DXF)..."), this,
+                                                [this] { m_exchange->onExportFlatPattern(); });
+    exportFlat->setObjectName(QStringLiteral("export_flat_pattern"));
     exportPdf->setObjectName(QStringLiteral("export_pdf"));
     exportSvg->setObjectName(QStringLiteral("export_svg"));
     exportStep->setObjectName(QStringLiteral("export_step"));
@@ -1093,6 +1096,11 @@ void MainWindow::createRibbonBar() {
     addAction(g, "extrude", tr("Extrude"), m_part.get(), &PartCommands::onExtrudeSketch);
     addAction(g, "revolve", tr("Revolve"), m_part.get(), &PartCommands::onRevolveSketch);
     addAction(g, "hole", tr("Hole"), m_part.get(), &PartCommands::onHole);
+
+    g = group(tr("3D"), tr("Sheet Metal"));
+    addAction(g, "base-flange", tr("Base Flange"), m_part.get(), &PartCommands::onBaseFlange);
+    addAction(g, "flat-pattern", tr("Flat Pattern"), m_exchange.get(),
+              &ExchangeCommands::onExportFlatPattern);
 
     g = group(tr("3D"), tr("Combine Bodies"));
     addAction(g, "boolean-union", tr("Union"), m_part.get(), &PartCommands::onBooleanUnion);
@@ -3969,6 +3977,14 @@ void MainWindow::onFeatureDoubleClicked(int featureIndex) {
                                 [choice, shown = choice->currentIndex()] {
                                     return choice->currentIndex() != shown;
                                 },
+                                nullptr};
+                break;
+            }
+            case Kind::Number: {
+                auto* spin = form.number(key, parameterLabel(name) + QStringLiteral(":"), value,
+                                         -1e9, 1e9, 4);
+                fields[name] = {[spin] { return spin->value(); },
+                                [spin, shown = spin->value()] { return spin->value() != shown; },
                                 nullptr};
                 break;
             }

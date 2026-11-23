@@ -28,6 +28,7 @@ part, Keep the intersection, or New body. A feature that would leave nothing
 | **Loft...** | Two or more sketches, in order; the solid passes through each. |
 | **Sweep...** | A profile sketch and a path sketch; the profile is carried along the path. |
 | **Hole** | The face and the point (the point is moved onto the face), the type (simple, counterbored or countersunk), how far (to a depth, through all, or up to a face), the diameter and depth, and the drill point's angle (0 for a flat bottom). |
+| **Base Flange** (Sheet Metal) | An open sketch of lines (an L, a U, a Z: lines or an open polyline, end to end), and the sheet's thickness, its inside bend radius, its K-factor (where the neutral axis lies, 0 to 1; 0.44 suits most steel), its width along the sketch's normal, and which side of the lines the material is on. Each corner becomes a bend. The lines are one surface of the sheet: the outside of a bend that turns toward the material. |
 | **Fillet** (**Ctrl+Shift+F**), **Chamfer** (**Ctrl+Shift+C**) | The radius or distance, and the edges. |
 | **Shell** (**Ctrl+Shift+H**) | The wall thickness, and the faces to leave open: one or more (a closed hollow is not made yet). |
 | **Draft** | The pull direction, the neutral plane, and the angle. |
@@ -35,6 +36,12 @@ part, Keep the intersection, or New body. A feature that would leave nothing
 | **Circular Pattern** | The axis, the number of instances, and the angle they span. A full turn spaces them evenly. |
 | **Mirror** | The plane (YZ, ZX, XY, or a flat face), and the features to mirror (none mirrors the whole part). |
 | **Union, Subtract, Intersect** | No form: they combine the part's bodies (made with Result: New body). Subtract cuts every later body from the first. |
+
+**Flat Pattern** (Sheet Metal) writes the base flange unfolded as a DXF at
+full size for cutting: the blank's outline, and a dash-dot line across it at
+each bend with its direction and angle ("UP 90°"). It is also File ▸ Export ▸
+Flat Pattern (DXF). The blank is the flange's own: holes and cuts made
+after it are not in it yet.
 
 **Model ▸ Datum** adds reference geometry: a plane (from a face or a
 principal plane, offset and turned), an axis or a point. Datums are drawn

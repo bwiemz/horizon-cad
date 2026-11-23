@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <string>
 
 #include "horizon/modeling/SheetMetal.h"
 
@@ -99,4 +100,135 @@ TEST(SheetMetalTest, InconsistentStripReturnsZero) {
     SheetMetalStrip ok;
     ok.segments = {5.0};
     EXPECT_EQ(developedLength(ok, bad), 0.0);
+}
+
+// --- A base flange from its sketch -------------------------------------------
+
+// An L sketched as the outside of the sheet: material to the left of travel,
+// so the bend turns toward it and the sketched surface is the bend's outside
+// (radius r + t). The flat lengths are the lines less the setbacks, and the
+// developed length is the classic outside-dimension one: the two legs less
+// the bend deduction.
+TEST(BaseFlangeStrip, AnLSketchedOnTheOutside) {
+    const SheetMetalParams p{2.0, 1.0, 0.44};
+    std::string why;
+    const auto strip = hz::model::stripFromPolyline({{0, 0}, {50, 0}, {50, 30}}, p, false, &why);
+    ASSERT_TRUE(strip.has_value()) << why;
+    ASSERT_EQ(strip->segments.size(), 2u);
+    ASSERT_EQ(strip->bendAngles.size(), 1u);
+    EXPECT_NEAR(strip->bendAngles[0], kPi / 2, 1e-12);
+    EXPECT_NEAR(strip->segments[0], 50.0 - 3.0, 1e-9);  // setback (r + t) tan 45° = 3
+    EXPECT_NEAR(strip->segments[1], 30.0 - 3.0, 1e-9);
+    EXPECT_NEAR(developedLength(*strip, p), 50.0 + 30.0 - bendDeduction(kPi / 2, p), 1e-9);
+}
+
+// The same lines with the material on the other side: the sketched surface
+// is the bend's inside (radius r), and the bend turns the other way.
+TEST(BaseFlangeStrip, FlippedTheSketchIsTheInside) {
+    const SheetMetalParams p{2.0, 1.0, 0.44};
+    std::string why;
+    const auto strip = hz::model::stripFromPolyline({{0, 0}, {50, 0}, {50, 30}}, p, true, &why);
+    ASSERT_TRUE(strip.has_value()) << why;
+    EXPECT_NEAR(strip->bendAngles[0], -kPi / 2, 1e-12);
+    EXPECT_NEAR(strip->segments[0], 49.0, 1e-9);  // setback r tan 45° = 1
+    EXPECT_NEAR(strip->segments[1], 29.0, 1e-9);
+}
+
+// A U and a Z: each corner its own bend, a line between two bends losing a
+// setback at each end, and a straight run with no bend at all.
+TEST(BaseFlangeStrip, AUAZAndAStraightRun) {
+    const SheetMetalParams p{1.0, 2.0, 0.5};
+    std::string why;
+    const auto u =
+        hz::model::stripFromPolyline({{0, 30}, {0, 0}, {40, 0}, {40, 30}}, p, true, &why);
+    ASSERT_TRUE(u.has_value()) << why;
+    ASSERT_EQ(u->bendAngles.size(), 2u);
+    EXPECT_NEAR(u->bendAngles[0], u->bendAngles[1], 1e-12);  // both the same way
+    EXPECT_NEAR(u->segments[1], 40.0 - 2.0 * 2.0, 1e-9)
+        << "the base loses a setback of r tan 45° = 2 at each end";
+    EXPECT_NEAR(u->segments[0], 30.0 - 2.0, 1e-9);
+
+    const auto z =
+        hz::model::stripFromPolyline({{0, 0}, {20, 0}, {20, 20}, {40, 20}}, p, false, &why);
+    ASSERT_TRUE(z.has_value()) << why;
+    EXPECT_NEAR(z->bendAngles[0], -z->bendAngles[1], 1e-12) << "a Z bends one way then back";
+
+    const auto straight = hz::model::stripFromPolyline({{0, 0}, {10, 0}, {25, 0}}, p, false, &why);
+    ASSERT_TRUE(straight.has_value()) << why;
+    EXPECT_NEAR(straight->bendAngles[0], 0.0, 1e-12);
+    EXPECT_NEAR(developedLength(*straight, p), 25.0, 1e-9);
+}
+
+// What a sketch cannot be folded from, said in the user's terms.
+TEST(BaseFlangeStrip, WhatCannotBeFolded) {
+    const SheetMetalParams p{2.0, 1.0, 0.44};
+    std::string why;
+    EXPECT_FALSE(hz::model::stripFromPolyline({{0, 0}}, p, false, &why).has_value());
+    EXPECT_NE(why.find("at least one line"), std::string::npos) << why;
+    EXPECT_FALSE(
+        hz::model::stripFromPolyline({{0, 0}, {0, 0}, {5, 0}}, p, false, &why).has_value());
+    EXPECT_NE(why.find("no length"), std::string::npos) << why;
+    // A line shorter than the bends at its ends: 4 mm between two bends that
+    // each take 3 mm of it.
+    EXPECT_FALSE(hz::model::stripFromPolyline({{0, 0}, {20, 0}, {20, 4}, {0, 4}}, p, false, &why)
+                     .has_value());
+    EXPECT_NE(why.find("line 2"), std::string::npos) << why;
+    EXPECT_NE(why.find("too short"), std::string::npos) << why;
+    // A corner that turns back on itself.
+    EXPECT_FALSE(
+        hz::model::stripFromPolyline({{0, 0}, {20, 0}, {0, 0.0}}, p, false, &why).has_value());
+    EXPECT_FALSE(why.empty());
+    EXPECT_FALSE(
+        hz::model::stripFromPolyline({{0, 0}, {20, 0}}, {0.0, 1.0, 0.44}, false, &why).has_value());
+    EXPECT_NE(why.find("thickness"), std::string::npos) << why;
+}
+
+// Bend lines run across the flat pattern at the middle of each bend's
+// allowance, whichever way the bend turns.
+TEST(BaseFlangeStrip, BendLinesSitAtTheMiddleOfEachAllowance) {
+    const SheetMetalParams p{2.0, 1.0, 0.44};
+    const SheetMetalStrip strip{{10.0, 20.0, 5.0}, {kPi / 2, -kPi / 2}};
+    const double ba = bendAllowance(kPi / 2, p);
+    const auto lines = hz::model::bendLinePositions(strip, p);
+    ASSERT_EQ(lines.size(), 2u);
+    EXPECT_NEAR(lines[0], 10.0 + ba / 2, 1e-12);
+    EXPECT_NEAR(lines[1], 10.0 + ba + 20.0 + ba / 2, 1e-12);
+    EXPECT_TRUE(hz::model::bendLinePositions(SheetMetalStrip{{10.0}, {}}, p).empty());
+}
+
+// A bend turning the other way takes as much sheet: a flipped flange, the
+// second bend of a Z.
+TEST(BaseFlangeStrip, ABendEitherWayTakesItsAllowance) {
+    const SheetMetalParams p{2.0, 1.0, 0.44};
+    const SheetMetalStrip up{{10.0, 20.0}, {kPi / 2}};
+    const SheetMetalStrip down{{10.0, 20.0}, {-kPi / 2}};
+    EXPECT_NEAR(developedLength(down, p), developedLength(up, p), 1e-12);
+    EXPECT_NEAR(developedLength(down, p), 30.0 + bendAllowance(kPi / 2, p), 1e-12);
+}
+
+// A line that its bends take whole (a jog with no flat), a bend with no
+// radius, a turn too small to be a bend, and a point that is not a number:
+// each refused, or read, with its reason.
+TEST(BaseFlangeStrip, EdgesOfWhatFolds) {
+    std::string why;
+    // A U whose 10 mm base has a bend toward the material at each end, each
+    // taking r + t = 5 of it: nothing left between the bends.
+    const SheetMetalParams p{1.0, 4.0, 0.44};
+    EXPECT_FALSE(
+        hz::model::stripFromPolyline({{0, 20}, {0, 0}, {10, 0}, {10, 20}}, p, false, &why));
+    EXPECT_NE(why.find("no longer than its bends take"), std::string::npos) << why;
+    EXPECT_NE(why.find("line 2"), std::string::npos) << why;
+
+    EXPECT_FALSE(
+        hz::model::stripFromPolyline({{0, 0}, {20, 0}, {20, 10}}, {1.0, 0.0, 0.44}, false, &why));
+    EXPECT_NE(why.find("inside radius above 0"), std::string::npos) << why;
+    // With no bend, no radius is needed: a flat plate.
+    EXPECT_TRUE(hz::model::stripFromPolyline({{0, 0}, {20, 0}}, {1.0, 0.0, 0.44}, false, &why));
+
+    const auto almost = hz::model::stripFromPolyline({{0, 0}, {20, 0}, {40, 1e-8}}, p, false, &why);
+    ASSERT_TRUE(almost.has_value()) << why;
+    EXPECT_EQ(almost->bendAngles[0], 0.0) << "a turn of a millionth of a degree is no bend";
+
+    EXPECT_FALSE(hz::model::stripFromPolyline({{0, 0}, {std::nan(""), 0}}, p, false, &why));
+    EXPECT_NE(why.find("not a number"), std::string::npos) << why;
 }

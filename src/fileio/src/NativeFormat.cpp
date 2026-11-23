@@ -910,6 +910,13 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             json sizes = json::object();
             for (const auto& [name, value] : hole->parameters()) sizes[name] = value;
             fObj["sizes"] = sizes;
+        } else if (const auto* flange = dynamic_cast<const doc::SheetMetalFeature*>(feat)) {
+            // A base flange (sheet metal): its sketch, and its sizes by name.
+            fObj["type"] = "sheetmetal";
+            if (flange->sketch()) fObj["sketchId"] = flange->sketch()->id();
+            json sizes = json::object();
+            for (const auto& [name, value] : flange->parameters()) sizes[name] = value;
+            fObj["sizes"] = sizes;
         } else if (const auto* mirror = dynamic_cast<const doc::MirrorFeature*>(feat)) {
             // Phase 162: its plane, a face it follows, and what it mirrors.
             fObj["type"] = "mirror";
@@ -1783,6 +1790,22 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     }
                     // Each size as an edit sets it: one it refuses (a
                     // diameter of nothing, a type from a later build) is a
+                    // damaged file.
+                    for (const auto& [name, value] : fObj.at("sizes").items()) {
+                        if (!value.is_number() || !feat->setParameter(name, value.get<double>())) {
+                            throw std::runtime_error("its " + name + " is not one");
+                        }
+                    }
+                    feat->restoreFeatureID(persistedId);
+                    addLoaded(std::move(feat));
+                    continue;
+                }
+                if (ftype == "sheetmetal") {
+                    std::shared_ptr<doc::Sketch> sketch;
+                    if (fObj.contains("sketchId")) sketch = findSketch(idFrom(fObj.at("sketchId")));
+                    if (!sketch) throw std::invalid_argument("its sketch is missing");
+                    auto feat = std::make_unique<doc::SheetMetalFeature>(sketch, 1.0, 1.0, 1.0);
+                    // Each size as an edit sets it: one it refuses is a
                     // damaged file.
                     for (const auto& [name, value] : fObj.at("sizes").items()) {
                         if (!value.is_number() || !feat->setParameter(name, value.get<double>())) {

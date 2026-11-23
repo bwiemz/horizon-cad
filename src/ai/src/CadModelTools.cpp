@@ -26,6 +26,7 @@
 #include "horizon/math/Units.h"
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/Naming.h"
+#include "horizon/modeling/SheetMetal.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
@@ -187,6 +188,64 @@ ToolResult extrude(const CadContext& context, const json& in) {
     extra["direction"] = toJson(dir);
     extra["operation"] = doc::bodyOperationName(operation);
     return addFeature(context, std::move(feature), "Extrude", std::move(extra));
+}
+
+ToolResult baseFlange(const CadContext& context, const json& in) {
+    auto sketch = sketchOf(context.document, in, "sketch_id");
+    const double thickness = positive(in, "thickness");
+    const double radius = number(in, "bend_radius", thickness);
+    if (!(radius >= 0.0) || radius > kMaxMagnitude) {
+        throw ArgError("\"bend_radius\" must be 0 or more: each bend's inside radius, in mm");
+    }
+    const double kFactor = number(in, "k_factor", 0.44);
+    if (!(kFactor >= 0.0 && kFactor <= 1.0)) {
+        throw ArgError("\"k_factor\" must be between 0 and 1 (0.44 suits most steel)");
+    }
+    const double width = positive(in, "width");
+    auto feature = std::make_unique<doc::SheetMetalFeature>(sketch, thickness, radius, width);
+    feature->setParameter("kFactor", kFactor);
+    feature->setParameter("flip", boolean(in, "flip", false) ? 1.0 : 0.0);
+    feature->setOperation(operationOf(context, in));
+    json extra = json::object();
+    if (const auto strip = feature->strip()) {
+        extra["flat_length"] = round6(model::developedLength(*strip, feature->params()));
+        extra["bends"] = std::count_if(strip->bendAngles.begin(), strip->bendAngles.end(),
+                                       [](double angle) { return angle != 0.0; });
+    }
+    return addFeature(context, std::move(feature), "Base Flange", std::move(extra));
+}
+
+ToolResult flatPattern(const CadContext& context, const json& /*in*/) {
+    const doc::SheetMetalFeature* flange = nullptr;
+    const auto& tree = context.document.featureTree();
+    for (std::size_t i = 0; i < tree.featureCount() && flange == nullptr; ++i) {
+        const auto* feature = dynamic_cast<const doc::SheetMetalFeature*>(tree.feature(i));
+        if (feature != nullptr && !feature->isSuppressed()) flange = feature;
+    }
+    if (flange == nullptr) throw ArgError("the part has no base flange: add_base_flange makes one");
+    std::string why;
+    const auto strip = flange->strip(&why);
+    if (!strip) return ToolResult::error("the base flange does not unfold: " + why);
+    const model::SheetMetalParams params = flange->params();
+    const std::vector<double> at = model::bendLinePositions(*strip, params);
+    json bends = json::array();
+    for (std::size_t i = 0; i < at.size() && i < strip->bendAngles.size(); ++i) {
+        const double angle = strip->bendAngles[i];
+        if (angle == 0.0) continue;
+        bends.push_back({{"at", round6(at[i])},
+                         {"angle", round6(std::abs(angle) / kDegree)},
+                         {"direction", angle > 0.0 ? "up" : "down"}});
+    }
+    return ToolResult::ok(
+        {{"length", round6(model::developedLength(*strip, params))},
+         {"width", round6(flange->width())},
+         {"thickness", round6(params.thickness)},
+         {"bend_radius", round6(params.bendRadius)},
+         {"k_factor", round6(params.kFactor)},
+         {"bends", std::move(bends)},
+         {"note",
+          "the blank to cut, in mm; each bend's line is \"at\" mm along its length. "
+          "File > Export > Flat Pattern writes it as a DXF."}});
 }
 
 ToolResult revolve(const CadContext& context, const json& in) {
@@ -706,6 +765,28 @@ void registerModelTools(ToolRegistry& registry, const Context& context) {
                  {"operation", operationSchema()}},
                 {"sketch_id"})},
         &extrude);
+
+    add({"add_base_flange",
+         "Sheet metal: fold an open sketch of lines (an L, a U, a Z, a hat section; lines only, "
+         "end to end) into a base flange of a thickness, each corner a bend with an inside "
+         "radius, extruded to a width along the sketch's normal. The lines are one surface of "
+         "the sheet (the outside of the bends that turn toward the material); the material "
+         "grows to the left of the lines as they run, or the right with flip. Returns the "
+         "flat length; get_flat_pattern gives the blank.",
+         object({{"sketch_id", integerSchema("an open sketch of lines, from create_sketch")},
+                 {"thickness", numberSchema("sheet thickness, mm")},
+                 {"bend_radius", numberSchema("inside bend radius, mm (default: the thickness)")},
+                 {"k_factor", numberSchema("neutral axis, 0 to 1 (default 0.44)")},
+                 {"width", numberSchema("mm, along the sketch's normal")},
+                 {"flip", booleanSchema("the material on the right of the lines")},
+                 {"operation", operationSchema()}},
+                {"sketch_id", "thickness", "width"})},
+        &baseFlange);
+    registry.add({"get_flat_pattern",
+                  "The part's base flange unfolded: the blank's length and width in mm, and each "
+                  "bend's line across it (where, its angle, up or down).",
+                  object(json::object())},
+                 ToolAccess::Read, [context](const json& in) { return flatPattern(*context, in); });
 
     add({"revolve",
          "Revolve a sketch's closed profile about an axis. By default the axis is the sketch's own "

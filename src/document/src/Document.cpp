@@ -196,6 +196,12 @@ void Document::applyExpressions() {
                         else
                             why = "it gives " + math::measureName(*q) + ", not a number";
                         break;
+                    case Feature::ParameterKind::Number:
+                        if (q->pure())
+                            value = q->value;
+                        else
+                            why = "it gives " + math::measureName(*q) + ", not a number";
+                        break;
                 }
             }
             // An expression can make a value with no size (1 / 0, 0 / 0),
