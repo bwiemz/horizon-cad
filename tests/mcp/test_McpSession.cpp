@@ -50,7 +50,7 @@ struct Fixture : ::testing::Test {
 using McpSessionTest = Fixture;
 
 TEST_F(McpSessionTest, HasTheCadAndDocumentTools) {
-    McpSession session;
+    McpSession session(true, dir);
     for (const char* name : {"create_sketch", "extrude", "list_edges", "get_session_info",
                              "new_document", "open_document", "save_document", "export_document"}) {
         EXPECT_TRUE(session.tools().has(name)) << name;
@@ -64,7 +64,7 @@ TEST_F(McpSessionTest, HasTheCadAndDocumentTools) {
 TEST_F(McpSessionTest, SavesAndOpensAPart) {
     const std::string path = (dir / "cube.hzpart").string();
     {
-        McpSession session;
+        McpSession session(true, dir);
         box(session);
         EXPECT_NE(fails(session, "save_document", json::object()).find("path"), std::string::npos);
         EXPECT_EQ(ok(session, "save_document", {{"path", path}})["saved"], path);
@@ -73,7 +73,7 @@ TEST_F(McpSessionTest, SavesAndOpensAPart) {
         box(session);
         ok(session, "save_document", json::object());
     }
-    McpSession reopened;
+    McpSession reopened(true, dir);
     std::string error;
     ASSERT_TRUE(reopened.open(path, &error)) << error;
     EXPECT_EQ(reopened.document().featureTree().featureCount(), 2u);
@@ -84,11 +84,11 @@ TEST_F(McpSessionTest, SavesAndOpensAPart) {
 TEST_F(McpSessionTest, OpenAndNewTakeOverAfterTheCall) {
     const std::string path = (dir / "one.hzpart").string();
     {
-        McpSession writer;
+        McpSession writer(true, dir);
         box(writer);
         ok(writer, "save_document", {{"path", path}});
     }
-    McpSession session;
+    McpSession session(true, dir);
     const json opened = ok(session, "open_document", {{"path", path}});
     EXPECT_EQ(opened["features"], 1);
     // Not yet: the tool that asked is still the one being run.
@@ -109,7 +109,7 @@ TEST_F(McpSessionTest, OpenAndNewTakeOverAfterTheCall) {
 }
 
 TEST_F(McpSessionTest, BadFilesAreErrors) {
-    McpSession session;
+    McpSession session(true, dir);
     fails(session, "open_document", {{"path", (dir / "missing.hzpart").string()}});
     fails(session, "open_document", {{"path", (dir / "model.step").string()}});
     {
@@ -125,7 +125,7 @@ TEST_F(McpSessionTest, BadFilesAreErrors) {
 }
 
 TEST_F(McpSessionTest, ExportsTheSolidAndTheDrawing) {
-    McpSession session;
+    McpSession session(true, dir);
     box(session);
     for (const char* name : {"part.step", "part.stl", "part.glb"}) {
         const std::string path = (dir / name).string();
@@ -134,7 +134,7 @@ TEST_F(McpSessionTest, ExportsTheSolidAndTheDrawing) {
     }
     fails(session, "export_document", {{"path", (dir / "part.obj").string()}});
 
-    McpSession drawing(false);
+    McpSession drawing(false, dir);
     ok(drawing, "draw_2d",
        {{"entities", json::array({{{"type", "circle"}, {"center", {0, 0}}, {"radius", 5}}})}});
     const std::string dxf = (dir / "sketch.dxf").string();
@@ -142,4 +142,50 @@ TEST_F(McpSessionTest, ExportsTheSolidAndTheDrawing) {
     std::ifstream in(dxf);
     const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     EXPECT_NE(text.find("CIRCLE"), std::string::npos);
+}
+
+TEST_F(McpSessionTest, FilesStayInTheFolder) {
+    McpSession session(true, dir);
+    box(session);
+    // Relative paths are in the folder.
+    ok(session, "save_document", {{"path", "inside.hzpart"}});
+    EXPECT_TRUE(fs::exists(dir / "inside.hzpart"));
+    // Out of it, by "..", by an absolute path, or through a link: refused.
+    const fs::path outside = dir.parent_path() / (dir.filename().string() + "-outside.stl");
+    EXPECT_NE(fails(session, "export_document", {{"path", "../escape.stl"}}).find("outside"),
+              std::string::npos);
+    fails(session, "export_document", {{"path", outside.string()}});
+    fails(session, "open_document", {{"path", "../../etc/passwd.hcad"}});
+    std::error_code ec;
+    fs::create_directory_symlink(dir.parent_path(), dir / "up", ec);
+    if (!ec) fails(session, "export_document", {{"path", "up/through-link.stl"}});
+    EXPECT_FALSE(fs::exists(outside));
+    EXPECT_EQ(ok(session, "get_session_info")["folder"], fs::weakly_canonical(dir).string());
+}
+
+TEST_F(McpSessionTest, AFileIsReplacedOnlyWhenAsked) {
+    McpSession session(true, dir);
+    box(session);
+    ok(session, "export_document", {{"path", "part.stl"}});
+    EXPECT_NE(fails(session, "export_document", {{"path", "part.stl"}}).find("overwrite"),
+              std::string::npos);
+    ok(session, "export_document", {{"path", "part.stl"}, {"overwrite", true}});
+    {
+        std::ofstream other(dir / "someone-elses.hzpart");
+        other << "{}";
+    }
+    fails(session, "save_document", {{"path", "someone-elses.hzpart"}});
+    // Its own file is saved over as a matter of course.
+    ok(session, "save_document", {{"path", "mine.hzpart"}});
+    box(session);
+    ok(session, "save_document", {{"path", "mine.hzpart"}});
+    ok(session, "save_document", json::object());
+}
+
+TEST_F(McpSessionTest, AFailedSaveLeavesTheTypeAsItWas) {
+    McpSession session(true, dir);
+    box(session);
+    // A folder that is not there: the save fails.
+    fails(session, "save_document", {{"path", "no-such-folder/part.hcad"}});
+    EXPECT_EQ(session.document().type(), hz::doc::DocumentType::Part);
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <iosfwd>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -28,6 +29,10 @@ public:
     /// initialization (how to use the tools).
     void setInstructions(std::string instructions) { m_instructions = std::move(instructions); }
 
+    /// Called after each message is handled, each one of a batch too: where
+    /// a host puts in place what a tool call asked for (another document).
+    void setAfterEach(std::function<void()> afterEach) { m_afterEach = std::move(afterEach); }
+
     /// The reply to one message (a request, a notification, or a batch of
     /// them), or nothing for a notification.
     std::optional<nlohmann::json> handle(const nlohmann::json& message);
@@ -52,6 +57,7 @@ private:
     std::string m_version;
     std::string m_instructions;
     bool m_initialized = false;
+    std::function<void()> m_afterEach;
 };
 
 }  // namespace hz::ai

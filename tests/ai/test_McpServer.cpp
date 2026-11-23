@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "horizon/ai/McpServer.h"
 
@@ -71,7 +72,9 @@ TEST_F(McpServerTest, ToolsListHasSchemasAndHints) {
     EXPECT_EQ(tools[0]["name"], "echo");
     EXPECT_EQ(tools[0]["inputSchema"]["type"], "object");
     EXPECT_EQ(tools[0]["annotations"]["readOnlyHint"], true);
+    EXPECT_EQ(tools[0]["annotations"]["destructiveHint"], false);
     EXPECT_EQ(tools[1]["annotations"]["readOnlyHint"], false);
+    EXPECT_EQ(tools[1]["annotations"]["destructiveHint"], true);
     EXPECT_EQ(tools[1]["annotations"]["openWorldHint"], true);
 }
 
@@ -141,4 +144,18 @@ TEST_F(McpServerTest, ServesALineAtATime) {
         ++count;
     }
     EXPECT_EQ(count, 2);  // no reply to the notification
+}
+
+TEST_F(McpServerTest, AfterEachRunsBetweenTheCallsOfABatch) {
+    std::vector<std::string> seen;
+    tools.add({"mark", "Mark.", json{{"type", "object"}, {"properties", json::object()}}},
+              ToolAccess::Modify, [&seen](const json&) {
+                  seen.push_back("call");
+                  return ToolResult::message("ok");
+              });
+    server.setAfterEach([&seen] { seen.push_back("after"); });
+    server.handleLine(
+        R"([{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"mark"}},)"
+        R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"mark"}}])");
+    EXPECT_EQ(seen, (std::vector<std::string>{"call", "after", "call", "after"}));
 }

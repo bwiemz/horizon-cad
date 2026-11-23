@@ -48,12 +48,16 @@ std::optional<json> McpServer::handle(const json& message) {
         if (message.empty()) return reply(errorReply(nullptr, kInvalidRequest, "empty batch"));
         json replies = json::array();
         for (const auto& item : message) {
-            if (auto reply = handleOne(item)) replies.push_back(std::move(*reply));
+            auto answer = handleOne(item);
+            if (m_afterEach) m_afterEach();
+            if (answer) replies.push_back(std::move(*answer));
         }
         if (replies.empty()) return std::nullopt;
         return reply(std::move(replies));
     }
-    return handleOne(message);
+    auto answer = handleOne(message);
+    if (m_afterEach) m_afterEach();
+    return answer;
 }
 
 std::optional<json> McpServer::handleOne(const json& message) {
@@ -125,8 +129,11 @@ json McpServer::listTools() const {
                      {"inputSchema", spec.inputSchema}};
         if (const auto access = m_tools.access(spec.name)) {
             // Hints a client may use to decide what to ask the user about.
+            // Anything but a query may change or replace what is there (a
+            // feature deleted, a document replaced, a file written over):
+            // destructive, to be safe.
             tool["annotations"] = {{"readOnlyHint", *access == ToolAccess::Read},
-                                   {"destructiveHint", false},
+                                   {"destructiveHint", *access != ToolAccess::Read},
                                    {"openWorldHint", *access == ToolAccess::External}};
         }
         tools.push_back(std::move(tool));

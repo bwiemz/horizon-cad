@@ -4,6 +4,7 @@
 #include <cctype>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -82,9 +83,40 @@ ai::ToolSpec spec(std::string name, std::string description, json properties,
 
 }  // namespace
 
-McpSession::McpSession(bool part) : m_document(std::make_unique<doc::Document>()) {
+McpSession::McpSession(bool part, const std::filesystem::path& root)
+    : m_document(std::make_unique<doc::Document>()) {
+    std::error_code ec;
+    m_root = fs::weakly_canonical(fs::absolute(root, ec), ec);
+    if (ec || m_root.empty()) m_root = fs::absolute(root);
     m_document->setType(part ? doc::DocumentType::Part : doc::DocumentType::Drawing);
     bind();
+}
+
+std::optional<std::filesystem::path> McpSession::resolve(const std::string& given,
+                                                         std::string* why) const {
+    if (given.empty()) {
+        if (why) *why = "the path is empty";
+        return std::nullopt;
+    }
+    fs::path path(given);
+    if (path.is_relative()) path = m_root / path;
+    // Symbolic links and ".." resolved, so neither leads out of the root.
+    std::error_code ec;
+    const fs::path resolved = fs::weakly_canonical(path, ec);
+    if (ec) {
+        if (why) *why = "the path cannot be resolved: " + ec.message();
+        return std::nullopt;
+    }
+    const auto [rootEnd, pathAt] =
+        std::mismatch(m_root.begin(), m_root.end(), resolved.begin(), resolved.end());
+    if (rootEnd != m_root.end()) {
+        if (why) {
+            *why = "it is outside the folder this server may use, " + m_root.string() +
+                   " (horizon-mcp --root sets it)";
+        }
+        return std::nullopt;
+    }
+    return resolved;
 }
 
 McpSession::~McpSession() = default;
@@ -114,14 +146,29 @@ void McpSession::bind() {
     registerDocumentTools();
 }
 
+std::optional<std::string> McpSession::overwriteRefused(const std::string& path,
+                                                        const nlohmann::json& in) const {
+    std::error_code ec;
+    if (!fs::exists(path, ec)) return std::nullopt;
+    if (!m_path.empty() && fs::equivalent(path, m_path, ec)) return std::nullopt;  // its own file
+    if (in.contains("overwrite") && in["overwrite"].is_boolean() && in["overwrite"].get<bool>()) {
+        return std::nullopt;
+    }
+    return path + " already exists: pass overwrite true to replace it (ask the user first).";
+}
+
 void McpSession::registerDocumentTools() {
     m_tools.add(
         spec("get_session_info",
              "The document this server works on: part or drawing, its file (null until saved), "
-             "whether it has unsaved changes, and any build error.",
+             "whether it has unsaved changes, any build error, and the folder files may be "
+             "opened, saved and exported in.",
              json::object()),
-        ai::ToolAccess::Read,
-        [this](const json&) { return ai::ToolResult::ok(summary(*m_document, m_path)); });
+        ai::ToolAccess::Read, [this](const json&) {
+            json out = summary(*m_document, m_path);
+            out["folder"] = m_root.string();
+            return ai::ToolResult::ok(out);
+        });
 
     m_tools.add(spec("new_document",
                      "Start a new, empty part (default) or drawing, in place of the current "
@@ -141,33 +188,52 @@ void McpSession::registerDocumentTools() {
                     return ai::ToolResult::ok(json{{"new", type}});
                 });
 
-    m_tools.add(
-        spec("open_document",
-             "Open a Horizon CAD part (.hzpart), drawing (.hcad) or a DXF file, in place "
-             "of the current document. Unsaved changes to it are lost: save first.",
-             {{"path", {{"type", "string"}, {"description", "the file's path"}}}}, {"path"}),
-        ai::ToolAccess::External, [this](const json& in) {
-            const std::string path = pathArgument(in, "path");
-            std::string error;
-            auto document = readDocument(path, &error);
-            if (!document) {
-                return ai::ToolResult::error("Could not open " + path + ": " + error);
-            }
-            json out = summary(*document, path);
-            m_pending = std::move(document);
-            m_pendingPath = path;
-            return ai::ToolResult::ok(out);
-        });
+    m_tools.add(spec("open_document",
+                     "Open a Horizon CAD part (.hzpart), drawing (.hcad) or a DXF file, in place "
+                     "of the current document. Unsaved changes to it are lost: save first.",
+                     {{"path",
+                       {{"type", "string"},
+                        {"description",
+                         "the file's path, in the server's folder (relative to it, or "
+                         "absolute inside it)"}}}},
+                     {"path"}),
+                ai::ToolAccess::External, [this](const json& in) {
+                    std::string why;
+                    const auto resolved = resolve(pathArgument(in, "path"), &why);
+                    if (!resolved) return ai::ToolResult::error("Cannot open that file: " + why);
+                    const std::string path = resolved->string();
+                    std::string error;
+                    auto document = readDocument(path, &error);
+                    if (!document) {
+                        return ai::ToolResult::error("Could not open " + path + ": " + error);
+                    }
+                    json out = summary(*document, path);
+                    m_pending = std::move(document);
+                    m_pendingPath = path;
+                    return ai::ToolResult::ok(out);
+                });
 
     m_tools.add(
         spec("save_document",
              "Save the document as a Horizon CAD file: a part as .hzpart, a drawing as .hcad. "
              "With no path, to the file it was opened from or last saved to.",
-             {{"path", {{"type", "string"}, {"description", "where to save (.hzpart or .hcad)"}}}}),
+             {{"path",
+               {{"type", "string"},
+                {"description", "where to save (.hzpart or .hcad), in the server's folder"}}},
+              {"overwrite",
+               {{"type", "boolean"}, {"description", "replace a file already there"}}}}),
         ai::ToolAccess::External, [this](const json& in) {
-            std::string path = in.contains("path") && in["path"].is_string()
-                                   ? in["path"].get<std::string>()
-                                   : m_path;
+            // Its own file, which the user chose: kept to wherever it is.
+            std::string path = m_path;
+            if (in.contains("path") && in["path"].is_string()) {
+                std::string why;
+                const auto resolved = resolve(in["path"].get<std::string>(), &why);
+                if (!resolved) return ai::ToolResult::error("Cannot save there: " + why);
+                path = resolved->string();
+                if (const auto refused = overwriteRefused(path, in)) {
+                    return ai::ToolResult::error(*refused);
+                }
+            }
             if (path.empty()) {
                 return ai::ToolResult::error("The document has no file yet: give a path.");
             }
@@ -177,10 +243,14 @@ void McpSession::registerDocumentTools() {
                     "Save as .hzpart (a part) or .hcad (a drawing); for other formats use "
                     "export_document.");
             }
+            // The file's kind is the document's: set for the save, and put
+            // back when the save fails.
+            const doc::DocumentType before = m_document->type();
             m_document->setType(extension == ".hzpart" ? doc::DocumentType::Part
                                                        : doc::DocumentType::Drawing);
             std::string error;
             if (!io::NativeFormat::save(path, *m_document, &error)) {
+                m_document->setType(before);
                 return ai::ToolResult::error("Could not save " + path + ": " + error);
             }
             m_document->setFilePath(path);
@@ -190,12 +260,22 @@ void McpSession::registerDocumentTools() {
         });
 
     m_tools.add(
-        spec("export_document",
-             "Export the part's solid as STEP (.step, .stp), STL (.stl) or glTF binary (.glb), or "
-             "the 2D drawing as DXF (.dxf), by the path's extension.",
-             {{"path", {{"type", "string"}, {"description", "the file to write"}}}}, {"path"}),
+        spec(
+            "export_document",
+            "Export the part's solid as STEP (.step, .stp), STL (.stl) or glTF binary (.glb), or "
+            "the 2D drawing as DXF (.dxf), by the path's extension.",
+            {{"path",
+              {{"type", "string"}, {"description", "the file to write, in the server's folder"}}},
+             {"overwrite", {{"type", "boolean"}, {"description", "replace a file already there"}}}},
+            {"path"}),
         ai::ToolAccess::External, [this](const json& in) {
-            const std::string path = pathArgument(in, "path");
+            std::string why;
+            const auto resolved = resolve(pathArgument(in, "path"), &why);
+            if (!resolved) return ai::ToolResult::error("Cannot export there: " + why);
+            const std::string path = resolved->string();
+            if (const auto refused = overwriteRefused(path, in)) {
+                return ai::ToolResult::error(*refused);
+            }
             const std::string extension = extensionOf(path);
             std::string error;
             bool written = false;
@@ -230,7 +310,9 @@ std::string serverInstructions() {
            "\n\nThrough this server you work on one document at a time. get_session_info says "
            "which; new_document and open_document replace it (save first: replacing it loses "
            "unsaved changes). Nothing is saved until you call save_document; export_document "
-           "writes STEP, STL, glTF or DXF.";
+           "writes STEP, STL, glTF or DXF. Files are opened, saved and exported only within the "
+           "server's folder (get_session_info names it); a file already there is replaced only "
+           "with overwrite true, after asking the user.";
 }
 
 }  // namespace hz::mcp

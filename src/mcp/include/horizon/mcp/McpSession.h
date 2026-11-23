@@ -1,6 +1,9 @@
 #pragma once
 
+#include <filesystem>
 #include <memory>
+#include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 
 #include "horizon/ai/ToolRegistry.h"
@@ -20,14 +23,25 @@ namespace hz::mcp {
 /// replaced while it runs.
 class McpSession {
 public:
-    /// Start with an empty part (or drawing).
-    explicit McpSession(bool part = true);
+    /// Start with an empty part (or drawing). Files are opened, saved and
+    /// exported only within @p root (a model chooses their paths): a path
+    /// is taken relative to it, and one that leads out of it, through ".."
+    /// or a symbolic link, is refused.
+    explicit McpSession(bool part = true,
+                        const std::filesystem::path& root = std::filesystem::current_path());
     ~McpSession();
 
     McpSession(const McpSession&) = delete;
     McpSession& operator=(const McpSession&) = delete;
 
-    /// Open @p path (.hzpart, .hcad or .dxf) as the document now. False, and
+    /// The folder files may be used in.
+    const std::filesystem::path& root() const { return m_root; }
+    /// @p given within the root, resolved; nullopt, and why, when it is not.
+    std::optional<std::filesystem::path> resolve(const std::string& given,
+                                                 std::string* why = nullptr) const;
+
+    /// Open @p path (.hzpart, .hcad or .dxf) as the document now. (The
+    /// user's own choice, on the command line: not held to the root.) False, and
     /// why in @p error, when it cannot be read; the document is unchanged.
     bool open(const std::string& path, std::string* error = nullptr);
 
@@ -41,6 +55,12 @@ public:
 private:
     void bind();
     void registerDocumentTools();
+    /// Why writing @p path is refused: it exists, is not the document's own
+    /// file, and @p in does not say overwrite. Nullopt when it may be written.
+    std::optional<std::string> overwriteRefused(const std::string& path,
+                                                const nlohmann::json& in) const;
+
+    std::filesystem::path m_root;
 
     std::unique_ptr<doc::Document> m_document;
     std::string m_path;

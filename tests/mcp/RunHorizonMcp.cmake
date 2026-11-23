@@ -16,7 +16,7 @@ file(WRITE "${input}"
 {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"nonsense\"}
 ")
 file(REMOVE "${part}")
-execute_process(COMMAND "${EXE}"
+execute_process(COMMAND "${EXE}" --root "${WORK_DIR}"
     INPUT_FILE "${input}"
     OUTPUT_VARIABLE out
     ERROR_VARIABLE err

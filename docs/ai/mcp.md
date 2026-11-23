@@ -16,13 +16,22 @@ It runs headless (no window) and speaks MCP over standard input and output.
 build it from source: it is the `horizon-mcp` target.
 
 ```text
-horizon-mcp [--open FILE] [--drawing]
+horizon-mcp [--root DIR] [--open FILE] [--drawing]
 
+  --root DIR    the folder files may be opened, saved and exported in
+                (default: the folder it is started in)
   --open FILE   start with FILE (.hzpart, .hcad or .dxf)
   --drawing     start with an empty 2D drawing (default: an empty part)
 ```
 
 It works on one document at a time, and saves nothing unless asked.
+
+**Files.** A model chooses the paths it opens, saves and exports, so they are
+kept to one folder, `--root`. A relative path is taken in that folder. A path
+that leads out of it is refused, whether by `..`, by an absolute path or
+through a symbolic link. A file already there is replaced only when the call
+says `overwrite: true`; the document's own file is the exception. Point
+`--root` at a project folder, not your home folder.
 
 ## Claude Desktop
 
@@ -33,7 +42,7 @@ Add this to `claude_desktop_config.json` (Settings ▸ Developer ▸ Edit Config
   "mcpServers": {
     "horizon-cad": {
       "command": "C:\\Program Files\\Horizon CAD\\bin\\horizon-mcp.exe",
-      "args": []
+      "args": ["--root", "C:\\Users\\you\\Documents\\CAD"]
     }
   }
 }
@@ -45,7 +54,7 @@ file, add `"--open", "/path/to/part.hzpart"` to `args`.
 ## Claude Code
 
 ```sh
-claude mcp add horizon-cad -- /path/to/horizon-mcp
+claude mcp add horizon-cad -- /path/to/horizon-mcp --root "$PWD"
 ```
 
 Then ask, for example: *"Make a 60 × 40 × 5 mm plate with four 5 mm holes 8 mm
@@ -71,10 +80,14 @@ schemas. The file tools are:
 | `save_document` | Save as `.hzpart` (a part) or `.hcad` (a drawing) |
 | `export_document` | Write the solid as STEP, STL or glTF (`.glb`), or the drawing as DXF |
 
-Lengths are millimetres and angles degrees. `tools/list` marks each tool with
-hints: `readOnlyHint` for the queries, and `openWorldHint` for the tools that
-read or write files. A client can use these to decide what to confirm with
-you.
+Lengths are millimetres and angles degrees.
+
+`tools/list` marks each tool with hints, which a client can use to decide
+what to confirm with you:
+
+- `readOnlyHint`: the queries.
+- `destructiveHint`: every tool that changes the document or a file.
+- `openWorldHint`: the tools that read or write files.
 
 ## Protocol
 
@@ -85,5 +98,7 @@ you.
 - A tool's failure, such as a bad argument or a feature that does not build,
   comes back as a result with `isError: true` and a reason the model can act
   on. A feature that fails is not added.
+- A document opened or started by a tool takes over once that call is done,
+  before the next message or the next call in a batch.
 - Diagnostics go to standard error. Standard output carries only the
   protocol.
