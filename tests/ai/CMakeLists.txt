@@ -1,4 +1,5 @@
 add_executable(hz_ai_tests
+    test_AgentSession.cpp
     test_AnthropicAdapter.cpp
     test_GeminiAdapter.cpp
     test_OpenAIAdapter.cpp
