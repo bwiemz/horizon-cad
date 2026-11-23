@@ -29,6 +29,13 @@ work, not "post-1.0".
   change is one undo step, its mates solved as the Assembly menu solves them,
   and a change they cannot hold is not made. Fixed: a Fixed mate added as an
   assembly's first mate was refused as "did not converge".
+- **`horizon-mcp` builds assemblies.** `new_document` makes an assembly,
+  `open_document` and `--open` read a `.hzasm`, `save_document` writes one,
+  and `export_document` writes it as STEP with its parts and placements, or
+  as STL or glTF; the assembly tools take the part tools' place. An unsaved
+  assembly takes its parts from the server's folder. An assembly placing a
+  part from outside the folder is not opened by a tool, checked from its
+  files before any part is read.
 - **A first extrude asked to go "through all"** (which small local models do
   again and again) is made blind by its distance, and says so; a missing
   distance is asked for with an example.
