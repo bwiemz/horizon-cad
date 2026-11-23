@@ -375,6 +375,10 @@ Anfragen dorthin senden?</translation>
         <source>Assistant</source>
         <translation type="unfinished">Assistent</translation>
     </message>
+    <message>
+        <source>Looked at the %1 view</source>
+        <translation type="unfinished">Ansicht „%1“ betrachtet</translation>
+    </message>
 </context>
 <context>
     <name>hz::ui::AiSettingsDialog</name>
@@ -580,6 +584,14 @@ Anfragen dorthin senden?</translation>
             <numerusform>%n Modell aufgelistet.</numerusform>
             <numerusform>%n Modelle aufgelistet.</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Let the AI see pictures of the part</source>
+        <translation type="unfinished">Der KI Bilder des Teils zeigen</translation>
+    </message>
+    <message>
+        <source>The assistant can look at a drawn view of the part to check its work. The AI model must read images: the cloud providers&apos; models do; a local model may not.</source>
+        <translation type="unfinished">Der Assistent kann eine gezeichnete Ansicht des Teils betrachten, um seine Arbeit zu prüfen. Das KI-Modell muss Bilder lesen können: Die Modelle der Cloud-Anbieter können das, ein lokales Modell möglicherweise nicht.</translation>
     </message>
 </context>
 <context>

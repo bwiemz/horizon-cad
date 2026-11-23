@@ -37,6 +37,10 @@ struct ProviderConfig {
     /// decline on Anthropic's recommended fallback model, for the models that
     /// support it.
     bool serverFallback = true;
+    /// Show the model pictures of the part (get_view_image): for a model that
+    /// reads images. On for the cloud providers' models, which all do; off
+    /// for a compatible server, whose model may not.
+    bool images = true;
 };
 
 /// The settings a new user starts from for @p kind.

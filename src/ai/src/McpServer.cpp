@@ -145,8 +145,12 @@ json McpServer::callTool(const json& params) const {
     const std::string name = params["name"].get<std::string>();
     const json arguments = params.contains("arguments") ? params["arguments"] : json::object();
     const ToolResult result = m_tools.run(name, arguments);
-    return {{"content", json::array({{{"type", "text"}, {"text", result.content}}})},
-            {"isError", result.isError}};
+    json content = json::array({{{"type", "text"}, {"text", result.content}}});
+    for (const auto& image : result.images) {
+        content.push_back(
+            {{"type", "image"}, {"data", image.base64}, {"mimeType", image.mediaType}});
+    }
+    return {{"content", std::move(content)}, {"isError", result.isError}};
 }
 
 std::optional<std::string> McpServer::handleLine(const std::string& line) {

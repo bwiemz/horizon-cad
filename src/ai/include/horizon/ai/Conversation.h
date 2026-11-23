@@ -10,6 +10,13 @@ namespace hz::ai {
 /// expect; there is no separate "tool" role here.
 enum class Role { User, Assistant };
 
+/// An image a tool shows the model, such as a view of the part: its media
+/// type ("image/png") and its bytes in base64.
+struct Image {
+    std::string mediaType;
+    std::string base64;
+};
+
 /// One piece of a message, in no provider's format: each adapter writes and
 /// reads its own wire format from these.
 struct ContentBlock {
@@ -30,6 +37,9 @@ struct ContentBlock {
     bool isError = false;
     std::string provider;
     nlohmann::json raw;
+    /// ToolResult: what the tool shows the model besides its text, each
+    /// adapter sending it as its provider takes images.
+    std::vector<Image> images;
 
     /// Not noexcept: its JSON members are built on construction, and building
     /// a JSON value may allocate. (Defaulted with its own exception
@@ -39,7 +49,7 @@ struct ContentBlock {
     static ContentBlock makeText(std::string text);
     static ContentBlock makeToolCall(std::string id, std::string name, nlohmann::json input);
     static ContentBlock makeToolResult(std::string callId, std::string name, std::string content,
-                                       bool isError);
+                                       bool isError, std::vector<Image> images = {});
     static ContentBlock makeOpaque(std::string provider, nlohmann::json raw);
 };
 
