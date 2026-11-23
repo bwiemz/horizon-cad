@@ -1840,6 +1840,8 @@ std::unique_ptr<topo::Solid> PatternFeature::executeIn(const BuildContext& conte
             if (std::find(m_suppressed.begin(), m_suppressed.end(), k) != m_suppressed.end()) {
                 continue;
             }
+            // Heard between copies, as the whole-part pattern hears it.
+            if (model::BooleanCancellation::requested()) return failWith(reason, "cancelled");
             auto copy = model::Pattern::transformed(*tool, instanceTransform(k));
             // Each copy's faces and edges named as this pattern's instance k.
             // By this pattern, not "pattern" as a whole-part pattern names
