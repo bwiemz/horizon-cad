@@ -557,11 +557,11 @@ TEST(DrawingDocumentIOTest, ANewerDrawingIsRefusedAndSaysWhich) {
     DrawingDocumentSpec spec;
     std::string error;
 
-    // Version 4 (hole callouts) is this version's; 5 would be a newer one's.
-    write(dwg, R"({"part": "box.hzpart", "version": 5, "views": [{"kind": "front"}]})");
+    // Version 5 (geometric tolerances) is this version's; 6 would be a newer one's.
+    write(dwg, R"({"part": "box.hzpart", "version": 6, "views": [{"kind": "front"}]})");
     EXPECT_FALSE(DrawingDocumentIO::readSpec(dwg, spec, &error));
     EXPECT_NE(error.find("newer version"), std::string::npos) << error;
-    EXPECT_NE(error.find('5'), std::string::npos) << error;
+    EXPECT_NE(error.find('6'), std::string::npos) << error;
 
     // Compared as a number: a version of 1e300 cast to int was undefined.
     write(dwg, R"({"part": "box.hzpart", "version": 1e300})");

@@ -26,7 +26,7 @@
         <translation type="unfinished">角度:</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+67"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+68"/>
         <source>Section %1-%1</source>
         <translation type="unfinished">剖视图 %1-%1</translation>
     </message>
@@ -2086,8 +2086,8 @@ Details are in the log:
         <translation type="unfinished">%1：工程图无法重新生成：%2</translation>
     </message>
     <message>
-        <location line="+103"/>
-        <location line="+307"/>
+        <location line="+138"/>
+        <location line="+470"/>
         <source>Title Block</source>
         <translation type="unfinished">标题栏</translation>
     </message>
@@ -2152,38 +2152,96 @@ Details are in the log:
         <translation type="unfinished">纵向</translation>
     </message>
     <message>
-        <location line="-322"/>
+        <location line="-485"/>
         <location line="+18"/>
-        <location line="+118"/>
-        <location line="+99"/>
-        <location line="+324"/>
+        <location line="+125"/>
+        <location line="+128"/>
+        <location line="+120"/>
+        <location line="+333"/>
+        <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1：%2</translation>
     </message>
     <message>
-        <location line="-213"/>
+        <location line="-558"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">并非所有视图都能放在此图幅内：放不下的视图位于图纸旁边</translation>
     </message>
     <message>
-        <location line="-334"/>
-        <location line="+340"/>
+        <location line="-497"/>
+        <location line="+503"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">工程图比例</translation>
     </message>
     <message>
-        <location line="-136"/>
-        <location line="+618"/>
+        <location line="-389"/>
+        <location line="+170"/>
+        <location line="+52"/>
+        <location line="+54"/>
+        <source>%1: that view holds %2 of them, as many as a view keeps</source>
+        <translation type="unfinished">%1：该视图已有 %2 个，已达视图上限</translation>
+    </message>
+    <message>
+        <location line="-156"/>
+        <source>%1: frames still refer to datum %2, which the sheet no longer has</source>
+        <translation type="unfinished">%1：仍有公差框格引用基准 %2，但图纸上已没有该基准</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+757"/>
+        <source>Add Geometric Tolerance</source>
+        <translation type="unfinished">添加几何公差</translation>
+    </message>
+    <message>
+        <location line="-735"/>
+        <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
+        <translation type="unfinished">%1：图纸上没有基准 %2；请先用“添加基准要素”将其放到一条边上</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>%1: that edge is datum %2 itself; a frame on it refers to other datums</source>
+        <translation type="unfinished">%1：该边本身就是基准 %2；其上的公差框格应引用其他基准</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>%1: that edge has that frame already</source>
+        <translation type="unfinished">%1：该边已有此公差框格</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <location line="+768"/>
+        <source>Add Datum Feature</source>
+        <translation type="unfinished">添加基准要素</translation>
+    </message>
+    <message>
+        <location line="-748"/>
+        <location line="+760"/>
+        <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
+        <translation type="unfinished">%1：“%2”不是基准字母：须为一或两个大写字母，且不能是 I、O 或 Q</translation>
+    </message>
+    <message>
+        <location line="-753"/>
+        <source>%1: the sheet has datum %2 already</source>
+        <translation type="unfinished">%1：图纸上已有基准 %2</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>%1: that edge is datum %2 already</source>
+        <translation type="unfinished">%1：该边已是基准 %2</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <location line="+627"/>
         <source>Hole Callout</source>
         <translation type="unfinished">孔标注</translation>
     </message>
     <message>
-        <location line="-596"/>
+        <location line="-605"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1：该边不属于孔（孔特征）</translation>
     </message>
     <message>
-        <location line="+12"/>
+        <location line="+19"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1：该孔已有标注；“删除尺寸”可将其删除</translation>
     </message>
@@ -2194,17 +2252,17 @@ Details are in the log:
     </message>
     <message>
         <location line="+7"/>
-        <location line="+290"/>
+        <location line="+292"/>
         <source>Scale:</source>
         <translation type="unfinished">比例:</translation>
     </message>
     <message>
-        <location line="-277"/>
+        <location line="-279"/>
         <source>At this scale not every view has room on the sheet: those without are beside it</source>
         <translation type="unfinished">在此比例下，并非所有视图都能放在图纸内：放不下的视图位于图纸旁边</translation>
     </message>
     <message>
-        <location line="+125"/>
+        <location line="+127"/>
         <source>%1: placed where there was room; Move View moves it</source>
         <translation type="unfinished">%1：已放在有空间的位置；可用移动视图调整位置</translation>
     </message>
@@ -2317,8 +2375,8 @@ Details are in the log:
         <translation type="unfinished">%1：圆内不包含该视图的任何内容</translation>
     </message>
     <message>
-        <location line="-633"/>
-        <location line="+654"/>
+        <location line="-798"/>
+        <location line="+819"/>
         <source>Move View</source>
         <translation type="unfinished">移动视图</translation>
     </message>
@@ -2338,30 +2396,30 @@ Details are in the log:
         <translation type="unfinished">不在该视图所在的工程图上</translation>
     </message>
     <message>
-        <location line="-662"/>
-        <location line="+705"/>
+        <location line="-827"/>
+        <location line="+870"/>
         <source>Remove View</source>
         <translation type="unfinished">删除视图</translation>
     </message>
     <message>
-        <location line="-689"/>
-        <location line="+694"/>
+        <location line="-854"/>
+        <location line="+859"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1：图纸至少要保留一个视图</translation>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+130"/>
+        <location line="+234"/>
         <source>View:</source>
         <translation type="unfinished">视图:</translation>
     </message>
     <message>
-        <location line="-813"/>
+        <location line="-1082"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1：由其派生的视图也一并删除（%2）</translation>
     </message>
     <message>
-        <location line="+726"/>
+        <location line="+891"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">单击视图中的一条边（完成后按 Esc）</translation>
     </message>
@@ -2376,20 +2434,20 @@ Details are in the log:
         <translation type="unfinished">该处没有边</translation>
     </message>
     <message>
-        <location line="-706"/>
-        <location line="+721"/>
+        <location line="-871"/>
+        <location line="+886"/>
         <source>Add Dimension</source>
         <translation type="unfinished">添加尺寸</translation>
     </message>
     <message>
-        <location line="-642"/>
-        <location line="+664"/>
+        <location line="-799"/>
+        <location line="+925"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">删除尺寸</translation>
     </message>
     <message>
-        <location line="-740"/>
+        <location line="-1002"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1：该边已标注尺寸；可用删除尺寸将其删除</translation>
     </message>
@@ -2404,20 +2462,150 @@ Details are in the log:
         <translation type="unfinished">%1：该边没有可标注的长度</translation>
     </message>
     <message>
-        <location line="+16"/>
-        <location line="+18"/>
-        <location line="+659"/>
+        <location line="+17"/>
+        <location line="+28"/>
+        <location line="+910"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1：该边没有尺寸</translation>
     </message>
     <message>
-        <location line="-767"/>
-        <location line="+775"/>
+        <location line="-1036"/>
+        <location line="+1044"/>
         <source>View Properties</source>
         <translation type="unfinished">视图属性</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="-124"/>
+        <source>Position</source>
+        <translation type="unfinished">位置度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Flatness</source>
+        <translation type="unfinished">平面度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Straightness</source>
+        <translation type="unfinished">直线度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Circularity</source>
+        <translation type="unfinished">圆度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Cylindricity</source>
+        <translation type="unfinished">圆柱度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Perpendicularity</source>
+        <translation type="unfinished">垂直度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Parallelism</source>
+        <translation type="unfinished">平行度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Angularity</source>
+        <translation type="unfinished">倾斜度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Profile of a surface</source>
+        <translation type="unfinished">面轮廓度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Circular runout</source>
+        <translation type="unfinished">圆跳动</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Concentricity</source>
+        <translation type="unfinished">同心度</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Symmetry</source>
+        <translation type="unfinished">对称度</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>None</source>
+        <translation type="unfinished">无</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Characteristic:</source>
+        <translation type="unfinished">特征项目：</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Tolerance:</source>
+        <translation type="unfinished">公差：</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Zone:</source>
+        <translation type="unfinished">公差带：</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Between two lines or planes</source>
+        <translation type="unfinished">两直线或两平面之间</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>A cylinder (⌀)</source>
+        <translation type="unfinished">圆柱 (⌀)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Material condition:</source>
+        <translation type="unfinished">实体要求：</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Regardless of feature size</source>
+        <translation type="unfinished">与尺寸无关 (RFS)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Maximum (MMC)</source>
+        <translation type="unfinished">最大实体 (MMC)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Least (LMC)</source>
+        <translation type="unfinished">最小实体 (LMC)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Primary datum:</source>
+        <translation type="unfinished">第一基准：</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Secondary datum:</source>
+        <translation type="unfinished">第二基准：</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Tertiary datum:</source>
+        <translation type="unfinished">第三基准：</translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>Datum letter:</source>
+        <translation type="unfinished">基准字母：</translation>
+    </message>
+    <message>
+        <location line="+69"/>
         <source>Shown</source>
         <translation type="unfinished">显示</translation>
     </message>
@@ -2447,8 +2635,8 @@ Details are in the log:
         <translation type="unfinished">从零件更新</translation>
     </message>
     <message>
-        <location line="-625"/>
-        <location line="+634"/>
+        <location line="-731"/>
+        <location line="+740"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">工程图无法重新生成：%1</translation>
     </message>
@@ -3259,7 +3447,7 @@ begin building your part.</source>
         <translation type="unfinished">关闭 %1</translation>
     </message>
     <message>
-        <location line="+893"/>
+        <location line="+897"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3478,15 +3666,15 @@ begin building your part.</source>
         <translation type="unfinished">放置面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-843"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-847"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1221"/>
+        <location line="+1225"/>
         <source>Drawing 1</source>
         <translation type="unfinished">工程图 1</translation>
     </message>
     <message>
-        <location line="-1167"/>
+        <location line="-1171"/>
         <source>Command Palette…</source>
         <translation type="unfinished">命令面板…</translation>
     </message>
@@ -4004,6 +4192,16 @@ begin building your part.</source>
         <location line="+2"/>
         <source>Add &amp;Hole Callout</source>
         <translation type="unfinished">添加孔标注(&amp;H)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add &amp;Geometric Tolerance...</source>
+        <translation type="unfinished">添加几何公差(&amp;G)...</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add Datum &amp;Feature...</source>
+        <translation type="unfinished">添加基准要素(&amp;F)...</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -6086,7 +6284,7 @@ Ideal (on the curved surfaces the facets approximate):
     <message>
         <location line="+6"/>
         <source>Position</source>
-        <translation type="unfinished">位置</translation>
+        <translation type="unfinished">位置度</translation>
     </message>
     <message>
         <location line="+7"/>

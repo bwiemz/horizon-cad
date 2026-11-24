@@ -793,6 +793,10 @@ void MainWindow::createMenus() {
                  [this] { m_drawings->onRemoveDimension(); });
     sketchAction(drawingMenu, tr("Add &Hole Callout"), "action_add_hole_callout",
                  [this] { m_drawings->onAddHoleCallout(); });
+    sketchAction(drawingMenu, tr("Add &Geometric Tolerance..."), "action_add_tolerance",
+                 [this] { m_drawings->onAddTolerance(); });
+    sketchAction(drawingMenu, tr("Add Datum &Feature..."), "action_add_datum",
+                 [this] { m_drawings->onAddDatum(); });
 
     // ---- Tools ----
     QMenu* toolsMenu = menuBar()->addMenu(tr("&Tools"));

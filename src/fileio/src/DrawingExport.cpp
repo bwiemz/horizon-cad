@@ -23,6 +23,7 @@
 #include "horizon/fileio/TitleBlockRenderer.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/GeometricTolerance.h"
 #include "horizon/modeling/HoleCallout.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Sheet.h"
@@ -49,8 +50,6 @@ constexpr double kCaptionHeight = 3.5;    ///< ISO 3098 for A3 and A4
 constexpr double kArrowLength = 7.0;      ///< a section's viewing arrows, on the sheet
 constexpr double kMarkOverrun = 5.0;      ///< how far a cut's line runs past its view
 constexpr double kDimensionOffset = 5.0;  ///< sheet distance from the edge to the dimension line
-constexpr double kToleranceOffset = 8.0;  ///< sheet distance from the edge to a GD&T frame
-constexpr double kDatumOffset = -8.0;     ///< opposite side, so datums clear tolerances
 constexpr double kRadialTextHeight = 3.0;
 
 void addDrawingLayers(doc::Document& doc) {
@@ -369,7 +368,8 @@ void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
 
         // Hole callouts: a leader from the hole's edge at 45°, a short
         // shoulder, and the callout's lines beside it, the dimension style's
-        // unit and precision in them.
+        // unit and precision in them. The hole's frames hang under them.
+        GeometricToleranceRenderer::Hangers hangers;
         for (const model::HoleCallout& callout : view.holeCallouts) {
             // The edge's points, in view space: every piece of its circle.
             std::vector<math::Vec2> points;
@@ -390,11 +390,32 @@ void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
             }
             radius /= static_cast<double>(points.size());
 
+            const draft::DimensionStyle& style = doc.draftDocument().dimensionStyle();
+            const auto lines = model::holeCalloutLines(
+                callout, [&style](double mm) { return style.formatLength(mm); });
+            // Up and out at 45°, to above the view: its lines, and the
+            // frames and datum that hang under them, clear of the part.
+            const auto onThisEdge = [&callout](const topo::TopologyID& id) {
+                return model::withoutPiece(model::logicalEdge(id.tag())) == callout.edge;
+            };
+            const auto hung = std::count_if(
+                view.tolerances.begin(), view.tolerances.end(),
+                [&](const model::FeatureControlFrame& f) { return onThisEdge(f.feature); });
+            const bool datumHung =
+                hung > 0 && std::any_of(view.datums.begin(), view.datums.end(),
+                                        [&](const auto& d) { return onThisEdge(d.feature); });
+            const double below =
+                static_cast<double>(lines.size() - 1) * kRadialTextHeight * 1.6 +
+                0.5 * kRadialTextHeight +
+                static_cast<double>(hung) * GeometricToleranceRenderer::kFrameHeight +
+                (datumHung ? GeometricToleranceRenderer::kDatumDepth : 0.0);
             const double kInvSqrt2 = 0.7071067811865476;
             const math::Vec2 onCircle =
                 toSheet({center.x + kInvSqrt2 * radius, center.y + kInvSqrt2 * radius});
-            const math::Vec2 elbow{onCircle.x + kInvSqrt2 * kDimensionOffset * 1.5,
-                                   onCircle.y + kInvSqrt2 * kDimensionOffset * 1.5};
+            const double top = toSheet(view.boundsMax).y;
+            const double rise = std::max(kInvSqrt2 * kDimensionOffset * 1.5,
+                                         top + kDimensionOffset + below - onCircle.y);
+            const math::Vec2 elbow{onCircle.x + rise, onCircle.y + rise};
             const math::Vec2 shoulder{elbow.x + 3.0, elbow.y};
             for (const auto& [from, to] :
                  {std::pair{onCircle, elbow}, std::pair{elbow, shoulder}}) {
@@ -402,16 +423,19 @@ void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
                 line->setLayer(kDimensionLayer);
                 doc.addEntity(std::move(line));
             }
-            const draft::DimensionStyle& style = doc.draftDocument().dimensionStyle();
-            const auto lines = model::holeCalloutLines(
-                callout, [&style](double mm) { return style.formatLength(mm); });
             for (std::size_t k = 0; k < lines.size(); ++k) {
                 const math::Vec2 at{shoulder.x + 1.0,
                                     shoulder.y - static_cast<double>(k) * kRadialTextHeight * 1.6};
                 auto text = std::make_shared<draft::DraftText>(at, lines[k], kRadialTextHeight);
+                text->setAlignment(draft::TextAlignment::Left);  // from the shoulder on
                 text->setLayer(kDimensionLayer);
                 doc.addEntity(std::move(text));
             }
+            // Below the last line's descenders.
+            const double last =
+                shoulder.y - static_cast<double>(lines.size() - 1) * kRadialTextHeight * 1.6;
+            hangers.emplace(callout.edge,
+                            math::Vec2{shoulder.x + 1.0, last - 0.5 * kRadialTextHeight});
         }
 
         // Render this view's dimensions (the DXF writer decomposes them to
@@ -425,21 +449,20 @@ void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
             }
         }
 
-        // Render this view's GD&T annotations as text near the toleranced
-        // feature. Frames/datums whose feature isn't in the view are skipped.
-        for (const model::FeatureControlFrame& frame : view.tolerances) {
-            auto drafted = GeometricToleranceRenderer::render(view, frame, kToleranceOffset);
-            if (drafted) {
-                drafted->setLayer(kToleranceLayer);
-                doc.addEntity(std::move(drafted));
-            }
-        }
-        for (const model::DatumFeature& datum : view.datums) {
-            auto drafted = GeometricToleranceRenderer::render(view, datum, kDatumOffset);
-            if (drafted) {
-                drafted->setLayer(kToleranceLayer);
-                doc.addEntity(std::move(drafted));
-            }
+        // Its feature control frames and datum feature symbols, each on the
+        // edge it is anchored to; none for an edge the view does not show.
+        // A tolerance in the dimension style's unit, to the digits it has,
+        // an inch one without its leading zero (".005"), as ASME writes it.
+        const draft::DimensionStyle& style = doc.draftDocument().dimensionStyle();
+        const auto value = [&style](double mm) {
+            std::string stated =
+                model::Gdt::formatValue(mm / draft::millimetresPerUnit(style.unit));
+            if (style.unit == "in" && stated.rfind("0.", 0) == 0) stated.erase(0, 1);
+            return stated;
+        };
+        for (auto& entity : GeometricToleranceRenderer::render(view, value, hangers)) {
+            entity->setLayer(kToleranceLayer);
+            doc.addEntity(std::move(entity));
         }
 
         // Render this view's BOM balloons: each is a leader + circle + number.

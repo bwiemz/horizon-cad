@@ -96,6 +96,8 @@ struct SheetChange {
         AddDimension,  ///< view, edge
         RemoveDimension,
         HoleCallout,  ///< view, edge (an edge of the hole)
+        Tolerance,    ///< view, edge, characteristic, tolerance, diameterZone, condition, datums
+        Datum,        ///< view, edge, label
     };
     Kind kind = Kind::TitleBlock;
     /// The title block fields given, by the tools' names (title,
@@ -113,6 +115,15 @@ struct SheetChange {
     int tangent = -1;
     int centreLines = -1;
     std::string edge;  ///< as list_view_edges names it
+    /// Tolerance: the characteristic, as model::Gdt::key names it
+    /// ("position"); the tolerance in mm; a cylindrical zone; "none", "mmc"
+    /// or "lmc"; the datums referred to, primary first.
+    std::string characteristic;
+    double tolerance = 0.0;
+    bool diameterZone = false;
+    std::string condition = "none";
+    std::vector<std::string> datums;
+    std::string label;  ///< Datum: its letter; empty, the first free one
 };
 
 /// What came of a SheetChange.
@@ -120,6 +131,7 @@ struct SheetChanged {
     std::string error;  ///< why it was not made; empty when it was
     std::string note;   ///< what the model should know of it ("a view had no room")
     bool step = false;  ///< it added an undo step (none for a change that changed nothing)
+    std::string label;  ///< Datum: the letter it was given
 };
 
 /// The host's side of the sheet tools, for the sheet one tab shows.

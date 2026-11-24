@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/modeling/GeometricTolerance.h"
@@ -108,4 +111,107 @@ TEST(GeometricToleranceTest, DatumFeatureSymbol) {
     d.feature = TopologyID::make("box", "face_bottom");
     EXPECT_EQ(Gdt::datumSymbol(d), "[A]");
     EXPECT_TRUE(d.feature.isValid());
+}
+
+// Every characteristic and condition has a name a file or the AI gives, and
+// reads back from it; a name no characteristic has reads as none.
+TEST(GeometricToleranceTest, NamesReadBack) {
+    std::set<std::string> keys;
+    for (GeometricCharacteristic c : kAll) {
+        const std::string key = Gdt::key(c);
+        EXPECT_TRUE(keys.insert(key).second) << key;
+        EXPECT_EQ(Gdt::characteristicNamed(key), c);
+    }
+    EXPECT_EQ(Gdt::key(GeometricCharacteristic::Position), "position");
+    EXPECT_FALSE(Gdt::characteristicNamed("Position").has_value());
+    EXPECT_FALSE(Gdt::characteristicNamed("").has_value());
+    for (MaterialCondition m :
+         {MaterialCondition::None, MaterialCondition::MMC, MaterialCondition::LMC}) {
+        EXPECT_EQ(Gdt::conditionNamed(Gdt::conditionKey(m)), m);
+    }
+    EXPECT_FALSE(Gdt::conditionNamed("rfs").has_value());
+}
+
+// A datum is named by one or two capitals, never I, O or Q; the next free
+// letter skips those, then doubles.
+TEST(GeometricToleranceTest, DatumLetters) {
+    for (const char* good : {"A", "B", "Z", "AA", "AB", "ZZ"}) {
+        EXPECT_TRUE(Gdt::usableDatumLabel(good)) << good;
+    }
+    for (const char* bad : {"", "a", "I", "O", "Q", "AI", "ABC", "A1", "-", "\xC3\x84"}) {
+        EXPECT_FALSE(Gdt::usableDatumLabel(bad)) << bad;
+    }
+    EXPECT_EQ(Gdt::nextDatumLabel({}), "A");
+    EXPECT_EQ(Gdt::nextDatumLabel({"A", "C"}), "B");
+    EXPECT_EQ(Gdt::nextDatumLabel({"A", "B", "C", "D", "E", "F", "G", "H"}), "J");
+    std::vector<std::string> singles;
+    for (char c = 'A'; c <= 'Z'; ++c) {
+        if (c != 'I' && c != 'O' && c != 'Q') singles.emplace_back(1, c);
+    }
+    EXPECT_EQ(Gdt::nextDatumLabel(singles), "AA");
+}
+
+// What the standard allows of a frame, and what it does not, each with why.
+TEST(GeometricToleranceTest, ChecksFrames) {
+    const auto frame = [](GeometricCharacteristic c, double tolerance,
+                          std::vector<std::string> datums) {
+        FeatureControlFrame f;
+        f.characteristic = c;
+        f.tolerance = tolerance;
+        f.datumRefs = std::move(datums);
+        return f;
+    };
+    FeatureControlFrame position = frame(GeometricCharacteristic::Position, 0.2, {"A", "B", "C"});
+    position.diameterZone = true;
+    position.modifier = MaterialCondition::MMC;
+    EXPECT_EQ(Gdt::check(position), "");
+    EXPECT_EQ(Gdt::check(frame(GeometricCharacteristic::Flatness, 0.05, {})), "");
+    EXPECT_EQ(Gdt::check(frame(GeometricCharacteristic::Profile, 0.1, {})), "");
+    EXPECT_EQ(Gdt::check(frame(GeometricCharacteristic::Profile, 0.1, {"A"})), "");
+
+    EXPECT_NE(Gdt::check(frame(GeometricCharacteristic::Flatness, 0.05, {"A"})).find("form"),
+              std::string::npos);
+    EXPECT_NE(Gdt::check(frame(GeometricCharacteristic::Position, 0.2, {})).find("needs a datum"),
+              std::string::npos);
+    EXPECT_NE(Gdt::check(frame(GeometricCharacteristic::Position, 0.2, {"A", "B", "C", "D"}))
+                  .find("at most three"),
+              std::string::npos);
+    EXPECT_NE(
+        Gdt::check(frame(GeometricCharacteristic::Position, 0.2, {"A", "B", "A"})).find("twice"),
+        std::string::npos);
+    EXPECT_NE(Gdt::check(frame(GeometricCharacteristic::Position, 0.2, {"I"})).find("letter"),
+              std::string::npos);
+    for (double bad : {0.0, -0.1, 1e-7, 1000.5, std::nan(""), HUGE_VAL}) {
+        EXPECT_NE(Gdt::check(frame(GeometricCharacteristic::Flatness, bad, {})), "") << bad;
+    }
+    FeatureControlFrame flatAtMmc = frame(GeometricCharacteristic::Flatness, 0.05, {});
+    flatAtMmc.modifier = MaterialCondition::MMC;
+    EXPECT_NE(Gdt::check(flatAtMmc).find("material condition"), std::string::npos);
+    FeatureControlFrame flatDiameter = frame(GeometricCharacteristic::Flatness, 0.05, {});
+    flatDiameter.diameterZone = true;
+    EXPECT_NE(Gdt::check(flatDiameter).find("cylindrical"), std::string::npos);
+}
+
+// A cylindrical zone puts ⌀ before the tolerance; a tolerance is stated to
+// at most four decimals, without trailing zeros, with a point.
+TEST(GeometricToleranceTest, FormatsDiameterZoneAndValues) {
+    FeatureControlFrame fcf;
+    fcf.characteristic = GeometricCharacteristic::Position;
+    fcf.tolerance = 0.2;
+    fcf.diameterZone = true;
+    fcf.modifier = MaterialCondition::MMC;
+    fcf.datumRefs = {"A"};
+    EXPECT_EQ(Gdt::format(fcf), Gdt::symbol(GeometricCharacteristic::Position) +
+                                    " \xE2\x8C\x80"
+                                    "0.2 " +
+                                    Gdt::modifierSymbol(MaterialCondition::MMC) + " | A");
+    EXPECT_EQ(Gdt::formatValue(0.05), "0.05");
+    EXPECT_EQ(Gdt::formatValue(0.0005), "0.0005");
+    EXPECT_EQ(Gdt::formatValue(1.0), "1");
+    EXPECT_EQ(Gdt::formatValue(10.0), "10");
+    EXPECT_EQ(Gdt::formatValue(2.5), "2.5");
+    // Smaller than four decimals hold: all its digits, never "0".
+    EXPECT_EQ(Gdt::formatValue(0.00002), "0.00002");
+    EXPECT_EQ(Gdt::formatValue(0.000001), "0.000001");
+    EXPECT_EQ(Gdt::formatValue(0.0), "0");
 }

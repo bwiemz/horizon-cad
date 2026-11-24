@@ -17,6 +17,8 @@
 #include "horizon/modeling/DrawingDimension.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/GeometricTolerance.h"
+#include "horizon/modeling/HoleCallout.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/TitleBlock.h"
 #include "horizon/topology/Solid.h"
@@ -131,6 +133,27 @@ json describe(const DrawingWorkbench& drawings, const doc::Document& sheet) {
         if (i < spec->views.size() && !spec->views[i].holeCallouts.empty()) {
             view["hole_callouts"] = spec->views[i].holeCallouts;
         }
+        if (i < spec->views.size() && !spec->views[i].tolerances.empty()) {
+            json frames = json::array();
+            for (const io::DrawingToleranceSpec& t : spec->views[i].tolerances) {
+                frames.push_back(
+                    {{"edge", t.edge},
+                     {"characteristic", model::Gdt::key(t.frame.characteristic)},
+                     {"tolerance", t.frame.tolerance},
+                     {"diameter_zone", t.frame.diameterZone},
+                     {"material_condition", model::Gdt::conditionKey(t.frame.modifier)},
+                     {"datums", t.frame.datumRefs},
+                     {"reads", model::Gdt::format(t.frame)}});
+            }
+            view["tolerances"] = std::move(frames);
+        }
+        if (i < spec->views.size() && !spec->views[i].datums.empty()) {
+            json datums = json::array();
+            for (const io::DrawingDatumSpec& d : spec->views[i].datums) {
+                datums.push_back({{"edge", d.edge}, {"label", d.label}});
+            }
+            view["datums"] = std::move(datums);
+        }
         views.push_back(std::move(view));
     }
     out["views"] = std::move(views);
@@ -204,6 +227,14 @@ json edgesOf(DrawingWorkbench& drawings, doc::Document& sheet, int index, std::s
         // An edge a Hole feature made: add_hole_callout calls the hole out.
         if (const io::HoleNote* hole = io::DrawingDocumentIO::holeOfEdge(*holes, name)) {
             edge["hole"] = hole->feature;
+        }
+        // An edge that is a datum: frames refer to it by its letter.
+        if (const io::DrawingDocumentSpec* spec = drawings.specOf(&sheet);
+            spec != nullptr && static_cast<std::size_t>(index) < spec->views.size()) {
+            for (const io::DrawingDatumSpec& d :
+                 spec->views[static_cast<std::size_t>(index)].datums) {
+                if (d.edge == model::withoutPiece(name)) edge["datum"] = d.label;
+            }
         }
         double measured = 0.0;
         if (model::DrawingDimensioner::measureRadius(*solid, s.id, measured)) {
@@ -310,10 +341,29 @@ ai::SheetChanged change(DrawingWorkbench& drawings, doc::Document& sheet,
             made = drawings.addEdgeDimension(sheet, view, c.edge, &error);
             break;
         case ai::SheetChange::Kind::RemoveDimension:
-            made = drawings.removeEdgeDimensions(sheet, view, c.edge, &error);
+            made = drawings.removeEdgeDimensions(sheet, view, c.edge, &error, &out.note);
             break;
         case ai::SheetChange::Kind::HoleCallout:
             made = drawings.addHoleCallout(sheet, view, c.edge, &error);
+            break;
+        case ai::SheetChange::Kind::Tolerance: {
+            const auto characteristic = model::Gdt::characteristicNamed(c.characteristic);
+            const auto condition = model::Gdt::conditionNamed(c.condition);
+            if (!characteristic || !condition) {
+                out.error = "no characteristic or material condition is called that";
+                return out;
+            }
+            model::FeatureControlFrame frame;
+            frame.characteristic = *characteristic;
+            frame.tolerance = c.tolerance;
+            frame.diameterZone = c.diameterZone;
+            frame.modifier = *condition;
+            frame.datumRefs = c.datums;
+            made = drawings.addTolerance(sheet, view, c.edge, frame, &error);
+            break;
+        }
+        case ai::SheetChange::Kind::Datum:
+            made = drawings.addDatum(sheet, view, c.edge, c.label, &error, &out.label);
             break;
     }
     if (!made) {
