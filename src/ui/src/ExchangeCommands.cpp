@@ -30,6 +30,7 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyWorkbench.h"
 #include "horizon/ui/DrawingWorkbench.h"
+#include "horizon/ui/DwgImport.h"
 #include "horizon/ui/FeatureForm.h"
 #include "horizon/ui/PdfExport.h"
 #include "horizon/ui/TypedUnits.h"
@@ -267,18 +268,33 @@ void ExchangeCommands::onImportDxf() {
     const QString fileName = QFileDialog::getOpenFileName(
         m_host.dialogParent(), tr("Import DXF"), QString(), tr("DXF Files (*.dxf);;All Files (*)"));
     if (fileName.isEmpty()) return;
+    importDrawing(fileName, tr("Import DXF"));
+}
+
+void ExchangeCommands::onImportDwg() {
+    if (m_host.currentAssembly()) {
+        m_host.showStatus(tr("A DWG is imported into a drawing or part, not an assembly"));
+        return;
+    }
+    const QString fileName = QFileDialog::getOpenFileName(
+        m_host.dialogParent(), tr("Import DWG"), QString(), tr("DWG Files (*.dwg);;All Files (*)"));
+    if (fileName.isEmpty()) return;
+    importDrawing(fileName, tr("Import DWG"));
+}
+
+void ExchangeCommands::importDrawing(const QString& fileName, const QString& verb) {
     const std::string path = fileName.toStdString();
     doc::Document imported;
     std::string error;
     io::ImportReport report;
-    if (!io::DxfFormat::load(path, imported, &error, &report)) {
+    if (!DwgImport::loadDrawing(path, imported, &error, &report)) {
         m_host.reportFileError(tr("Could not import"), path, error);
         return;
     }
 
     // Its layers and block definitions (one of the same name already here is
     // kept) and its entities come in as one undoable step.
-    auto composite = std::make_unique<doc::CompositeCommand>(tr("Import DXF").toStdString());
+    auto composite = std::make_unique<doc::CompositeCommand>(verb.toStdString());
     auto& layers = m_host.currentDocument()->layerManager();
     for (const auto& name : imported.layerManager().layerNames()) {
         if (!layers.getLayer(name)) {

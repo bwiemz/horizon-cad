@@ -1943,7 +1943,7 @@ Details are in the log:
     </message>
     <message>
         <location line="+103"/>
-        <location line="+296"/>
+        <location line="+307"/>
         <source>Title Block</source>
         <translation type="unfinished">표제란</translation>
     </message>
@@ -2008,38 +2008,38 @@ Details are in the log:
         <translation type="unfinished">세로</translation>
     </message>
     <message>
-        <location line="-311"/>
+        <location line="-322"/>
         <location line="+18"/>
         <location line="+118"/>
-        <location line="+92"/>
-        <location line="+319"/>
+        <location line="+99"/>
+        <location line="+324"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="-212"/>
+        <location line="-213"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">이 용지에는 모든 뷰를 배치할 공간이 없습니다: 공간이 없는 뷰는 용지 옆에 배치됩니다</translation>
     </message>
     <message>
-        <location line="-323"/>
-        <location line="+329"/>
+        <location line="-334"/>
+        <location line="+340"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">도면 축척</translation>
     </message>
     <message>
-        <location line="-132"/>
-        <location line="+613"/>
+        <location line="-136"/>
+        <location line="+618"/>
         <source>Hole Callout</source>
         <translation type="unfinished">구멍 주석</translation>
     </message>
     <message>
-        <location line="-592"/>
+        <location line="-596"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: 그 모서리는 구멍(구멍 피처)의 것이 아닙니다</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+12"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: 그 구멍에는 이미 주석이 있습니다. 치수 제거로 제거할 수 있습니다</translation>
     </message>
@@ -2050,17 +2050,17 @@ Details are in the log:
     </message>
     <message>
         <location line="+7"/>
-        <location line="+289"/>
+        <location line="+290"/>
         <source>Scale:</source>
         <translation type="unfinished">축척:</translation>
     </message>
     <message>
-        <location line="-276"/>
+        <location line="-277"/>
         <source>At this scale not every view has room on the sheet: those without are beside it</source>
         <translation type="unfinished">이 축척에서는 시트에 모든 뷰를 배치할 공간이 없습니다: 공간이 없는 뷰는 시트 옆에 배치됩니다</translation>
     </message>
     <message>
-        <location line="+124"/>
+        <location line="+125"/>
         <source>%1: placed where there was room; Move View moves it</source>
         <translation type="unfinished">%1: 공간이 있는 곳에 배치했습니다. 뷰 이동으로 옮길 수 있습니다</translation>
     </message>
@@ -2173,8 +2173,8 @@ Details are in the log:
         <translation type="unfinished">%1: 원 안에 뷰의 요소가 없습니다</translation>
     </message>
     <message>
-        <location line="-621"/>
-        <location line="+642"/>
+        <location line="-633"/>
+        <location line="+654"/>
         <source>Move View</source>
         <translation type="unfinished">뷰 이동</translation>
     </message>
@@ -2194,14 +2194,14 @@ Details are in the log:
         <translation type="unfinished">뷰가 있는 도면 위가 아닙니다</translation>
     </message>
     <message>
-        <location line="-650"/>
-        <location line="+693"/>
+        <location line="-662"/>
+        <location line="+705"/>
         <source>Remove View</source>
         <translation type="unfinished">뷰 제거</translation>
     </message>
     <message>
-        <location line="-677"/>
-        <location line="+682"/>
+        <location line="-689"/>
+        <location line="+694"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: 시트에는 뷰가 하나 이상 있어야 합니다</translation>
     </message>
@@ -2212,12 +2212,12 @@ Details are in the log:
         <translation type="unfinished">뷰:</translation>
     </message>
     <message>
-        <location line="-801"/>
+        <location line="-813"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: 이 뷰에서 파생된 뷰도 함께 제거되었습니다 (%2)</translation>
     </message>
     <message>
-        <location line="+714"/>
+        <location line="+726"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">뷰의 모서리를 클릭하십시오 (완료하면 Esc)</translation>
     </message>
@@ -2232,20 +2232,20 @@ Details are in the log:
         <translation type="unfinished">해당 위치에 모서리가 없습니다</translation>
     </message>
     <message>
-        <location line="-694"/>
-        <location line="+709"/>
+        <location line="-706"/>
+        <location line="+721"/>
         <source>Add Dimension</source>
         <translation type="unfinished">치수 추가</translation>
     </message>
     <message>
-        <location line="-630"/>
-        <location line="+652"/>
+        <location line="-642"/>
+        <location line="+664"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">치수 제거</translation>
     </message>
     <message>
-        <location line="-728"/>
+        <location line="-740"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: 이 모서리에는 이미 치수가 있습니다. 치수 제거로 제거할 수 있습니다</translation>
     </message>
@@ -2261,14 +2261,14 @@ Details are in the log:
     </message>
     <message>
         <location line="+16"/>
-        <location line="+11"/>
-        <location line="+654"/>
+        <location line="+18"/>
+        <location line="+659"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: 이 모서리에는 치수가 없습니다</translation>
     </message>
     <message>
-        <location line="-755"/>
-        <location line="+763"/>
+        <location line="-767"/>
+        <location line="+775"/>
         <source>View Properties</source>
         <translation type="unfinished">뷰 속성</translation>
     </message>
@@ -2303,8 +2303,8 @@ Details are in the log:
         <translation type="unfinished">부품에서 업데이트</translation>
     </message>
     <message>
-        <location line="-624"/>
-        <location line="+633"/>
+        <location line="-625"/>
+        <location line="+634"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">도면을 다시 그릴 수 없습니다: %1</translation>
     </message>
@@ -2315,9 +2315,94 @@ Details are in the log:
     </message>
 </context>
 <context>
+    <name>hz::ui::DwgImport</name>
+    <message>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+68"/>
+        <source>there was not memory enough to read it</source>
+        <translation type="unfinished">읽기에 메모리가 부족했습니다</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>LibreDWG could not read the file</source>
+        <translation type="unfinished">LibreDWG가 파일을 읽을 수 없었습니다</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>it is not a DWG file, or not one LibreDWG can read</source>
+        <translation type="unfinished">DWG 파일이 아니거나 LibreDWG가 읽을 수 없는 파일입니다</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>parts of it are missing: it may be damaged, or cut short</source>
+        <translation type="unfinished">일부가 없습니다. 파일이 손상되었거나 잘렸을 수 있습니다</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>LibreDWG met something in it that it cannot read yet</source>
+        <translation type="unfinished">LibreDWG가 아직 읽을 수 없는 내용이 들어 있습니다</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>LibreDWG could not read it</source>
+        <translation type="unfinished">LibreDWG가 읽을 수 없었습니다</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>LibreDWG could not read it (%1)</source>
+        <translation type="unfinished">LibreDWG가 읽을 수 없었습니다 (%1)</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Horizon CAD reads DWG files with LibreDWG&apos;s dwg2dxf, which this computer does not have: install LibreDWG, or save the drawing as DXF in the program that made it</source>
+        <translation type="unfinished">Horizon CAD는 LibreDWG의 dwg2dxf로 DWG 파일을 읽지만 이 컴퓨터에는 없습니다. LibreDWG를 설치하거나, 도면을 만든 프로그램에서 DXF로 저장하십시오</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>there is no temporary folder to read it in (%1)</source>
+        <translation type="unfinished">읽는 데 사용할 임시 폴더가 없습니다 (%1)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>the file could not be read (check its permissions)</source>
+        <translation type="unfinished">파일을 읽을 수 없었습니다 (권한을 확인하십시오)</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
+        <translation type="unfinished">LibreDWG의 dwg2dxf (%1)를 시작할 수 없었습니다: %2</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>the reading was cancelled</source>
+        <translation type="unfinished">읽기가 취소되었습니다</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>LibreDWG had not read it after %n second(s), and was stopped</source>
+        <translation type="unfinished">
+            <numerusform>LibreDWG가 %n초가 지나도 읽기를 마치지 못해 중지되었습니다</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>LibreDWG stopped while reading it: the file may be damaged, or hold something LibreDWG cannot read yet</source>
+        <translation type="unfinished">LibreDWG가 읽는 도중 멈췄습니다. 파일이 손상되었거나 LibreDWG가 아직 읽을 수 없는 내용이 들어 있을 수 있습니다</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>LibreDWG read it, but wrote nothing of it</source>
+        <translation type="unfinished">LibreDWG가 읽었지만 아무것도 출력하지 않았습니다</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>LibreDWG read it, but what it made of it could not be read: %1</source>
+        <translation type="unfinished">LibreDWG가 읽었지만 그 결과를 읽을 수 없었습니다: %1</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+106"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+107"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">길이 단위가 주어지지 않음</translation>
     </message>
@@ -2387,12 +2472,12 @@ Details are in the log:
         <location line="+16"/>
         <location line="+25"/>
         <location line="+6"/>
-        <location line="+28"/>
+        <location line="+43"/>
         <source>Could not import</source>
         <translation type="unfinished">가져올 수 없음</translation>
     </message>
     <message numerus="yes">
-        <location line="-39"/>
+        <location line="-54"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>바디 %n개를 가져왔습니다.</numerusform>
@@ -2419,17 +2504,33 @@ Details are in the log:
     </message>
     <message>
         <location line="+4"/>
-        <location line="+13"/>
+        <location line="+2"/>
         <source>Import DXF</source>
         <translation type="unfinished">DXF 가져오기</translation>
     </message>
     <message>
-        <location line="-13"/>
+        <location line="-2"/>
         <source>DXF Files (*.dxf);;All Files (*)</source>
         <translation type="unfinished">DXF 파일 (*.dxf);;모든 파일 (*)</translation>
     </message>
+    <message>
+        <location line="+7"/>
+        <source>A DWG is imported into a drawing or part, not an assembly</source>
+        <translation type="unfinished">DWG는 어셈블리가 아닌 도면 또는 부품으로 가져옵니다</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <location line="+2"/>
+        <source>Import DWG</source>
+        <translation type="unfinished">DWG 가져오기</translation>
+    </message>
+    <message>
+        <location line="-2"/>
+        <source>DWG Files (*.dwg);;All Files (*)</source>
+        <translation type="unfinished">DWG 파일 (*.dwg);;모든 파일 (*)</translation>
+    </message>
     <message numerus="yes">
-        <location line="+35"/>
+        <location line="+39"/>
         <source>Imported %n entities.</source>
         <translation type="unfinished">
             <numerusform>개체 %n개를 가져왔습니다.</numerusform>
@@ -3074,12 +3175,12 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+457"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+458"/>
         <source>&amp;File</source>
         <translation>파일(&amp;F)</translation>
     </message>
     <message>
-        <location line="+81"/>
+        <location line="+84"/>
         <source>&amp;Edit</source>
         <translation>편집(&amp;E)</translation>
     </message>
@@ -3089,7 +3190,7 @@ begin building your part.</source>
         <translation>보기(&amp;V)</translation>
     </message>
     <message>
-        <location line="-144"/>
+        <location line="-147"/>
         <source>&amp;New Drawing</source>
         <translation>새 도면(&amp;N)</translation>
     </message>
@@ -3115,7 +3216,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 닫기</translation>
     </message>
     <message>
-        <location line="+891"/>
+        <location line="+894"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3334,15 +3435,15 @@ begin building your part.</source>
         <translation type="unfinished">뚫을 면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-841"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-844"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1216"/>
+        <location line="+1219"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-1162"/>
+        <location line="-1165"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -3400,6 +3501,11 @@ begin building your part.</source>
         <location line="+4"/>
         <source>&amp;DXF into This Drawing...</source>
         <translation type="unfinished">DXF를 이 도면으로(&amp;D)...</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>D&amp;WG into This Drawing...</source>
+        <translation type="unfinished">DWG를 이 도면으로(&amp;W)...</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -4487,15 +4593,25 @@ begin building your part.</source>
         <source>Flat Pattern</source>
         <translation type="unfinished">전개도</translation>
     </message>
+    <message>
+        <location line="+1037"/>
+        <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
+        <translation type="unfinished">지원되는 모든 파일 (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD 도면 (*.hcad);;Horizon 부품 (*.hzpart);;Horizon 어셈블리 (*.hzasm);;Horizon 도면 시트 (*.hzdwg);;DXF 파일 (*.dxf);;DWG 파일 (*.dwg);;모든 파일 (*)</translation>
+    </message>
     <message numerus="yes">
-        <location line="+1433"/>
+        <location line="+408"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>파일을 저장했습니다. 레이어 %n개는 DXF에서 허용하는 이름으로 저장했습니다.</numerusform>
         </translation>
     </message>
     <message>
-        <location line="+435"/>
+        <location line="+62"/>
+        <source>Horizon CAD reads DWG files but does not write them. Save the drawing as DXF (.dxf), which AutoCAD opens, or as a Horizon CAD drawing (.hcad).</source>
+        <translation type="unfinished">Horizon CAD는 DWG 파일을 읽지만 쓰지는 않습니다. 도면을 AutoCAD에서 열 수 있는 DXF(.dxf)나 Horizon CAD 도면(.hcad)으로 저장하십시오.</translation>
+    </message>
+    <message>
+        <location line="+383"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">확대/축소할 선택 항목이 없습니다. 전체 맞춤(F)은 전체를 표시합니다</translation>
     </message>
@@ -4544,7 +4660,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
     </message>
     <message>
-        <location line="-2620"/>
+        <location line="-2642"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -4770,8 +4886,8 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1052"/>
-        <location line="+488"/>
+        <location line="+1060"/>
+        <location line="+502"/>
         <location line="+936"/>
         <location line="+601"/>
         <location line="+13"/>
@@ -4779,7 +4895,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-3160"/>
+        <location line="-3182"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -4800,12 +4916,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2808"/>
+        <location line="+2830"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-2802"/>
+        <location line="-2824"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
@@ -5107,15 +5223,10 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">파일 열기</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;All Files (*)</source>
-        <translation type="unfinished">지원되는 모든 파일 (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD 도면 (*.hcad);;Horizon 부품 (*.hzpart);;Horizon 어셈블리 (*.hzasm);;Horizon 도면 시트 (*.hzdwg);;DXF 파일 (*.dxf);;모든 파일 (*)</translation>
-    </message>
-    <message>
-        <location line="+40"/>
+        <location line="+41"/>
         <location line="+38"/>
         <location line="+13"/>
-        <location line="+82"/>
+        <location line="+90"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -5124,19 +5235,19 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">열 수 없음</translation>
     </message>
     <message>
-        <location line="-233"/>
+        <location line="-241"/>
         <source>Assembly</source>
         <translation type="unfinished">어셈블리</translation>
     </message>
     <message>
         <location line="+22"/>
-        <location line="+103"/>
+        <location line="+111"/>
         <source>Drawing</source>
         <translation type="unfinished">도면</translation>
     </message>
     <message>
-        <location line="-89"/>
-        <location line="+89"/>
+        <location line="-97"/>
+        <location line="+97"/>
         <source>Document</source>
         <translation type="unfinished">문서</translation>
     </message>
@@ -5212,7 +5323,7 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+12"/>
+        <location line="+16"/>
         <location line="+44"/>
         <source>Could not save</source>
         <translation type="unfinished">저장할 수 없음</translation>
@@ -5267,17 +5378,18 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">Horizon CAD 도면 (*.hcad);;Horizon 부품 (*.hzpart);;DXF 파일 (*.dxf);;모든 파일 (*)</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+10"/>
+        <location line="+10"/>
         <source>Save File</source>
         <translation type="unfinished">파일 저장</translation>
     </message>
     <message>
-        <location line="+0"/>
+        <location line="-10"/>
         <source>Save As a New File</source>
         <translation type="unfinished">새 파일로 저장</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+58"/>
         <source>Replace the File It Was Read From?</source>
         <translation type="unfinished">읽어 온 파일을 바꾸시겠습니까?</translation>
     </message>
@@ -5911,7 +6023,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-3176"/>
+        <location line="-3198"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>

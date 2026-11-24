@@ -1,5 +1,17 @@
 cmake_minimum_required(VERSION 3.28)
 
+# DWG files are read by LibreDWG's dwg2dxf (GPL-3.0-or-later), a program of
+# its own that the application runs, so a file it cannot read costs that
+# program and not the application. With this option vcpkg builds it (the
+# "dwg" manifest feature, which must be chosen before project() runs the
+# toolchain) and it is placed, and installed, beside the application. Off
+# until it is proven on every platform CI builds; without it a dwg2dxf on the
+# PATH, from an installed LibreDWG, is used.
+option(HZ_ENABLE_DWG "Build LibreDWG's dwg2dxf and ship it beside the application, to open DWG files" OFF)
+if(HZ_ENABLE_DWG)
+    list(APPEND VCPKG_MANIFEST_FEATURES "dwg")
+endif()
+
 project(HorizonCAD
     VERSION 0.1.0
     LANGUAGES CXX
@@ -65,6 +77,21 @@ if(HZ_ENABLE_SCRIPTING)
         message(STATUS "Horizon scripting: DISABLED "
                        "(Python3 Development.Embed / pybind11 not found)")
     endif()
+endif()
+
+# LibreDWG's dwg2dxf, to ship beside the application: vcpkg's build of it
+# first, then one installed on the system (a distribution's libredwg).
+set(HZ_DWG_ENABLED OFF)
+if(HZ_ENABLE_DWG)
+    find_program(HZ_DWG2DXF_PROGRAM dwg2dxf
+        HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/libredwg")
+    if(NOT HZ_DWG2DXF_PROGRAM)
+        message(FATAL_ERROR "HZ_ENABLE_DWG is ON, but LibreDWG's dwg2dxf was not found: "
+                            "build with vcpkg (its \"dwg\" feature builds it) or install "
+                            "LibreDWG's tools.")
+    endif()
+    set(HZ_DWG_ENABLED ON)
+    message(STATUS "Horizon DWG: ENABLED (${HZ_DWG2DXF_PROGRAM})")
 endif()
 
 # Before src/, so a check declared beside what it checks (the application's

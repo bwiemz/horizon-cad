@@ -4,6 +4,9 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QCoreApplication>
+#include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QMessageBox>
@@ -28,6 +31,7 @@
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
+#include "horizon/ui/DwgImport.h"
 #include "horizon/ui/MainWindow.h"
 
 using hz::math::Vec2;
@@ -531,3 +535,120 @@ TEST(ImportExportTest, ExportingOverTheDxfItWasReadFromAsksFirst) {
     }
     EXPECT_EQ(contents(path), before) << "the 3DFACE is still in it";
 }
+
+#ifdef HZ_DWG2DXF
+
+// DWG, read through the dwg2dxf this build ships (DwgImport), from a drawing
+// AutoCAD made: one line.
+namespace {
+
+/// The tests' dwg2dxf, and back to looking for it after.
+class ShippedConverter {
+public:
+    ShippedConverter() { hz::ui::DwgImport::setConverter(QStringLiteral(HZ_DWG2DXF)); }
+    ~ShippedConverter() { hz::ui::DwgImport::setConverter({}); }
+    ShippedConverter(const ShippedConverter&) = delete;
+    ShippedConverter& operator=(const ShippedConverter&) = delete;
+};
+
+QString autocadLine(const QTemporaryDir& dir) {
+    const QString path = dir.filePath(QStringLiteral("line.dwg"));
+    EXPECT_TRUE(QFile::copy(
+        QDir(QStringLiteral(HZ_DWG_FIXTURES_DIR)).filePath(QStringLiteral("line_2018.dwg")), path));
+    return path;
+}
+
+/// Process events until @p done, for at most @p ms.
+template <typename Done>
+bool waitFor(Done done, int ms = 20000) {
+    QElapsedTimer clock;
+    clock.start();
+    while (!done() && clock.elapsed() < ms) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    return done();
+}
+
+}  // namespace
+
+TEST(ImportExportTest, ADwgOpensAsADrawingReadOnAWorker) {
+    const ShippedConverter converter;
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = autocadLine(dir);
+
+    MainWindow w;
+    ASSERT_TRUE(w.openPath(path));
+    EXPECT_TRUE(w.backgroundWorkRunning()) << "another program reads it, however small";
+    ASSERT_TRUE(waitFor([&] { return !w.backgroundWorkRunning(); }));
+    const hz::doc::Document& doc = *w.activeDocument();
+    EXPECT_EQ(doc.type(), hz::doc::DocumentType::Drawing);
+    EXPECT_EQ(doc.draftDocument().entities().size(), 1u);
+    EXPECT_EQ(doc.filePath(), path.toStdString());
+    EXPECT_FALSE(doc.isDirty());
+}
+
+TEST(ImportExportTest, SavingADrawingReadFromADwgAsksWhereAndLeavesTheDwgBe) {
+    const ShippedConverter converter;
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = autocadLine(dir);
+    const QByteArray before = contents(path);
+
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Never);
+    ASSERT_TRUE(w.openPath(path));
+    hz::doc::Document& doc = *w.activeDocument();
+    doc.setDirty(true);
+    const QString saved = dir.filePath(QStringLiteral("line.dxf"));
+    {
+        FilePicker picker(saved);
+        action(w, "action_save")->trigger();
+    }
+    EXPECT_EQ(contents(path), before) << "the DWG is as it was";
+    EXPECT_TRUE(QFileInfo::exists(saved));
+    EXPECT_EQ(doc.filePath(), saved.toStdString());
+    EXPECT_FALSE(doc.isDirty());
+}
+
+TEST(ImportExportTest, ADrawingIsNotSavedUnderADwgsName) {
+    const ShippedConverter converter;
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = autocadLine(dir);
+
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Never);
+    ASSERT_TRUE(w.openPath(path));
+    const QString asDwg = dir.filePath(QStringLiteral("copy.dwg"));
+    {
+        FilePicker picker(asDwg);
+        DialogResponder refused(QMessageBox::Ok);
+        action(w, "action_save")->trigger();
+        EXPECT_TRUE(refused.seen());
+        EXPECT_TRUE(refused.text().contains(QStringLiteral("does not write")))
+            << refused.text().toStdString();
+    }
+    EXPECT_FALSE(QFileInfo::exists(asDwg)) << "nothing AutoCAD could not open goes by a DWG's name";
+    EXPECT_EQ(w.activeDocument()->filePath(), path.toStdString());
+}
+
+TEST(ImportExportTest, ImportingADwgAddsToTheDrawingInOneUndoableStep) {
+    const ShippedConverter converter;
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = autocadLine(dir);
+
+    MainWindow w;
+    hz::doc::Document& doc = *w.activeDocument();
+    doc.draftDocument().addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(-1, 0)));
+    {
+        FilePicker picker(path);
+        action(w, "import_dwg")->trigger();
+    }
+    EXPECT_EQ(doc.draftDocument().entities().size(), 2u);
+    action(w, "action_undo")->trigger();
+    EXPECT_EQ(doc.draftDocument().entities().size(), 1u) << "one step takes the import away";
+}
+
+#endif  // HZ_DWG2DXF

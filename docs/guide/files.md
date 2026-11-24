@@ -11,7 +11,7 @@
 
 An assembly and a drawing sheet refer to their part files by a path relative
 to themselves: keep them together when you move them. DXF files (`.dxf`)
-open as drawings.
+and DWG files (`.dwg`, AutoCAD's own; see below) open as drawings.
 
 **File ▸ Open...** (**Ctrl+O**) opens any of them; **Open Recent** lists the
 last ten, and **Open Sample** the samples (see
@@ -29,9 +29,33 @@ again or keep yours.
 | STEP as a New Part... | Reads the solids of a STEP file (`.step`, `.stp`) into a new part, in the file's units. |
 | STEP as an Assembly... | Writes each part of a STEP assembly to a part file, in a folder beside the new assembly, and opens the assembly. |
 | DXF into This Drawing... | Adds a DXF file's layers, blocks and geometry to the drawing. |
+| DWG into This Drawing... | Adds a DWG file's, likewise. |
 
 What could not be read exactly is listed afterwards, in "Not Everything Was
 Read".
+
+## DWG files
+
+Horizon CAD reads DWG files, saved by any AutoCAD from 2000 to today (the
+2018 format, which AutoCAD still writes), with
+GNU LibreDWG's `dwg2dxf`: it turns
+the file into DXF, which Horizon CAD reads as it reads any DXF. `dwg2dxf` is
+a program of its own: a file it cannot read, or that makes it crash or never
+finish (it is stopped after five minutes), fails to open, with why, and the
+rest of Horizon CAD carries on.
+
+Horizon CAD looks for `dwg2dxf` beside itself (where a build with DWG
+support puts it) and then on the `PATH`, as an installed LibreDWG has it
+(`libredwg` on Arch, Homebrew and others). Without one, opening a DWG says
+so.
+
+Horizon CAD does not write DWG. A drawing opened from one is saved where you
+choose, as DXF (which AutoCAD opens) or as a Horizon CAD drawing: **Save**
+asks where, as for a new drawing, and the DWG is left as it was.
+
+What LibreDWG reads is what the drawing gets. A spline AutoCAD keeps as the
+points it was drawn through comes in as a curve through those points,
+reported as approximated in "Not Everything Was Read".
 
 ## Exporting
 

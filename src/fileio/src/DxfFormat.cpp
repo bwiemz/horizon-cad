@@ -1317,11 +1317,48 @@ HatchParse parseHatch(const std::vector<DxfPair>& groups) {
     return result;
 }
 
+/// The control points of the uniform cubic B-spline, as DraftSpline draws
+/// one, that runs through @p fits in their order: closed, round them all;
+/// open, from the first to the last, straight (with no bend) at both.
+///
+/// The curve passes through (P[k-1] + 4 P[k] + P[k+1]) / 6 of the control
+/// points about each: solved by Gauss-Seidel, whose error the 4 against
+/// 1 + 1 at least halves each sweep, so 64 sweeps leave none to see.
+std::vector<math::Vec2> splineThrough(const std::vector<math::Vec2>& fits, bool closed) {
+    constexpr int kSweeps = 64;
+    const size_t m = fits.size();
+    if (closed) {
+        std::vector<math::Vec2> cps = fits;
+        for (int sweep = 0; sweep < kSweeps; ++sweep) {
+            for (size_t k = 0; k < m; ++k) {
+                cps[k] = (fits[k] * 6.0 - cps[(k + m - 1) % m] - cps[(k + 1) % m]) / 4.0;
+            }
+        }
+        return cps;
+    }
+    // cps[k + 1] lies under fits[k]. No bend at an end, cps[0] = 2 cps[1] -
+    // cps[2], puts cps[1] on the first point; so too at the last.
+    std::vector<math::Vec2> cps(m + 2);
+    for (size_t k = 0; k < m; ++k) cps[k + 1] = fits[k];
+    for (int sweep = 0; sweep < kSweeps && m > 2; ++sweep) {
+        for (size_t k = 1; k + 1 < m; ++k) {
+            cps[k + 1] = (fits[k] * 6.0 - cps[k] - cps[k + 2]) / 4.0;
+        }
+    }
+    cps[0] = cps[1] * 2.0 - cps[2];
+    cps[m + 1] = cps[m] * 2.0 - cps[m - 1];
+    return cps;
+}
+
 /// A SPLINE. The drawing's spline is a uniform cubic B-spline (DraftSpline):
 /// one written so, with evenly spaced knots (as writeSpline writes it), comes
 /// back as it was. One of degree 1 is the polyline through its points. Any
 /// other, clamped as most programs write one, comes in as a uniform cubic on
-/// the same points, which is another curve, and is reported.
+/// the same points, which is another curve, and is reported. One given only
+/// by the points it runs through (its fit points, as AutoCAD keeps a spline
+/// drawn through points, and LibreDWG writes it) comes in as the uniform
+/// cubic through them, and is reported too: AutoCAD spaces its knots by the
+/// distances between them, and may set its end tangents.
 std::shared_ptr<draft::DraftEntity> parseSpline(const std::vector<DxfPair>& groups, Import& im) {
     const bool closed = (toInt(findGroup(groups, 70, "0")) & 1) != 0;
     const int degree = toInt(findGroup(groups, 71, "3"));
@@ -1329,7 +1366,26 @@ std::shared_ptr<draft::DraftEntity> parseSpline(const std::vector<DxfPair>& grou
     const auto xs = findAllDoubles(groups, 10);
     const auto ys = findAllDoubles(groups, 20);
     const size_t count = std::min(xs.size(), ys.size());
-    if (count < 2) return nullptr;
+    if (count < 2) {
+        const auto fitXs = findAllDoubles(groups, 11);
+        const auto fitYs = findAllDoubles(groups, 21);
+        std::vector<math::Vec2> fits;
+        for (size_t i = 0; i < std::min(fitXs.size(), fitYs.size()); ++i) {
+            fits.emplace_back(fitXs[i], fitYs[i]);
+        }
+        // A closed one may give its first point again at its end.
+        const auto same = [](const math::Vec2& a, const math::Vec2& b) {
+            return (a - b).length() <= 1e-9 * (1.0 + a.length());
+        };
+        if (closed && fits.size() > 1 && same(fits.front(), fits.back())) fits.pop_back();
+        if (fits.size() < 2) return nullptr;
+        if (degree == 1) return std::make_shared<draft::DraftPolyline>(fits, closed);
+        ++im.notes.approximated[{"SPLINE",
+                                 "given by the points it runs through, drawn as a "
+                                 "uniform cubic through them"}];
+        const bool round = closed && fits.size() >= 3;
+        return std::make_shared<draft::DraftSpline>(splineThrough(fits, round), round);
+    }
 
     std::vector<math::Vec2> cps;
     cps.reserve(count);

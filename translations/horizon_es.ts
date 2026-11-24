@@ -1955,7 +1955,7 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+103"/>
-        <location line="+296"/>
+        <location line="+307"/>
         <source>Title Block</source>
         <translation type="unfinished">Cuadro de rotulación</translation>
     </message>
@@ -2020,38 +2020,38 @@ Los detalles están en el registro:
         <translation type="unfinished">Vertical</translation>
     </message>
     <message>
-        <location line="-311"/>
+        <location line="-322"/>
         <location line="+18"/>
         <location line="+118"/>
-        <location line="+92"/>
-        <location line="+319"/>
+        <location line="+99"/>
+        <location line="+324"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="-212"/>
+        <location line="-213"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">No todas las vistas caben en este papel: las que no caben están a su lado</translation>
     </message>
     <message>
-        <location line="-323"/>
-        <location line="+329"/>
+        <location line="-334"/>
+        <location line="+340"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">Escala del dibujo</translation>
     </message>
     <message>
-        <location line="-132"/>
-        <location line="+613"/>
+        <location line="-136"/>
+        <location line="+618"/>
         <source>Hole Callout</source>
         <translation type="unfinished">Indicación de taladro</translation>
     </message>
     <message>
-        <location line="-592"/>
+        <location line="-596"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: esa arista no es de un taladro (de una operación Taladro)</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+12"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: ese taladro ya tiene indicación; Quitar cota la quita</translation>
     </message>
@@ -2062,17 +2062,17 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+7"/>
-        <location line="+289"/>
+        <location line="+290"/>
         <source>Scale:</source>
         <translation type="unfinished">Escala:</translation>
     </message>
     <message>
-        <location line="-276"/>
+        <location line="-277"/>
         <source>At this scale not every view has room on the sheet: those without are beside it</source>
         <translation type="unfinished">A esta escala no todas las vistas caben en la hoja: las que no caben están a su lado</translation>
     </message>
     <message>
-        <location line="+124"/>
+        <location line="+125"/>
         <source>%1: placed where there was room; Move View moves it</source>
         <translation type="unfinished">%1: colocada donde había espacio; Mover vista la desplaza</translation>
     </message>
@@ -2185,8 +2185,8 @@ Los detalles están en el registro:
         <translation type="unfinished">%1: el círculo no contiene nada de la vista</translation>
     </message>
     <message>
-        <location line="-621"/>
-        <location line="+642"/>
+        <location line="-633"/>
+        <location line="+654"/>
         <source>Move View</source>
         <translation type="unfinished">Mover vista</translation>
     </message>
@@ -2206,14 +2206,14 @@ Los detalles están en el registro:
         <translation type="unfinished">No está en el dibujo de la vista</translation>
     </message>
     <message>
-        <location line="-650"/>
-        <location line="+693"/>
+        <location line="-662"/>
+        <location line="+705"/>
         <source>Remove View</source>
         <translation type="unfinished">Eliminar vista</translation>
     </message>
     <message>
-        <location line="-677"/>
-        <location line="+682"/>
+        <location line="-689"/>
+        <location line="+694"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: una hoja conserva al menos una vista</translation>
     </message>
@@ -2224,12 +2224,12 @@ Los detalles están en el registro:
         <translation type="unfinished">Vista:</translation>
     </message>
     <message>
-        <location line="-801"/>
+        <location line="-813"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: las vistas derivadas de ella se eliminaron con ella (%2)</translation>
     </message>
     <message>
-        <location line="+714"/>
+        <location line="+726"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">Haga clic en una arista de una vista (Esc para terminar)</translation>
     </message>
@@ -2244,20 +2244,20 @@ Los detalles están en el registro:
         <translation type="unfinished">No hay ninguna arista ahí</translation>
     </message>
     <message>
-        <location line="-694"/>
-        <location line="+709"/>
+        <location line="-706"/>
+        <location line="+721"/>
         <source>Add Dimension</source>
         <translation type="unfinished">Añadir cota</translation>
     </message>
     <message>
-        <location line="-630"/>
-        <location line="+652"/>
+        <location line="-642"/>
+        <location line="+664"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">Eliminar cota</translation>
     </message>
     <message>
-        <location line="-728"/>
+        <location line="-740"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: esa arista ya está acotada; Eliminar cota la elimina</translation>
     </message>
@@ -2273,14 +2273,14 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+16"/>
-        <location line="+11"/>
-        <location line="+654"/>
+        <location line="+18"/>
+        <location line="+659"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: esa arista no tiene cota</translation>
     </message>
     <message>
-        <location line="-755"/>
-        <location line="+763"/>
+        <location line="-767"/>
+        <location line="+775"/>
         <source>View Properties</source>
         <translation type="unfinished">Propiedades de la vista</translation>
     </message>
@@ -2315,8 +2315,8 @@ Los detalles están en el registro:
         <translation type="unfinished">Actualizar desde la pieza</translation>
     </message>
     <message>
-        <location line="-624"/>
-        <location line="+633"/>
+        <location line="-625"/>
+        <location line="+634"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">No se pudo volver a generar el dibujo: %1</translation>
     </message>
@@ -2327,9 +2327,95 @@ Los detalles están en el registro:
     </message>
 </context>
 <context>
+    <name>hz::ui::DwgImport</name>
+    <message>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+68"/>
+        <source>there was not memory enough to read it</source>
+        <translation type="unfinished">no había memoria suficiente para leerlo</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>LibreDWG could not read the file</source>
+        <translation type="unfinished">LibreDWG no pudo leer el archivo</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>it is not a DWG file, or not one LibreDWG can read</source>
+        <translation type="unfinished">no es un archivo DWG, o no uno que LibreDWG pueda leer</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>parts of it are missing: it may be damaged, or cut short</source>
+        <translation type="unfinished">le faltan partes: puede estar dañado o incompleto</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>LibreDWG met something in it that it cannot read yet</source>
+        <translation type="unfinished">LibreDWG encontró en él algo que todavía no sabe leer</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>LibreDWG could not read it</source>
+        <translation type="unfinished">LibreDWG no pudo leerlo</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>LibreDWG could not read it (%1)</source>
+        <translation type="unfinished">LibreDWG no pudo leerlo (%1)</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Horizon CAD reads DWG files with LibreDWG&apos;s dwg2dxf, which this computer does not have: install LibreDWG, or save the drawing as DXF in the program that made it</source>
+        <translation type="unfinished">Horizon CAD lee los archivos DWG con dwg2dxf de LibreDWG, que este equipo no tiene: instale LibreDWG o guarde el dibujo como DXF en el programa que lo creó</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>there is no temporary folder to read it in (%1)</source>
+        <translation type="unfinished">no hay una carpeta temporal en la que leerlo (%1)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>the file could not be read (check its permissions)</source>
+        <translation type="unfinished">no se pudo leer el archivo (compruebe sus permisos)</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
+        <translation type="unfinished">no se pudo iniciar dwg2dxf de LibreDWG (%1): %2</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>the reading was cancelled</source>
+        <translation type="unfinished">se canceló la lectura</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>LibreDWG had not read it after %n second(s), and was stopped</source>
+        <translation type="unfinished">
+            <numerusform>LibreDWG no lo había leído tras %n segundo y se detuvo</numerusform>
+            <numerusform>LibreDWG no lo había leído tras %n segundos y se detuvo</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>LibreDWG stopped while reading it: the file may be damaged, or hold something LibreDWG cannot read yet</source>
+        <translation type="unfinished">LibreDWG se detuvo al leerlo: el archivo puede estar dañado o contener algo que LibreDWG todavía no sabe leer</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>LibreDWG read it, but wrote nothing of it</source>
+        <translation type="unfinished">LibreDWG lo leyó, pero no escribió nada de él</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>LibreDWG read it, but what it made of it could not be read: %1</source>
+        <translation type="unfinished">LibreDWG lo leyó, pero no se pudo leer lo que produjo: %1</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+106"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+107"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">Unidad de longitud no indicada</translation>
     </message>
@@ -2399,12 +2485,12 @@ Los detalles están en el registro:
         <location line="+16"/>
         <location line="+25"/>
         <location line="+6"/>
-        <location line="+28"/>
+        <location line="+43"/>
         <source>Could not import</source>
         <translation type="unfinished">No se pudo importar</translation>
     </message>
     <message numerus="yes">
-        <location line="-39"/>
+        <location line="-54"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>Se importó %n sólido.</numerusform>
@@ -2434,17 +2520,33 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+4"/>
-        <location line="+13"/>
+        <location line="+2"/>
         <source>Import DXF</source>
         <translation type="unfinished">Importar DXF</translation>
     </message>
     <message>
-        <location line="-13"/>
+        <location line="-2"/>
         <source>DXF Files (*.dxf);;All Files (*)</source>
         <translation type="unfinished">Archivos DXF (*.dxf);;Todos los archivos (*)</translation>
     </message>
+    <message>
+        <location line="+7"/>
+        <source>A DWG is imported into a drawing or part, not an assembly</source>
+        <translation type="unfinished">Un DWG se importa en un dibujo o una pieza, no en un ensamblaje</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <location line="+2"/>
+        <source>Import DWG</source>
+        <translation type="unfinished">Importar DWG</translation>
+    </message>
+    <message>
+        <location line="-2"/>
+        <source>DWG Files (*.dwg);;All Files (*)</source>
+        <translation type="unfinished">Archivos DWG (*.dwg);;Todos los archivos (*)</translation>
+    </message>
     <message numerus="yes">
-        <location line="+35"/>
+        <location line="+39"/>
         <source>Imported %n entities.</source>
         <translation type="unfinished">
             <numerusform>Se importó %n entidad.</numerusform>
@@ -3095,12 +3197,12 @@ empezar a construir su pieza.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+457"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+458"/>
         <source>&amp;File</source>
         <translation>&amp;Archivo</translation>
     </message>
     <message>
-        <location line="+81"/>
+        <location line="+84"/>
         <source>&amp;Edit</source>
         <translation>&amp;Editar</translation>
     </message>
@@ -3110,7 +3212,7 @@ empezar a construir su pieza.</translation>
         <translation>&amp;Ver</translation>
     </message>
     <message>
-        <location line="-144"/>
+        <location line="-147"/>
         <source>&amp;New Drawing</source>
         <translation>&amp;Nuevo dibujo</translation>
     </message>
@@ -3136,7 +3238,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Cerrar %1</translation>
     </message>
     <message>
-        <location line="+891"/>
+        <location line="+894"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3355,15 +3457,15 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">En la cara</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-841"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-844"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1216"/>
+        <location line="+1219"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dibujo 1</translation>
     </message>
     <message>
-        <location line="-1162"/>
+        <location line="-1165"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Paleta de comandos…</translation>
     </message>
@@ -3421,6 +3523,11 @@ empezar a construir su pieza.</translation>
         <location line="+4"/>
         <source>&amp;DXF into This Drawing...</source>
         <translation type="unfinished">&amp;DXF en este dibujo...</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>D&amp;WG into This Drawing...</source>
+        <translation type="unfinished">D&amp;WG en este dibujo...</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -4508,8 +4615,13 @@ empezar a construir su pieza.</translation>
         <source>Flat Pattern</source>
         <translation type="unfinished">Desarrollo plano</translation>
     </message>
+    <message>
+        <location line="+1037"/>
+        <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
+        <translation type="unfinished">Todos los archivos compatibles (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Dibujos de Horizon CAD (*.hcad);;Piezas de Horizon (*.hzpart);;Ensamblajes de Horizon (*.hzasm);;Hojas de dibujo de Horizon (*.hzdwg);;Archivos DXF (*.dxf);;Archivos DWG (*.dwg);;Todos los archivos (*)</translation>
+    </message>
     <message numerus="yes">
-        <location line="+1433"/>
+        <location line="+408"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>Archivo guardado; %n capa con un nombre que DXF admite.</numerusform>
@@ -4517,7 +4629,12 @@ empezar a construir su pieza.</translation>
         </translation>
     </message>
     <message>
-        <location line="+435"/>
+        <location line="+62"/>
+        <source>Horizon CAD reads DWG files but does not write them. Save the drawing as DXF (.dxf), which AutoCAD opens, or as a Horizon CAD drawing (.hcad).</source>
+        <translation type="unfinished">Horizon CAD lee archivos DWG pero no los escribe. Guarde el dibujo como DXF (.dxf), que AutoCAD abre, o como dibujo de Horizon CAD (.hcad).</translation>
+    </message>
+    <message>
+        <location line="+383"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">No hay nada seleccionado para hacer zoom: Ajustar todo (F) lo muestra todo</translation>
     </message>
@@ -4568,7 +4685,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
-        <location line="-2620"/>
+        <location line="-2642"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -4794,8 +4911,8 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1052"/>
-        <location line="+488"/>
+        <location line="+1060"/>
+        <location line="+502"/>
         <location line="+936"/>
         <location line="+601"/>
         <location line="+13"/>
@@ -4803,7 +4920,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-3160"/>
+        <location line="-3182"/>
         <source>Cancel</source>
         <translation type="unfinished">Cancelar</translation>
     </message>
@@ -4824,12 +4941,12 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2808"/>
+        <location line="+2830"/>
         <source>None</source>
         <translation type="unfinished">Ninguno</translation>
     </message>
     <message>
-        <location line="-2802"/>
+        <location line="-2824"/>
         <source>%1 selected</source>
         <translation>%1 seleccionado(s)</translation>
     </message>
@@ -5133,15 +5250,10 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Abrir archivo</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;All Files (*)</source>
-        <translation type="unfinished">Todos los archivos compatibles (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Dibujos de Horizon CAD (*.hcad);;Piezas de Horizon (*.hzpart);;Ensamblajes de Horizon (*.hzasm);;Hojas de dibujo de Horizon (*.hzdwg);;Archivos DXF (*.dxf);;Todos los archivos (*)</translation>
-    </message>
-    <message>
-        <location line="+40"/>
+        <location line="+41"/>
         <location line="+38"/>
         <location line="+13"/>
-        <location line="+82"/>
+        <location line="+90"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -5150,19 +5262,19 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">No se pudo abrir</translation>
     </message>
     <message>
-        <location line="-233"/>
+        <location line="-241"/>
         <source>Assembly</source>
         <translation type="unfinished">Ensamblaje</translation>
     </message>
     <message>
         <location line="+22"/>
-        <location line="+103"/>
+        <location line="+111"/>
         <source>Drawing</source>
         <translation type="unfinished">Dibujo</translation>
     </message>
     <message>
-        <location line="-89"/>
-        <location line="+89"/>
+        <location line="-97"/>
+        <location line="+97"/>
         <source>Document</source>
         <translation type="unfinished">Documento</translation>
     </message>
@@ -5238,7 +5350,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+12"/>
+        <location line="+16"/>
         <location line="+44"/>
         <source>Could not save</source>
         <translation type="unfinished">No se pudo guardar</translation>
@@ -5293,17 +5405,18 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Dibujos de Horizon CAD (*.hcad);;Piezas de Horizon (*.hzpart);;Archivos DXF (*.dxf);;Todos los archivos (*)</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+10"/>
+        <location line="+10"/>
         <source>Save File</source>
         <translation type="unfinished">Guardar archivo</translation>
     </message>
     <message>
-        <location line="+0"/>
+        <location line="-10"/>
         <source>Save As a New File</source>
         <translation type="unfinished">Guardar como un archivo nuevo</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+58"/>
         <source>Replace the File It Was Read From?</source>
         <translation type="unfinished">¿Reemplazar el archivo del que se leyó?</translation>
     </message>
@@ -5940,7 +6053,7 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">Reconstrucción cancelada: el modelo está como antes del último cambio.</translation>
     </message>
     <message>
-        <location line="-3176"/>
+        <location line="-3198"/>
         <source>0 selected</source>
         <translation>0 seleccionado</translation>
     </message>

@@ -85,6 +85,34 @@ if (WIN32)
     include(InstallRequiredSystemLibraries)
 endif()
 
+# LibreDWG's dwg2dxf, which reads a DWG file for the application (DwgImport
+# runs it), beside the executable: where the application looks for it first,
+# in the build tree and in a package. On Windows the DLLs vcpkg built it with
+# go too. Copied in every build, not on the executable's POST_BUILD, which
+# runs only when it is relinked.
+if (HZ_DWG_ENABLED)
+    get_filename_component(_hz_dwg_dir "${HZ_DWG2DXF_PROGRAM}" DIRECTORY)
+    set(_hz_dwg_dlls)
+    if (WIN32)
+        file(GLOB _hz_dwg_dlls "${_hz_dwg_dir}/*.dll")
+    endif()
+    add_custom_target(horizon_dwg2dxf ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:horizon>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${HZ_DWG2DXF_PROGRAM}" ${_hz_dwg_dlls}
+                "$<TARGET_FILE_DIR:horizon>"
+        COMMENT "Placing LibreDWG's dwg2dxf beside the horizon executable"
+        VERBATIM)
+    if (APPLE)
+        install(PROGRAMS "${HZ_DWG2DXF_PROGRAM}"
+                DESTINATION "${HZ_BUNDLE_NAME}.app/Contents/MacOS")
+    else()
+        install(PROGRAMS "${HZ_DWG2DXF_PROGRAM}" DESTINATION bin)
+    endif()
+    if (_hz_dwg_dlls)
+        install(FILES ${_hz_dwg_dlls} DESTINATION bin)
+    endif()
+endif()
+
 # The Qt runtime in a Windows or macOS package: on Windows Qt's DLLs and the
 # plugins it needs next to the executable (the build tree deploys them itself;
 # see below), on macOS Qt's frameworks and plugins inside the bundle, by

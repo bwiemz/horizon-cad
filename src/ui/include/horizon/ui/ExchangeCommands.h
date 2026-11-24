@@ -47,6 +47,8 @@ public:
     /// A DXF's layers, blocks and entities into the active drawing, as one
     /// undoable step.
     void onImportDxf();
+    /// A DWG's, likewise: LibreDWG's dwg2dxf reads it (DwgImport).
+    void onImportDwg();
 
     // --- File ▸ Export ---
     void onExportStep();
@@ -114,6 +116,9 @@ public:
                              const std::shared_ptr<ImportProgress>& progress = nullptr);
 
 private:
+    /// The drawing in @p fileName (a DXF or DWG) into the active document,
+    /// as one undoable step named @p verb.
+    void importDrawing(const QString& fileName, const QString& verb);
     /// Read @p fileName into a new part, or keep it as an assembly at
     /// @p assemblyPath when one is given: on a worker when the file is large,
     /// and for an assembly however small.

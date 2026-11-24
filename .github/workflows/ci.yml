@@ -177,12 +177,14 @@ jobs:
             pkg-config \
             qt6-l10n-tools
 
-      # Scripting is off by default (it is not sandboxed); test it here.
+      # Scripting is off by default (it is not sandboxed); test it here. So
+      # is DWG (LibreDWG's dwg2dxf, built by vcpkg and shipped beside the
+      # application) until it is proven on every platform: it is, here.
       - name: Configure
         id: configure
         # Tests on in every configuration: the linux-release preset turns them
         # off (for a quick local build), and this job ran none in Release.
-        run: cmake --preset ${{ matrix.preset }} -DHZ_BUILD_TESTS=ON -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }} -DHZ_ENABLE_SCRIPTING=ON -DHZ_REQUIRE_TRANSLATIONS=${{ matrix.translations || 'OFF' }}
+        run: cmake --preset ${{ matrix.preset }} -DHZ_BUILD_TESTS=ON -DHZ_WARNINGS_AS_ERRORS=${{ matrix.werror }} -DHZ_ENABLE_SCRIPTING=ON -DHZ_ENABLE_DWG=ON -DHZ_REQUIRE_TRANSLATIONS=${{ matrix.translations || 'OFF' }}
 
       # The log is kept so the Windows warnings can be counted below.
       - name: Build

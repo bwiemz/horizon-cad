@@ -19,6 +19,22 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **DWG files open.** **File ▸ Open** opens AutoCAD's own format as a
+  drawing, and **File ▸ Import ▸ DWG into This Drawing** adds one to the
+  drawing open, as DXF does: GNU LibreDWG's `dwg2dxf` turns it into DXF,
+  which is read as any DXF is, with the same report of what was left out. It
+  runs as a program of its own, so a file it cannot read, or that crashes it
+  or runs past five minutes, fails with why and costs nothing else. Tested
+  against drawings AutoCAD saved in the 2000, 2004, 2007, 2010, 2013 and 2018
+  formats, by the values AutoCAD itself reported. Horizon CAD does not write
+  DWG: Save asks where, as DXF or `.hcad`, and refuses a DWG's name. A build
+  option, `HZ_ENABLE_DWG` (off until it is proven on every platform; CI builds
+  it on all three), has vcpkg build `dwg2dxf` and ships it beside the
+  application; without it, an installed LibreDWG's is used.
+- **DXF splines given by the points they run through.** A SPLINE with fit
+  points and no control points, as AutoCAD keeps a spline drawn through
+  points and as LibreDWG writes it, came in as nothing; it now comes in as
+  the uniform cubic through those points, reported as approximated.
 - **Hole callouts on drawings.** **Drawing ▸ Add Hole Callout**, then a
   click on a hole made with **Hole**, calls it out as a shop drawing does: its
   size and depth as the Hole feature says them ("⌀6.6 THRU", "⌀5 × 10 DEEP"),
