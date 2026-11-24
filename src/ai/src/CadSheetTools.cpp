@@ -154,6 +154,18 @@ ToolResult dimension(const SheetToolHooks& hooks, const json& in, bool add) {
           std::string(add ? "dimension added to " : "dimensions removed from ") + change.edge}});
 }
 
+ToolResult holeCallout(const SheetToolHooks& hooks, const json& in) {
+    SheetChange change;
+    change.kind = SheetChange::Kind::HoleCallout;
+    change.view = viewOf(in);
+    change.edge = text(in, "edge");
+    if (change.edge.empty()) {
+        throw ArgError("\"edge\" is required: an edge of the hole, as list_view_edges names it");
+    }
+    return apply(hooks, change,
+                 {{"changed", "hole called out in view " + std::to_string(change.view)}});
+}
+
 }  // namespace
 
 void registerSheetTools(ToolRegistry& registry, SheetToolHooks hooks) {
@@ -245,7 +257,18 @@ void registerSheetTools(ToolRegistry& registry, SheetToolHooks hooks) {
                 {"view", "edge"})},
         ToolAccess::Modify,
         [](const SheetToolHooks& h, const json& in) { return dimension(h, in, true); });
-    add({"remove_dimension", "Remove the dimensions of an edge in a view. One undo step.",
+    add({"add_hole_callout",
+         "Call out a hole in a view: its size and depth as its Hole feature says, with a "
+         "counterbore's or countersink's, and how many of it the part has (\"3× ⌀6.6 THRU\"), "
+         "on a leader from the hole. Name an edge of the hole as list_view_edges does (one "
+         "marked with its \"hole\"); call it out in the view that looks along the hole, where "
+         "it is a circle. One undo step.",
+         object({{"view", viewSchema},
+                 {"edge", detail::stringSchema("an edge of the hole, from list_view_edges")}},
+                {"view", "edge"})},
+        ToolAccess::Modify, &holeCallout);
+    add({"remove_dimension",
+         "Remove the dimensions of an edge in a view, and its hole's callout. One undo step.",
          object({{"view", viewSchema},
                  {"edge", detail::stringSchema("the edge's name, as get_sheet_info lists it")}},
                 {"view", "edge"})},

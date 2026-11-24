@@ -5,6 +5,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/document/Document.h"
@@ -22,6 +23,7 @@
 #include "horizon/fileio/TitleBlockRenderer.h"
 #include "horizon/modeling/DrawingProjection.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/HoleCallout.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Sheet.h"
 #include "horizon/modeling/TitleBlock.h"
@@ -363,6 +365,53 @@ void DrawingExport::populate(doc::Document& doc, const model::Drawing& drawing,
             auto text = std::make_shared<draft::DraftText>(textPos, value, kRadialTextHeight);
             text->setLayer(kDimensionLayer);
             doc.addEntity(std::move(text));
+        }
+
+        // Hole callouts: a leader from the hole's edge at 45°, a short
+        // shoulder, and the callout's lines beside it, the dimension style's
+        // unit and precision in them.
+        for (const model::HoleCallout& callout : view.holeCallouts) {
+            // The edge's points, in view space: every piece of its circle.
+            std::vector<math::Vec2> points;
+            for (const model::ProjectedEdge& e : view.edges) {
+                if (model::withoutPiece(model::logicalEdge(e.sourceEdge.tag())) != callout.edge) {
+                    continue;
+                }
+                points.push_back(e.a);
+                points.push_back(e.b);
+            }
+            if (points.size() < 3) continue;
+            math::Vec2 center{0.0, 0.0};
+            for (const math::Vec2& q : points) center = center + q;
+            center = center * (1.0 / static_cast<double>(points.size()));
+            double radius = 0.0;
+            for (const math::Vec2& q : points) {
+                radius += std::hypot(q.x - center.x, q.y - center.y);
+            }
+            radius /= static_cast<double>(points.size());
+
+            const double kInvSqrt2 = 0.7071067811865476;
+            const math::Vec2 onCircle =
+                toSheet({center.x + kInvSqrt2 * radius, center.y + kInvSqrt2 * radius});
+            const math::Vec2 elbow{onCircle.x + kInvSqrt2 * kDimensionOffset * 1.5,
+                                   onCircle.y + kInvSqrt2 * kDimensionOffset * 1.5};
+            const math::Vec2 shoulder{elbow.x + 3.0, elbow.y};
+            for (const auto& [from, to] :
+                 {std::pair{onCircle, elbow}, std::pair{elbow, shoulder}}) {
+                auto line = std::make_shared<draft::DraftLine>(from, to);
+                line->setLayer(kDimensionLayer);
+                doc.addEntity(std::move(line));
+            }
+            const draft::DimensionStyle& style = doc.draftDocument().dimensionStyle();
+            const auto lines = model::holeCalloutLines(
+                callout, [&style](double mm) { return style.formatLength(mm); });
+            for (std::size_t k = 0; k < lines.size(); ++k) {
+                const math::Vec2 at{shoulder.x + 1.0,
+                                    shoulder.y - static_cast<double>(k) * kRadialTextHeight * 1.6};
+                auto text = std::make_shared<draft::DraftText>(at, lines[k], kRadialTextHeight);
+                text->setLayer(kDimensionLayer);
+                doc.addEntity(std::move(text));
+            }
         }
 
         // Render this view's dimensions (the DXF writer decomposes them to

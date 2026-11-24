@@ -169,3 +169,14 @@ TEST_F(SheetToolsTest, DimensionsAndWhatTheHostSays) {
     EXPECT_EQ(made("set_sheet_scale", {{"scale", "5:1"}})["warning"],
               "not every view has room on the sheet");
 }
+
+TEST_F(SheetToolsTest, AHoleIsCalledOutByAnEdgeOfIt) {
+    EXPECT_EQ(tools.access("add_hole_callout"), hz::ai::ToolAccess::Modify);
+    made("add_hole_callout", {{"view", 1}, {"edge", "edge:hole_1/bore|primitive_1/top"}});
+    ASSERT_EQ(asked.size(), 1u);
+    EXPECT_EQ(asked[0].kind, SheetChange::Kind::HoleCallout);
+    EXPECT_EQ(asked[0].view, 1);
+    EXPECT_EQ(asked[0].edge, "edge:hole_1/bore|primitive_1/top");
+    EXPECT_NE(refused("add_hole_callout", {{"view", 1}, {"edge", ""}}).find("an edge of the hole"),
+              std::string::npos);
+}
