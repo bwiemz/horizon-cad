@@ -680,6 +680,58 @@ TEST(TrimmedFaceMesher, APartWhoseVerticesCoincideTakesItsToleranceFromItsSize) 
     EXPECT_TRUE(problem.empty()) << problem;
 }
 
+TEST(TrimmedFaceMesher, ARhombusOnASaddleHasItsBoundaryHalved) {
+    // A small rhombus on z = 100 u v over 10 x 10, with a loose chord tolerance: the angle sets
+    // the steps. Its sides run diagonally across the saddle's bend, so triangles beside them turn
+    // by more than the angle, and a turned triangle's longest side is the boundary chord: the
+    // face asks for those segments to be halved (for both faces of the edge; here the face has
+    // no other) and is meshed again from the finer boundary (Ruling 20).
+    const auto surface = bilinear({0, 0, 0}, {10, 0, 0}, {0, 10, 0}, {10, 10, 100});
+    const std::array<Vec2, 4> corner = {{{0.5, 0.43}, {0.7, 0.5}, {0.5, 0.57}, {0.3, 0.5}}};
+    std::vector<Side> sides;
+    for (std::size_t i = 0; i < 4; ++i) {
+        const Vec2& a = corner[i];
+        const Vec2& b = corner[(i + 1) % 4];
+        sides.push_back(
+            {line(a, b), 0.0, 1.0, std::make_shared<OnSurface>(surface, a, b), 0.0, 1.0});
+    }
+    const auto face = makeOpenFace(surface, {sides});
+    MeshOptions options;
+    options.maxAngle = 0.1;
+    options.chordTolerance = 1.0;
+    options.maxTrianglesPerFace = 2000;
+
+    // The edges' samples before any face asks for more.
+    model::detail::EdgeSampler first(*face, options);
+    first.sampleEdges();
+    std::size_t firstSegments = 0;
+    for (const auto& e : face->edges()) {
+        const auto* samples = first.samples(&e);
+        ASSERT_NE(samples, nullptr);
+        ASSERT_TRUE(samples->problem.empty()) << samples->problem;
+        firstSegments += samples->points.size() - 1;
+    }
+
+    const double size = topo::exactExtent(*face);
+    const auto meshes = meshValid(*face, options, size);
+    ASSERT_EQ(meshes.size(), 1u);
+    ASSERT_TRUE(meshes[0].problem.empty()) << meshes[0].problem;
+    checkMeshes(*face, meshes, options, slackFor(size), false);
+    EXPECT_LE(worstNeighbourAngle(meshes), options.maxAngle + 1e-12);
+    // Every segment of an open face's mesh boundary is a segment of an edge's samples: more of
+    // them than the edges were first sampled into is a round of halving.
+    std::map<std::pair<std::uint32_t, std::uint32_t>, int> directed;
+    for (const auto& t : meshes[0].triangles) {
+        for (int k = 0; k < 3; ++k) ++directed[{t[k], t[(k + 1) % 3]}];
+    }
+    std::size_t boundarySegments = 0;
+    for (const auto& [e, uses] : directed) {
+        if (directed.count({e.second, e.first}) == 0) ++boundarySegments;
+    }
+    EXPECT_GT(boundarySegments, firstSegments)
+        << "no round of halving; " << meshes[0].triangles.size() << " triangles";
+}
+
 TEST(TrimmedFaceMesher, ACylinderUnderASmallTriangleCapStillMeshes) {
     // Rows across the side are bounded by the cap: with as many as their spacing wants, the
     // grid alone would pass it and the face would fail.
