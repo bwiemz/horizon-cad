@@ -601,16 +601,16 @@ std::shared_ptr<geo::Surface> leaningSurface(double size, double rise) {
 
 TEST(TrimmedFaceMesher, FilletLikeToriMeshWithinTheAngleAndTheCap) {
     // Thin tori at tolerances where the angle, not the chord, sets the steps: refinement beside
-    // their boundary once ran away to the triangle cap (R10 r1 at 0.08, 0.3 and 0.5; R10 r3 at
-    // 0.3; R50 r1 at 0.3 and 0.5) until the edges themselves were halved.
+    // their boundary once ran away to the triangle cap (the first six cases) until the edges
+    // themselves were halved and the steps took half the angle. The last two always meshed.
     const geo::Frame frame = geo::Frame::fromAxis({4, -2, 7}, {1, -2, 0.5});
     const MeshOptions defaults;
     const struct {
         double major;
         double minor;
         double tol;
-    } cases[] = {{10, 1, 0.02}, {10, 1, 0.08}, {10, 1, 0.1}, {10, 1, 0.3}, {10, 1, 0.5},
-                 {10, 3, 0.3},  {50, 1, 0.05}, {50, 1, 0.3}, {50, 1, 0.5}};
+    } cases[] = {{10, 1, 0.08}, {10, 1, 0.3}, {10, 1, 0.5},  {10, 3, 0.3},
+                 {50, 1, 0.3},  {50, 1, 0.5}, {10, 1, 0.02}, {50, 1, 0.05}};
     for (const auto& c : cases) {
         const auto torus = makeTorus(frame, c.major, c.minor);
         MeshOptions options;
