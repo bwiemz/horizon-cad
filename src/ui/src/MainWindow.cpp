@@ -103,6 +103,7 @@
 #include "horizon/ui/CrashReport.h"
 #include "horizon/ui/DraftingCommands.h"
 #include "horizon/ui/DrawingWorkbench.h"
+#include "horizon/ui/DwgImport.h"
 #include "horizon/ui/EllipseTool.h"
 #include "horizon/ui/ExtendTool.h"
 #include "horizon/ui/FeatureForm.h"
@@ -496,6 +497,9 @@ void MainWindow::createMenus() {
     importMenu
         ->addAction(tr("&DXF into This Drawing..."), this, [this] { m_exchange->onImportDxf(); })
         ->setObjectName(QStringLiteral("import_dxf"));
+    importMenu
+        ->addAction(tr("D&WG into This Drawing..."), this, [this] { m_exchange->onImportDwg(); })
+        ->setObjectName(QStringLiteral("import_dwg"));
 
     QMenu* exportMenu = fileMenu->addMenu(tr("&Export"));
     QAction* exportStep =
@@ -2143,10 +2147,10 @@ void MainWindow::onAbout() {
 void MainWindow::onOpenFile() {
     QString fileName = QFileDialog::getOpenFileName(
         this, tr("Open File"), QString(),
-        tr("All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;"
+        tr("All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;"
            "Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;"
            "Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;"
-           "DXF Files (*.dxf);;All Files (*)"));
+           "DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)"));
     if (fileName.isEmpty()) return;
     openPath(fileName);
 }
@@ -2212,14 +2216,14 @@ bool MainWindow::openPath(const QString& fileName) {
 
     // A large drawing or part is read on a worker, and the window stays free
     // while it is: reading one took seconds.
-    const bool drawing = fileName.endsWith(".dxf", Qt::CaseInsensitive);
+    const bool drawing = isDrawingFile(fileName);
     if (openOnWorker(fileName)) return startOpen(fileName, drawing);
 
     if (drawing) {
         auto document = m_docManager.newDocument(doc::DocumentType::Drawing);
         std::string error;
         io::ImportReport report;
-        if (!io::DxfFormat::load(path, *document, &error, &report)) {
+        if (!DwgImport::loadDrawing(path, *document, &error, &report)) {
             m_docManager.closeDocument(document);
             reportFileError(tr("Could not open"), path, error);
             return false;
@@ -2262,13 +2266,14 @@ void MainWindow::showOpened(std::shared_ptr<doc::Document> document, const QStri
     RecentFiles::add(fileName);
 }
 
-MainWindow::FileOpen MainWindow::readFile(const std::string& path, bool drawing) {
+MainWindow::FileOpen MainWindow::readFile(const std::string& path, bool drawing,
+                                          const std::atomic<bool>* cancelled) {
     FileOpen open;
     auto document = std::make_shared<doc::Document>();
     bool read = false;
     if (drawing) {
         document->setType(doc::DocumentType::Drawing);
-        read = io::DxfFormat::load(path, *document, &open.error, &open.report);
+        read = DwgImport::loadDrawing(path, *document, &open.error, &open.report, cancelled);
     } else {
         read = io::NativeFormat::load(path, *document, &open.error, &open.report);
     }
@@ -2277,8 +2282,15 @@ MainWindow::FileOpen MainWindow::readFile(const std::string& path, bool drawing)
 }
 
 bool MainWindow::openOnWorker(const QString& fileName) const {
+    // A DWG file is read by another program, which may take its time
+    // whatever the file's size.
     return m_rebuildMode == RebuildMode::Always ||
-           (m_rebuildMode == RebuildMode::Auto && QFileInfo(fileName).size() >= kWorkerImportBytes);
+           (m_rebuildMode == RebuildMode::Auto &&
+            (DwgImport::isDwg(fileName) || QFileInfo(fileName).size() >= kWorkerImportBytes));
+}
+
+bool MainWindow::isDrawingFile(const QString& fileName) {
+    return fileName.endsWith(".dxf", Qt::CaseInsensitive) || DwgImport::isDwg(fileName);
 }
 
 bool MainWindow::startOpen(const QString& fileName, bool drawing) {
@@ -2291,8 +2303,8 @@ bool MainWindow::startOpen(const QString& fileName, bool drawing) {
     m_openDrawing = drawing;
     const std::string path = fileName.toStdString();
     m_openTask = std::make_unique<BackgroundTask<FileOpen>>(
-        [path, drawing](const std::atomic<bool>& /*cancelled*/) {
-            return readFile(path, drawing);
+        [path, drawing](const std::atomic<bool>& cancelled) {
+            return readFile(path, drawing, &cancelled);
         });
     m_openTask->start([this] {
         QMetaObject::invokeMethod(this, &MainWindow::onOpenFinished, Qt::QueuedConnection);
@@ -2492,9 +2504,13 @@ bool MainWindow::saveActiveDocument() {
         return false;
     }
 
-    if (m_document->filePath().empty() || m_document->readInPart()) {
+    // Nor over a DWG file, which Horizon CAD reads but does not write.
+    const auto readFromDwg = [this] {
+        return DwgImport::isDwg(QString::fromStdString(m_document->filePath()));
+    };
+    if (m_document->filePath().empty() || m_document->readInPart() || readFromDwg()) {
         onSaveFileAs();
-        return !m_document->isDirty() && !m_document->readInPart();
+        return !m_document->isDirty() && !m_document->readInPart() && !readFromDwg();
     }
     if (m_drawings->isSheet(m_document.get())) {
         const std::string sheetPath = m_document->filePath();
@@ -2587,14 +2603,24 @@ void MainWindow::onSaveFileAs() {
     // Read in part: saved where its user chooses, the file it was read from
     // only when they say so, knowing what that loses.
     const std::string source = m_assembly ? m_assembly->filePath() : m_document->filePath();
-    const bool readInPart = m_assembly ? m_assembly->readInPart() : m_document->readInPart();
+    const bool newFile = (m_assembly ? m_assembly->readInPart() : m_document->readInPart()) ||
+                         DwgImport::isDwg(QString::fromStdString(source));
     QString fileName = QFileDialog::getSaveFileName(
-        this, readInPart ? tr("Save As a New File") : tr("Save File"),
-        readInPart ? QFileInfo(QString::fromStdString(source)).absolutePath() : QString(), filter);
+        this, newFile ? tr("Save As a New File") : tr("Save File"),
+        newFile ? QFileInfo(QString::fromStdString(source)).absolutePath() : QString(), filter);
     if (fileName.isEmpty()) return;
     if (sheet && !fileName.endsWith(".hzdwg", Qt::CaseInsensitive)) {
         // A sheet is only ever a .hzdwg: that is how it is opened again.
         fileName += QStringLiteral(".hzdwg");
+    }
+    if (DwgImport::isDwg(fileName)) {
+        // Written as a Horizon CAD document under a DWG's name, it would be
+        // neither: AutoCAD could not open it, and nor could the Open dialog.
+        QMessageBox::warning(this, tr("Save File"),
+                             tr("Horizon CAD reads DWG files but does not write them. Save the "
+                                "drawing as DXF (.dxf), which AutoCAD opens, or as a Horizon CAD "
+                                "drawing (.hcad)."));
+        return;
     }
     if (!mayReplaceSource(fileName)) return;
 
@@ -2763,7 +2789,7 @@ void MainWindow::reloadTab(size_t index, bool asked) {
     }
     const std::string path = old->filePath();
     const QString fileName = QString::fromStdString(path);
-    const bool drawing = fileName.endsWith(".dxf", Qt::CaseInsensitive);
+    const bool drawing = isDrawingFile(fileName);
     // A large file is read on a worker, as it is opened: here, reading it
     // again froze the window every time another program saved it.
     if (!openOnWorker(fileName)) {
@@ -2780,8 +2806,8 @@ void MainWindow::reloadTab(size_t index, bool asked) {
     m_reloadDocument = old;
     m_reloadAsked = asked;
     m_reloadTask = std::make_unique<BackgroundTask<FileOpen>>(
-        [path, drawing](const std::atomic<bool>& /*cancelled*/) {
-            return readFile(path, drawing);
+        [path, drawing](const std::atomic<bool>& cancelled) {
+            return readFile(path, drawing, &cancelled);
         });
     m_reloadTask->start([this] {
         QMetaObject::invokeMethod(this, &MainWindow::onReloadFinished, Qt::QueuedConnection);

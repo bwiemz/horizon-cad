@@ -47,6 +47,8 @@ public:
     /// A DXF's layers, blocks and entities into the active drawing, as one
     /// undoable step.
     void onImportDxf();
+    /// A DWG's, likewise: LibreDWG's dwg2dxf reads it (DwgImport).
+    void onImportDwg();
 
     // --- File ▸ Export ---
     void onExportStep();
@@ -68,8 +70,8 @@ public:
     /// assembly is, whatever its size.
     static constexpr qint64 kWorkerImportBytes = 1'000'000;
 
-    /// A STEP import is running on a worker.
-    bool busy() const { return m_importTask != nullptr; }
+    /// A STEP import, or a drawing's, is running on a worker.
+    bool busy() const { return m_importTask != nullptr || m_drawingTask != nullptr; }
     /// Stop it; what it wrote goes too.
     void cancelWork();
 
@@ -114,6 +116,20 @@ public:
                              const std::shared_ptr<ImportProgress>& progress = nullptr);
 
 private:
+    /// A drawing (DXF or DWG) read for an import into another.
+    struct DrawingLoad {
+        std::shared_ptr<doc::Document> document;  ///< null when it could not be read
+        io::ImportReport report;
+        std::string error;
+    };
+    static DrawingLoad loadDrawingFile(const std::string& path, const std::atomic<bool>* cancelled);
+    /// The drawing in @p fileName (a DXF or DWG) into the active document,
+    /// as one undoable step named @p verb: read on a worker for a DWG, or a
+    /// large file, and added to the document that was active then.
+    void importDrawing(const QString& fileName, const QString& verb);
+    void onDrawingImportFinished();
+    void finishDrawingImport(const QString& fileName, const QString& verb, doc::Document& target,
+                             DrawingLoad load);
     /// Read @p fileName into a new part, or keep it as an assembly at
     /// @p assemblyPath when one is given: on a worker when the file is large,
     /// and for an assembly however small.
@@ -148,6 +164,10 @@ private:
     std::unique_ptr<BackgroundTask<StepLoad>> m_importTask;
     QString m_importFile;                              ///< what m_importTask reads
     std::shared_ptr<ImportProgress> m_importProgress;  ///< of m_importTask
+    std::unique_ptr<BackgroundTask<DrawingLoad>> m_drawingTask;
+    QString m_drawingFile;                         ///< what m_drawingTask reads
+    QString m_drawingVerb;                         ///< its undo step's name
+    std::weak_ptr<doc::Document> m_drawingTarget;  ///< what it goes into
 };
 
 }  // namespace hz::ui

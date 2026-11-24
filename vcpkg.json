@@ -46,6 +46,18 @@
           ]
         }
       ]
+    },
+    "dwg": {
+      "description": "LibreDWG's dwg2dxf, shipped beside the application to open DWG files (HZ_ENABLE_DWG chooses this feature).",
+      "dependencies": [
+        {
+          "name": "libredwg",
+          "default-features": false,
+          "features": [
+            "tools"
+          ]
+        }
+      ]
     }
   },
   "builtin-baseline": "84bab45d415d22042bd0b9081aea57f362da3f35"

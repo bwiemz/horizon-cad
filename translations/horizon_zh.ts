@@ -2503,9 +2503,94 @@ Details are in the log:
     </message>
 </context>
 <context>
+    <name>hz::ui::DwgImport</name>
+    <message>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+72"/>
+        <source>there was not memory enough to read it</source>
+        <translation type="unfinished">内存不足，无法读取</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>LibreDWG could not read the file</source>
+        <translation type="unfinished">LibreDWG 无法读取该文件</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>it is not a DWG file, or not one LibreDWG can read</source>
+        <translation type="unfinished">它不是 DWG 文件，或不是 LibreDWG 能读取的 DWG 文件</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>parts of it are missing: it may be damaged, or cut short</source>
+        <translation type="unfinished">缺少部分内容：文件可能已损坏或被截断</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>LibreDWG met something in it that it cannot read yet</source>
+        <translation type="unfinished">其中包含 LibreDWG 尚无法读取的内容</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>LibreDWG could not read it</source>
+        <translation type="unfinished">LibreDWG 无法读取它</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>LibreDWG could not read it (%1)</source>
+        <translation type="unfinished">LibreDWG 无法读取它 (%1)</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Horizon CAD reads DWG files with LibreDWG&apos;s dwg2dxf, which this computer does not have: install LibreDWG, or save the drawing as DXF in the program that made it</source>
+        <translation type="unfinished">Horizon CAD 使用 LibreDWG 的 dwg2dxf 读取 DWG 文件，但此计算机上没有该程序：请安装 LibreDWG，或在创建该图形的程序中将其另存为 DXF</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>there is no temporary folder to read it in (%1)</source>
+        <translation type="unfinished">没有可用于读取的临时文件夹 (%1)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>the file could not be read (check its permissions)</source>
+        <translation type="unfinished">无法读取该文件（请检查其权限）</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
+        <translation type="unfinished">无法启动 LibreDWG 的 dwg2dxf (%1)：%2</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>the reading was cancelled</source>
+        <translation type="unfinished">读取已取消</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>LibreDWG had not read it after %n second(s), and was stopped</source>
+        <translation type="unfinished">
+            <numerusform>LibreDWG 在 %n 秒后仍未读完，已被停止</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>LibreDWG stopped while reading it: the file may be damaged, or hold something LibreDWG cannot read yet</source>
+        <translation type="unfinished">LibreDWG 在读取时停止：文件可能已损坏，或包含 LibreDWG 尚无法读取的内容</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>LibreDWG read it, but wrote nothing of it</source>
+        <translation type="unfinished">LibreDWG 已读取，但没有输出任何内容</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>LibreDWG read it, but what it made of it could not be read: %1</source>
+        <translation type="unfinished">LibreDWG 已读取，但无法读取其输出：%1</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+106"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">未给出长度单位</translation>
     </message>
@@ -2552,22 +2637,25 @@ Details are in the log:
     </message>
     <message>
         <location line="+12"/>
+        <location line="+155"/>
         <source>Importing %1...</source>
         <translation type="unfinished">正在导入 %1...</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="-142"/>
         <location line="+15"/>
+        <location line="+136"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-14"/>
+        <location line="-150"/>
+        <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">已取消导入</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="-136"/>
         <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
         <translation type="unfinished">未导入 &quot;%1&quot;：未给出其长度所用的单位</translation>
     </message>
@@ -2575,12 +2663,12 @@ Details are in the log:
         <location line="+16"/>
         <location line="+25"/>
         <location line="+6"/>
-        <location line="+28"/>
+        <location line="+107"/>
         <source>Could not import</source>
         <translation type="unfinished">无法导入</translation>
     </message>
     <message numerus="yes">
-        <location line="-39"/>
+        <location line="-118"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>已导入 %n 个实体。</numerusform>
@@ -2607,17 +2695,43 @@ Details are in the log:
     </message>
     <message>
         <location line="+4"/>
-        <location line="+13"/>
+        <location line="+2"/>
         <source>Import DXF</source>
         <translation type="unfinished">导入 DXF</translation>
     </message>
     <message>
-        <location line="-13"/>
+        <location line="-2"/>
         <source>DXF Files (*.dxf);;All Files (*)</source>
         <translation type="unfinished">DXF 文件 (*.dxf);;所有文件 (*)</translation>
     </message>
+    <message>
+        <location line="+7"/>
+        <source>A DWG is imported into a drawing or part, not an assembly</source>
+        <translation type="unfinished">DWG 只能导入到工程图或零件中，不能导入到装配体</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <location line="+2"/>
+        <source>Import DWG</source>
+        <translation type="unfinished">导入 DWG</translation>
+    </message>
+    <message>
+        <location line="-2"/>
+        <source>DWG Files (*.dwg);;All Files (*)</source>
+        <translation type="unfinished">DWG 文件 (*.dwg);;所有文件 (*)</translation>
+    </message>
+    <message>
+        <location line="+34"/>
+        <source>An import is already running</source>
+        <translation type="unfinished">已有导入正在进行</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>%1 was read, but the drawing it was for has been closed</source>
+        <translation type="unfinished">已读取 %1，但目标工程图已关闭</translation>
+    </message>
     <message numerus="yes">
-        <location line="+35"/>
+        <location line="+40"/>
         <source>Imported %n entities.</source>
         <translation type="unfinished">
             <numerusform>已导入 %n 个图元。</numerusform>
@@ -2630,13 +2744,19 @@ Details are in the log:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+236"/>
+        <location line="+5"/>
+        <location line="+240"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">导出 %1</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-283"/>
+        <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
+        <translation type="unfinished">Horizon CAD 不写入 DWG 文件：请使用以 %1 结尾的文件名。</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>
@@ -3262,12 +3382,12 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+457"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+458"/>
         <source>&amp;File</source>
         <translation>文件(&amp;F)</translation>
     </message>
     <message>
-        <location line="+81"/>
+        <location line="+84"/>
         <source>&amp;Edit</source>
         <translation>编辑(&amp;E)</translation>
     </message>
@@ -3277,7 +3397,7 @@ begin building your part.</source>
         <translation>视图(&amp;V)</translation>
     </message>
     <message>
-        <location line="-144"/>
+        <location line="-147"/>
         <source>&amp;New Drawing</source>
         <translation>新建图纸(&amp;N)</translation>
     </message>
@@ -3303,7 +3423,7 @@ begin building your part.</source>
         <translation type="unfinished">关闭 %1</translation>
     </message>
     <message>
-        <location line="+895"/>
+        <location line="+898"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3522,15 +3642,15 @@ begin building your part.</source>
         <translation type="unfinished">放置面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-845"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-848"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1220"/>
+        <location line="+1223"/>
         <source>Drawing 1</source>
         <translation type="unfinished">工程图 1</translation>
     </message>
     <message>
-        <location line="-1166"/>
+        <location line="-1169"/>
         <source>Command Palette…</source>
         <translation type="unfinished">命令面板…</translation>
     </message>
@@ -3588,6 +3708,11 @@ begin building your part.</source>
         <location line="+4"/>
         <source>&amp;DXF into This Drawing...</source>
         <translation type="unfinished">DXF 到当前工程图(&amp;D)...</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>D&amp;WG into This Drawing...</source>
+        <translation type="unfinished">DWG 到当前工程图(&amp;W)...</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -4685,15 +4810,25 @@ begin building your part.</source>
         <source>Flat Pattern</source>
         <translation type="unfinished">展开图</translation>
     </message>
+    <message>
+        <location line="+1037"/>
+        <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
+        <translation type="unfinished">所有支持的文件 (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD 工程图 (*.hcad);;Horizon 零件 (*.hzpart);;Horizon 装配体 (*.hzasm);;Horizon 工程图图纸 (*.hzdwg);;DXF 文件 (*.dxf);;DWG 文件 (*.dwg);;所有文件 (*)</translation>
+    </message>
     <message numerus="yes">
-        <location line="+1433"/>
+        <location line="+408"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>文件已保存；%n 个图层使用了 DXF 允许的名称。</numerusform>
         </translation>
     </message>
     <message>
-        <location line="+435"/>
+        <location line="+62"/>
+        <source>Horizon CAD reads DWG files but does not write them. Save the drawing as DXF (.dxf), which AutoCAD opens, or as a Horizon CAD drawing (.hcad).</source>
+        <translation type="unfinished">Horizon CAD 可以读取 DWG 文件，但不能写入。请将图形另存为 AutoCAD 能打开的 DXF (.dxf)，或 Horizon CAD 工程图 (.hcad)。</translation>
+    </message>
+    <message>
+        <location line="+383"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">没有可缩放的选择：整屏显示 (F) 显示全部</translation>
     </message>
@@ -4742,7 +4877,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 未估计其误差：只测量了一次，未细分。</translation>
     </message>
     <message>
-        <location line="-2620"/>
+        <location line="-2642"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -4968,8 +5103,8 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1052"/>
-        <location line="+488"/>
+        <location line="+1060"/>
+        <location line="+502"/>
         <location line="+936"/>
         <location line="+601"/>
         <location line="+13"/>
@@ -4977,7 +5112,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-3160"/>
+        <location line="-3182"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -4998,12 +5133,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2808"/>
+        <location line="+2830"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-2802"/>
+        <location line="-2824"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
@@ -5305,15 +5440,10 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">打开文件</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;All Files (*)</source>
-        <translation type="unfinished">所有支持的文件 (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD 工程图 (*.hcad);;Horizon 零件 (*.hzpart);;Horizon 装配体 (*.hzasm);;Horizon 工程图图纸 (*.hzdwg);;DXF 文件 (*.dxf);;所有文件 (*)</translation>
-    </message>
-    <message>
-        <location line="+40"/>
+        <location line="+41"/>
         <location line="+38"/>
         <location line="+13"/>
-        <location line="+82"/>
+        <location line="+90"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -5322,19 +5452,19 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">无法打开</translation>
     </message>
     <message>
-        <location line="-233"/>
+        <location line="-241"/>
         <source>Assembly</source>
         <translation type="unfinished">装配体</translation>
     </message>
     <message>
         <location line="+22"/>
-        <location line="+103"/>
+        <location line="+111"/>
         <source>Drawing</source>
         <translation type="unfinished">工程图</translation>
     </message>
     <message>
-        <location line="-89"/>
-        <location line="+89"/>
+        <location line="-97"/>
+        <location line="+97"/>
         <source>Document</source>
         <translation type="unfinished">文档</translation>
     </message>
@@ -5410,7 +5540,7 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+12"/>
+        <location line="+16"/>
         <location line="+44"/>
         <source>Could not save</source>
         <translation type="unfinished">无法保存</translation>
@@ -5465,17 +5595,18 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">Horizon CAD 工程图 (*.hcad);;Horizon 零件 (*.hzpart);;DXF 文件 (*.dxf);;所有文件 (*)</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+10"/>
+        <location line="+10"/>
         <source>Save File</source>
         <translation type="unfinished">保存文件</translation>
     </message>
     <message>
-        <location line="+0"/>
+        <location line="-10"/>
         <source>Save As a New File</source>
         <translation type="unfinished">另存为新文件</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+58"/>
         <source>Replace the File It Was Read From?</source>
         <translation type="unfinished">替换读取它的文件？</translation>
     </message>
@@ -6109,7 +6240,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
     </message>
     <message>
-        <location line="-3176"/>
+        <location line="-3198"/>
         <source>0 selected</source>
         <translation>已选择 0 个</translation>
     </message>

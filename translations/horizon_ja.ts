@@ -2503,9 +2503,94 @@ Details are in the log:
     </message>
 </context>
 <context>
+    <name>hz::ui::DwgImport</name>
+    <message>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+72"/>
+        <source>there was not memory enough to read it</source>
+        <translation type="unfinished">読み込むためのメモリが足りませんでした</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>LibreDWG could not read the file</source>
+        <translation type="unfinished">LibreDWG はファイルを読み込めませんでした</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>it is not a DWG file, or not one LibreDWG can read</source>
+        <translation type="unfinished">DWG ファイルではないか、LibreDWG が読み込めない DWG ファイルです</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>parts of it are missing: it may be damaged, or cut short</source>
+        <translation type="unfinished">一部が欠けています。ファイルが破損しているか、途中で切れている可能性があります</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>LibreDWG met something in it that it cannot read yet</source>
+        <translation type="unfinished">LibreDWG がまだ読み込めない内容が含まれています</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>LibreDWG could not read it</source>
+        <translation type="unfinished">LibreDWG は読み込めませんでした</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>LibreDWG could not read it (%1)</source>
+        <translation type="unfinished">LibreDWG は読み込めませんでした (%1)</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Horizon CAD reads DWG files with LibreDWG&apos;s dwg2dxf, which this computer does not have: install LibreDWG, or save the drawing as DXF in the program that made it</source>
+        <translation type="unfinished">Horizon CAD は LibreDWG の dwg2dxf で DWG ファイルを読み込みますが、このコンピューターにはありません。LibreDWG をインストールするか、図面を作成したプログラムで DXF として保存してください</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>there is no temporary folder to read it in (%1)</source>
+        <translation type="unfinished">読み込みに使う一時フォルダーがありません (%1)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>the file could not be read (check its permissions)</source>
+        <translation type="unfinished">ファイルを読み込めませんでした (アクセス許可を確認してください)</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
+        <translation type="unfinished">LibreDWG の dwg2dxf (%1) を起動できませんでした: %2</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>the reading was cancelled</source>
+        <translation type="unfinished">読み込みはキャンセルされました</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>LibreDWG had not read it after %n second(s), and was stopped</source>
+        <translation type="unfinished">
+            <numerusform>LibreDWG は %n 秒たっても読み込みを終えなかったため、停止しました</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>LibreDWG stopped while reading it: the file may be damaged, or hold something LibreDWG cannot read yet</source>
+        <translation type="unfinished">LibreDWG が読み込み中に停止しました。ファイルが破損しているか、LibreDWG がまだ読み込めない内容が含まれている可能性があります</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>LibreDWG read it, but wrote nothing of it</source>
+        <translation type="unfinished">LibreDWG は読み込みましたが、何も出力しませんでした</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>LibreDWG read it, but what it made of it could not be read: %1</source>
+        <translation type="unfinished">LibreDWG は読み込みましたが、その出力を読み込めませんでした: %1</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+106"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">長さの単位が指定されていません</translation>
     </message>
@@ -2552,22 +2637,25 @@ Details are in the log:
     </message>
     <message>
         <location line="+12"/>
+        <location line="+155"/>
         <source>Importing %1...</source>
         <translation type="unfinished">%1 をインポートしています...</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="-142"/>
         <location line="+15"/>
+        <location line="+136"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-14"/>
+        <location line="-150"/>
+        <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">インポートをキャンセルしました</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="-136"/>
         <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
         <translation type="unfinished">&quot;%1&quot; はインポートされませんでした: 長さの単位が指定されませんでした</translation>
     </message>
@@ -2575,12 +2663,12 @@ Details are in the log:
         <location line="+16"/>
         <location line="+25"/>
         <location line="+6"/>
-        <location line="+28"/>
+        <location line="+107"/>
         <source>Could not import</source>
         <translation type="unfinished">インポートできませんでした</translation>
     </message>
     <message numerus="yes">
-        <location line="-39"/>
+        <location line="-118"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>%n 個のボディをインポートしました。</numerusform>
@@ -2607,17 +2695,43 @@ Details are in the log:
     </message>
     <message>
         <location line="+4"/>
-        <location line="+13"/>
+        <location line="+2"/>
         <source>Import DXF</source>
         <translation type="unfinished">DXF のインポート</translation>
     </message>
     <message>
-        <location line="-13"/>
+        <location line="-2"/>
         <source>DXF Files (*.dxf);;All Files (*)</source>
         <translation type="unfinished">DXF ファイル (*.dxf);;すべてのファイル (*)</translation>
     </message>
+    <message>
+        <location line="+7"/>
+        <source>A DWG is imported into a drawing or part, not an assembly</source>
+        <translation type="unfinished">DWG は図面または部品にインポートします。アセンブリにはインポートできません</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <location line="+2"/>
+        <source>Import DWG</source>
+        <translation type="unfinished">DWG のインポート</translation>
+    </message>
+    <message>
+        <location line="-2"/>
+        <source>DWG Files (*.dwg);;All Files (*)</source>
+        <translation type="unfinished">DWG ファイル (*.dwg);;すべてのファイル (*)</translation>
+    </message>
+    <message>
+        <location line="+34"/>
+        <source>An import is already running</source>
+        <translation type="unfinished">インポートはすでに実行中です</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>%1 was read, but the drawing it was for has been closed</source>
+        <translation type="unfinished">%1 を読み込みましたが、インポート先の図面は閉じられています</translation>
+    </message>
     <message numerus="yes">
-        <location line="+35"/>
+        <location line="+40"/>
         <source>Imported %n entities.</source>
         <translation type="unfinished">
             <numerusform>%n 個のエンティティをインポートしました。</numerusform>
@@ -2630,13 +2744,19 @@ Details are in the log:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+236"/>
+        <location line="+5"/>
+        <location line="+240"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">%1 のエクスポート</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-283"/>
+        <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
+        <translation type="unfinished">Horizon CAD は DWG ファイルを書き出しません。%1 で終わる名前を付けてください。</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>
@@ -3262,12 +3382,12 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+457"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+458"/>
         <source>&amp;File</source>
         <translation>ファイル(&amp;F)</translation>
     </message>
     <message>
-        <location line="+81"/>
+        <location line="+84"/>
         <source>&amp;Edit</source>
         <translation>編集(&amp;E)</translation>
     </message>
@@ -3277,7 +3397,7 @@ begin building your part.</source>
         <translation>表示(&amp;V)</translation>
     </message>
     <message>
-        <location line="-144"/>
+        <location line="-147"/>
         <source>&amp;New Drawing</source>
         <translation>新規図面(&amp;N)</translation>
     </message>
@@ -3303,7 +3423,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 を閉じる</translation>
     </message>
     <message>
-        <location line="+895"/>
+        <location line="+898"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3522,15 +3642,15 @@ begin building your part.</source>
         <translation type="unfinished">穴あけ面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-845"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-848"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1220"/>
+        <location line="+1223"/>
         <source>Drawing 1</source>
         <translation type="unfinished">図面 1</translation>
     </message>
     <message>
-        <location line="-1166"/>
+        <location line="-1169"/>
         <source>Command Palette…</source>
         <translation type="unfinished">コマンド パレット…</translation>
     </message>
@@ -3588,6 +3708,11 @@ begin building your part.</source>
         <location line="+4"/>
         <source>&amp;DXF into This Drawing...</source>
         <translation type="unfinished">DXF をこの図面に(&amp;D)...</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>D&amp;WG into This Drawing...</source>
+        <translation type="unfinished">DWG をこの図面に(&amp;W)...</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -4685,15 +4810,25 @@ begin building your part.</source>
         <source>Flat Pattern</source>
         <translation type="unfinished">展開図</translation>
     </message>
+    <message>
+        <location line="+1037"/>
+        <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
+        <translation type="unfinished">サポートされているすべてのファイル (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD 図面 (*.hcad);;Horizon 部品 (*.hzpart);;Horizon アセンブリ (*.hzasm);;Horizon 図面シート (*.hzdwg);;DXF ファイル (*.dxf);;DWG ファイル (*.dwg);;すべてのファイル (*)</translation>
+    </message>
     <message numerus="yes">
-        <location line="+1433"/>
+        <location line="+408"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>ファイルを保存しました。%n 個の画層は DXF で使える名前にしました。</numerusform>
         </translation>
     </message>
     <message>
-        <location line="+435"/>
+        <location line="+62"/>
+        <source>Horizon CAD reads DWG files but does not write them. Save the drawing as DXF (.dxf), which AutoCAD opens, or as a Horizon CAD drawing (.hcad).</source>
+        <translation type="unfinished">Horizon CAD は DWG ファイルを読み込めますが、書き出しはできません。図面は AutoCAD で開ける DXF (.dxf) か、Horizon CAD 図面 (.hcad) として保存してください。</translation>
+    </message>
+    <message>
+        <location line="+383"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">ズームする対象が選択されていません。全体表示 (F) ですべてを表示します</translation>
     </message>
@@ -4742,7 +4877,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 誤差は推定されていません: 細分化せず一度だけ測定しました。</translation>
     </message>
     <message>
-        <location line="-2620"/>
+        <location line="-2642"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -4968,8 +5103,8 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1052"/>
-        <location line="+488"/>
+        <location line="+1060"/>
+        <location line="+502"/>
         <location line="+936"/>
         <location line="+601"/>
         <location line="+13"/>
@@ -4977,7 +5112,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-3160"/>
+        <location line="-3182"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -4998,12 +5133,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2808"/>
+        <location line="+2830"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-2802"/>
+        <location line="-2824"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
@@ -5305,15 +5440,10 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">ファイルを開く</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;All Files (*)</source>
-        <translation type="unfinished">サポートされているすべてのファイル (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD 図面 (*.hcad);;Horizon 部品 (*.hzpart);;Horizon アセンブリ (*.hzasm);;Horizon 図面シート (*.hzdwg);;DXF ファイル (*.dxf);;すべてのファイル (*)</translation>
-    </message>
-    <message>
-        <location line="+40"/>
+        <location line="+41"/>
         <location line="+38"/>
         <location line="+13"/>
-        <location line="+82"/>
+        <location line="+90"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -5322,19 +5452,19 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">開けませんでした</translation>
     </message>
     <message>
-        <location line="-233"/>
+        <location line="-241"/>
         <source>Assembly</source>
         <translation type="unfinished">アセンブリ</translation>
     </message>
     <message>
         <location line="+22"/>
-        <location line="+103"/>
+        <location line="+111"/>
         <source>Drawing</source>
         <translation type="unfinished">図面</translation>
     </message>
     <message>
-        <location line="-89"/>
-        <location line="+89"/>
+        <location line="-97"/>
+        <location line="+97"/>
         <source>Document</source>
         <translation type="unfinished">ドキュメント</translation>
     </message>
@@ -5410,7 +5540,7 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+12"/>
+        <location line="+16"/>
         <location line="+44"/>
         <source>Could not save</source>
         <translation type="unfinished">保存できませんでした</translation>
@@ -5465,17 +5595,18 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">Horizon CAD 図面 (*.hcad);;Horizon 部品 (*.hzpart);;DXF ファイル (*.dxf);;すべてのファイル (*)</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+10"/>
+        <location line="+10"/>
         <source>Save File</source>
         <translation type="unfinished">ファイルの保存</translation>
     </message>
     <message>
-        <location line="+0"/>
+        <location line="-10"/>
         <source>Save As a New File</source>
         <translation type="unfinished">新しいファイルとして保存</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+58"/>
         <source>Replace the File It Was Read From?</source>
         <translation type="unfinished">読み込み元のファイルを置き換えますか？</translation>
     </message>
@@ -6109,7 +6240,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-3176"/>
+        <location line="-3198"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>

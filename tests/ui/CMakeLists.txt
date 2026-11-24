@@ -1,5 +1,6 @@
 add_executable(hz_ui_tests
     test_CrashReport.cpp
+    test_DwgImport.cpp
     test_LocaleManager.cpp
     test_TypedPoint.cpp
     test_Workers.cpp
@@ -30,7 +31,14 @@ target_compile_definitions(hz_ui_tests
     PRIVATE
         # Location of the shipped .ts catalog sources, for coverage checks.
         HZ_TRANSLATIONS_SRC_DIR="${CMAKE_SOURCE_DIR}/translations"
-        HZ_CRASH_CHILD="$<TARGET_FILE:hz_crash_child>")
+        HZ_CRASH_CHILD="$<TARGET_FILE:hz_crash_child>"
+        # Drawings AutoCAD made, for reading DWG.
+        HZ_DWG_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fileio/fixtures/dwg")
+# The dwg2dxf this build ships, which the DWG tests read with; without it they
+# check only what is said when a reading fails.
+if(HZ_DWG_ENABLED)
+    target_compile_definitions(hz_ui_tests PRIVATE HZ_DWG2DXF="${HZ_DWG2DXF_PROGRAM}")
+endif()
 # Where the compiled catalogs are placed, where the application looks (Phase
 # 166; HZ_SHIPPED_DIR): a test loads each one. None there (no lrelease), and
 # the test says so.
@@ -95,6 +103,12 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
             Horizon::Version
             GTest::gtest
     )
+    # Drawings AutoCAD made, and the dwg2dxf this build ships, to open them.
+    target_compile_definitions(hz_ui_window_tests
+        PRIVATE HZ_DWG_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fileio/fixtures/dwg")
+    if(HZ_DWG_ENABLED)
+        target_compile_definitions(hz_ui_window_tests PRIVATE HZ_DWG2DXF="${HZ_DWG2DXF_PROGRAM}")
+    endif()
     if(TARGET horizon)
         # The catalogs the application ships, to check a window in another
         # language.

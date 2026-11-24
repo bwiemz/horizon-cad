@@ -18,6 +18,8 @@ from the vcpkg build that made the package).
 | [FlatBuffers](https://github.com/google/flatbuffers) | the binary document container | Apache-2.0 |
 | [pybind11](https://github.com/pybind/pybind11) | Python scripting, when built with it | BSD-3-Clause |
 | [Python](https://www.python.org/) | Python scripting, when built with it | PSF-2.0 |
+| [GNU LibreDWG](https://www.gnu.org/software/libredwg/) | its `dwg2dxf` program, beside the application, reads DWG files, when built with it (`HZ_ENABLE_DWG`) | GPL-3.0-or-later |
+| [jsmn](https://github.com/zserge/jsmn) | JSON parsing inside LibreDWG, when built with it | MIT |
 
 Qt's own dependencies (zlib, libpng, FreeType, HarfBuzz, PCRE2 and others,
 depending on how Qt was built) are listed with their licences under
