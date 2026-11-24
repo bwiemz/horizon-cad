@@ -10,8 +10,11 @@
 #include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/ModelTolerance.h"
 #include "horizon/modeling/ExactPrimitives.h"
+#include "horizon/modeling/Pattern.h"
+#include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/Solid.h"
 
 using namespace hz;
@@ -292,4 +295,85 @@ TEST(ExactPrimitives, DegenerateRequestsGiveNothing) {
     EXPECT_EQ(model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {3, 20}, 5.0), nullptr);
     EXPECT_EQ(model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {20, 35}, 5.0), nullptr);
     EXPECT_EQ(model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {5, 20}, 5.0), nullptr);
+}
+
+namespace {
+
+std::vector<math::Mat4> similarities() {
+    return {math::Mat4::translation({3, 4, 5}) * math::Mat4::rotationZ(0.7),
+            math::Mat4::scale({-1, 1, 1}), math::Mat4::scale({2, 2, 2}),
+            math::Mat4::translation({-7, 2, 9}) * math::Mat4::rotationZ(1.1) *
+                math::Mat4::scale({1, -1, 1})};
+}
+
+}  // namespace
+
+TEST(ExactPrimitives, TransformedAndMirroredCopiesStayValid) {
+    const auto plate = model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {20, 20}, 5.0);
+    const math::ModelTolerance tol = math::ModelTolerance::forExtent(60.0);
+    for (const math::Mat4& m : {math::Mat4::translation({3, 4, 5}) * math::Mat4::rotationZ(0.7),
+                                math::Mat4::scale({-1, 1, 1}), math::Mat4::scale({2, 2, 2})}) {
+        const auto copy = model::Pattern::transformed(*plate, m);
+        EXPECT_TRUE(topo::validateExact(*copy, tol).empty());
+    }
+}
+
+TEST(ExactPrimitives, CylinderAndBlockCopiesStayValid) {
+    const math::ModelTolerance tol = math::ModelTolerance::forExtent(100.0);
+    const auto cyl =
+        model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 12.0);
+    const auto block = model::exact::makeBlock({0, 0, 0}, {10, 20, 30});
+    for (const math::Mat4& m : similarities()) {
+        EXPECT_TRUE(topo::validateExact(*model::Pattern::transformed(*cyl, m), tol).empty());
+        EXPECT_TRUE(topo::validateExact(*model::Pattern::transformed(*block, m), tol).empty());
+    }
+}
+
+TEST(ExactPrimitives, AppendedPlacedCopiesStayValid) {
+    const math::ModelTolerance tol = math::ModelTolerance::forExtent(200.0);
+    const auto cyl =
+        model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 12.0);
+    const auto block = model::exact::makeBlock({0, 0, 0}, {10, 20, 30});
+    for (const math::Mat4& m : similarities()) {
+        topo::Solid both;
+        model::Pattern::append(both, *block, math::Mat4::translation({50, 0, 0}) * m);
+        model::Pattern::append(both, *cyl, math::Mat4::translation({0, 60, 0}) * m);
+        EXPECT_TRUE(topo::validateExact(both, tol).empty());
+    }
+}
+
+TEST(ExactPrimitives, TolerancesScaleWithACopy) {
+    auto block = model::exact::makeBlock({0, 0, 0}, {10, 20, 30});
+    for (auto& e : block->edges()) e.tolerance = 0.25;
+    for (auto& v : block->vertices()) v.tolerance = 0.5;
+    const auto copy = model::Pattern::transformed(*block, math::Mat4::scale({2, 2, 2}));
+    for (const auto& e : copy->edges()) EXPECT_DOUBLE_EQ(e.tolerance, 0.5);
+    for (const auto& v : copy->vertices()) EXPECT_DOUBLE_EQ(v.tolerance, 1.0);
+}
+
+TEST(ExactPrimitives, ANonSimilarityLeavesTheCopyFaceted) {
+    const auto block = model::exact::makeBlock({0, 0, 0}, {10, 20, 30});
+    math::Mat4 shear = math::Mat4::identity();
+    shear.m[0][1] = 0.5;
+    for (const math::Mat4& m : {math::Mat4::scale({2, 1, 1}), shear}) {
+        const auto copy = model::Pattern::transformed(*block, m);
+        EXPECT_EQ(copy->faces().size(), block->faces().size());
+        for (const auto& f : copy->faces()) {
+            EXPECT_EQ(f.exactSurface, nullptr);
+            EXPECT_FALSE(f.reversed);
+        }
+        for (const auto& e : copy->edges()) {
+            EXPECT_EQ(e.exactCurve, nullptr);
+            EXPECT_EQ(e.curveStart, 0.0);
+            EXPECT_EQ(e.curveEnd, 0.0);
+            EXPECT_EQ(e.tolerance, 0.0);
+        }
+        for (const auto& e : copy->edges()) {
+            for (const topo::HalfEdge* h : {e.halfEdge, e.halfEdge->twin}) {
+                EXPECT_EQ(h->pcurve, nullptr);
+                EXPECT_EQ(h->pcurveStart, 0.0);
+                EXPECT_EQ(h->pcurveEnd, 0.0);
+            }
+        }
+    }
 }

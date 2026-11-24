@@ -68,6 +68,13 @@ public:
     /// every carrier and ideal moved and every TopologyID kept: `collect`
     /// for many solids, each copied once (collecting pairwise copied what
     /// was gathered again for each one added).
+    ///
+    /// Exact geometry (Face::exactSurface/reversed, Edge::exactCurve and its range, pcurves,
+    /// tolerances) is copied by `append` and `transformed` (below) only when the matrix is a
+    /// similarity: its upper-left 3x3 block M has MtM = s^2 I within a relative 1e-9, a
+    /// reflection allowed. Tolerances scale by s. For any other matrix (a non-uniform scale or
+    /// a shear) the copy's exact fields are left empty: null pointers, ranges 0, `reversed`
+    /// false.
     static void append(topo::Solid& into, const topo::Solid& source, const math::Mat4& xform);
 
     /// The reverse of `collect`: each body of @p solid as a solid of its own,
