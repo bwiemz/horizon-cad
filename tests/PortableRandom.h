@@ -30,4 +30,33 @@ private:
     double m_hi;
 };
 
+/// An integer in [lo, hi], both included, as std::uniform_int_distribution<std::int64_t>(lo, hi)
+/// is used, from 64 bits of two 32-bit draws. A draw below 2^64 mod (hi - lo + 1) is drawn
+/// again, so every value is equally likely.
+class UniformInt {
+public:
+    UniformInt(std::int64_t lo, std::int64_t hi) : m_lo(lo), m_hi(hi) {}
+
+    template <class Engine>
+    std::int64_t operator()(Engine& rng) const {
+        static_assert(Engine::max() - Engine::min() == 0xFFFFFFFFu, "a 32-bit engine");
+        // hi - lo + 1, modulo 2^64: 0 when the range is every 64-bit integer.
+        const std::uint64_t range =
+            static_cast<std::uint64_t>(m_hi) - static_cast<std::uint64_t>(m_lo) + 1u;
+        const std::uint64_t reject = range == 0u ? 0u : (0u - range) % range;
+        for (;;) {
+            const std::uint64_t high = static_cast<std::uint64_t>(rng() - Engine::min());
+            const std::uint64_t low = static_cast<std::uint64_t>(rng() - Engine::min());
+            const std::uint64_t x = (high << 32) | low;
+            if (x < reject) continue;
+            const std::uint64_t offset = range == 0u ? x : x % range;
+            return static_cast<std::int64_t>(static_cast<std::uint64_t>(m_lo) + offset);
+        }
+    }
+
+private:
+    std::int64_t m_lo;
+    std::int64_t m_hi;
+};
+
 }  // namespace hz::test

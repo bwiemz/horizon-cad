@@ -5,6 +5,7 @@
 #include <random>
 #include <vector>
 
+#include "../PortableRandom.h"
 #include "horizon/math/RobustPredicates.h"
 
 using namespace hz::math;
@@ -114,8 +115,8 @@ TEST(RobustPredicates, ClassifyPointEdgeCases) {
 
 #ifdef HZ_HAVE_INT128
 TEST(RobustPredicates, Orient2dMatchesExactReferenceOnNearCollinearIntegers) {
-    std::mt19937_64 rng(12345);
-    std::uniform_int_distribution<int64_t> small(-(1 << 20), 1 << 20), mult(-(1 << 19), 1 << 19),
+    std::mt19937 rng(12345);
+    const hz::test::UniformInt small(-(1 << 20), 1 << 20), mult(-(1 << 19), 1 << 19),
         off(-(int64_t{1} << 30), int64_t{1} << 30), tweak(-1, 1);
     int zeros = 0;
     for (int i = 0; i < 20000; ++i) {
@@ -133,8 +134,8 @@ TEST(RobustPredicates, Orient2dMatchesExactReferenceOnNearCollinearIntegers) {
 }
 
 TEST(RobustPredicates, Orient3dMatchesExactReferenceOnNearCoplanarIntegers) {
-    std::mt19937_64 rng(777);
-    std::uniform_int_distribution<int64_t> coord(-(1 << 21), 1 << 21), uv(-8, 8), tweak(-1, 1);
+    std::mt19937 rng(777);
+    const hz::test::UniformInt coord(-(1 << 21), 1 << 21), uv(-8, 8), tweak(-1, 1);
     int zeros = 0;
     for (int i = 0; i < 20000; ++i) {
         int64_t a[3], b[3], c[3], d[3];
@@ -170,19 +171,19 @@ void circlePoint(int j, int n, int64_t out[2]) {
 }  // namespace
 
 TEST(RobustPredicates, IncircleMatchesExactReferenceOnCocircularLatticePoints) {
-    std::mt19937_64 rng(99);
-    std::uniform_int_distribution<int> pick(0, 20), tweak(-1, 1);
-    std::uniform_int_distribution<int64_t> off(-(int64_t{1} << 30), int64_t{1} << 30);
+    std::mt19937 rng(99);
+    const hz::test::UniformInt pick(0, 20), tweak(-1, 1);
+    const hz::test::UniformInt off(-(int64_t{1} << 30), int64_t{1} << 30);
     int zeros = 0, tried = 0;
     for (int i = 0; i < 20000; ++i) {
-        int js[4] = {pick(rng), pick(rng), pick(rng), pick(rng)};
+        const int64_t js[4] = {pick(rng), pick(rng), pick(rng), pick(rng)};
         if (js[0] == js[1] || js[1] == js[2] || js[0] == js[2] || js[3] == js[0] ||
             js[3] == js[1] || js[3] == js[2])
             continue;
         const int64_t ox = off(rng), oy = off(rng);
         int64_t p[4][2];
         for (int k = 0; k < 4; ++k) {
-            circlePoint(js[k], 20, p[k]);
+            circlePoint(static_cast<int>(js[k]), 20, p[k]);
             p[k][0] += ox;
             p[k][1] += oy;
         }
@@ -243,4 +244,32 @@ TEST(RobustPredicates, Orient2dUlpWalkAlongASlantedLine) {
         EXPECT_EQ(orient2d(a, b, Vec2(c.x, up)), 1) << i;
         EXPECT_EQ(orient2d(a, b, Vec2(c.x, down)), -1) << i;
     }
+}
+
+TEST(PortableRandom, UniformIntDrawsTheSameInRangeOnEveryPlatform) {
+    std::mt19937 rng(99);
+    // std::mt19937's numbers are fixed by the standard and the mapping is the helper's own, so
+    // these are the draws on every platform.
+    const hz::test::UniformInt pick(0, 20);
+    for (const int64_t want : {7, 16, 9, 3, 16, 16}) EXPECT_EQ(pick(rng), want);
+    // Both ends are drawn, nothing outside them.
+    const hz::test::UniformInt tweak(-1, 1);
+    int seen[3] = {0, 0, 0};
+    for (int i = 0; i < 3000; ++i) {
+        const int64_t x = tweak(rng);
+        ASSERT_GE(x, -1);
+        ASSERT_LE(x, 1);
+        ++seen[x + 1];
+    }
+    for (const int n : seen) EXPECT_GT(n, 800);
+    // The whole 64-bit range, where hi - lo + 1 wraps to 0.
+    const hz::test::UniformInt any(INT64_MIN, INT64_MAX);
+    bool negative = false;
+    bool positive = false;
+    for (int i = 0; i < 64; ++i) {
+        const int64_t x = any(rng);
+        negative = negative || x < 0;
+        positive = positive || x > 0;
+    }
+    EXPECT_TRUE(negative && positive);
 }
