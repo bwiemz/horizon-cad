@@ -41,13 +41,13 @@ constexpr qint64 kMessagesTail = 64 * 1024;
 
 /// LibreDWG's error bits (Dwg_Error in its dwg.h) that end a reading, as
 /// dwg2dxf reports them: "READ ERROR 0x800".
-constexpr unsigned kClassesNotFound = 1U << 7;
-constexpr unsigned kSectionNotFound = 1U << 8;
-constexpr unsigned kPageNotFound = 1U << 9;
-constexpr unsigned kInternalError = 1U << 10;
-constexpr unsigned kInvalidDwg = 1U << 11;
-constexpr unsigned kIoError = 1U << 12;
-constexpr unsigned kOutOfMemory = 1U << 13;
+constexpr unsigned kClassesNotFound = 1U << 7U;
+constexpr unsigned kSectionNotFound = 1U << 8U;
+constexpr unsigned kPageNotFound = 1U << 9U;
+constexpr unsigned kInternalError = 1U << 10U;
+constexpr unsigned kInvalidDwg = 1U << 11U;
+constexpr unsigned kIoError = 1U << 12U;
+constexpr unsigned kOutOfMemory = 1U << 13U;
 
 std::mutex& converterMutex() {
     static std::mutex mutex;
@@ -126,7 +126,7 @@ bool DwgImport::load(const std::string& path, doc::Document& doc, std::string* e
     }
     // dwg2dxf opens files by narrow names, which on Windows hold only the
     // characters of the code page: it reads a copy, by a plain name, in the
-    // folder it runs in, and writes beside it.
+    // folder it runs in, and writes beside it the same name with ".dxf".
     const QString input = QStringLiteral("drawing.dwg");
     const QString output = QStringLiteral("drawing.dxf");
     if (!QFile::copy(QString::fromStdString(path), work.filePath(input))) {
@@ -137,7 +137,11 @@ bool DwgImport::load(const std::string& path, doc::Document& doc, std::string* e
 
     QProcess process;
     process.setProgram(program);
-    process.setArguments({QStringLiteral("-o"), output, input});
+    // The drawing and nothing else. Where there is no getopt (MSVC), LibreDWG
+    // builds dwg2dxf with its own (programs/getopt.c), which starts again at
+    // the first argument on every call: given any option it reads that option
+    // for ever, and never reads the file (#238).
+    process.setArguments({input});
     process.setWorkingDirectory(work.path());
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     // Its tracing writes megabytes for a drawing.
@@ -206,7 +210,13 @@ bool DwgImport::load(const std::string& path, doc::Document& doc, std::string* e
         }
         return fail(error, whyNotRead(QString::fromLocal8Bit(tail)));
     }
-    const QString written = work.filePath(output);
+    // Named after the drawing, except by LibreDWG's MSVC builds: their own
+    // basename() finds no name in one with no folder in it, and they write
+    // ".dxf" (#238). The folder holds nothing else of the kind.
+    QString written = work.filePath(output);
+    if (!QFileInfo::exists(written)) {
+        written = work.filePath(QStringLiteral(".dxf"));
+    }
     if (QFileInfo(written).size() == 0) {
         return fail(error, QCoreApplication::translate(
                                "hz::ui::DwgImport", "LibreDWG read it, but wrote nothing of it"));

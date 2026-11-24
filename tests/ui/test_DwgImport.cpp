@@ -288,9 +288,9 @@ TEST(DwgImportReasons, AConverterThatCannotStartIsNamed) {
 
 #ifndef _WIN32
 
-/// A stand-in for dwg2dxf: a shell script, run with the arguments dwg2dxf
-/// would be given ("-o drawing.dxf drawing.dwg") in the folder it would run
-/// in.
+/// A stand-in for dwg2dxf: a shell script, run with the argument dwg2dxf
+/// would be given ("drawing.dwg") in the folder it would run in, where it
+/// would write drawing.dxf.
 class FakeConverter {
 public:
     explicit FakeConverter(const QByteArray& body) {
@@ -356,7 +356,26 @@ TEST(DwgImportReasons, AConverterThatWritesNothingIsCaught) {
 }
 
 TEST(DwgImportReasons, WhatItWroteIsReadAsDxfAndJudgedSo) {
-    const std::string error = readWith("printf '  0\\nSECTION\\n' > \"$2\"");
+    const std::string error = readWith("printf '  0\\nSECTION\\n' > drawing.dxf");
+    EXPECT_EQ(error.rfind("LibreDWG read it, but what it made of it could not be read: ", 0), 0U)
+        << error;
+}
+
+TEST(DwgImportReasons, TheConverterIsGivenTheDrawingAndNoOption) {
+    // dwg2dxf built with MSVC parses options with LibreDWG's own getopt,
+    // which reads the first one again on every call: any option, and it
+    // never stops (#238). This stand-in refuses anything but the drawing.
+    const std::string error = readWith(
+        "[ \"$#\" -eq 1 ] && [ \"$1\" = drawing.dwg ] || { echo \"given: $*\" >&2; exit 1; }\n"
+        "printf '  0\\nSECTION\\n' > drawing.dxf");
+    EXPECT_EQ(error.rfind("LibreDWG read it, but what it made of it could not be read: ", 0), 0U)
+        << error;
+}
+
+TEST(DwgImportReasons, WhatAWindowsBuildNamesDotDxfIsRead) {
+    // LibreDWG's MSVC builds have their own basename(), which finds no name
+    // in one with no folder in it: given drawing.dwg they write ".dxf" (#238).
+    const std::string error = readWith("printf '  0\\nSECTION\\n' > .dxf");
     EXPECT_EQ(error.rfind("LibreDWG read it, but what it made of it could not be read: ", 0), 0U)
         << error;
 }
