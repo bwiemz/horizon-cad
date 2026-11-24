@@ -34,7 +34,9 @@ public:
     /// The point and its first and second partial derivatives at (u, v).
     virtual SurfaceDerivatives derivatives(double u, double v) const = 0;
 
-    /// Unit du x dv; the zero vector where it is undefined (a pole, an apex).
+    /// Unit du x dv. Where du x dv vanishes (a pole, an apex), the limit of the unit normal
+    /// where one exists (a sphere's pole, a NURBS surface's degenerate edge), otherwise the zero
+    /// vector (a cone's apex; this default, for a surface with no closed form).
     virtual math::Vec3 normal(double u, double v) const;
 
     /// The range of u.

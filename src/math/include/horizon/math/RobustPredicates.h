@@ -6,10 +6,15 @@
 #include "horizon/math/Vec3.h"
 
 // Range of validity: the results are exact for finite inputs as long as no intermediate product
-// underflows or overflows -- in practice, coordinates (and coordinate differences) that are
-// either zero or between about 1e-140 and 1e+100 in magnitude, which covers any CAD model.
-// Outside that range a tiny determinant may be reported as 0 (the error terms of the exact
-// arithmetic are lost to underflow); nothing crashes.
+// underflows or overflows. A predicate of degree n multiplies n coordinate differences, so its
+// range depends on n. The scale is that of the coordinate differences (zero always counts):
+//   orient2d and classifyPoint (degree 2): about 1e-150 to 1e150;
+//   orient3d (degree 3):                    about 1e-100 to 1e100;
+//   incircle (degree 4):                    about 1e-75 to 1e75.
+// (Measured on near-degenerate configurations scaled by powers of two: the sign is kept from
+// 4.8e-153 to 6.7e153, 1.8e-102 to 2.2e102 and 6.9e-77 to 5.8e76.) Above its range a
+// predicate returns 0; just below it, the error terms of the exact arithmetic underflow and it
+// may return the wrong sign, then 0 further down. Nothing crashes.
 
 namespace hz::math {
 

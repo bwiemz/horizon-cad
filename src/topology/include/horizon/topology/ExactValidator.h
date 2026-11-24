@@ -22,7 +22,7 @@ enum class ExactIssueKind {
 };
 
 struct ExactIssue {
-    ExactIssueKind kind;
+    ExactIssueKind kind = ExactIssueKind::MissingGeometry;
     const Face* face = nullptr;
     const Edge* edge = nullptr;
     std::string detail;
