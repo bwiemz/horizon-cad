@@ -228,7 +228,7 @@ std::string Gdt::nextDatumLabel(const std::vector<std::string>& used) {
     for (char first = 'A'; first <= 'Z'; ++first) {
         if (!datumLetter(first)) continue;
         for (char second = 'A'; second <= 'Z'; ++second) {
-            const std::string label{first, second};
+            std::string label{first, second};  // not const: returned, it is moved
             if (datumLetter(second) && free(label)) return label;
         }
     }
