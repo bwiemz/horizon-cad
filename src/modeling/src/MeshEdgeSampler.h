@@ -55,6 +55,12 @@ struct Spacing {
     double du = kInfinity;
     double dv = kInfinity;
     int flat = -1;  // for a surface bent one way, the parameter (0 u, 1 v) it is flat along
+    /// A torus's grid: each interior row's own u step (EdgeSampler::rowStep), bottom row first.
+    /// Empty for a grid of one u step.
+    std::vector<double> rowSteps;
+    /// A cone's grid: rows dv apart from half a row in at each end, every other one half a step
+    /// along u. Its straight edges along v are sampled at multiples of dv, between the rows.
+    bool staggered = false;
 };
 
 /// A face's grid, planned before its edges are sampled so that straight edges along a surface
@@ -117,6 +123,7 @@ private:
 
     void planFace(const Face& f);
     double rowsAlong(const HalfEdge& h) const;
+    double rowStep(const geo::Surface& s, double u0, double u1, double v, double dv) const;
     bool turns(const geo::Surface& s, const Vec2& a, const Vec2& c, const Vec2& b) const;
     void sampleEdge(const Edge& e, EdgeSamples& es);
     void suitEdge(const Edge& e, EdgeSamples& es);

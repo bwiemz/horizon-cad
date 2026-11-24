@@ -19,6 +19,7 @@
 #include "MeshEdgeSampler.h"  // the tolerance the mesher lays loops out with
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
+#include "horizon/geometry/curves/Circle2D.h"
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/Line2D.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
@@ -367,6 +368,99 @@ std::shared_ptr<geo::Surface> bilinear(const Vec3& p00, const Vec3& p10, const V
 
 std::shared_ptr<geo::Curve2D> line(const Vec2& a, const Vec2& b) {
     return std::make_shared<geo::Line2D>(a, b);
+}
+
+/// A frustum about z from radius @p bottom at z = 0 to @p top at z = @p height (both above 0 and
+/// unequal), as ExactPrimitives builds a cylinder: a cone side with one seam along x, two planar
+/// caps, two rim circles. With @p widening the cone's frame sits at the narrower rim and its v
+/// runs towards the wider one, as STEP writes a cone (a half-angle above 0); otherwise the frame
+/// sits at the bottom with z up, and the half-angle is negative where the frustum narrows.
+std::unique_ptr<topo::Solid> makeFrustum(double bottom, double top, double height, bool widening) {
+    auto solid = std::make_unique<topo::Solid>();
+    topo::Shell* shell = solid->allocShell();
+    shell->solid = solid.get();
+    const auto addFace = [&](const char* role, std::shared_ptr<const geo::Surface> surface) {
+        topo::Face* f = solid->allocFace();
+        f->topoId = topo::TopologyID::make("frustum", role);
+        f->exactSurface = std::move(surface);
+        f->shell = shell;
+        shell->faces.push_back(f);
+        return f;
+    };
+    const auto addHalfEdge = [&](topo::Vertex* origin, std::shared_ptr<const geo::Curve2D> pcurve,
+                                 double start, double end) {
+        topo::HalfEdge* h = solid->allocHalfEdge();
+        h->origin = origin;
+        if (origin->halfEdge == nullptr) origin->halfEdge = h;
+        h->pcurve = std::move(pcurve);
+        h->pcurveStart = start;
+        h->pcurveEnd = end;
+        return h;
+    };
+    const auto addLoop = [&](topo::Face* f, const std::vector<topo::HalfEdge*>& hes) {
+        topo::Wire* w = solid->allocWire();
+        w->halfEdge = hes.front();
+        for (std::size_t i = 0; i < hes.size(); ++i) {
+            hes[i]->face = f;
+            hes[i]->next = hes[(i + 1) % hes.size()];
+            hes[i]->next->prev = hes[i];
+        }
+        f->outerLoop = w;
+    };
+    // a runs along the curve from t0 to t1, b the other way.
+    const auto addEdge = [&](topo::HalfEdge* a, topo::HalfEdge* b,
+                             std::shared_ptr<const geo::Curve3> curve, double t0, double t1) {
+        topo::Edge* e = solid->allocEdge();
+        e->halfEdge = a;
+        a->twin = b;
+        b->twin = a;
+        a->edge = b->edge = e;
+        e->exactCurve = std::move(curve);
+        e->curveStart = t0;
+        e->curveEnd = t1;
+    };
+    const double T = math::kTwoPi;
+    const Vec3 up{0, 0, height};
+    // v0 is the rim at the frame, v1 the other: (u, v) = (0, 0) and (0, height).
+    const bool atTop = widening == (top < bottom);
+    const geo::Frame frame = atTop ? geo::Frame::fromAxis(up, {0, 0, -1}, {1, 0, 0})
+                                   : geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1, 0, 0});
+    const double r0 = atTop ? top : bottom;
+    const double r1 = atTop ? bottom : top;
+    topo::Vertex* v0 = solid->allocVertex();
+    v0->point = frame.origin + frame.x * r0;
+    topo::Vertex* v1 = solid->allocVertex();
+    v1->point = frame.origin + frame.z * height + frame.x * r1;
+    topo::Face* side =
+        addFace("side", std::make_shared<geo::Cone>(frame, r0, std::atan2(r1 - r0, height)));
+    // The cap at the frame faces -frame.z, the other +frame.z; each rim runs counter-clockwise
+    // in its cap's (u, v), against the side's u at the cap facing along frame.z.
+    topo::Face* cap0 =
+        addFace(atTop ? "top" : "bottom", std::make_shared<geo::Plane>(geo::Frame::fromAxis(
+                                              frame.origin, frame.z * -1.0, {1, 0, 0})));
+    topo::Face* cap1 = addFace(atTop ? "bottom" : "top",
+                               std::make_shared<geo::Plane>(geo::Frame::fromAxis(
+                                   frame.origin + frame.z * height, frame.z, {1, 0, 0})));
+    // The side's loop runs counter-clockwise in (u, v): along v = 0, up u = 2 pi, back along
+    // v = height, down u = 0.
+    topo::HalfEdge* rim0 = addHalfEdge(v0, line({0, 0}, {T, 0}), 0.0, 1.0);
+    topo::HalfEdge* seamUp = addHalfEdge(v0, line({T, 0}, {T, height}), 0.0, 1.0);
+    topo::HalfEdge* rim1 = addHalfEdge(v1, line({T, height}, {0, height}), 0.0, 1.0);
+    topo::HalfEdge* seamDown = addHalfEdge(v1, line({0, height}, {0, 0}), 0.0, 1.0);
+    addLoop(side, {rim0, seamUp, rim1, seamDown});
+    topo::HalfEdge* capRim0 =
+        addHalfEdge(v0, std::make_shared<geo::Circle2D>(Vec2{0, 0}, r0), 0.0, T);
+    topo::HalfEdge* capRim1 =
+        addHalfEdge(v1, std::make_shared<geo::Circle2D>(Vec2{0, 0}, r1), 0.0, T);
+    addLoop(cap0, {capRim0});
+    addLoop(cap1, {capRim1});
+    geo::Frame far = frame;
+    far.origin = frame.origin + frame.z * height;
+    addEdge(rim0, capRim0, std::make_shared<geo::CircleCurve>(frame, r0), 0.0, T);
+    addEdge(capRim1, rim1, std::make_shared<geo::CircleCurve>(far, r1), 0.0, T);
+    const Vec3 d = v1->point - v0->point;
+    addEdge(seamUp, seamDown, std::make_shared<geo::LineCurve>(v0->point, d), 0.0, d.length());
+    return solid;
 }
 
 /// The open face z = h u v over [0, L]^2 (a hyperbolic paraboloid), bounded by four straight
@@ -1278,5 +1372,29 @@ TEST(TrimmedFaceMesher, ThePrimitivesMeshQuickly) {
                     took.count());
         EXPECT_GT(triangles, 0u);
         EXPECT_LT(took.count(), 5000.0);  // generous: sanitizer builds run slowly
+    }
+}
+
+TEST(TrimmedFaceMesher, AFrustumIsMeshedWithFewTriangles) {
+    // r 6.5 to 3.2 over 8 at 1e-4 of its diagonal, the read point's tolerance: a cone's (u, v)
+    // lines bend sideways where its radius changes, and rows far apart left long diagonals that
+    // refinement split into 8.9k triangles (9.6k with the cone's v running the other way).
+    const double bottom = 6.5;
+    const double top = 3.2;
+    const double height = 8.0;
+    for (const bool widening : {true, false}) {
+        const auto frustum = makeFrustum(bottom, top, height, widening);
+        const double size = topo::exactExtent(*frustum);
+        MeshOptions options;
+        options.chordTolerance = 1e-4 * size;
+        const auto meshes = meshValid(*frustum, options, size);
+        const Summary s = checkMeshes(*frustum, meshes, options, slackFor(size));
+        EXPECT_LE(worstNeighbourAngle(meshes), options.maxAngle + 1e-12) << widening;
+        std::size_t triangles = 0;
+        for (const FaceMesh& m : meshes) triangles += m.triangles.size();
+        EXPECT_LE(triangles, 4000u) << widening;
+        const double volume =
+            math::kPi * height * (bottom * bottom + bottom * top + top * top) / 3.0;
+        EXPECT_NEAR(s.volume, volume, totalArea(s) * options.chordTolerance) << widening;
     }
 }

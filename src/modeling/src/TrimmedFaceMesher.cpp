@@ -146,26 +146,53 @@ private:
     }
 
     /// Interior points (in w) on a grid of the spacing over [lo, hi], without those within
-    /// kKeepAway spacings of a boundary segment, which would make slivers along it.
+    /// kKeepAway spacings of a boundary segment, which would make slivers along it. A torus's
+    /// rows each take their own u step (Spacing::rowSteps); a cone's are staggered
+    /// (Spacing::staggered).
     std::string gridPoints(const Spacing& sp, const Vec2& lo, const Vec2& hi,
                            const std::vector<std::vector<Vec2>>& loopsW,
                            std::vector<Vec2>& out) const {
         const double nu = std::ceil((hi.x - lo.x) / sp.du);
         const double nv = std::ceil((hi.y - lo.y) / sp.dv);
         if (!(nu > 1.0) || !(nv > 1.0)) return {};
-        if (!((nu - 1.0) * (nv - 1.0) <= 0.5 * static_cast<double>(opt_.maxTrianglesPerFace))) {
+        const double stepV = (hi.y - lo.y) / nv;
+        // Row j is at v = lo.y + stepV (j + rowFirst); its point i at u = lo.x + step (i + first),
+        // for i below count.
+        const double rowFirst = sp.staggered ? 0.5 : 1.0;
+        const auto cv = static_cast<std::size_t>(sp.staggered ? nv : nv - 1.0);
+        struct Row {
+            double step;
+            double first;
+            std::size_t count;
+        };
+        std::vector<Row> rows;
+        rows.reserve(cv);
+        double points = 0.0;
+        for (std::size_t j = 0; j < cv; ++j) {
+            const double n = j < sp.rowSteps.size()
+                                 ? std::clamp(std::ceil((hi.x - lo.x) / sp.rowSteps[j]), 1.0, nu)
+                                 : nu;
+            const bool shifted = sp.staggered && j % 2 == 1;
+            rows.push_back({(hi.x - lo.x) / n, shifted ? 0.5 : 1.0,
+                            static_cast<std::size_t>(shifted ? n : n - 1.0)});
+            points += static_cast<double>(rows.back().count);
+        }
+        if (!(points <= 0.5 * static_cast<double>(opt_.maxTrianglesPerFace))) {
             return "the face's grid alone needs more triangles than the cap";
         }
-        const auto cu = static_cast<std::size_t>(nu) - 1;
-        const auto cv = static_cast<std::size_t>(nv) - 1;
-        const double stepU = (hi.x - lo.x) / nu;
-        const double stepV = (hi.y - lo.y) / nv;
         const auto pointAt = [&](std::size_t i, std::size_t j) {
-            return Vec2{(lo.x + stepU * static_cast<double>(i + 1)) * sp.su,
-                        (lo.y + stepV * static_cast<double>(j + 1)) * sp.sv};
+            const Row& r = rows[j];
+            return Vec2{(lo.x + r.step * (static_cast<double>(i) + r.first)) * sp.su,
+                        (lo.y + stepV * (static_cast<double>(j) + rowFirst)) * sp.sv};
         };
-        const double away = kKeepAway * std::min(stepU * sp.su, stepV * sp.sv);
-        std::vector<bool> keep(cu * cv, true);
+        // A staggered row's ends are half a step from the face's side by design.
+        const double keepAway = sp.staggered ? 0.5 * kKeepAway : kKeepAway;
+        std::vector<std::vector<bool>> keep(cv);
+        double widest = 0.0;  // the largest keep-away distance of any row
+        for (std::size_t j = 0; j < cv; ++j) {
+            keep[j].assign(rows[j].count, true);
+            widest = std::max(widest, keepAway * std::min(rows[j].step * sp.su, stepV * sp.sv));
+        }
         // The grid indices whose lines lie within [x0, x1] (in w) or a line beyond, clamped.
         const auto lines = [](double x0, double x1, double from, double step, std::size_t count) {
             const double first = std::max(0.0, std::floor((x0 - from) / step) - 2.0);
@@ -179,20 +206,28 @@ private:
             for (std::size_t k = 0; k < loop.size(); ++k) {
                 const Vec2& a = loop[k];
                 const Vec2& b = loop[(k + 1) % loop.size()];
-                const auto [i0, i1] = lines(std::min(a.x, b.x) - away, std::max(a.x, b.x) + away,
-                                            lo.x * sp.su, stepU * sp.su, cu);
-                const auto [j0, j1] = lines(std::min(a.y, b.y) - away, std::max(a.y, b.y) + away,
-                                            lo.y * sp.sv, stepV * sp.sv, cv);
-                for (std::size_t i = i0; i < i1; ++i) {
-                    for (std::size_t j = j0; j < j1; ++j) {
-                        if (distanceToSegment(pointAt(i, j), a, b) < away) keep[i * cv + j] = false;
+                const auto [j0, j1] =
+                    lines(std::min(a.y, b.y) - widest, std::max(a.y, b.y) + widest,
+                          (lo.y + stepV * (rowFirst - 1.0)) * sp.sv, stepV * sp.sv, cv);
+                for (std::size_t j = j0; j < j1; ++j) {
+                    const Row& r = rows[j];
+                    const double away = keepAway * std::min(r.step * sp.su, stepV * sp.sv);
+                    const auto [i0, i1] =
+                        lines(std::min(a.x, b.x) - away, std::max(a.x, b.x) + away,
+                              (lo.x + r.step * (r.first - 1.0)) * sp.su, r.step * sp.su, r.count);
+                    for (std::size_t i = i0; i < i1; ++i) {
+                        if (distanceToSegment(pointAt(i, j), a, b) < away) keep[j][i] = false;
                     }
                 }
             }
         }
-        for (std::size_t i = 0; i < cu; ++i) {
+        // Column by column, as a grid of equal rows always was: the triangulation's insertion
+        // order, and so its choice among cocircular points, follows the input's.
+        std::size_t columns = 0;
+        for (const Row& r : rows) columns = std::max(columns, r.count);
+        for (std::size_t i = 0; i < columns; ++i) {
             for (std::size_t j = 0; j < cv; ++j) {
-                if (keep[i * cv + j]) out.push_back(pointAt(i, j));
+                if (i < rows[j].count && keep[j][i]) out.push_back(pointAt(i, j));
             }
         }
         return {};
@@ -224,7 +259,9 @@ private:
     }
 
     /// Triangulates the face's region, refining until every triangle fits, into @p out; or
-    /// stops at the first round that needs boundary segments halved, listed in @p halve.
+    /// stops at the first round that needs boundary segments halved, listed in @p halve. Each
+    /// round's points go into the triangulation in place; a halving changes the boundary, and
+    /// meshSolid then meshes the face again from its grid.
     std::string triangulate(const Face& f, const Boundary& b, FaceMesh& out,
                             std::vector<Segment>& halve) const {
         const geo::Surface& s = *f.exactSurface;
@@ -248,37 +285,40 @@ private:
         if (!problem.empty()) return problem;
 
         const std::size_t boundaryCount = uvs.size();
+        geo::RegionTriangulation region(loopsW[0], holesW, interior);
+        const geo::Triangulation2D& t = region.result();
+        if (!t.problem.empty()) return "the face's (u, v) region: " + t.problem;
+        for (std::size_t i = 0; i < boundaryCount; ++i) {
+            const Vec3& a = xyzs[i];
+            const Vec3& c = xyzs[t.boundaryVertex[i]];
+            if (a.x != c.x || a.y != c.y || a.z != c.z) {
+                return "two boundary points of the face meet in (u, v) at different positions";
+            }
+        }
+        std::unordered_map<std::uint64_t, Segment> walls;  // boundary segments
+        std::size_t base = 0;
+        for (std::size_t l = 0; l < loopsW.size(); ++l) {
+            const std::size_t n = loopsW[l].size();
+            for (std::size_t i = 0; i < n; ++i) {
+                walls.emplace(
+                    edgeKey(t.boundaryVertex[base + i], t.boundaryVertex[base + (i + 1) % n]),
+                    b.segment[l][i]);
+            }
+            base += n;
+        }
+        std::vector<Vec2> uv(uvs);
+        std::vector<Vec3> xyz(xyzs);
         std::size_t kept = 0;
         for (int round = 0;; ++round) {
-            const geo::Triangulation2D t = geo::triangulateRegion(loopsW[0], holesW, interior);
-            if (!t.problem.empty()) return "the face's (u, v) region: " + t.problem;
             if (t.triangles.size() > opt_.maxTrianglesPerFace) {
                 return "the face needs more triangles than the cap of " +
                        std::to_string(opt_.maxTrianglesPerFace);
             }
             if (round > 0 && t.points.size() <= kept) return "refining the face stalled";
             kept = t.points.size();
-            for (std::size_t i = 0; i < boundaryCount; ++i) {
-                const Vec3& a = xyzs[i];
-                const Vec3& b = xyzs[t.boundaryVertex[i]];
-                if (a.x != b.x || a.y != b.y || a.z != b.z) {
-                    return "two boundary points of the face meet in (u, v) at different positions";
-                }
-            }
-            std::unordered_map<std::uint64_t, Segment> walls;  // boundary segments
-            std::size_t base = 0;
-            for (std::size_t l = 0; l < loopsW.size(); ++l) {
-                const std::size_t n = loopsW[l].size();
-                for (std::size_t i = 0; i < n; ++i) {
-                    walls.emplace(
-                        edgeKey(t.boundaryVertex[base + i], t.boundaryVertex[base + (i + 1) % n]),
-                        b.segment[l][i]);
-                }
-                base += n;
-            }
-            std::vector<Vec2> uv(uvs);
-            std::vector<Vec3> xyz(xyzs);
-            for (std::size_t i = boundaryCount; i < t.points.size(); ++i) {
+            uv.reserve(t.points.size());
+            xyz.reserve(t.points.size());
+            for (std::size_t i = uv.size(); i < t.points.size(); ++i) {
                 uv.push_back({t.points[i].x / sp.su, t.points[i].y / sp.sv});
                 xyz.push_back(s.evaluate(uv.back().x, uv.back().y));
             }
@@ -353,9 +393,9 @@ private:
                 return {};
             }
             if (round == kRefineRounds) return "refining the face did not meet the tolerance";
-            interior.assign(t.points.begin() + static_cast<std::ptrdiff_t>(boundaryCount),
-                            t.points.end());
-            interior.insert(interior.end(), added.begin(), added.end());
+            // A point the triangulation refuses (on a boundary segment, or on a point) is dropped,
+            // as before; a round that keeps none has stalled.
+            for (const Vec2& p : added) region.insert(p);
         }
     }
 

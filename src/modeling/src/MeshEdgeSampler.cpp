@@ -11,6 +11,7 @@
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/surfaces/Surface.h"
+#include "horizon/math/Constants.h"
 #include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/LoopUnwrap.h"
 
@@ -25,6 +26,22 @@ constexpr int kGoldenSteps = 80;      // narrows a bracket by 0.618^80, below 1e
 constexpr double kMarchSteps = 8.0;   // steps of the pcurve search per edge segment
 constexpr double kRowSpacing = 32.0;  // rows across a surface bent one way, in its bent steps
 constexpr double kMaxRows = 16.0;     // and at most this many bands between them
+// Where a surface's rows differ in radius (a cone, a torus), a (u, v) diagonal between two of them
+// strays sideways along the surface from its chord, by |S_uv| du dv / 4 for steps du and dv, and
+// the mesher's check counts a stray beside a triangle as much as one off it. A cone's staggered
+// rows reach half a step across: |S_uv| du dv is held to kConeStray times the tolerance, so they
+// stray 15/16 of it. A torus's rows reach a whole step: kTorusStray, so 3/4 of it, where it adds
+// to half the tolerance off the surface (its rows' own sag).
+constexpr double kConeStray = 7.5;
+constexpr double kTorusStray = 3.0;
+// A torus's widest u step, in w, is at most kTall times its rows' spacing: wider, and Delaunay
+// joins rows two apart across a gap instead of the rows either side of it (measured on R10 r3 at
+// 1e-4 of its size: 27k triangles, 35k at 3, 45k unbounded).
+constexpr double kTall = 1.5;
+// Where a torus row is saddle-shaped (it curves one way along u and the other along v, on the
+// inner side), a cell's diagonal and centroid stray less than its sides, the two curvatures taking
+// from each other: its row's curve may sag this much of the tolerance, not half.
+constexpr double kSaddleSag = 0.7;
 
 std::string num(double x) {
     char buf[32];
@@ -317,6 +334,35 @@ void EdgeSampler::suitEdge(const Edge& e, EdgeSamples& es) {
     }
 }
 
+/// The u step of a torus's row at @p v over [u0, u1], its rows @p dv apart. Its own radius sets
+/// it, not the largest: the row's curve sags no more than sideTolerance between steps (kSaddleSag
+/// on the inner side) by its whole curvature, 1 / (R + r cos v), not the surface's along it: on
+/// top of a torus the curve lies in the tangent plane, and a row edge's midpoint strays along the
+/// surface beside it, which counts as much as off it. It turns no more than half stepAngle: rows of
+/// different steps do not line up, and a triangle between them spans up to two. And a diagonal
+/// to the next row strays no more than kTorusStray allows. Where the angle sets the steps, that
+/// is no coarser than the grid's one step, and the rows stay as they were.
+double EdgeSampler::rowStep(const geo::Surface& s, double u0, double u1, double v,
+                            double dv) const {
+    double step = kInfinity;
+    for (int i = 0; i < kSurfaceSamples; ++i) {
+        const auto d = s.derivatives(u0 + (u1 - u0) * i / (kSurfaceSamples - 1), v);
+        const double lu = d.du.length();
+        const Vec3 n = d.du.cross(d.dv);
+        const double ln = n.length();
+        if (!(lu > 0.0) || !(ln > 0.0)) continue;
+        const double kappa = d.du.cross(d.duu).length() / (lu * lu * lu);
+        const double twist = d.duv.length();
+        if (kappa > 0.0) {
+            const bool saddle = n.dot(d.duu) * n.dot(d.dvv) < 0.0;
+            const double sag = saddle ? kSaddleSag * opt_.chordTolerance : sideTolerance();
+            step = std::min(step, allowedTurn(kappa, sag, 0.5 * stepAngle()) / (kappa * lu));
+        }
+        if (twist > 0.0) step = std::min(step, kTorusStray * opt_.chordTolerance / (twist * dv));
+    }
+    return step;
+}
+
 /// How finely the surface bends over [lo, hi] in (u, v), from a lattice of samples, for grid
 /// sides that sag no more than sideTolerance.
 Spacing EdgeSampler::spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2& hi) const {
@@ -324,6 +370,7 @@ Spacing EdgeSampler::spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2
     Spacing sp;
     double su = 0.0;
     double sv = 0.0;
+    double twist = 0.0;  // the largest |S_uv|
     for (int i = 0; i < kSurfaceSamples; ++i) {
         for (int j = 0; j < kSurfaceSamples; ++j) {
             const auto d = s.derivatives(lo.x + (hi.x - lo.x) * i / (kSurfaceSamples - 1),
@@ -332,6 +379,7 @@ Spacing EdgeSampler::spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2
             const double lv = d.dv.length();
             su = std::max(su, lu);
             sv = std::max(sv, lv);
+            twist = std::max(twist, d.duv.length());
             const Vec3 n = d.du.cross(d.dv);
             const double ln = n.length();
             if (!(ln > 0.0)) continue;
@@ -354,23 +402,53 @@ Spacing EdgeSampler::spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2
     // rims alone would make: at most kMaxRows bands, so the grid adds at most kMaxRows times the
     // triangles of the boundary alone, and no more than fit under the triangle cap; no rows
     // where even two bands would not fit. Its straight edges that way are sampled at the rows
-    // (rowsAlong).
+    // (rowsAlong; a cone's, between them).
+    //
+    // A cone's rows are nearer: its diagonals between rows stray sideways (kConeStray), and rows
+    // that are staggered, every other one half a step along, halve that. Its rows start half a row
+    // in from each end: the boundary's samples do not line up with the first row's, and the
+    // diagonals there reach up to a whole step across.
     const auto rows = [&](double bent, double bentScale, double flatScale, double bentSpan,
-                          double flatSpan) {
+                          double flatSpan, double nearest) {
         const double columns = std::max(1.0, std::ceil(bentSpan / bent));
         const double bands = std::min(
             kMaxRows, std::floor(static_cast<double>(opt_.maxTrianglesPerFace) / (2.0 * columns)));
         // Half a band short, so that the grid's ceil(span / step) never makes one band more.
-        return bands < 2.0
-                   ? kInfinity
-                   : std::max(kRowSpacing * bent * bentScale / flatScale, flatSpan / (bands - 0.5));
+        return bands < 2.0 ? kInfinity
+                           : std::max(std::min(kRowSpacing * bent * bentScale / flatScale, nearest),
+                                      flatSpan / (bands - 0.5));
     };
     if (std::isfinite(sp.du) && !std::isfinite(sp.dv)) {
-        sp.dv = rows(sp.du, sp.su, sp.sv, hi.x - lo.x, hi.y - lo.y);
-        if (std::isfinite(sp.dv)) sp.flat = 1;
+        sp.staggered = s.kind() == geo::SurfaceKind::Cone && twist > 0.0;
+        sp.dv = rows(sp.du, sp.su, sp.sv, hi.x - lo.x, hi.y - lo.y,
+                     sp.staggered ? kConeStray * opt_.chordTolerance / (twist * sp.du) : kInfinity);
+        if (std::isfinite(sp.dv)) {
+            sp.flat = 1;
+        } else {
+            sp.staggered = false;
+        }
+        // Square cells in w: with rows far apart in w for their steps, a point that refinement
+        // puts between them joins row points many steps along, and those diagonals stray.
+        if (sp.staggered) sp.su = sp.sv * sp.dv / sp.du;
     } else if (std::isfinite(sp.dv) && !std::isfinite(sp.du)) {
-        sp.du = rows(sp.dv, sp.sv, sp.su, hi.y - lo.y, hi.x - lo.x);
+        sp.du = rows(sp.dv, sp.sv, sp.su, hi.y - lo.y, hi.x - lo.x, kInfinity);
         if (std::isfinite(sp.du)) sp.flat = 0;
+    } else if (s.kind() == geo::SurfaceKind::Torus && std::isfinite(sp.du) &&
+               std::isfinite(sp.dv)) {
+        const double nv = std::ceil((hi.y - lo.y) / sp.dv);
+        const double stepV = (hi.y - lo.y) / nv;
+        // As many rows as the grid makes; one that is past the cap fails there.
+        if (nv - 1.0 <= static_cast<double>(opt_.maxTrianglesPerFace)) {
+            const auto rows = static_cast<std::size_t>(nv) - 1;
+            double widest = sp.du;
+            sp.rowSteps.reserve(rows);
+            for (std::size_t j = 1; j <= rows; ++j) {
+                const double v = lo.y + stepV * static_cast<double>(j);
+                sp.rowSteps.push_back(std::max(sp.du, rowStep(s, lo.x, hi.x, v, stepV)));
+                widest = std::max(widest, std::min(sp.rowSteps.back(), hi.x - lo.x));
+            }
+            sp.su = std::min(sp.su, kTall * sp.sv * stepV / widest);
+        }
     }
     return sp;
 }
