@@ -13,6 +13,7 @@ add_library(hz_geometry STATIC
     src/surfaces/NurbsSurface.cpp
     src/surfaces/SurfaceBuilder.cpp
     src/surfaces/SurfaceRecognition.cpp
+    src/Triangulate2D.cpp
 )
 
 target_include_directories(hz_geometry
