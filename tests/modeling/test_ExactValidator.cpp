@@ -770,3 +770,119 @@ TEST(ExactValidator, ALoopWiderThanAPeriodIsRangeTooLong) {
     }
     EXPECT_EQ(count, 1);
 }
+
+namespace {
+
+/// The block with one of its straight edges given a straight B-spline of degree 1 for its curve
+/// (as Horizon writes every edge), moved @p off across the edge, perpendicular to both of its
+/// faces' normals... along the bisector of its two faces, so that both pcurves stray alike.
+struct StraightSplineEdge {
+    std::unique_ptr<topo::Solid> block = model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
+    topo::Edge* edge = nullptr;
+    explicit StraightSplineEdge(double off) {
+        for (auto& e : block->edges()) {
+            const Vec3 a = e.exactCurve->evaluate(e.curveStart);
+            const Vec3 b = e.exactCurve->evaluate(e.curveEnd);
+            // The edge along z at x = 2, y = 3: its faces face +x and +y.
+            if (std::abs(a.x - 2) > 1e-12 || std::abs(a.y - 3) > 1e-12 ||
+                std::abs(b.x - 2) > 1e-12 || std::abs(b.y - 3) > 1e-12) {
+                continue;
+            }
+            const Vec3 shift = Vec3{1, 1, 0}.normalized() * off;
+            e.exactCurve = std::make_shared<geo::NurbsCurve>(
+                std::vector<Vec3>{a + shift, b + shift}, std::vector<double>{1.0, 1.0},
+                std::vector<double>{0, 0, 1, 1}, 1);
+            e.curveStart = 0.0;
+            e.curveEnd = 1.0;
+            edge = &e;
+            break;
+        }
+    }
+};
+
+}  // namespace
+
+// Pins for the validator's pruning (Ruling 20): a straight B-spline edge whose pcurves stray just
+// past its tolerance is reported, with the distance it strays, and one just within is clean.
+TEST(ExactValidator, AStraightSplineEdgeJustOffItsPcurvesIsReportedWithHowFar) {
+    const double limit = kTol.linear;
+    StraightSplineEdge within(0.9 * limit);
+    ASSERT_NE(within.edge, nullptr);
+    EXPECT_TRUE(topo::validateExact(*within.block, kTol).empty());
+
+    StraightSplineEdge past(1.5 * limit);
+    ASSERT_NE(past.edge, nullptr);
+    const auto issues = topo::validateExact(*past.block, kTol);
+    ASSERT_EQ(issues.size(), 2u);
+    for (const auto& i : issues) {
+        EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve);
+        EXPECT_EQ(i.edge, past.edge);
+        EXPECT_EQ(i.detail, "pcurve strays 4.5e-05 from the edge's curve");
+    }
+}
+
+// A straight B-spline edge whose curve runs against its pcurves (its ends swapped, so its
+// vertices still sit on it) is reported as running against them, as it was.
+TEST(ExactValidator, AStraightSplineEdgeRunningAgainstItsPcurvesIsReported) {
+    StraightSplineEdge edge(0.0);
+    ASSERT_NE(edge.edge, nullptr);
+    const auto* c = static_cast<const geo::NurbsCurve*>(edge.edge->exactCurve.get());
+    const Vec3 a = c->controlPoints()[0];
+    const Vec3 b = c->controlPoints()[1];
+    // The same segment from its far end, with a middle point that makes it run there and back:
+    // a → b → a → b over the range, so its ends are at the vertices but it doubles back.
+    edge.edge->exactCurve = std::make_shared<geo::NurbsCurve>(
+        std::vector<Vec3>{a, b, a, b}, std::vector<double>{1, 1, 1, 1},
+        std::vector<double>{0, 0, 1.0 / 3, 2.0 / 3, 1, 1}, 1);
+    const auto issues = topo::validateExact(*edge.block, kTol);
+    ASSERT_FALSE(issues.empty());
+    for (const auto& i : issues) {
+        EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve);
+        EXPECT_EQ(i.detail, "pcurve runs against, or winds differently round, the edge's curve");
+    }
+}
+
+// Holes whose boxes overlap without the holes meeting keep the face clean, and holes that do
+// meet, or lie one inside the other, are reported as before, among many: what the validator
+// prunes is only what cannot cross or contain.
+TEST(ExactValidator, HolesWhoseBoxesOverlapKeepTheirVerdicts) {
+    // Diagonal neighbours: boxes overlap in [-0.6, 0.6]^2, the circles are 0.46 apart.
+    CircleWithHoles near(10.0, {{{-2, -2}, 2.6}, {{2, 2}, 2.6}});
+    EXPECT_TRUE(topo::validateExact(near.solid, kTol).empty());
+    CircleWithHoles meeting(10.0, {{{-1.5, 0}, 2.0}, {{1.5, 0}, 2.0}});
+    const auto crossing = topo::validateExact(meeting.solid, kTol);
+    ASSERT_EQ(crossing.size(), 1u);
+    EXPECT_EQ(crossing[0].kind, ExactIssueKind::LoopsCross);
+    EXPECT_EQ(crossing[0].detail, "two loops of the face cross");
+    EXPECT_EQ(crossing[0].edge, meeting.solid.faces()[0].innerLoops[1]->halfEdge->edge);
+
+    // A grid of 25 holes 3 apart, clean; then the middle one moved onto its neighbour (it meets
+    // that one only), and a small one added inside the middle one.
+    std::vector<CircleWithHoles::Hole> grid;
+    for (int i = 0; i < 5; ++i) {
+        for (int j = 0; j < 5; ++j) grid.push_back({{-6.0 + 3.0 * i, -6.0 + 3.0 * j}, 1.2});
+    }
+    CircleWithHoles many(20.0, grid);
+    EXPECT_TRUE(topo::validateExact(many.solid, kTol).empty());
+    auto touching = grid;
+    touching[12].centre.x += 1.0;
+    CircleWithHoles crowded(20.0, touching);
+    const auto met = topo::validateExact(crowded.solid, kTol);
+    ASSERT_EQ(met.size(), 1u);
+    EXPECT_EQ(met[0].kind, ExactIssueKind::LoopsCross);
+    EXPECT_EQ(met[0].edge, crowded.solid.faces()[0].innerLoops[17]->halfEdge->edge);
+    auto nested = grid;
+    nested.push_back({{0.0, 0.0}, 0.5});
+    CircleWithHoles inside(20.0, nested);
+    const auto inner = topo::validateExact(inside.solid, kTol);
+    ASSERT_EQ(inner.size(), 1u);
+    EXPECT_EQ(inner[0].kind, ExactIssueKind::HoleInsideHole);
+    EXPECT_EQ(inner[0].detail, "inner loops 12 and 25 lie one inside the other");
+    // A hole moved out past the outer loop is outside it.
+    auto out = grid;
+    out[0].centre = {30.0, 0.0};
+    CircleWithHoles outside(20.0, out);
+    const auto beyond = topo::validateExact(outside.solid, kTol);
+    ASSERT_EQ(beyond.size(), 1u);
+    EXPECT_EQ(beyond[0].kind, ExactIssueKind::HoleOutsideOuterLoop);
+}

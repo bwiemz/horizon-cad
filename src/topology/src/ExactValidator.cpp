@@ -4,11 +4,14 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "ExactLoopGeometry.h"
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/Curve3.h"
+#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/topology/LoopUnwrap.h"
 
@@ -108,6 +111,69 @@ struct Checker {
                over(hi.y - lo.y, periodV, d.dv.length());
     }
 
+    /// @p c as a straight segment its parameter runs along at one speed (a NURBS of degree 1,
+    /// two points of one weight, as Horizon writes its edges), or null. Along it a point's
+    /// distance has one minimum, at its projection held to the segment, which is where
+    /// NurbsCurve::closestParameter's search ends too (to rounding): Newton's step is exact on
+    /// it, from any start, unless the curve's speed squared is below its 1e-15, where it keeps a
+    /// sample of 21 instead; so a segment that slow is not one here.
+    static const geo::NurbsCurve* straightSegment(const geo::Curve3& c) {
+        const auto* n = dynamic_cast<const geo::NurbsCurve*>(&c);
+        if (n == nullptr || n->degree() != 1 || n->controlPointCount() != 2) return nullptr;
+        if (!(n->weights()[0] == n->weights()[1])) return nullptr;
+        const double span = n->tMax() - n->tMin();
+        const Vec3 d = n->controlPoints()[1] - n->controlPoints()[0];
+        const double speed2 = d.dot(d) / (span * span);
+        if (!std::isfinite(speed2) || !(speed2 > 1e-12)) return nullptr;
+        return n;
+    }
+
+    /// Whether checkPcurve's search, on an edge that is a straight segment, would find @p h's
+    /// pcurve on the curve and running with it: each sample's projection onto the segment is
+    /// within the tolerance by a margin far above rounding (the search's own point is the same
+    /// one, to rounding, so its distance is too), and the projections advance by the order test
+    /// with half its slack (rounding cannot move a step across the other half). It only ever
+    /// accepts: anything else is left to the search, so what is reported, and how far a pcurve
+    /// strays, are the search's, as ever.
+    bool passesOnASegment(const Edge& e, const HalfEdge& h) const {
+        const geo::NurbsCurve* seg = straightSegment(*e.exactCurve);
+        if (seg == nullptr) return false;
+        const geo::Surface& s = *h.face->exactSurface;
+        const Vec3 p0 = seg->controlPoints()[0];
+        const Vec3 d = seg->controlPoints()[1] - p0;
+        const double len2 = d.dot(d);
+        const double t0 = seg->tMin();
+        const double span = seg->tMax() - t0;
+        const double reach = p0.length() + seg->controlPoints()[1].length();
+        std::vector<double> params;
+        params.reserve(kSamples);
+        for (int i = 0; i < kSamples; ++i) {
+            const Vec2 uv = sample(h, i);
+            const Vec3 p = s.evaluate(uv.x, uv.y);
+            const double along = std::clamp((p - p0).dot(d) / len2, 0.0, 1.0);
+            const double t = t0 + along * span;
+            const double dist = (e.exactCurve->evaluate(t) - p).length();
+            const double margin = 1e-12 * (reach + p.length());
+            if (!std::isfinite(dist) || !tol.within(dist + margin, e.tolerance)) return false;
+            params.push_back(t);
+        }
+        const bool forward = &h == e.halfEdge;
+        params.front() = forward ? e.curveStart : e.curveEnd;
+        params.back() = forward ? e.curveEnd : e.curveStart;
+        const double dir = ((e.curveEnd >= e.curveStart) ? 1.0 : -1.0) * (forward ? 1.0 : -1.0);
+        double sum = 0.0;
+        double slackSum = 0.0;
+        for (size_t i = 0; i + 1 < params.size(); ++i) {
+            const double step = (params[i + 1] - params[i]) * dir;
+            const double speed = e.exactCurve->derivatives(params[i]).d1.length();
+            const double slack = speed > 0.0 ? tol.effective(e.tolerance) / speed : 0.0;
+            if (!(step >= -0.5 * slack)) return false;
+            sum += step;
+            slackSum += slack;
+        }
+        return std::fabs(sum - std::fabs(e.curveEnd - e.curveStart)) <= 0.5 * slackSum;
+    }
+
     void checkPcurve(const Edge& e, const HalfEdge& h) {
         const geo::Surface& s = *h.face->exactSurface;
         const Vec2 a = sample(h, 0);
@@ -120,6 +186,7 @@ struct Checker {
                    "pcurve ends are " + num(da) + " and " + num(db) + " from their vertices");
         }
         if (!e.exactCurve) return;
+        if (passesOnASegment(e, h)) return;
         double worst = 0.0;
         std::vector<double> params;
         for (int i = 0; i < kSamples; ++i) {
@@ -274,7 +341,7 @@ struct Checker {
             report(ExactIssueKind::LoopWrongOrientation, &f, w->halfEdge->edge,
                    "loop has signed area " + num(area) + " in (u, v)");
         }
-        if (detail::selfIntersects(info.poly, uvTolerance(s))) {
+        if (detail::LoopIndex(info.poly).selfIntersects(uvTolerance(s))) {
             report(ExactIssueKind::LoopSelfIntersects, &f, w->halfEdge->edge,
                    "loop crosses itself");
         }
@@ -295,11 +362,17 @@ struct Checker {
             if (!j->usable || j == ref) continue;
             alignLoop(j->poly, ref->poly, uPeriod(surface), vPeriod(surface));
         }
+        // Each usable loop indexed once, for the pairs below (the answers are the plain
+        // functions'; only what cannot cross or contain is skipped).
+        std::vector<std::unique_ptr<detail::LoopIndex>> index(loops.size());
+        for (size_t k = 0; k < loops.size(); ++k) {
+            if (loops[k].usable) index[k] = std::make_unique<detail::LoopIndex>(loops[k].poly);
+        }
         for (size_t i = 0; i < loops.size(); ++i) {
             if (!loops[i].usable) continue;
             for (size_t j = i + 1; j < loops.size(); ++j) {
                 if (!loops[j].usable) continue;
-                const bool crossing = detail::loopsCross(loops[i].poly, loops[j].poly, uvTol);
+                const bool crossing = index[i]->crosses(*index[j], uvTol);
                 if (crossing) {
                     report(ExactIssueKind::LoopsCross, &f, loops[j].wire->halfEdge->edge,
                            "two loops of the face cross");
@@ -308,7 +381,7 @@ struct Checker {
                 if (i == 0) {
                     const bool outside = std::any_of(
                         loops[j].poly.begin(), loops[j].poly.end(), [&](const LoopSegment& seg) {
-                            return detail::clearlyOutside(loops[0].poly, seg.a);
+                            return index[0]->clearly(math::Containment::Outside, seg.a);
                         });
                     if (outside) {
                         report(ExactIssueKind::HoleOutsideOuterLoop, &f,
@@ -318,7 +391,7 @@ struct Checker {
                     continue;
                 }
                 // Two holes that do not cross are apart or nested; the mesher needs them apart.
-                if (inside(loops[j].poly, loops[i].poly) || inside(loops[i].poly, loops[j].poly)) {
+                if (inside(loops[j].poly, *index[i]) || inside(loops[i].poly, *index[j])) {
                     report(ExactIssueKind::HoleInsideHole, &f, loops[j].wire->halfEdge->edge,
                            "inner loops " + std::to_string(i - 1) + " and " +
                                std::to_string(j - 1) + " lie one inside the other");
@@ -329,9 +402,9 @@ struct Checker {
 
     /// True when a sample of @p loop lies clearly inside @p around (beyond each of its chords'
     /// sag): for loops that do not cross, the whole of @p loop is then inside.
-    static bool inside(const LoopPolygon& loop, const LoopPolygon& around) {
+    static bool inside(const LoopPolygon& loop, detail::LoopIndex& around) {
         return std::any_of(loop.begin(), loop.end(), [&](const LoopSegment& seg) {
-            return detail::clearlyInside(around, seg.a);
+            return around.clearly(math::Containment::Inside, seg.a);
         });
     }
 };
