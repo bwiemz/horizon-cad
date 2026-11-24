@@ -35,6 +35,20 @@ void expectOnSurface(const NurbsSurface& n, const Surface& s) {
     }
 }
 
+/// The unit direction from the frame's origin towards @p p, projected perpendicular to z.
+math::Vec3 towardPerp(const Frame& f, const math::Vec3& p) {
+    const math::Vec3 d = p - f.origin;
+    const math::Vec3 q = d - f.z * d.dot(f.z);
+    return q / q.length();
+}
+
+/// The seam ruling: x points towards S(uMin, vMid), perpendicular to the axis.
+void expectSeam(const NurbsSurface& n, const Frame& f) {
+    const math::Vec3 p = n.evaluate(n.uMin(), 0.5 * (n.vMin() + n.vMax()));
+    expectNear(f.x, towardPerp(f, p));
+    EXPECT_NEAR(f.x.dot(f.z), 0.0, kTol);
+}
+
 const math::Vec3 kCenter{1.5, -2.0, 0.7};
 const math::Vec3 kAxis = math::Vec3{0.3, -0.5, 1.0};
 
@@ -49,6 +63,8 @@ TEST(SurfaceRecognition, RecognisesAPlane) {
     expectNear(plane.frame().origin, n.evaluate(n.uMin(), n.vMin()));
     const math::Vec3 normal = n.normal(0.5, 0.5);
     expectNear(plane.frame().z, normal);
+    const math::Vec3 du = n.derivatives(n.uMin(), n.vMin()).du;
+    expectNear(plane.frame().x, du.normalized());
     expectOnSurface(n, *s);
 }
 
@@ -71,6 +87,7 @@ TEST(SurfaceRecognition, RecognisesACylinder) {
     expectNear(cyl.frame().z, kAxis.normalized());
     // The frame's origin is on the axis, at the start of v.
     expectNear(cyl.frame().origin, kCenter);
+    expectSeam(n, cyl.frame());
     expectOnSurface(n, *s);
 }
 
@@ -86,6 +103,7 @@ TEST(SurfaceRecognition, RecognisesACone) {
     const math::Vec3 foundApex =
         cone.frame().origin - cone.frame().z * (cone.radius() / std::tan(cone.halfAngle()));
     expectNear(foundApex, apex);
+    expectSeam(n, cone.frame());
     expectOnSurface(n, *s);
 }
 
@@ -97,18 +115,32 @@ TEST(SurfaceRecognition, RecognisesASphere) {
     const auto& sph = static_cast<const Sphere&>(*s);
     EXPECT_NEAR(sph.radius(), 2.3, kTol);
     expectNear(sph.frame().origin, kCenter);
+    // z runs from the pole the v = vMin edge collapses to towards the other pole.
+    const math::Vec3 south = n.evaluate(n.uMin(), n.vMin());
+    const math::Vec3 north = n.evaluate(n.uMin(), n.vMax());
+    expectNear(south, n.evaluate(n.uMax(), n.vMin()));
+    expectNear(sph.frame().z, (north - south) / (north - south).length());
+    expectSeam(n, sph.frame());
     expectOnSurface(n, *s);
 }
 
 TEST(SurfaceRecognition, RecognisesASphereOctant) {
-    const NurbsSurface n =
-        NurbsSurface::makeSphereOctant(kCenter, 1.2, {1, 0, 0}, {0, 1, 0}, {0, 0, 1});
+    const math::Vec3 e1{1.0 / 3, 2.0 / 3, 2.0 / 3};
+    const math::Vec3 e2{2.0 / 3, 1.0 / 3, -2.0 / 3};
+    const math::Vec3 e3{-2.0 / 3, 2.0 / 3, -1.0 / 3};
+    const NurbsSurface n = NurbsSurface::makeSphereOctant(kCenter, 1.2, e1, e2, e3);
     const auto s = recognize(n, kTol);
     ASSERT_NE(s, nullptr);
     ASSERT_EQ(s->kind(), SurfaceKind::Sphere);
     const auto& sph = static_cast<const Sphere&>(*s);
     EXPECT_NEAR(sph.radius(), 1.2, kTol);
     expectNear(sph.frame().origin, kCenter);
+    // The v = vMax edge collapses to e3's pole; z runs from the centre towards it.
+    const math::Vec3 pole = n.evaluate(n.uMin(), n.vMax());
+    expectNear(pole, n.evaluate(n.uMax(), n.vMax()));
+    expectNear(pole, kCenter + e3 * 1.2);
+    expectNear(sph.frame().z, e3);
+    expectSeam(n, sph.frame());
 }
 
 TEST(SurfaceRecognition, RecognisesATorus) {
@@ -120,6 +152,7 @@ TEST(SurfaceRecognition, RecognisesATorus) {
     EXPECT_NEAR(tor.majorRadius(), 3.0, kTol);
     EXPECT_NEAR(tor.minorRadius(), 0.8, kTol);
     expectNear(tor.frame().origin, kCenter);
+    expectSeam(n, tor.frame());
     EXPECT_NEAR(std::abs(tor.frame().z.dot(kAxis.normalized())), 1.0, kTol);
     expectOnSurface(n, *s);
 }
