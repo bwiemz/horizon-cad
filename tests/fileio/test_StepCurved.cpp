@@ -207,10 +207,13 @@ TEST(StepCurvedTest, APlateWithABoreHasTheRightVolumeBothWays) {
     expectRelative(m.modelled, 200.0 - 8.0 * kPi, 0.001, "its facets");
 }
 
-// A solid as read, its faces bounded by circles, is measured as it is: in
-// facets. Measured by the corners of its loops, its volume was 0 and, from
-// computeIdeal, "exact". Scripts measure what they read.
-TEST(StepCurvedTest, ASolidAsReadIsMeasuredInFacets) {
+// A solid as read, its faces bounded by circles, is measured on its exact
+// faces (stage 2: they are read with it), meshed at the read point: more than
+// its 32-gon of facets holds, at most the cylinder, and nearer the cylinder.
+// Measured by the corners of its loops, its volume was 0 and, from
+// computeIdeal, "exact". Scripts measure what they read. (Task 7 measures
+// it exactly, to 1e-9.)
+TEST(StepCurvedTest, ASolidAsReadIsMeasuredOnItsExactFaces) {
     const auto solids = StepFormat::fromString(cylinder(), nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
     const hz::topo::Solid& read = *solids[0];
@@ -220,8 +223,10 @@ TEST(StepCurvedTest, ASolidAsReadIsMeasuredInFacets) {
     EXPECT_FALSE(hz::model::describedByCurves(*faceted.solid)) << "its edges are chords";
 
     const auto modelled = MassPropertiesCalculator::compute(read);
-    EXPECT_DOUBLE_EQ(modelled.volume, MassPropertiesCalculator::compute(*faceted.solid).volume);
-    expectRelative(modelled.volume, 2.0 * kPi, 0.01, "in facets");
+    const double facets = MassPropertiesCalculator::compute(*faceted.solid).volume;  // 6.2429
+    EXPECT_GT(modelled.volume, facets);
+    EXPECT_LE(modelled.volume, 2.0 * kPi);
+    EXPECT_LT(2.0 * kPi - modelled.volume, modelled.volume - facets) << "nearer the cylinder";
     const auto ideal = MassPropertiesCalculator::computeIdeal(read);
     EXPECT_TRUE(ideal.onIdealSurfaces);
     expectRelative(ideal.properties.volume, 2.0 * kPi, 1e-9, "as designed");

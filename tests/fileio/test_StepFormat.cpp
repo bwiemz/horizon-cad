@@ -372,8 +372,6 @@ DATA;
         vps[i] = add("VERTEX_POINT('',#" + std::to_string(pts[i]) + ")");
     }
 
-    const int dirX = add("DIRECTION('',(1.,0.,0.))");
-
     // Undirected cube edges as vertex-index pairs.
     const int edgeVerts[12][2] = {{0, 1}, {1, 3}, {3, 2}, {2, 0},   // bottom (z=0)
                                   {4, 5}, {5, 7}, {7, 6}, {6, 4},   // top (z=1)
@@ -382,8 +380,13 @@ DATA;
     for (int e = 0; e < 12; ++e) {
         const int a = edgeVerts[e][0];
         const int b = edgeVerts[e][1];
+        // Along the edge, from its start: every edge of the unit cube is one long.
+        const auto along = [&](int bit) {
+            return num(static_cast<double>((b >> bit) & 1) - static_cast<double>((a >> bit) & 1));
+        };
+        const int dir = add("DIRECTION('',(" + along(0) + "," + along(1) + "," + along(2) + "))");
         const int line = add("LINE('',#" + std::to_string(pts[a]) + ",VECTOR('',#" +
-                             std::to_string(dirX) + ",1.))");
+                             std::to_string(dir) + ",1.))");
         edges[e] = add("EDGE_CURVE('',#" + std::to_string(vps[a]) + ",#" + std::to_string(vps[b]) +
                        ",#" + std::to_string(line) + ",.T.)");
     }
