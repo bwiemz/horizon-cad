@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "AngleWrap.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Circle2D.h"
 #include "horizon/geometry/curves/Line2D.h"
@@ -25,12 +26,13 @@ namespace {
 using math::Vec2;
 using math::Vec3;
 
-constexpr double kTwoPi = math::kTwoPi;
 /// The most samples a fitted pcurve may use.
 constexpr size_t kMaxSamples = 2048;
 /// The most samples the curvature criteria alone may ask for, leaving the rest for refinement.
 constexpr size_t kMaxCriteriaSamples = 1024;
 constexpr int kInitialIntervals = 32;
+/// The most steps the curve's turning may ask for at the start.
+constexpr int kMaxInitial = 512;
 /// How far the tangents or the normals may turn across one sample interval, as a cosine
 /// (about 17 degrees).
 constexpr double kTurnCos = 0.955;
@@ -45,10 +47,9 @@ double sgn(double x) {
     return x < 0.0 ? -1.0 : 1.0;
 }
 
+/// An angle from atan2, in [0, 2 pi).
 double wrapTwoPi(double a) {
-    double w = std::fmod(a, kTwoPi);
-    if (w < 0.0) w += kTwoPi;
-    return w;
+    return detail::wrapAngle(a);
 }
 
 double nearestRepresentative(double x, double ref, double period) {
@@ -100,27 +101,49 @@ std::shared_ptr<const Curve2D> ellipseArc(const Vec2& c, const Vec2& a, const Ve
     return std::make_shared<Nurbs2D>(std::move(pts), std::move(weights), std::move(knots), 2);
 }
 
-std::optional<Form> lineForm(const Surface& s, const Curve3& c, double t0, double t1, bool onlyU) {
-    const Vec2 a = s.invert(c.evaluate(t0));
-    const Vec2 b = s.invert(c.evaluate(t1));
+/// Whether @p p is on the axis of @p fr, to within @p tolerance (or rounding).
+bool onAxis(const Frame& fr, const Vec3& p, double tolerance) {
+    const Vec3 l = p - fr.origin;
+    return std::hypot(l.dot(fr.x), l.dot(fr.y)) <= std::max(1e-9 * (1.0 + l.length()), tolerance);
+}
+
+/// A line: on a plane its two ends, on a cylinder or cone (@p axis, the surface's frame) a
+/// generator, which keeps one u. A generator's u window is its start point's inverted u,
+/// wrapped into [0, 2 pi); at the apex u means nothing, so the end that is off the axis gives it.
+std::optional<Form> lineForm(const Surface& s, const Curve3& c, double t0, double t1,
+                             const Frame* axis, double tolerance) {
+    const Vec3 p0 = c.evaluate(t0);
+    const Vec3 p1 = c.evaluate(t1);
+    const Vec2 a = s.invert(p0);
+    const Vec2 b = s.invert(p1);
     Form f;
     f.start = 0.0;
     f.end = 1.0;
-    // A generator keeps the u of its start point (so its window is the start's, wrapped).
-    f.curve = std::make_shared<Line2D>(a, onlyU ? Vec2(a.x, b.y) : b);
+    if (axis == nullptr) {
+        f.curve = std::make_shared<Line2D>(a, b);
+        return f;
+    }
+    double u = a.x;
+    if (onAxis(*axis, p0, tolerance)) {
+        if (onAxis(*axis, p1, tolerance)) return std::nullopt;
+        u = b.x;
+    }
+    f.curve = std::make_shared<Line2D>(Vec2(u, a.y), Vec2(u, b.y));
     return f;
 }
 
-std::optional<Form> planeForm(const Plane& s, const Curve3& c, double t0, double t1) {
+std::optional<Form> planeForm(const Plane& s, const Curve3& c, double t0, double t1,
+                              double tolerance) {
     const Frame& pf = s.frame();
     const Vec3 normal = pf.x.cross(pf.y);
-    if (c.kind() == CurveKind::Line) return lineForm(s, c, t0, t1, false);
+    if (c.kind() == CurveKind::Line) return lineForm(s, c, t0, t1, nullptr, tolerance);
     if (const auto* cc = dynamic_cast<const CircleCurve*>(&c)) {
         if (cc->frame().z.cross(normal).length() > kParallel) return std::nullopt;
         const Vec2 c2 = s.invert(cc->frame().origin);
         const Vec2 uv0 = s.invert(c.evaluate(t0));
         const double phi0 = std::atan2(uv0.y - c2.y, uv0.x - c2.x);
-        const double sigma = sgn(cc->frame().z.dot(normal));
+        // The circle turns about x cross y, which is -z in a left-handed frame.
+        const double sigma = sgn(cc->frame().x.cross(cc->frame().y).dot(normal));
         Form f;
         f.curve = std::make_shared<Circle2D>(c2, cc->radius() / s.scale());
         f.start = phi0;
@@ -153,8 +176,9 @@ std::optional<Form> planeForm(const Plane& s, const Curve3& c, double t0, double
 /// A circle on a surface of revolution: a parallel (its axis is the surface's) or, on a sphere
 /// or a torus, a meridian (its plane holds the surface's axis).
 std::optional<Form> circleOnRevolved(const Surface& s, const Frame& fr, const CircleCurve& cc,
-                                     double t0, double t1) {
-    const Vec3 n = cc.frame().z;
+                                     double t0, double t1, double tolerance) {
+    // The axis the circle turns about: x cross y, which is -z in a left-handed frame.
+    const Vec3 n = cc.frame().x.cross(cc.frame().y);
     const double d = n.dot(fr.z);
     const Vec3 start = cc.evaluate(t0);
     if (std::sqrt(std::max(0.0, 1.0 - d * d)) <= kParallel) {
@@ -174,8 +198,13 @@ std::optional<Form> circleOnRevolved(const Surface& s, const Frame& fr, const Ci
     // A meridian: u is that of the circle's plane, on the side of the start point (of the
     // circle's centre, for a torus), so it does not come from inverting a pole.
     const Vec3 h = n.cross(fr.z);
-    const Vec3 ref = (sphere != nullptr ? start : cc.frame().origin) - fr.origin;
+    Vec3 ref = (sphere != nullptr ? start : cc.frame().origin) - fr.origin;
     const double scaleRef = sphere != nullptr ? sphere->radius() : torus->majorRadius();
+    if (sphere != nullptr && onAxis(fr, start, tolerance)) {
+        // The arc leaves a pole: it goes the way its middle is, which keeps v in range for an
+        // arc that does not cross a pole.
+        ref = cc.evaluate(0.5 * (t0 + t1)) - fr.origin;
+    }
     const double ra = ref.dot(fr.x);
     const double rb = ref.dot(fr.y);
     const double hx = h.dot(fr.x);
@@ -199,21 +228,22 @@ std::optional<Form> circleOnRevolved(const Surface& s, const Frame& fr, const Ci
     return f;
 }
 
-std::optional<Form> closedFormCandidate(const Surface& s, const Curve3& c, double t0, double t1) {
+std::optional<Form> closedFormCandidate(const Surface& s, const Curve3& c, double t0, double t1,
+                                        double tolerance) {
     switch (s.kind()) {
         case SurfaceKind::Plane:
-            return planeForm(static_cast<const Plane&>(s), c, t0, t1);
+            return planeForm(static_cast<const Plane&>(s), c, t0, t1, tolerance);
         case SurfaceKind::Cylinder:
         case SurfaceKind::Cone: {
             const Frame& fr = s.kind() == SurfaceKind::Cylinder
                                   ? static_cast<const Cylinder&>(s).frame()
                                   : static_cast<const Cone&>(s).frame();
-            if (c.kind() == CurveKind::Line) return lineForm(s, c, t0, t1, true);
+            if (c.kind() == CurveKind::Line) return lineForm(s, c, t0, t1, &fr, tolerance);
             if (const auto* cc = dynamic_cast<const CircleCurve*>(&c)) {
                 if (std::abs(cc->frame().z.dot(fr.z)) < 1.0 - kParallel * kParallel) {
                     return std::nullopt;
                 }
-                return circleOnRevolved(s, fr, *cc, t0, t1);
+                return circleOnRevolved(s, fr, *cc, t0, t1, tolerance);
             }
             return std::nullopt;
         }
@@ -223,7 +253,7 @@ std::optional<Form> closedFormCandidate(const Surface& s, const Curve3& c, doubl
                                   ? static_cast<const Sphere&>(s).frame()
                                   : static_cast<const Torus&>(s).frame();
             if (const auto* cc = dynamic_cast<const CircleCurve*>(&c)) {
-                return circleOnRevolved(s, fr, *cc, t0, t1);
+                return circleOnRevolved(s, fr, *cc, t0, t1, tolerance);
             }
             return std::nullopt;
         }
@@ -453,17 +483,21 @@ Fit fitCubic(const std::vector<Sample>& samples) {
     return fit;
 }
 
-/// The distance from @p p to the curve over t in [lo, hi]: a coarse scan, then golden section
-/// about the nearest cell.
+/// The distance from @p p to the curve over t in [lo, hi]: a coarse scan, golden section about
+/// the nearest cell, then Newton's method on (C - p) . C' to full precision (golden section
+/// alone leaves a point on the curve about 1e-7 of a sample spacing away).
 double distanceToCurve(const Curve3& c, const Vec3& p, double lo, double hi) {
     constexpr int kScan = 8;
     if (lo > hi) std::swap(lo, hi);
     double best = std::numeric_limits<double>::infinity();
+    double bestT = lo;
     int bi = 0;
     for (int i = 0; i <= kScan; ++i) {
-        const double d = (c.evaluate(lo + (hi - lo) * i / kScan) - p).length();
+        const double t = lo + (hi - lo) * i / kScan;
+        const double d = (c.evaluate(t) - p).length();
         if (d < best) {
             best = d;
+            bestT = t;
             bi = i;
         }
     }
@@ -474,7 +508,7 @@ double distanceToCurve(const Curve3& c, const Vec3& p, double lo, double hi) {
     double x2 = a + kInvPhi * (b - a);
     double f1 = (c.evaluate(x1) - p).length();
     double f2 = (c.evaluate(x2) - p).length();
-    for (int it = 0; it < 30; ++it) {
+    for (int it = 0; it < 20; ++it) {
         if (f1 < f2) {
             b = x2;
             x2 = x1;
@@ -489,8 +523,35 @@ double distanceToCurve(const Curve3& c, const Vec3& p, double lo, double hi) {
             f2 = (c.evaluate(x2) - p).length();
         }
     }
-    return std::min({best, f1, f2});
+    if (f1 < best) {
+        best = f1;
+        bestT = x1;
+    }
+    if (f2 < best) {
+        best = f2;
+        bestT = x2;
+    }
+    double t = bestT;
+    for (int it = 0; it < 12; ++it) {
+        const CurveDerivatives d = c.derivatives(t);
+        const Vec3 r = d.point - p;
+        const double denom = d.d1.dot(d.d1) + r.dot(d.d2);
+        if (!(denom > 0.0)) break;
+        const double next = std::clamp(t - r.dot(d.d1) / denom, lo, hi);
+        const double dist = (c.evaluate(next) - p).length();
+        if (!(dist < best)) break;
+        best = dist;
+        t = next;
+    }
+    return best;
 }
+
+/// Points checked inside each sample interval: the interpolation error peaks between the
+/// samples, and the middle thirds alone read it low.
+constexpr int kChecksPerInterval = 7;
+/// The checks can miss the peak of the interpolation error by about 3%: what a fit strays
+/// beyond the curve's own gap from the surface is counted with this much more.
+constexpr double kPeakMargin = 0.03;
 
 struct Measure {
     std::vector<double> interval;  ///< the fit's deviation inside each sample interval
@@ -506,12 +567,15 @@ Measure measureFit(const Surface& s, const Curve3& c, const std::vector<Sample>&
     for (size_t i = 0; i + 1 < samples.size(); ++i) {
         const double lo = samples[i == 0 ? 0 : i - 1].t;
         const double hi = samples[std::min(i + 2, samples.size() - 1)].t;
-        for (const double f : {1.0 / 3.0, 2.0 / 3.0}) {
+        for (int k = 1; k <= kChecksPerInterval; ++k) {
+            const double f = static_cast<double>(k) / (kChecksPerInterval + 1);
             const double sp = fit.params[i] + f * (fit.params[i + 1] - fit.params[i]);
             const Vec2 uv = fit.curve->evaluate(sp);
             const Vec3 p = s.evaluate(uv.x, uv.y);
             m.interval[i] = std::max(m.interval[i], distanceToCurve(c, p, lo, hi));
         }
+        const double gap = std::max(samples[i].gap, samples[i + 1].gap);
+        m.interval[i] += kPeakMargin * std::max(0.0, m.interval[i] - gap);
         m.fitDeviation = std::max(m.fitDeviation, m.interval[i]);
     }
     return m;
@@ -528,24 +592,57 @@ std::string describe(double deviation, double tolerance, size_t samples, bool of
 
 Pcurve failed(const std::string& why) {
     Pcurve pc;
+    pc.deviation = std::numeric_limits<double>::infinity();
     pc.problem = why;
     return pc;
+}
+
+/// How many equal steps of t to start from: enough that the curve's tangent turns at most
+/// about 0.25 rad in one (a helix of many turns gets several steps a turn, so no step spans half
+/// a period of u, where the nearest representative of u would be ambiguous).
+int initialIntervals(const Curve3& c, double t0, double t1) {
+    constexpr int kPre = 512;
+    constexpr double kStepTurn = 0.25;
+    double turned = 0.0;
+    Vec3 prev;
+    for (int k = 0; k <= kPre; ++k) {
+        const Vec3 d = c.derivatives(t0 + (t1 - t0) * static_cast<double>(k) / kPre).d1;
+        const double l = d.length();
+        const double lp = prev.length();
+        if (k > 0 && l > 0.0 && lp > 0.0) {
+            turned += std::acos(std::clamp(d.dot(prev) / (l * lp), -1.0, 1.0));
+        }
+        prev = d;
+    }
+    if (!std::isfinite(turned)) return kInitialIntervals;
+    const double want = std::min(std::ceil(turned / kStepTurn), static_cast<double>(kMaxInitial));
+    return std::max(kInitialIntervals, static_cast<int>(want));
+}
+
+/// Inverts every sample again in order, each from the one before it, so that u and v stay
+/// continuous with the samples between them, and gives a pole or an apex at the start the first
+/// regular u.
+void rechain(const Inverter& inv, const Curve3& c, std::vector<Sample>& samples) {
+    for (size_t i = 1; i < samples.size(); ++i) {
+        samples[i] = inv.at(c, samples[i].t, &samples[i - 1]);
+    }
+    const auto regular = std::find_if(samples.begin(), samples.end(),
+                                      [](const Sample& smp) { return !smp.singular; });
+    for (auto it = samples.begin(); it != regular && regular != samples.end(); ++it) {
+        it->uv.x = regular->uv.x;
+    }
 }
 
 Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, double tolerance) {
     const Inverter inv(s);
     std::vector<Sample> samples;
     samples.reserve(kMaxSamples);
-    for (int k = 0; k <= kInitialIntervals; ++k) {
-        const double t = t0 + (t1 - t0) * static_cast<double>(k) / kInitialIntervals;
+    const int initial = initialIntervals(c, t0, t1);
+    for (int k = 0; k <= initial; ++k) {
+        const double t = t0 + (t1 - t0) * static_cast<double>(k) / initial;
         samples.push_back(inv.at(c, t, samples.empty() ? nullptr : &samples.back()));
     }
-    // A pole or an apex at the start has no u of its own: the first regular one's.
-    const auto regular = std::find_if(samples.begin(), samples.end(),
-                                      [](const Sample& smp) { return !smp.singular; });
-    for (auto it = samples.begin(); it != regular && regular != samples.end(); ++it) {
-        it->uv.x = regular->uv.x;
-    }
+    rechain(inv, c, samples);
 
     // Subdivide where the curve or the surface turns, or a periodic parameter steps far.
     for (int pass = 0; pass < 16 && samples.size() < kMaxCriteriaSamples; ++pass) {
@@ -562,6 +659,8 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
         }
         samples = std::move(next);
         if (!split) break;
+        // The new samples show how far the old ones really stepped: unwrap them all again.
+        rechain(inv, c, samples);
     }
 
     double baseGap = 0.0;
@@ -648,11 +747,13 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
 
 Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t1,
                 double tolerance) {
-    if (!std::isfinite(t0) || !std::isfinite(t1) || !std::isfinite(tolerance) ||
-        !(tolerance > 0.0)) {
+    if (!std::isfinite(t0) || !std::isfinite(t1) || !std::isfinite(tolerance)) {
         return failed("pcurve deviation is unbounded: the range or the tolerance is not finite");
     }
-    if (const std::optional<Form> form = closedFormCandidate(surface, curve, t0, t1)) {
+    if (!(tolerance > 0.0)) {
+        return failed("pcurve deviation cannot be within a tolerance that is not positive");
+    }
+    if (const std::optional<Form> form = closedFormCandidate(surface, curve, t0, t1, tolerance)) {
         const double dev = measureForm(surface, curve, *form, t0, t1);
         if (std::isfinite(dev) && dev <= tolerance) {
             Pcurve pc;

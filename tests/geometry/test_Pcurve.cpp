@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -53,6 +54,72 @@ void expectFollows(const Surface& s, const Curve3& c, double t0, double t1, cons
 template <class T>
 const T* as(const Pcurve& pc) {
     return dynamic_cast<const T*>(pc.curve.get());
+}
+
+/// The distance from @p p to the curve, found independently of the code under test: the nearest
+/// of a dense table of the curve's points, polished by Newton's method.
+class DenseCurve {
+public:
+    explicit DenseCurve(const Curve3& c, int count = 600) : c_(c) {
+        const Interval r = c.range();
+        lo_ = r.min;
+        hi_ = r.max;
+        for (int i = 0; i <= count; ++i) {
+            ts_.push_back(lo_ + (hi_ - lo_) * i / count);
+            pts_.push_back(c.evaluate(ts_.back()));
+        }
+    }
+    double distance(const math::Vec3& p) const {
+        size_t best = 0;
+        for (size_t i = 1; i < pts_.size(); ++i) {
+            if ((pts_[i] - p).lengthSquared() < (pts_[best] - p).lengthSquared()) best = i;
+        }
+        double t = ts_[best];
+        for (int it = 0; it < 40; ++it) {
+            const CurveDerivatives d = c_.derivatives(t);
+            const double denom = d.d1.dot(d.d1) + (d.point - p).dot(d.d2);
+            if (!(denom > 0.0)) break;
+            const double next = std::clamp(t - (d.point - p).dot(d.d1) / denom, lo_, hi_);
+            const bool done = std::abs(next - t) <= 1e-13 * (hi_ - lo_);
+            t = next;
+            if (done) break;
+        }
+        return std::min((c_.evaluate(t) - p).length(), (pts_[best] - p).length());
+    }
+
+private:
+    const Curve3& c_;
+    double lo_ = 0.0;
+    double hi_ = 0.0;
+    std::vector<double> ts_;
+    std::vector<math::Vec3> pts_;
+};
+
+/// The largest distance from the pcurve's image (8000 points of it) to the curve.
+double denseDeviation(const Surface& s, const Curve3& c, const Pcurve& pc) {
+    const DenseCurve table(c);
+    double worst = 0.0;
+    constexpr int kN = 8000;
+    for (int k = 0; k <= kN; ++k) {
+        const math::Vec2 uv = pc.curve->evaluate(pc.start + (pc.end - pc.start) * k / kN);
+        worst = std::max(worst, table.distance(s.evaluate(uv.x, uv.y)));
+    }
+    return worst;
+}
+
+/// v stays inside the surface's v range all along the pcurve.
+void expectVInRange(const Surface& s, const Pcurve& pc) {
+    const Interval r = s.vRange();
+    for (int k = 0; k <= 50; ++k) {
+        const double v = pc.curve->evaluate(pc.start + (pc.end - pc.start) * k / 50.0).y;
+        EXPECT_GE(v, r.min - 1e-12);
+        EXPECT_LE(v, r.max + 1e-12);
+    }
+}
+
+Frame leftHanded(Frame f) {
+    f.y = -f.y;
+    return f;
 }
 
 }  // namespace
@@ -131,7 +198,8 @@ TEST(Pcurve, EachClosedFormIsExact) {
         EXPECT_NE(as<Line2D>(pc), nullptr);
         expectFollows(s, c, 1.0, 4.0, pc, bound);
     }
-    for (const double t0 : {0.4, kPi / 2.0}) {  // A meridian of a sphere, over the pole.
+    for (const double t0 : {0.4, kPi / 2.0}) {  // A meridian of a sphere: over the pole, and
+                                                // leaving the south pole (in range).
         const Sphere s(f, 3.0);
         const double u0 = 0.7;
         const math::Vec3 e1 = f.x * std::cos(u0) + f.y * std::sin(u0);
@@ -141,6 +209,7 @@ TEST(Pcurve, EachClosedFormIsExact) {
         ASSERT_NE(line, nullptr);
         EXPECT_NEAR(line->start().x, line->end().x, 1e-13);
         expectFollows(s, c, t0, t0 + 2.0, pc, bound);
+        if (t0 > 1.0) expectVInRange(s, pc);
     }
     {  // A parallel of a torus.
         const Torus s(f, 4.0, 1.5);
@@ -268,7 +337,8 @@ TEST(Pcurve, ASplineOnASplineIsWithinTolerance) {
         const Pcurve pc = pcurveOn(s, c, t0, t1, tol);
         EXPECT_NE(as<Nurbs2D>(pc), nullptr);
         EXPECT_LE(pc.deviation, tol);
-        expectFollows(s, c, t0, t1, pc, 2.0 * tol);
+        expectFollows(s, c, t0, t1, pc, tol);
+        EXPECT_LE(denseDeviation(s, c, pc), tol);
         const math::Vec2 a = pc.curve->evaluate(pc.start);
         const math::Vec2 want = curvedUV(t0);
         EXPECT_NEAR(a.x, want.x, 1e-5);
@@ -347,4 +417,208 @@ TEST(Pcurve, AGeneralCurveOnASphereAndATorusFollows) {
     const Interval q = eq.range();
     const Pcurve b = pcurveOn(tor, eq, q.min, q.max, 1e-6);
     expectFollows(tor, eq, q.min, q.max, b, 2e-6);
+}
+
+namespace {
+
+/// A circle through the sphere's poles: from the south pole, along the meridian at azimuth u0
+/// (on the side @p dir of e1), to the north pole in t = 0..pi.
+CircleCurve poleToPole(const Frame& f, double u0, double dir, double radius) {
+    const math::Vec3 e1 = f.x * std::cos(u0) + f.y * std::sin(u0);
+    Frame c;
+    c.origin = f.origin;
+    c.x = -f.z;
+    c.y = e1 * dir;
+    c.z = c.x.cross(c.y);
+    return CircleCurve(c, radius);
+}
+
+}  // namespace
+
+TEST(Pcurve, ASphereMeridianLeavingAPoleStaysInRange) {
+    const double tol = 1e-6;
+    for (const bool lh : {false, true}) {
+        const Frame f = lh ? leftHanded(tilted()) : tilted();
+        const Sphere s(f, 3.0);
+        for (const double dir : {1.0, -1.0}) {
+            const CircleCurve c = poleToPole(f, 0.0, dir, 3.0);
+            // The seam, south pole to north pole, the way it runs and the way back; and a quarter.
+            for (const auto& [t0, t1] : {std::pair{0.0, kPi}, std::pair{kPi, 0.0},
+                                         std::pair{0.0, kPi / 2.0}, std::pair{kPi / 2.0, kPi}}) {
+                const Pcurve pc = pcurveOn(s, c, t0, t1, tol);
+                ASSERT_NE(as<Line2D>(pc), nullptr);
+                expectFollows(s, c, t0, t1, pc, 1e-11);
+                expectVInRange(s, pc);
+            }
+        }
+    }
+}
+
+TEST(Pcurve, AConeGeneratorFromTheApexIsALine) {
+    const double tol = 1e-6;
+    const Frame f = tilted();
+    const Cone s(f, 2.0, 0.4, 1.0);
+    const double apexV = -2.0 / std::tan(0.4);
+    for (const double u0 : {0.0, 2.0}) {  // on the seam, and off it
+        const math::Vec3 apex = s.evaluate(u0, apexV);
+        const math::Vec3 base = s.evaluate(u0, 3.0);
+        const LineCurve c(apex, base - apex, 1.0);
+        const double len = (base - apex).length();
+        for (const auto& [t0, t1] : {std::pair{0.0, len}, std::pair{len, 0.0}}) {
+            const Pcurve pc = pcurveOn(s, c, t0, t1, tol);
+            const Line2D* line = as<Line2D>(pc);
+            ASSERT_NE(line, nullptr);
+            EXPECT_TRUE(std::abs(line->start().x - u0) < 1e-9 ||
+                        std::abs(line->start().x - u0 - kTwoPi) < 1e-9)
+                << line->start().x;
+            EXPECT_EQ(line->start().x, line->end().x);
+            expectFollows(s, c, t0, t1, pc, 1e-11);
+        }
+    }
+}
+
+namespace {
+
+/// A helix on the cylinder of radius 5 and a pitch of 1.5: (R cos t, R sin t, pitch t / 2 pi).
+class Helix : public Curve3 {
+public:
+    CurveKind kind() const override { return CurveKind::Nurbs; }
+    math::Vec3 evaluate(double t) const override {
+        return {5.0 * std::cos(t), 5.0 * std::sin(t), 1.5 * t / kTwoPi};
+    }
+    CurveDerivatives derivatives(double t) const override {
+        return {evaluate(t),
+                {-5.0 * std::sin(t), 5.0 * std::cos(t), 1.5 / kTwoPi},
+                {-5.0 * std::cos(t), -5.0 * std::sin(t), 0.0}};
+    }
+    Interval range() const override { return {0.0, 40.0 * kTwoPi}; }
+    bool periodic() const override { return false; }
+    double closestParameter(const math::Vec3&) const override { return 0.0; }
+    std::unique_ptr<Curve3> transformed(const math::Mat4&) const override { return nullptr; }
+};
+
+}  // namespace
+
+TEST(Pcurve, AHelixOfManyTurnsKeepsItsTurnsApart) {
+    const Cylinder s(Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0);
+    const Helix h;
+    const double tol = 1e-6;
+    for (const int turns : {10, 20}) {
+        const double t1 = turns * kTwoPi;
+        const Pcurve pc = pcurveOn(s, h, 0.0, t1, tol);
+        ASSERT_TRUE(pc.problem.empty()) << turns << ": " << pc.problem;
+        ASSERT_NE(pc.curve, nullptr);
+        EXPECT_LE(pc.deviation, tol);
+        // On the cylinder, the helix at parameter u is at height pitch u / 2 pi: the distance from
+        // the pcurve's image to it is how far v is from that.
+        double worst = 0.0;
+        double prevU = pc.curve->evaluate(pc.start).x;
+        for (int k = 0; k <= 40000; ++k) {
+            const math::Vec2 uv = pc.curve->evaluate(pc.start + (pc.end - pc.start) * k / 40000.0);
+            worst = std::max(worst, std::abs(uv.y - 1.5 * uv.x / kTwoPi));
+            EXPECT_LT(std::abs(uv.x - prevU), 0.05);
+            prevU = uv.x;
+        }
+        EXPECT_LE(worst, tol);
+        EXPECT_NEAR(pc.curve->evaluate(pc.end).x, t1, 1e-6);
+    }
+}
+
+namespace {
+
+/// A wavy planar Bezier of degree 6, @p length long, in the plane z = 0.
+NurbsCurve wavy(double length) {
+    std::vector<math::Vec3> pts;
+    for (int i = 0; i <= 6; ++i) {
+        pts.emplace_back(length * i / 6.0,
+                         0.1 * length * ((i % 2) ? 1.0 : -0.6) * (i % 3 ? 1 : 0.4), 0.0);
+    }
+    std::vector<double> knots(7, 0.0);
+    knots.insert(knots.end(), 7, 1.0);
+    return NurbsCurve(pts, std::vector<double>(pts.size(), 1.0), knots, 6);
+}
+
+}  // namespace
+
+TEST(Pcurve, TheReportedDeviationNeverReadsBelowTheTrueOne) {
+    const Plane plane(Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1, 0, 0}));
+    for (const auto& [length, tol] :
+         {std::pair{100.0, 1e-7}, std::pair{1000.0, 1e-6}, std::pair{10000.0, 1e-7}}) {
+        const NurbsCurve c = wavy(length);
+        const Pcurve pc = pcurveOn(plane, c, 0.0, 1.0, tol);
+        const double truth = denseDeviation(plane, c, pc);
+        EXPECT_TRUE(pc.problem.empty()) << length << ": " << pc.problem;
+        EXPECT_LE(truth, tol) << length;
+        EXPECT_GE(pc.deviation, truth * 0.999) << length;
+    }
+}
+
+TEST(Pcurve, AnExactLongStraightSplineNeedsFewControlPoints) {
+    const Plane plane(Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1, 0, 0}));
+    for (const double length : {1000.0, 5000.0, 10000.0}) {
+        const NurbsCurve c({{0, 0, 0}, {length, 0.3 * length, 0}}, {1.0, 1.0}, {0, 0, 1, 1}, 1);
+        const Pcurve pc = pcurveOn(plane, c, 0.0, 1.0, 1e-7);
+        EXPECT_TRUE(pc.problem.empty()) << length << ": " << pc.problem;
+        ASSERT_NE(as<Nurbs2D>(pc), nullptr);
+        EXPECT_LE(as<Nurbs2D>(pc)->curve().controlPointCount(), 40);
+        EXPECT_LE(denseDeviation(plane, c, pc), 1e-7);
+    }
+}
+
+TEST(Pcurve, MirroredFramesKeepTheirClosedForms) {
+    const double tol = 1e-6;
+    const double bound = 1e-12 * kSize;
+    for (const bool surfaceLH : {false, true}) {
+        for (const bool circleLH : {false, true}) {
+            const Frame f = surfaceLH ? leftHanded(tilted()) : tilted();
+            auto circle = [&](const math::Vec3& center, const math::Vec3& axis,
+                              const math::Vec3& hint, double r) {
+                Frame cf = Frame::fromAxis(center, axis, hint);
+                return CircleCurve(circleLH ? leftHanded(cf) : cf, r);
+            };
+            {
+                const Plane s(f, 1.5);
+                const CircleCurve c = circle(s.evaluate(1.0, 2.0), f.z, {0.3, 1.0, 0.1}, 3.0);
+                const Pcurve pc = pcurveOn(s, c, 0.4, 5.0, tol);
+                EXPECT_NE(as<Circle2D>(pc), nullptr) << surfaceLH << circleLH;
+                expectFollows(s, c, 0.4, 5.0, pc, bound);
+            }
+            {
+                const Cylinder s(f, 2.0, 1.5);
+                const CircleCurve c = circle(f.origin + f.z * 1.5, f.z, {0.2, 1.0, 0.0}, 2.0);
+                const Pcurve pc = pcurveOn(s, c, 0.3, 4.0, tol);
+                EXPECT_NE(as<Line2D>(pc), nullptr) << surfaceLH << circleLH;
+                expectFollows(s, c, 0.3, 4.0, pc, bound);
+            }
+            {
+                const Sphere s(f, 3.0);
+                const math::Vec3 e1 = f.x * std::cos(0.7) + f.y * std::sin(0.7);
+                const CircleCurve c = circle(f.origin, f.z.cross(e1), e1, 3.0);
+                const Pcurve pc = pcurveOn(s, c, 0.4, 2.4, tol);
+                EXPECT_NE(as<Line2D>(pc), nullptr) << surfaceLH << circleLH;
+                expectFollows(s, c, 0.4, 2.4, pc, bound);
+            }
+            {
+                const Torus s(f, 4.0, 1.5);
+                const CircleCurve c = circle(f.origin + f.z * (1.5 * std::sin(1.0)), f.z, {1, 0, 0},
+                                             4.0 + 1.5 * std::cos(1.0));
+                const Pcurve pc = pcurveOn(s, c, 0.5, 3.0, tol);
+                EXPECT_NE(as<Line2D>(pc), nullptr) << surfaceLH << circleLH;
+                expectFollows(s, c, 0.5, 3.0, pc, bound);
+            }
+        }
+    }
+}
+
+TEST(Pcurve, AFailureHasNoCurveAndAnInfiniteDeviation) {
+    const Plane plane(Frame::fromAxis({0, 0, 0}, {0, 0, 1}));
+    const LineCurve c({0, 0, 0}, {1, 0, 0});
+    const Pcurve bad = pcurveOn(plane, c, 0.0, 1.0, -1.0);
+    EXPECT_EQ(bad.curve, nullptr);
+    EXPECT_FALSE(bad.problem.empty());
+    EXPECT_EQ(bad.problem.find("finite"), std::string::npos);
+    EXPECT_TRUE(std::isinf(bad.deviation));
+    const Pcurve nan = pcurveOn(plane, c, 0.0, std::nan(""), 1e-6);
+    EXPECT_EQ(nan.curve, nullptr);
+    EXPECT_TRUE(std::isinf(nan.deviation));
 }
