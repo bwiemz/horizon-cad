@@ -5,6 +5,7 @@ add_executable(hz_geometry_tests
     test_AnalyticSurfaces.cpp
     test_SurfaceRecognition.cpp
     test_Curve3.cpp
+    test_Pcurve.cpp
     test_Triangulate2D.cpp
 )
 
