@@ -21,7 +21,7 @@ constexpr int kEdgeRounds = 30;       // halvings of an edge segment to suit its
 constexpr int kGoldenSteps = 80;      // narrows a bracket by 0.618^80, below 1e-16
 constexpr double kMarchSteps = 8.0;   // steps of the pcurve search per edge segment
 constexpr double kRowSpacing = 32.0;  // rows across a surface bent one way, in its bent steps
-constexpr double kMaxRows = 16.0;     // and at most this many of them
+constexpr double kMaxRows = 16.0;     // and at most this many bands between them
 
 std::string num(double x) {
     char buf[32];
@@ -339,19 +339,27 @@ Spacing EdgeSampler::spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2
     if (sv > 0.0 && std::isfinite(sv)) sp.sv = sv;
     // A surface bent one way only (a cylinder, a cone) gets rows the other way too,
     // kRowSpacing of its bent steps apart in space, so that its triangles are not needles
-    // between two far boundaries. At most kMaxRows of them: with two triangles a column
-    // between rows, as many as its rims alone would make, the grid adds at most kMaxRows
-    // times the triangles of the boundary alone. Its straight edges that way are sampled at
-    // the rows (rowsAlong).
-    const auto rows = [&](double bent, double bentScale, double flatScale, double flatSpan) {
-        return std::max(kRowSpacing * bent * bentScale / flatScale, flatSpan / kMaxRows);
+    // between two far boundaries. The rows make bands of two triangles a column, as many as its
+    // rims alone would make: at most kMaxRows bands, so the grid adds at most kMaxRows times the
+    // triangles of the boundary alone, and no more than fit under the triangle cap; no rows
+    // where even two bands would not fit. Its straight edges that way are sampled at the rows
+    // (rowsAlong).
+    const auto rows = [&](double bent, double bentScale, double flatScale, double bentSpan,
+                          double flatSpan) {
+        const double columns = std::max(1.0, std::ceil(bentSpan / bent));
+        const double bands = std::min(
+            kMaxRows, std::floor(static_cast<double>(opt_.maxTrianglesPerFace) / (2.0 * columns)));
+        // Half a band short, so that the grid's ceil(span / step) never makes one band more.
+        return bands < 2.0
+                   ? kInfinity
+                   : std::max(kRowSpacing * bent * bentScale / flatScale, flatSpan / (bands - 0.5));
     };
     if (std::isfinite(sp.du) && !std::isfinite(sp.dv)) {
-        sp.dv = rows(sp.du, sp.su, sp.sv, hi.y - lo.y);
-        sp.flat = 1;
+        sp.dv = rows(sp.du, sp.su, sp.sv, hi.x - lo.x, hi.y - lo.y);
+        if (std::isfinite(sp.dv)) sp.flat = 1;
     } else if (std::isfinite(sp.dv) && !std::isfinite(sp.du)) {
-        sp.du = rows(sp.dv, sp.sv, sp.su, hi.x - lo.x);
-        sp.flat = 0;
+        sp.du = rows(sp.dv, sp.sv, sp.su, hi.y - lo.y, hi.x - lo.x);
+        if (std::isfinite(sp.du)) sp.flat = 0;
     }
     return sp;
 }

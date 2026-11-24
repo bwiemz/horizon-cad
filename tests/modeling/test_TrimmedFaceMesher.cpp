@@ -604,7 +604,6 @@ TEST(TrimmedFaceMesher, FilletLikeToriMeshWithinTheAngleAndTheCap) {
     // their boundary once ran away to the triangle cap (the first six cases) until the edges
     // themselves were halved and the steps took half the angle. The last two always meshed.
     const geo::Frame frame = geo::Frame::fromAxis({4, -2, 7}, {1, -2, 0.5});
-    const MeshOptions defaults;
     const struct {
         double major;
         double minor;
@@ -619,8 +618,54 @@ TEST(TrimmedFaceMesher, FilletLikeToriMeshWithinTheAngleAndTheCap) {
         checkMeshes(*torus, meshes, options, slackFor(2.0 * (c.major + c.minor)));
         EXPECT_LE(worstNeighbourAngle(meshes), options.maxAngle + 1e-12);
         ASSERT_EQ(meshes.size(), 1u);
-        EXPECT_LT(meshes[0].triangles.size(), defaults.maxTrianglesPerFace / 4)
+        // At the whole angle, steps left a fifth of the triangles turned and refining them
+        // cascaded: R50 r1 at 0.3 took 44k. Half the angle keeps every case under 7.5k.
+        EXPECT_LT(meshes[0].triangles.size(), 10000u)
             << "R" << c.major << " r" << c.minor << " at " << c.tol;
+    }
+}
+
+TEST(TrimmedFaceMesher, ACurvedBoundaryIsHalvedWhereTheTrianglesBesideItTurn) {
+    // A patch of a thin torus, u in [0.2, 1.4] and v in [0.5, 1.5], bounded by the images of
+    // straight (u, v) segments. Its edges bend away from the u and v directions the grid is
+    // spaced along, so triangles beside them turn by more than the angle; the faces ask for
+    // those boundary segments to be halved, a few rounds over, and get no further without.
+    const auto torus =
+        std::make_shared<geo::Torus>(geo::Frame::fromAxis({4, -2, 7}, {0, 0, 1}), 10.0, 1.0);
+    const std::array<Vec2, 4> corner = {{{0.2, 0.5}, {1.4, 0.5}, {1.4, 1.5}, {0.2, 1.5}}};
+    std::vector<Side> sides;
+    for (std::size_t i = 0; i < 4; ++i) {
+        const Vec2& a = corner[i];
+        const Vec2& b = corner[(i + 1) % 4];
+        sides.push_back({line(a, b), 0.0, 1.0, std::make_shared<OnSurface>(torus, a, b), 0.0, 1.0});
+    }
+    const auto patch = makeOpenFace(torus, {sides});
+    MeshOptions options;
+    options.chordTolerance = 0.1;
+    options.maxAngle = 0.2;
+    const auto meshes = meshValid(*patch, options, 30.0);
+    checkMeshes(*patch, meshes, options, slackFor(30.0), false);
+    EXPECT_LE(worstNeighbourAngle(meshes), options.maxAngle + 1e-12);
+}
+
+TEST(TrimmedFaceMesher, ACylinderUnderASmallTriangleCapStillMeshes) {
+    // Rows across the side are bounded by the cap: with as many as their spacing wants, the
+    // grid alone would pass it and the face would fail.
+    const auto cyl =
+        model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    const struct {
+        std::size_t cap;
+        double tol;
+    } cases[] = {{10000, 5e-5}, {5000, 5e-5}, {2000, 5e-4}, {2000, 5e-5}};
+    for (const auto& c : cases) {
+        MeshOptions options;
+        options.chordTolerance = c.tol;
+        options.maxTrianglesPerFace = c.cap;
+        const auto meshes = meshValid(*cyl, options, 20.0);
+        checkMeshes(*cyl, meshes, options, slackFor(20.0));
+        for (const FaceMesh& m : meshes) {
+            EXPECT_LE(m.triangles.size(), c.cap) << m.face->topoId.tag() << " cap " << c.cap;
+        }
     }
 }
 
