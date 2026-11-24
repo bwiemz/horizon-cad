@@ -1,4 +1,7 @@
 add_library(hz_geometry STATIC
+    src/Frame.cpp
+    src/surfaces/Surface.cpp
+    src/surfaces/AnalyticSurfaces.cpp
     src/curves/Curve2D.cpp
     src/curves/Line2D.cpp
     src/curves/Circle2D.cpp
