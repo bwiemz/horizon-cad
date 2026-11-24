@@ -108,6 +108,20 @@ double denseDeviation(const Surface& s, const Curve3& c, const Pcurve& pc) {
     return worst;
 }
 
+/// The largest distance from the pcurve's image (8000 points of it) to the curve, by the curve's
+/// own closestParameter: for a circle, exact across its seam, where denseDeviation's search,
+/// held to the curve's range, stops short.
+double closestDeviation(const Surface& s, const Curve3& c, const Pcurve& pc) {
+    double worst = 0.0;
+    constexpr int kN = 8000;
+    for (int k = 0; k <= kN; ++k) {
+        const math::Vec2 uv = pc.curve->evaluate(pc.start + (pc.end - pc.start) * k / kN);
+        const math::Vec3 p = s.evaluate(uv.x, uv.y);
+        worst = std::max(worst, (c.evaluate(c.closestParameter(p)) - p).length());
+    }
+    return worst;
+}
+
 /// v stays inside the surface's v range all along the pcurve.
 void expectVInRange(const Surface& s, const Pcurve& pc) {
     const Interval r = s.vRange();
@@ -684,4 +698,336 @@ TEST(Pcurve, ACurveStandingOffItsSurfaceSaysHowFar) {
     EXPECT_NE(as<Line2D>(rimBeyond), nullptr) << "a parallel still, its closed form";
     EXPECT_NEAR(rimBeyond.deviation, 1e-3, 1e-9);
     EXPECT_NEAR(rimBeyond.standOff, 1e-3, 1e-9);
+}
+
+namespace {
+
+/// A bilinear patch over [0, 1]^2 whose corners are @p o, @p o + a, @p o + b and
+/// @p o + a + b + twist: a parallelogram where @p twist is zero, as Horizon writes a planar
+/// face's patch.
+NurbsSurface bilinear(const math::Vec3& o, const math::Vec3& a, const math::Vec3& b,
+                      const math::Vec3& twist = {}) {
+    return NurbsSurface({{o, o + b}, {o + a, o + a + b + twist}}, {{1, 1}, {1, 1}}, {0, 0, 1, 1},
+                        {0, 0, 1, 1}, 1, 1);
+}
+
+/// A straight B-spline of degree 1 from @p a to @p b, as Horizon writes an edge.
+NurbsCurve straight(const math::Vec3& a, const math::Vec3& b) {
+    return NurbsCurve({a, b}, {1.0, 1.0}, {0, 0, 1, 1}, 1);
+}
+
+/// A skewed, tilted parallelogram 30 by 20, and a point of it at (u, v).
+struct Skewed {
+    math::Vec3 o{3.0, -1.0, 2.0};
+    math::Vec3 a = math::Vec3(30.0, 4.0, 6.0);
+    math::Vec3 b = math::Vec3(-5.0, 18.0, 7.0);
+    math::Vec3 at(double u, double v) const { return o + a * u + b * v; }
+};
+
+}  // namespace
+
+// A straight edge of a planar face that Horizon wrote as a bilinear patch (a parallelogram, to
+// within the rounding of its corners) is a straight line in (u, v): its pcurve is the Line2D
+// between its ends' (u, v), found from the patch's corners, not fitted.
+TEST(Pcurve, AStraightEdgeOnAParallelogramPatchIsALine) {
+    const Skewed sk;
+    const double tol = 1e-7;
+    // Exactly a parallelogram, and one whose fourth corner is off by rounding, as written.
+    for (const math::Vec3& twist : {math::Vec3(), math::Vec3(3e-14, -2e-14, 4e-14)}) {
+        const NurbsSurface patch = bilinear(sk.o, sk.a, sk.b, twist);
+        const math::Vec3 p = sk.at(0.1, 0.2);
+        const math::Vec3 q = sk.at(0.9, 0.7);
+        const NurbsCurve edge = straight(p, q);
+        const LineCurve line(p, q - p, 1.0);
+        for (const auto& [t0, t1] : {std::pair{0.0, 1.0}, std::pair{1.0, 0.0}}) {
+            const Pcurve pc = pcurveOn(patch, edge, t0, t1, tol);
+            const Line2D* l2 = as<Line2D>(pc);
+            ASSERT_NE(l2, nullptr) << pc.problem;
+            expectFollows(patch, edge, t0, t1, pc, 1e-11);
+            const math::Vec2 a = pc.curve->evaluate(pc.start);
+            EXPECT_NEAR(a.x, t0 == 0.0 ? 0.1 : 0.9, 1e-12);
+            EXPECT_NEAR(a.y, t0 == 0.0 ? 0.2 : 0.7, 1e-12);
+        }
+        // A LineCurve on it is the same line.
+        const double len = (q - p).length();
+        const Pcurve pl = pcurveOn(patch, line, 0.0, len, tol);
+        ASSERT_NE(as<Line2D>(pl), nullptr) << pl.problem;
+        expectFollows(patch, line, 0.0, len, pl, 1e-11);
+    }
+}
+
+// A B-spline curve that lies in a plane, on a Plane or on a parallelogram patch, is its control
+// points mapped into (u, v) with the same weights and knots: exact, and with the curve's own
+// parameter.
+TEST(Pcurve, ASplineInAPlaneIsItsControlPointsInUV) {
+    const Skewed sk;
+    const double tol = 1e-7;
+    const std::vector<math::Vec2> uvs = {
+        {0.1, 0.1}, {0.3, 0.8}, {0.5, 0.2}, {0.8, 0.9}, {0.9, 0.3}};
+    std::vector<math::Vec3> pts;
+    for (const math::Vec2& uv : uvs) pts.push_back(sk.at(uv.x, uv.y));
+    const NurbsCurve c(pts, {1.0, 0.7, 1.3, 0.9, 1.0}, {0, 0, 0, 0, 0.4, 1, 1, 1, 1}, 3);
+    const NurbsSurface patch = bilinear(sk.o, sk.a, sk.b);
+    const Plane plane(Frame::fromAxis(sk.o, sk.a.cross(sk.b), sk.a), 2.5);
+    for (const Surface* s :
+         {static_cast<const Surface*>(&patch), static_cast<const Surface*>(&plane)}) {
+        for (const auto& [t0, t1] : {std::pair{0.1, 0.85}, std::pair{1.0, 0.0}}) {
+            const Pcurve pc = pcurveOn(*s, c, t0, t1, tol);
+            const Nurbs2D* n2 = as<Nurbs2D>(pc);
+            ASSERT_NE(n2, nullptr) << pc.problem;
+            EXPECT_EQ(n2->curve().controlPointCount(), 5);
+            EXPECT_EQ(pc.start, t0);
+            EXPECT_EQ(pc.end, t1);
+            expectFollows(*s, c, t0, t1, pc, 1e-11);
+            EXPECT_LE(denseDeviation(*s, c, pc), 1e-11);
+        }
+    }
+    // Off its plane by up to 4e-8 at its control points, it is still within the tolerance: the
+    // deviation reported is never below the true one, nor above the farthest control point's
+    // (and what rounding may add, some 1e-11 here).
+    std::vector<math::Vec3> off = pts;
+    const math::Vec3 n = sk.a.cross(sk.b).normalized();
+    const double lift[] = {0.0, 4e-8, -3e-8, 2e-8, 0.0};
+    for (size_t i = 0; i < off.size(); ++i) off[i] = off[i] + n * lift[i];
+    const NurbsCurve near(off, {1.0, 0.7, 1.3, 0.9, 1.0}, {0, 0, 0, 0, 0.4, 1, 1, 1, 1}, 3);
+    const Pcurve pn = pcurveOn(patch, near, 0.0, 1.0, tol);
+    ASSERT_NE(as<Nurbs2D>(pn), nullptr) << pn.problem;
+    EXPECT_GE(pn.deviation, denseDeviation(patch, near, pn));
+    EXPECT_LE(pn.deviation, 4e-8 + 1e-10);
+}
+
+// A patch that is not a parallelogram (its fourth corner well out of the plane of the other
+// three) is no plane: its edges are fitted as before, and a line along its boundary still
+// follows it.
+TEST(Pcurve, ATwistedPatchIsNotTakenForAPlane) {
+    const NurbsSurface patch = bilinear({0, 0, 0}, {10, 0, 0}, {0, 8, 0}, {0, 0, 3});
+    const NurbsCurve rim = straight({10, 0, 0}, {10, 8, 3});
+    const Pcurve pc = pcurveOn(patch, rim, 0.0, 1.0, 1e-7);
+    expectFollows(patch, rim, 0.0, 1.0, pc, 1e-7);
+    // Its diagonal is no curve of it.
+    const NurbsCurve diagonal = straight({0, 0, 0}, {10, 8, 3});
+    const Pcurve pd = pcurveOn(patch, diagonal, 0.0, 1.0, 1e-7);
+    EXPECT_FALSE(pd.problem.empty());
+}
+
+// A straight edge that runs past its patch (as Horizon wrote a face's true circle outside its
+// facet polygon's patch) is not followed there: the patch ends, so the edge stands off it.
+TEST(Pcurve, AnEdgeBeyondItsPatchStandsOffIt) {
+    const Skewed sk;
+    const NurbsSurface patch = bilinear(sk.o, sk.a, sk.b);
+    const NurbsCurve edge = straight(sk.at(0.5, 0.5), sk.at(1.4, 0.5));
+    const Pcurve pc = pcurveOn(patch, edge, 0.0, 1.0, 1e-7);
+    EXPECT_FALSE(pc.problem.empty());
+    EXPECT_GT(pc.standOff, 1.0);
+}
+
+// Given how far its curve may stand off the surface, one call fits a curve that stands off to
+// its gap (as a reader that grows the edge's tolerance to cover it needs), where a caller once
+// fitted to its tolerance, read the stand-off from the problem, and fitted again; a closed form
+// whose deviation (its stand-off) is within the limit is taken at once. Past the limit, it says
+// so as before.
+TEST(Pcurve, ACurveStandingOffWithinItsLimitIsFittedToItsGapInOneCall) {
+    const double tol = 1e-6;
+    const NurbsSurface s = makePatch();
+    std::vector<math::Vec3> pts = imageControlPoints(s);
+    for (math::Vec3& p : pts) p.z += 10.0 * tol;
+    const NurbsCurve c = bezier(pts);
+    const Pcurve off = pcurveOn(s, c, 0.0, 1.0, tol, 1e-3);
+    EXPECT_TRUE(off.problem.empty()) << off.problem;
+    EXPECT_GT(off.standOff, 5.0 * tol);
+    EXPECT_GE(off.deviation, off.standOff);
+    EXPECT_LE(off.deviation, 2.0 * off.standOff + tol);
+    EXPECT_GE(off.deviation, denseDeviation(s, c, off) * 0.999);
+    // A limit below the gap allows nothing.
+    const Pcurve beyond = pcurveOn(s, c, 0.0, 1.0, tol, 2.0 * tol);
+    EXPECT_FALSE(beyond.problem.empty());
+    EXPECT_GT(beyond.standOff, 2.0 * tol);
+
+    const Cylinder cyl(tilted(), 2.0);
+    const CircleCurve rim(Frame::fromAxis(tilted().origin + tilted().z * 1.5, tilted().z), 2.001);
+    const Pcurve within = pcurveOn(cyl, rim, 0.0, kTwoPi, tol, 1e-2);
+    EXPECT_TRUE(within.problem.empty()) << within.problem;
+    EXPECT_NE(as<Line2D>(within), nullptr) << "a parallel, its closed form";
+    EXPECT_NEAR(within.deviation, 1e-3, 1e-9);
+    EXPECT_NEAR(within.standOff, 1e-3, 1e-9);
+    const Pcurve past = pcurveOn(cyl, rim, 0.0, kTwoPi, tol, 5e-4);
+    EXPECT_FALSE(past.problem.empty());
+    EXPECT_NEAR(past.standOff, 1e-3, 1e-6);
+}
+
+namespace {
+
+/// A wavy curve on the cylinder of radius L / 2 about z, L long: C(t) = S(u(t), v(t)) with
+/// u = 1.2 t + 0.2 sin 6t and v = L (0.8 t + 0.05 sin 9t), t in [0, 1]. No closed form: the
+/// general path fits it.
+class WavyOnCylinder : public Curve3 {
+public:
+    explicit WavyOnCylinder(double length) : r_(0.5 * length), l_(length) {}
+    CurveKind kind() const override { return CurveKind::Nurbs; }
+    math::Vec3 evaluate(double t) const override { return derivatives(t).point; }
+    CurveDerivatives derivatives(double t) const override {
+        const double u = 1.2 * t + 0.2 * std::sin(6.0 * t);
+        const double du = 1.2 + 1.2 * std::cos(6.0 * t);
+        const double ddu = -7.2 * std::sin(6.0 * t);
+        const double v = l_ * (0.8 * t + 0.05 * std::sin(9.0 * t));
+        const double dv = l_ * (0.8 + 0.45 * std::cos(9.0 * t));
+        const double ddv = -4.05 * l_ * std::sin(9.0 * t);
+        const double c = std::cos(u);
+        const double s = std::sin(u);
+        return {{r_ * c, r_ * s, v},
+                {-r_ * s * du, r_ * c * du, dv},
+                {-r_ * c * du * du - r_ * s * ddu, -r_ * s * du * du + r_ * c * ddu, ddv}};
+    }
+    Interval range() const override { return {0.0, 1.0}; }
+    bool periodic() const override { return false; }
+    double closestParameter(const math::Vec3&) const override { return 0.0; }
+    std::unique_ptr<Curve3> transformed(const math::Mat4&) const override { return nullptr; }
+
+private:
+    double r_;
+    double l_;
+};
+
+}  // namespace
+
+// The general path's own measure, as TheReportedDeviationNeverReadsBelowTheTrueOne pins it (whose
+// planar splines now have their closed form): the deviation it reports is never below the true
+// one, measured independently and densely.
+TEST(Pcurve, TheGeneralPathsReportedDeviationNeverReadsBelowTheTrueOne) {
+    const Cylinder s(Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1, 0, 0}), 1.0);
+    for (const auto& [length, tol] :
+         {std::pair{100.0, 1e-7}, std::pair{1000.0, 1e-6}, std::pair{10000.0, 1e-5}}) {
+        const Cylinder cyl(Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1, 0, 0}), 0.5 * length);
+        const WavyOnCylinder c(length);
+        const Pcurve pc = pcurveOn(cyl, c, 0.0, 1.0, tol);
+        ASSERT_NE(as<Nurbs2D>(pc), nullptr) << length << ": " << pc.problem;
+        const double truth = denseDeviation(cyl, c, pc);
+        EXPECT_TRUE(pc.problem.empty()) << length << ": " << pc.problem;
+        EXPECT_LE(truth, tol) << length;
+        EXPECT_GE(pc.deviation, truth * 0.999) << length;
+    }
+    (void)s;
+}
+
+// A curve that is a parameter line of its B-spline face (a rim of a cylinder written as a
+// rational B-spline surface, as Horizon writes a curved face as designed, or a generator of
+// one) is a straight line in (u, v): its pcurve is the Line2D along that line, from its start's
+// (u, v) to its end's, unwrapped across the seam, and measured against the curve.
+TEST(Pcurve, AParameterLineOfASplineFaceIsALine) {
+    const double tol = 1e-7;
+    const NurbsSurface cyl = NurbsSurface::makeCylinder({1, 2, 3}, {0, 0, 1}, 4.0, 10.0);
+    ASSERT_TRUE(cyl.periodicU());
+    // A rim: a circle at height 6 of the cylinder's 10, from part of the way round to past
+    // its seam, both ways; and the whole of it.
+    const CircleCurve rim(Frame::fromAxis({1, 2, 9}, {0, 0, 1}), 4.0);
+    for (const auto& [t0, t1] :
+         {std::pair{1.0, 5.5}, std::pair{5.5, 1.0}, std::pair{0.3, 0.3 + kTwoPi}}) {
+        const Pcurve pc = pcurveOn(cyl, rim, t0, t1, tol);
+        const Line2D* l2 = as<Line2D>(pc);
+        ASSERT_NE(l2, nullptr) << t0 << " " << pc.problem;
+        EXPECT_NEAR(l2->start().y, l2->end().y, 1e-12);
+        expectFollows(cyl, rim, t0, t1, pc, 1e-9);
+        EXPECT_GE(pc.deviation, closestDeviation(cyl, rim, pc) * 0.999);
+    }
+    // A generator, as a straight B-spline.
+    const math::Vec3 a = cyl.evaluate(0.3, 1.0);
+    const math::Vec3 b = cyl.evaluate(0.3, 8.0);
+    const NurbsCurve gen({a, b}, {1.0, 1.0}, {0, 0, 1, 1}, 1);
+    const Pcurve pg = pcurveOn(cyl, gen, 1.0, 0.0, tol);
+    const Line2D* lg = as<Line2D>(pg);
+    ASSERT_NE(lg, nullptr) << pg.problem;
+    EXPECT_NEAR(lg->start().x, lg->end().x, 1e-12);
+    expectFollows(cyl, gen, 1.0, 0.0, pg, 1e-9);
+    // A circle that is not a parameter line (tilted) is fitted as before.
+    const CircleCurve tiltedRim(Frame::fromAxis({1, 2, 6}, {0.05, 0, 1}), 4.0);
+    const Pcurve pt = pcurveOn(cyl, tiltedRim, 0.0, 1.0, tol);
+    EXPECT_EQ(as<Line2D>(pt), nullptr);
+}
+
+namespace {
+
+/// A curve on the cylinder of radius 5 about z that stands off it by a gap that is nothing at
+/// the 33 points a pcurve starts from, 1e-5 half way between them, and 1.05e-4 a quarter of
+/// the way (gap = A sin^2 32 pi t + B sin^2 64 pi t): each denser sampling finds a larger gap.
+class BumpyOnCylinder : public Curve3 {
+public:
+    static constexpr double kA = 1e-5;
+    static constexpr double kB = 1e-4;
+    CurveKind kind() const override { return CurveKind::Nurbs; }
+    math::Vec3 evaluate(double t) const override { return derivatives(t).point; }
+    CurveDerivatives derivatives(double t) const override {
+        const double w1 = 32.0 * kPi;
+        const double w2 = 64.0 * kPi;
+        const double g = kA * std::pow(std::sin(w1 * t), 2) + kB * std::pow(std::sin(w2 * t), 2);
+        const double dg = kA * w1 * std::sin(2.0 * w1 * t) + kB * w2 * std::sin(2.0 * w2 * t);
+        const double ddg = 2.0 * kA * w1 * w1 * std::cos(2.0 * w1 * t) +
+                           2.0 * kB * w2 * w2 * std::cos(2.0 * w2 * t);
+        const double r = 5.0 + g;
+        const double u = 1.5 * t;
+        const double c = std::cos(u);
+        const double s = std::sin(u);
+        return {
+            {r * c, r * s, 4.0 * t},
+            {dg * c - 1.5 * r * s, dg * s + 1.5 * r * c, 4.0},
+            {ddg * c - 3.0 * dg * s - 2.25 * r * c, ddg * s + 3.0 * dg * c - 2.25 * r * s, 0.0}};
+    }
+    Interval range() const override { return {0.0, 1.0}; }
+    bool periodic() const override { return false; }
+    double closestParameter(const math::Vec3&) const override { return 0.0; }
+    std::unique_ptr<Curve3> transformed(const math::Mat4&) const override { return nullptr; }
+};
+
+}  // namespace
+
+// The Onshape airframe's edge #100, in small: a curve whose gap from its surface peaks between
+// the samples that first measured it. A caller that fitted again at twice the gap first measured
+// had its denser samples find a larger gap, stopped there, and reported the unfinished fit's
+// deviation (0.18 mm, for a true gap of 0.0006 mm) as the curve standing off. Fitted in one call,
+// the target follows the gap as it is found, and the curve is taken, its deviation covering the
+// gap.
+TEST(Pcurve, AGapThatPeaksBetweenTheFirstSamplesIsFollowedNotStoppedAt) {
+    const Cylinder cyl(Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1, 0, 0}), 5.0);
+    const BumpyOnCylinder c;
+    const double tol = 1e-6;
+    double gap = 0.0;
+    for (int k = 0; k <= 200000; ++k) {
+        const math::Vec3 p = c.evaluate(k / 200000.0);
+        gap = std::max(gap, std::hypot(p.x, p.y) - 5.0);
+    }
+    ASSERT_GT(gap, 1e-4);
+    const Pcurve pc = pcurveOn(cyl, c, 0.0, 1.0, tol, 1e-2);
+    EXPECT_TRUE(pc.problem.empty()) << pc.problem;
+    ASSERT_NE(pc.curve, nullptr);
+    EXPECT_GE(pc.deviation, gap * 0.999);
+    EXPECT_GE(pc.deviation, denseDeviation(cyl, c, pc) * 0.999);
+    EXPECT_LE(pc.deviation, 2.0 * gap + tol);
+    // Not allowed to stand off, it says by how much it does.
+    const Pcurve tight = pcurveOn(cyl, c, 0.0, 1.0, tol);
+    EXPECT_FALSE(tight.problem.empty());
+    EXPECT_NE(tight.problem.find("stands"), std::string::npos) << tight.problem;
+}
+
+// A circle or an ellipse in the plane of a parallelogram patch (a hole's rim in a planar face
+// Horizon wrote as a bilinear patch) is an ellipse in (u, v): the patch's affine map of the
+// exact rational arc, as on a Plane, and bounded the same way as a line on the patch.
+TEST(Pcurve, ACircleInAParallelogramPatchIsItsEllipseInUV) {
+    const Skewed sk;
+    const double tol = 1e-7;
+    const NurbsSurface patch = bilinear(sk.o, sk.a, sk.b);
+    const math::Vec3 n = sk.a.cross(sk.b).normalized();
+    const math::Vec3 centre = sk.at(0.5, 0.45);
+    const CircleCurve hole(Frame::fromAxis(centre, n, sk.a), 3.0);
+    const EllipseCurve slot(Frame::fromAxis(centre, -n, sk.b), 4.0, 2.0);
+    for (const auto& [t0, t1] : {std::pair{0.4, 0.4 + kTwoPi}, std::pair{2.0, -1.0}}) {
+        const Pcurve pc = pcurveOn(patch, hole, t0, t1, tol);
+        ASSERT_NE(as<Nurbs2D>(pc), nullptr) << pc.problem;
+        expectFollows(patch, hole, t0, t1, pc, 1e-11);
+        EXPECT_GE(pc.deviation, closestDeviation(patch, hole, pc) * 0.999);
+        const Pcurve ps = pcurveOn(patch, slot, t0, t1, tol);
+        ASSERT_NE(as<Nurbs2D>(ps), nullptr) << ps.problem;
+        expectFollows(patch, slot, t0, t1, ps, 1e-11);
+    }
+    // A rim that leaves the patch is no closed form of it.
+    const CircleCurve wide(Frame::fromAxis(centre, n, sk.a), 30.0);
+    EXPECT_FALSE(pcurveOn(patch, wide, 0.0, 1.0, tol).problem.empty());
 }

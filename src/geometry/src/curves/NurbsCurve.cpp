@@ -78,6 +78,97 @@ std::vector<std::vector<double>> basisDerivatives(const std::vector<double>& U, 
     return ders;
 }
 
+/// The most degree + 1, and derivative order + 1, that evaluation holds on the stack; beyond,
+/// it allocates as it always did.
+constexpr int kStackOrder = 16;
+
+using StackTable = double[kStackOrder][kStackOrder];
+
+/// basisDerivatives into @p ders (rows 0..n, columns 0..p, both below kStackOrder), by the same
+/// steps on the same zeroed storage, so the same values to the last bit, without allocating
+/// (in a debug build its vectors of vectors were most of what evaluating a derivative cost).
+void basisDerivativesInto(const double* U, int k, int p, double t, int n, StackTable& ders) {
+    double ndu[kStackOrder][kStackOrder] = {};
+    double left[kStackOrder] = {};
+    double right[kStackOrder] = {};
+    ndu[0][0] = 1.0;
+    for (int j = 1; j <= p; ++j) {
+        left[j] = t - U[k + 1 - j];
+        right[j] = U[k + j] - t;
+        double saved = 0.0;
+        for (int r = 0; r < j; ++r) {
+            ndu[j][r] = right[r + 1] + left[j - r];  // knot differences
+            const double temp = ndu[r][j - 1] / ndu[j][r];
+            ndu[r][j] = saved + right[r + 1] * temp;  // basis functions
+            saved = left[j - r] * temp;
+        }
+        ndu[j][j] = saved;
+    }
+    for (int j = 0; j <= p; ++j) ders[0][j] = ndu[j][p];
+    double a[2][kStackOrder] = {};
+    for (int r = 0; r <= p; ++r) {
+        int s1 = 0;
+        int s2 = 1;
+        a[0][0] = 1.0;
+        for (int d = 1; d <= n; ++d) {
+            double value = 0.0;
+            const int rk = r - d;
+            const int pk = p - d;
+            if (r >= d) {
+                a[s2][0] = a[s1][0] / ndu[pk + 1][rk];
+                value = a[s2][0] * ndu[rk][pk];
+            }
+            const int j1 = rk >= -1 ? 1 : -rk;
+            const int j2 = r - 1 <= pk ? d - 1 : p - r;
+            for (int j = j1; j <= j2; ++j) {
+                a[s2][j] = (a[s1][j] - a[s1][j - 1]) / ndu[pk + 1][rk + j];
+                value += a[s2][j] * ndu[rk + j][pk];
+            }
+            if (r <= pk) {
+                a[s2][d] = -a[s1][d - 1] / ndu[pk + 1][r];
+                value += a[s2][d] * ndu[r][pk];
+            }
+            ders[d][r] = value;
+            std::swap(s1, s2);
+        }
+    }
+    double factor = p;
+    for (int d = 1; d <= n; ++d) {
+        for (int j = 0; j <= p; ++j) ders[d][j] *= factor;
+        factor *= p - d;
+    }
+}
+
+/// The curve's derivatives of orders 0..@p order (below kStackOrder) at @p t in span @p k, into
+/// @p c, by the steps NurbsCurve::derivative takes for its highest: each lower order is found
+/// on the way by the same steps a call for it would take, so every one is that call's to the
+/// last bit.
+void derivativesInto(const double* knots, const math::Vec3* points, const double* weights, int p,
+                     int k, double t, int order, math::Vec3 (&c)[kStackOrder]) {
+    const int n = std::min(order, p);
+    StackTable ders = {};
+    basisDerivativesInto(knots, k, p, t, n, ders);
+    math::Vec3 a[kStackOrder];
+    double w[kStackOrder] = {};
+    for (int r = 0; r <= n; ++r) {
+        for (int j = 0; j <= p; ++j) {
+            const int idx = k - p + j;
+            const double nw = ders[r][j] * weights[idx];
+            a[r] = a[r] + points[idx] * nw;
+            w[r] += nw;
+        }
+    }
+    for (int r = 0; r <= order; ++r) {
+        math::Vec3 v = a[r];
+        double binom = 1.0;
+        for (int i = 1; i <= r; ++i) {
+            binom = binom * (r - i + 1) / i;
+            v = v - c[r - i] * (binom * w[i]);
+        }
+        c[r] = v * (1.0 / w[0]);
+    }
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -177,17 +268,16 @@ int NurbsCurve::findKnotSpan(double t) const {
         return k;
     }
 
-    // Linear search from degree to n-1 for the span [knots[i], knots[i+1]).
-    // (A binary search would be an optimization for very large knot vectors,
-    // but for typical CAD curves the knot vector is small.)
-    for (int i = m_degree; i < n; ++i) {
-        if (t < m_knots[i + 1]) {
-            return i;
-        }
-    }
-
-    // Fallback — should not be reached for valid input.
-    return n - 1;
+    // The first span [knots[i], knots[i+1]) from the degree's with t < knots[i+1]: the knots do
+    // not decrease, so a binary search for the first knot above t finds the span a search one
+    // by one from the degree's stops at (a fitted pcurve has a knot for each of up to 2048
+    // samples). No knot is above a NaN; the search one by one then ran to its end.
+    if (std::isnan(t)) return n - 1;
+    const auto first = m_knots.begin() + m_degree + 1;
+    const auto last = m_knots.begin() + n + 1;
+    const auto above = std::upper_bound(first, last, t);
+    if (above == last) return n - 1;  // not reached: t < knots[n] here
+    return static_cast<int>(above - m_knots.begin()) - 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -203,9 +293,13 @@ math::Vec3 NurbsCurve::evaluate(double t) const {
 
     // Build (p+1) homogeneous control points for the affected span.
     // Homogeneous point = (P.x * w, P.y * w, P.z * w, w).
-    // We store them as 4-component arrays: [wx, wy, wz, w].
+    // We store them as 4-component arrays: [wx, wy, wz, w], on the stack up to
+    // kStackOrder of them.
     const int count = p + 1;
-    std::vector<std::array<double, 4>> d(count);
+    std::array<std::array<double, 4>, kStackOrder> onStack{};
+    std::vector<std::array<double, 4>> onHeap;
+    if (count > kStackOrder) onHeap.resize(static_cast<size_t>(count));
+    std::array<double, 4>* const d = count > kStackOrder ? onHeap.data() : onStack.data();
 
     for (int j = 0; j < count; ++j) {
         const int idx = k - p + j;
@@ -251,6 +345,12 @@ math::Vec3 NurbsCurve::derivative(double t, int order) const {
     t = std::clamp(t, tMin(), tMax());
     const int p = m_degree;
     const int k = findKnotSpan(t);
+    if (p < kStackOrder && order < kStackOrder) {
+        math::Vec3 c[kStackOrder];
+        derivativesInto(m_knots.data(), m_controlPoints.data(), m_weights.data(), p, k, t, order,
+                        c);
+        return c[order];
+    }
 
     // Derivatives of the curve in homogeneous space, A(t) = sum N_j w_j P_j and
     // w(t) = sum N_j w_j, from the basis functions' derivatives; a
@@ -552,8 +652,16 @@ CurveKind NurbsCurve::kind() const {
     return CurveKind::Nurbs;
 }
 
+// The first and second derivatives from one evaluation of the basis: derivative(t, 2) finds the
+// first on its way by the steps derivative(t, 1) takes, so both are what those calls give.
 CurveDerivatives NurbsCurve::derivatives(double t) const {
-    return {evaluate(t), derivative(t, 1), derivative(t, 2)};
+    if (m_degree >= kStackOrder) return {evaluate(t), derivative(t, 1), derivative(t, 2)};
+    const math::Vec3 point = evaluate(t);
+    t = std::clamp(t, tMin(), tMax());
+    math::Vec3 c[kStackOrder];
+    derivativesInto(m_knots.data(), m_controlPoints.data(), m_weights.data(), m_degree,
+                    findKnotSpan(t), t, 2, c);
+    return {point, c[1], c[2]};
 }
 
 Interval NurbsCurve::range() const {

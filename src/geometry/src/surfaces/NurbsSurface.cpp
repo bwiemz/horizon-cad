@@ -184,9 +184,110 @@ double NurbsSurface::vMax() const {
 // evaluate — tensor-product De Boor (two-pass)
 // ---------------------------------------------------------------------------
 
+namespace {
+
+/// The most degree + 1 the evaluation below holds on the stack; beyond, evaluate() builds its
+/// row curves as it always did.
+constexpr int kStackOrder = 16;
+
+using Homogeneous = std::array<double, 4>;
+
+/// The knot span NurbsCurve::findKnotSpan finds for @p t (already clamped into the domain), for
+/// @p count control points of degree @p p.
+int curveSpan(const std::vector<double>& knots, int count, int p, double t) {
+    const auto at = [&knots](int i) { return knots[static_cast<size_t>(i)]; };
+    if (t >= at(count)) {
+        int k = count - 1;
+        while (k > p && !(at(k) < at(k + 1))) --k;
+        return k;
+    }
+    for (int i = p; i < count; ++i) {
+        if (t < at(i + 1)) return i;
+    }
+    return count - 1;
+}
+
+/// De Boor's algorithm in homogeneous coordinates on @p d (its p + 1 points of span @p k), at
+/// @p t, step for step as NurbsCurve::evaluate runs it, so the result (left in d[p]) is the same
+/// to the last bit.
+void deBoor(Homogeneous* d, const std::vector<double>& knots, int k, int p, double t) {
+    for (int r = 1; r <= p; ++r) {
+        for (int j = p; j >= r; --j) {
+            const int i = k - p + j;
+            const double denom =
+                knots[static_cast<size_t>(i + p + 1 - r)] - knots[static_cast<size_t>(i)];
+            double alpha = 0.0;
+            if (denom > 0.0) alpha = (t - knots[static_cast<size_t>(i)]) / denom;
+            const double oneMinusAlpha = 1.0 - alpha;
+            for (size_t c = 0; c < 4; ++c) d[j][c] = oneMinusAlpha * d[j - 1][c] + alpha * d[j][c];
+        }
+    }
+}
+
+}  // namespace
+
+// Only the p + 1 rows of u's knot span count, and each row's curve, its weights' curve and the
+// curve through the rows are evaluated as the NurbsCurve each was built as before (it allocated
+// three curves a row, for every row of the net): the same arithmetic, so the same point to the
+// last bit, and the same exception where a row is not finite (a NaN parameter).
 math::Vec3 NurbsSurface::evaluate(double u, double v) const {
     u = roundTheSeam(u, uMin(), uMax(), m_closedU);
     v = roundTheSeam(v, vMin(), vMax(), m_closedV);
+    if (m_degreeU < kStackOrder && m_degreeV < kStackOrder) {
+        const int p = m_degreeU;
+        const int q = m_degreeV;
+        const double uc = std::clamp(u, uMin(), uMax());
+        const double vc = std::clamp(v, vMin(), vMax());
+        const int ku = curveSpan(m_knotsU, controlPointCountU(), p, uc);
+        const int kv = curveSpan(m_knotsV, controlPointCountV(), q, vc);
+        std::array<math::Vec3, kStackOrder> rowPoint{};
+        std::array<double, kStackOrder> rowWeight{};
+        std::array<Homogeneous, kStackOrder> d{};
+        for (int a = 0; a <= p; ++a) {
+            const auto row = static_cast<size_t>(ku - p + a);
+            const auto& pts = m_controlPoints[row];
+            const auto& ws = m_weights[row];
+            for (int j = 0; j <= q; ++j) {
+                const auto col = static_cast<size_t>(kv - q + j);
+                const double w = ws[col];
+                d[static_cast<size_t>(j)] = {pts[col].x * w, pts[col].y * w, pts[col].z * w, w};
+            }
+            deBoor(d.data(), m_knotsV, kv, q, vc);
+            const Homogeneous& h = d[static_cast<size_t>(q)];
+            const double wInv = 1.0 / h[3];
+            rowPoint[static_cast<size_t>(a)] = {h[0] * wInv, h[1] * wInv, h[2] * wInv};
+            // The row's weight: the plain B-spline of its weights, a curve of points (w, 0, 0).
+            for (int j = 0; j <= q; ++j) {
+                const double w = ws[static_cast<size_t>(kv - q + j)];
+                d[static_cast<size_t>(j)] = {w * 1.0, 0.0 * 1.0, 0.0 * 1.0, 1.0};
+            }
+            deBoor(d.data(), m_knotsV, kv, q, vc);
+            const Homogeneous& hw = d[static_cast<size_t>(q)];
+            rowWeight[static_cast<size_t>(a)] = hw[0] * (1.0 / hw[3]);
+        }
+        // What the curve through the rows checked as it was built.
+        for (int a = 0; a <= p; ++a) {
+            const double w = rowWeight[static_cast<size_t>(a)];
+            if (!std::isfinite(w) || !(w > 0.0)) {
+                throw std::invalid_argument("NurbsCurve weights must be finite and positive");
+            }
+        }
+        for (int a = 0; a <= p; ++a) {
+            const math::Vec3& pt = rowPoint[static_cast<size_t>(a)];
+            if (!std::isfinite(pt.x) || !std::isfinite(pt.y) || !std::isfinite(pt.z)) {
+                throw std::invalid_argument("NurbsCurve control points must be finite");
+            }
+        }
+        for (int a = 0; a <= p; ++a) {
+            const math::Vec3& pt = rowPoint[static_cast<size_t>(a)];
+            const double w = rowWeight[static_cast<size_t>(a)];
+            d[static_cast<size_t>(a)] = {pt.x * w, pt.y * w, pt.z * w, w};
+        }
+        deBoor(d.data(), m_knotsU, ku, p, uc);
+        const Homogeneous& h = d[static_cast<size_t>(p)];
+        const double wInv = 1.0 / h[3];
+        return {h[0] * wInv, h[1] * wInv, h[2] * wInv};
+    }
     const int numU = controlPointCountU();
 
     // Pass 1: for each row (U index), evaluate the V-direction curve at v.
@@ -244,8 +345,10 @@ math::Vec3 NurbsSurface::normal(double u, double v) const {
     // (a pole, an apex): its tangents vanish or lie along each other, measured
     // against the longer, so a small surface is judged as a large one.
     const auto unitAt = [this](double uu, double vv, math::Vec3& n) {
-        const math::Vec3 du = derivativeU(uu, vv);
-        const math::Vec3 dv = derivativeV(uu, vv);
+        // Both tangents from one evaluation: derivativeU and derivativeV each made the whole of it.
+        const SurfacePoint at = evaluateWithDerivatives(uu, vv);
+        const math::Vec3& du = at.du;
+        const math::Vec3& dv = at.dv;
         const math::Vec3 cross = du.cross(dv);
         const double len = cross.length();
         const double scale = std::max(du.length(), dv.length());

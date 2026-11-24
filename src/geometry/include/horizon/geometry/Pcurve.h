@@ -37,7 +37,13 @@ struct Pcurve {
 ///
 /// A curve that is a closed form on its surface (a line on a plane, a generator, a parallel, a
 /// meridian, a circle or ellipse on a plane) gets the exact 2D curve, found geometrically and
-/// confirmed by measuring it, never by the types alone. A cylinder's or cone's u window is the
+/// confirmed by measuring it, never by the types alone. A planar surface's (u, v) is an affine
+/// map of the plane, so on a Plane, or on a bilinear patch that is a parallelogram (as Horizon
+/// writes a planar face), a B-spline curve's pcurve is its control points mapped into (u, v)
+/// with its weights and knots (a straight one of two points is the Line2D between its ends): its
+/// deviation is bounded from those control points' distances off the plane (and the patch's
+/// departure from a parallelogram), so it is never below the true one, and the form is taken
+/// only where that bound is within what is allowed. A cylinder's or cone's u window is the
 /// start point's inverted u, wrapped into [0, 2 pi): a generator on the seam is at u = 0, or at
 /// 2 pi where the start point inverts there (at a cone's apex, where u means nothing, the end
 /// off the axis gives it). A meridian that starts at a pole takes the side its arc travels to,
@@ -47,9 +53,20 @@ struct Pcurve {
 ///
 /// Any other curve is sampled (adaptively, and again where the fit strays), inverted from
 /// each previous point, and fitted by a cubic Nurbs2D by chord length, with up to 2048 samples.
+/// Refinement is steered by a quick look inside each sample interval; the fit returned is
+/// measured at seven points in each, its excess over the curve's own gap counted 3% more.
 /// A curve that is farther than @p tolerance from the surface, or that the fit cannot follow
 /// within it, comes back with @c problem set to say so (and the largest deviation measured).
-Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t1,
-                double tolerance);
+///
+/// @p standOffLimit is how far the curve may stand off the surface and still be taken (a
+/// reader whose edge tolerances grow to cover the gaps in its file); at or below @p tolerance,
+/// or not finite, nothing beyond the tolerance is. A curve measured to stand off by a gap g
+/// within it is fitted to min(@p standOffLimit, 2 g + @p tolerance) rather than to
+/// @p tolerance: no pcurve comes nearer the curve than its gap, so the gap is measured, not
+/// chased (the factor 2 covers a gap that peaks between the samples that measured it). A
+/// closed form, whose deviation is its stand-off, is taken where that deviation is within the
+/// limit.
+Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t1, double tolerance,
+                double standOffLimit = 0.0);
 
 }  // namespace hz::geo

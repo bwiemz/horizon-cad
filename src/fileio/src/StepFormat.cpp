@@ -3943,6 +3943,9 @@ std::vector<topo::HalfEdge*> ringOf(const topo::Wire& wire, std::size_t limit) {
     return {};
 }
 
+/// What the exact validator says of a loop that closes only after winding round its surface.
+constexpr const char* kWindsRound = "loop closes only after winding round the surface";
+
 /// The signed area in (u, v) of the loop @p ring of a face on @p s, unwrapped as the exact
 /// validator unwraps it; nullopt where it cannot be (a loop that winds round the surface). An
 /// area within rounding of none (the box round the loop's samples times 1e-12) is 0: it says
@@ -4043,12 +4046,18 @@ bool loopsDetermineRegion(const geo::Surface& s, double near) {
 /// says nothing (a seam joined only at poles, laid out next) leaves the face as its file says.
 /// (A loop that runs along a pole without a seam does not fix its region here: which way round
 /// the pole it runs is the next pcurve's window's, not the file's; stage 3's pole topology.)
+///
+/// An outer loop that closes only after winding round the surface (a band with no seam) says so
+/// in the validator's words, kWindsRound, to be placed as the validator places it (at the face
+/// and its outer loop's first edge): unwrapped here anyway, it is found as soon as the face's
+/// pcurves exist, not after every other face's are built.
 std::string faceSense(topo::Face& face, const math::ModelTolerance& tolerance, std::size_t limit,
                       double near) {
     if (face.outerLoop == nullptr) return {};
     const std::vector<topo::HalfEdge*> ring = ringOf(*face.outerLoop, limit);
     const auto area = loopArea(ring, *face.exactSurface, tolerance);
-    if (!area || !std::isfinite(*area) || *area == 0.0) return {};
+    if (!area) return ring.empty() ? std::string() : std::string(kWindsRound);
+    if (!std::isfinite(*area) || *area == 0.0) return {};
     const bool loopsSayReversed = *area < 0.0;
     const bool seamed = std::any_of(ring.begin(), ring.end(), [&face](const topo::HalfEdge* h) {
         return h->twin != nullptr && h->twin->face == &face;
@@ -4228,16 +4237,13 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
                     const bool forward = h == e.halfEdge;
                     const double t0 = forward ? e.curveStart : e.curveEnd;
                     const double t1 = forward ? e.curveEnd : e.curveStart;
-                    geo::Pcurve pc = geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1, base);
-                    if (!pc.problem.empty() && pc.curve != nullptr && pc.standOff > base &&
-                        pc.standOff <= limit) {
-                        // The curve stands off its surface: no pcurve comes nearer, so it is fitted
-                        // to its gap (twice the gap measured, which may peak between the samples
-                        // that measured it, and the resolution) and the edge's tolerance covers
-                        // what is measured.
-                        pc = geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1,
-                                           std::min(limit, 2.0 * pc.standOff + base));
-                    }
+                    // Fitted to the resolution; where the curve stands off its surface within
+                    // the limit, no pcurve comes nearer, so it is fitted to its gap (twice the
+                    // gap measured, which may peak between the samples that measured it, and the
+                    // resolution) in the same call, and the edge's tolerance covers what is
+                    // measured.
+                    geo::Pcurve pc =
+                        geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1, base, limit);
                     if (!pc.problem.empty() || pc.curve == nullptr) {
                         read.problem = std::isfinite(pc.standOff) && pc.standOff > limit
                                            ? "its curve stands " + threeFigures(pc.standOff) +
@@ -4262,12 +4268,13 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
                 if (!read.problem.empty()) return read;
             }
         }
-    }
-    for (auto& f : solid.faces()) {
-        if (stop()) return read;
-        if (!f.alive || !f.exactSurface) continue;
+        // The face's sense, and its seams laid out, as soon as its pcurves exist: a face that
+        // cannot have them (a band among them, which the validator would find only after every
+        // face was built) leaves the solid out before the faces after it are built. A seam a
+        // band needs must be in place before this.
         if (std::string why = faceSense(f, resolution, limitHalfEdges, limit); !why.empty()) {
-            read.problem = why + whereIn(&f, nullptr);
+            const topo::Edge* first = why == kWindsRound ? f.outerLoop->halfEdge->edge : nullptr;
+            read.problem = why + whereIn(&f, first);
             return read;
         }
         if (std::string why = layOutSeams(f, resolution, limitHalfEdges, cancelled); !why.empty()) {
