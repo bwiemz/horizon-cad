@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
@@ -998,4 +1000,262 @@ TEST(NurbsSurfaceTest, AVeryFineToleranceGivesTheFinestMesh) {
     for (const double tol : {1e-9, 0.0, -1.0, 1e-300}) {
         EXPECT_EQ(dome.tessellate(tol).positions.size(), finest) << tol;
     }
+}
+
+// ===========================================================================
+// NURBS surfaces as typed surfaces: second derivatives, invert, transformed,
+// knot insertion and splitting
+// ===========================================================================
+
+namespace {
+
+void expectVecNear(const Vec3& a, const Vec3& b, double tol) {
+    EXPECT_NEAR(a.x, b.x, tol);
+    EXPECT_NEAR(a.y, b.y, tol);
+    EXPECT_NEAR(a.z, b.z, tol);
+}
+
+/// Parameter fractions away from seams, poles and the interior knots used here.
+const std::vector<double> kFractions = {0.13, 0.37, 0.61, 0.83};
+
+/// A degree-(3,2) non-rational patch with interior knots, off any axis.
+NurbsSurface makeBicubicQuadraticPatch() {
+    const int nu = 6;
+    const int nv = 5;
+    std::vector<std::vector<Vec3>> pts(nu, std::vector<Vec3>(nv));
+    std::vector<std::vector<double>> wts(nu, std::vector<double>(nv, 1.0));
+    for (int i = 0; i < nu; ++i) {
+        for (int j = 0; j < nv; ++j) {
+            pts[i][j] = {i * 1.0 + 0.1 * j * j, j * 1.3 - 0.2 * i, std::sin(0.9 * i + 1.7 * j)};
+        }
+    }
+    return NurbsSurface(pts, wts, clampedKnots(nu, 3), clampedKnots(nv, 2), 3, 2);
+}
+
+/// A rational patch with uneven weights and a repeated interior knot.
+NurbsSurface makeWeightedPatch() {
+    const int nu = 5;
+    const int nv = 4;
+    std::vector<std::vector<Vec3>> pts(nu, std::vector<Vec3>(nv));
+    std::vector<std::vector<double>> wts(nu, std::vector<double>(nv));
+    for (int i = 0; i < nu; ++i) {
+        for (int j = 0; j < nv; ++j) {
+            pts[i][j] = {i * 1.1, j * 0.9 + 0.1 * i, std::cos(1.1 * i - 0.7 * j)};
+            wts[i][j] = 1.0 + 0.3 * ((i * 3 + j * 5) % 4);
+        }
+    }
+    return NurbsSurface(pts, wts, {0, 0, 0, 0.4, 0.4, 1, 1, 1}, clampedKnots(nv, 2), 2, 2);
+}
+
+std::vector<std::pair<std::string, NurbsSurface>> typedSamples() {
+    return {{"cylinder", NurbsSurface::makeCylinder({0.5, -1, 2}, {0.2, 0.3, 1}, 1.5, 3.0)},
+            {"sphere", NurbsSurface::makeSphere({1, 2, 3}, 2.0)},
+            {"torus", NurbsSurface::makeTorus({0, 1, 0}, {0.1, 1, 0.3}, 3.0, 0.8)},
+            {"patch32", makeBicubicQuadraticPatch()},
+            {"weighted", makeWeightedPatch()}};
+}
+
+double at(double lo, double hi, double f) {
+    return lo + (hi - lo) * f;
+}
+
+}  // namespace
+
+TEST(NurbsSurfaceTyped, IsASurfaceOfKindNurbsWithItsRangesAndPeriods) {
+    const NurbsSurface torus = NurbsSurface::makeTorus({0, 0, 0}, {0, 0, 1}, 3.0, 1.0);
+    const Surface& s = torus;
+    EXPECT_EQ(s.kind(), SurfaceKind::Nurbs);
+    EXPECT_EQ(s.uRange().min, torus.uMin());
+    EXPECT_EQ(s.uRange().max, torus.uMax());
+    EXPECT_EQ(s.vRange().min, torus.vMin());
+    EXPECT_EQ(s.vRange().max, torus.vMax());
+    EXPECT_TRUE(s.periodicU());
+    EXPECT_TRUE(s.periodicV());
+    const NurbsSurface patch = makeBicubicQuadraticPatch();
+    EXPECT_FALSE(static_cast<const Surface&>(patch).periodicU());
+    EXPECT_FALSE(static_cast<const Surface&>(patch).periodicV());
+    // The interface's normal is the class's own.
+    expectVecNear(s.normal(0.3, 0.6), torus.normal(0.3, 0.6), 0.0);
+}
+
+TEST(NurbsSurfaceTyped, SecondDerivativesAgreeWithDifferencesOfFirstDerivatives) {
+    const double h = 1e-6;
+    for (const auto& [name, s] : typedSamples()) {
+        for (double fu : kFractions) {
+            for (double fv : kFractions) {
+                const double u = at(s.uMin(), s.uMax(), fu);
+                const double v = at(s.vMin(), s.vMax(), fv);
+                const SurfaceDerivatives d = s.derivatives(u, v);
+                const SurfacePoint p = s.evaluateWithDerivatives(u, v);
+                expectVecNear(d.point, s.evaluate(u, v), 1e-12);
+                expectVecNear(d.du, p.du, 1e-12);
+                expectVecNear(d.dv, p.dv, 1e-12);
+                const auto first = [&](double a, double b) {
+                    return s.evaluateWithDerivatives(a, b);
+                };
+                const Vec3 duu = (first(u + h, v).du - first(u - h, v).du) / (2 * h);
+                const Vec3 duv = (first(u, v + h).du - first(u, v - h).du) / (2 * h);
+                const Vec3 dvv = (first(u, v + h).dv - first(u, v - h).dv) / (2 * h);
+                const Vec3 dvu = (first(u + h, v).dv - first(u - h, v).dv) / (2 * h);
+                EXPECT_NEAR((d.duu - duu).length(), 0.0, 1e-5 * std::max(1.0, d.duu.length()))
+                    << name;
+                EXPECT_NEAR((d.duv - duv).length(), 0.0, 1e-5 * std::max(1.0, d.duv.length()))
+                    << name;
+                EXPECT_NEAR((d.duv - dvu).length(), 0.0, 1e-5 * std::max(1.0, d.duv.length()))
+                    << name;
+                EXPECT_NEAR((d.dvv - dvv).length(), 0.0, 1e-5 * std::max(1.0, d.dvv.length()))
+                    << name;
+            }
+        }
+    }
+}
+
+TEST(NurbsSurfaceTyped, InvertRoundTripsInteriorParameters) {
+    for (const auto& [name, s] : typedSamples()) {
+        for (double fu : kFractions) {
+            for (double fv : kFractions) {
+                const double u = at(s.uMin(), s.uMax(), fu);
+                const double v = at(s.vMin(), s.vMax(), fv);
+                const Vec2 uv = static_cast<const Surface&>(s).invert(s.evaluate(u, v));
+                expectVecNear(s.evaluate(uv.x, uv.y), s.evaluate(u, v), 1e-9);
+                EXPECT_NEAR(uv.x, u, 1e-7) << name;
+                EXPECT_NEAR(uv.y, v, 1e-7) << name;
+            }
+        }
+    }
+}
+
+TEST(NurbsSurfaceTyped, TransformedCommutesWithRigidScaleAndReflection) {
+    const Mat4 rigid =
+        Mat4::translation({3.0, -1.0, 2.0}) * Mat4::rotationZ(0.7) * Mat4::rotationX(-0.4);
+    for (const Mat4& m : {rigid, Mat4::scale(2.5), Mat4::scale({-1.0, 1.0, 1.0})}) {
+        for (const auto& [name, s] : typedSamples()) {
+            const std::unique_ptr<Surface> t = static_cast<const Surface&>(s).transformed(m);
+            ASSERT_NE(t, nullptr);
+            EXPECT_EQ(t->kind(), SurfaceKind::Nurbs);
+            for (double fu : kFractions) {
+                for (double fv : kFractions) {
+                    const double u = at(s.uMin(), s.uMax(), fu);
+                    const double v = at(s.vMin(), s.vMax(), fv);
+                    expectVecNear(t->evaluate(u, v), m.transformPoint(s.evaluate(u, v)), 1e-11);
+                    // The copy is a good surface in its own right.
+                    const SurfaceDerivatives d = t->derivatives(u, v);
+                    const double h = 1e-6;
+                    const Vec3 du = (t->evaluate(u + h, v) - t->evaluate(u - h, v)) / (2 * h);
+                    expectVecNear(d.du, du, 1e-5 * std::max(1.0, d.du.length()));
+                    const Vec2 uv = t->invert(t->evaluate(u, v));
+                    EXPECT_NEAR(uv.x, u, 1e-7) << name;
+                    EXPECT_NEAR(uv.y, v, 1e-7) << name;
+                }
+            }
+        }
+    }
+    // A reflection reverses the normal of the mirrored image; weights and knots are kept.
+    const NurbsSurface sphere = NurbsSurface::makeSphere({0, 0, 0}, 1.0);
+    const auto mirrored = static_cast<const Surface&>(sphere).transformed(Mat4::scale({-1, 1, 1}));
+    const Vec3 n0 = sphere.normal(0.3, 0.4);
+    expectVecNear(mirrored->normal(0.3, 0.4), Vec3(n0.x, -n0.y, -n0.z), 1e-12);
+    const auto* n = dynamic_cast<const NurbsSurface*>(mirrored.get());
+    ASSERT_NE(n, nullptr);
+    EXPECT_EQ(n->weights(), sphere.weights());
+    EXPECT_EQ(n->knotsU(), sphere.knotsU());
+    EXPECT_EQ(n->knotsV(), sphere.knotsV());
+}
+
+TEST(NurbsSurfaceTyped, InsertKnotLeavesTheSurfaceUnchanged) {
+    for (const auto& [name, s] : typedSamples()) {
+        const double u = at(s.uMin(), s.uMax(), 0.37);
+        const double v = at(s.vMin(), s.vMax(), 0.61);
+        // One fresh knot; one at an existing interior knot, where present.
+        const NurbsSurface iu = s.insertKnotU(u);
+        const NurbsSurface iv = s.insertKnotV(v);
+        EXPECT_EQ(iu.knotsU().size(), s.knotsU().size() + 1) << name;
+        EXPECT_EQ(iu.controlPointCountU(), s.controlPointCountU() + 1) << name;
+        EXPECT_EQ(iu.knotsV(), s.knotsV()) << name;
+        EXPECT_EQ(iv.knotsV().size(), s.knotsV().size() + 1) << name;
+        EXPECT_EQ(iv.controlPointCountV(), s.controlPointCountV() + 1) << name;
+        EXPECT_EQ(iv.knotsU(), s.knotsU()) << name;
+        const NurbsSurface both = iu.insertKnotV(v).insertKnotU(u);  // u twice
+        for (int i = 0; i <= 20; ++i) {
+            for (int j = 0; j <= 20; ++j) {
+                const double a = at(s.uMin(), s.uMax(), i / 20.0);
+                const double b = at(s.vMin(), s.vMax(), j / 20.0);
+                expectVecNear(iu.evaluate(a, b), s.evaluate(a, b), 1e-12);
+                expectVecNear(iv.evaluate(a, b), s.evaluate(a, b), 1e-12);
+                expectVecNear(both.evaluate(a, b), s.evaluate(a, b), 1e-12);
+            }
+        }
+    }
+}
+
+TEST(NurbsSurfaceTyped, InsertKnotAtAnExistingInteriorKnotRaisesItsMultiplicity) {
+    const NurbsSurface s = makeWeightedPatch();  // knotsU has 0.4 twice
+    const NurbsSurface t = s.insertKnotU(0.4);
+    EXPECT_EQ(t.knotsU().size(), s.knotsU().size() + 1);
+    for (int i = 0; i <= 20; ++i) {
+        for (int j = 0; j <= 20; ++j) {
+            const double a = at(s.uMin(), s.uMax(), i / 20.0);
+            const double b = at(s.vMin(), s.vMax(), j / 20.0);
+            expectVecNear(t.evaluate(a, b), s.evaluate(a, b), 1e-12);
+        }
+    }
+}
+
+TEST(NurbsSurfaceTyped, SplitHalvesEvaluateAsTheOriginalOverTheirRanges) {
+    for (const auto& [name, s] : typedSamples()) {
+        for (double f : {0.37, 0.61}) {
+            const double u = at(s.uMin(), s.uMax(), f);
+            const double v = at(s.vMin(), s.vMax(), f);
+            const auto [ul, ur] = s.splitU(u);
+            const auto [vl, vr] = s.splitV(v);
+            EXPECT_EQ(ul.uMin(), s.uMin()) << name;
+            EXPECT_EQ(ul.uMax(), u) << name;
+            EXPECT_EQ(ur.uMin(), u) << name;
+            EXPECT_EQ(ur.uMax(), s.uMax()) << name;
+            EXPECT_EQ(vl.vMin(), s.vMin()) << name;
+            EXPECT_EQ(vl.vMax(), v) << name;
+            EXPECT_EQ(vr.vMin(), v) << name;
+            EXPECT_EQ(vr.vMax(), s.vMax()) << name;
+            EXPECT_EQ(ul.vMax(), s.vMax()) << name;
+            for (int i = 0; i <= 20; ++i) {
+                for (int j = 0; j <= 20; ++j) {
+                    const double b = at(s.vMin(), s.vMax(), j / 20.0);
+                    const double a = at(s.uMin(), s.uMax(), i / 20.0);
+                    const double lu = at(ul.uMin(), ul.uMax(), i / 20.0);
+                    const double ru = at(ur.uMin(), ur.uMax(), i / 20.0);
+                    expectVecNear(ul.evaluate(lu, b), s.evaluate(lu, b), 1e-12);
+                    expectVecNear(ur.evaluate(ru, b), s.evaluate(ru, b), 1e-12);
+                    const double lv = at(vl.vMin(), vl.vMax(), j / 20.0);
+                    const double rv = at(vr.vMin(), vr.vMax(), j / 20.0);
+                    expectVecNear(vl.evaluate(a, lv), s.evaluate(a, lv), 1e-12);
+                    expectVecNear(vr.evaluate(a, rv), s.evaluate(a, rv), 1e-12);
+                }
+            }
+        }
+    }
+}
+
+TEST(NurbsSurfaceTyped, SplitAtAnExistingKnotWorks) {
+    const NurbsSurface s = makeWeightedPatch();
+    const auto [l, r] = s.splitU(0.4);  // already of multiplicity 2 = degree
+    EXPECT_EQ(l.uMax(), 0.4);
+    EXPECT_EQ(r.uMin(), 0.4);
+    expectVecNear(l.evaluate(0.2, 0.5), s.evaluate(0.2, 0.5), 1e-12);
+    expectVecNear(r.evaluate(0.7, 0.5), s.evaluate(0.7, 0.5), 1e-12);
+    const auto [b, t] = makeBicubicQuadraticPatch().splitV(0.5);
+    EXPECT_EQ(b.vMax(), 0.5);
+    EXPECT_EQ(t.vMin(), 0.5);
+}
+
+TEST(NurbsSurfaceTyped, InsertingOrSplittingAtOrBeyondTheEndThrows) {
+    const NurbsSurface s = makeBicubicQuadraticPatch();
+    for (const double u : {s.uMin(), s.uMax(), s.uMin() - 1.0, s.uMax() + 1.0}) {
+        EXPECT_THROW((void)s.insertKnotU(u), std::invalid_argument) << u;
+        EXPECT_THROW((void)s.splitU(u), std::invalid_argument) << u;
+    }
+    for (const double v : {s.vMin(), s.vMax(), s.vMin() - 1.0, s.vMax() + 1.0}) {
+        EXPECT_THROW((void)s.insertKnotV(v), std::invalid_argument) << v;
+        EXPECT_THROW((void)s.splitV(v), std::invalid_argument) << v;
+    }
+    EXPECT_THROW((void)s.splitU(std::nan("")), std::invalid_argument);
 }

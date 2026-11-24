@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Vec3.h"
 
 namespace hz::geo {
@@ -31,7 +32,11 @@ struct SurfacePoint {
 /// U and V directions, and polynomial degrees in U and V.  Evaluation uses a
 /// two-pass De Boor algorithm: evaluate each row in V, then combine the results
 /// in U.
-class NurbsSurface {
+///
+/// It is a Surface too, of kind Nurbs. Its parameters are its knot domain
+/// (uRange() is [uMin(), uMax()]), and it is periodic in a direction where it
+/// closes on itself (closedU(), closedV()).
+class NurbsSurface : public Surface {
 public:
     /// Construct a NURBS surface.
     /// @param controlPoints  2D grid [row_u][col_v] of control points.
@@ -71,7 +76,7 @@ public:
     // -- Evaluation ----------------------------------------------------------
 
     /// Evaluate the surface at parameters (u, v) using tensor-product De Boor.
-    math::Vec3 evaluate(double u, double v) const;
+    math::Vec3 evaluate(double u, double v) const override;
 
     // -- Derivatives & Normal (Task 2) ----------------------------------------
 
@@ -82,7 +87,7 @@ public:
     math::Vec3 derivativeV(double u, double v) const;
 
     /// Unit surface normal at (u, v): normalize(dS/du x dS/dv).
-    math::Vec3 normal(double u, double v) const;
+    math::Vec3 normal(double u, double v) const override;
 
     /// The point at (u, v) and its partial derivatives, exactly: the rational
     /// basis differentiated. Allocates nothing up to degree 15 in each
@@ -90,6 +95,51 @@ public:
     /// derivativeU and derivativeV once did everywhere). (u, v) is clamped to
     /// the domain, as evaluate() clamps it.
     SurfacePoint evaluateWithDerivatives(double u, double v) const;
+
+    // -- Surface interface ----------------------------------------------------
+
+    SurfaceKind kind() const override { return SurfaceKind::Nurbs; }
+
+    /// The point and its first and second partial derivatives, exactly: the
+    /// quotient rule on the homogeneous surface, from the basis functions'
+    /// derivatives. (u, v) is clamped to the domain. Beyond degree 15 in
+    /// either direction the derivatives are differences of evaluate().
+    SurfaceDerivatives derivatives(double u, double v) const override;
+
+    Interval uRange() const override { return {uMin(), uMax()}; }
+    Interval vRange() const override { return {vMin(), vMax()}; }
+    bool periodicU() const override { return m_closedU; }
+    bool periodicV() const override { return m_closedV; }
+
+    /// The parameters of the point of the surface nearest @p point: locate().
+    math::Vec2 invert(const math::Vec3& point) const override;
+
+    /// The surface with its control points moved by @p m; weights and knots
+    /// are kept (a NURBS surface is affine-invariant, so this holds for any
+    /// affine @p m, a reflection included, which turns the normal).
+    std::unique_ptr<Surface> transformed(const math::Mat4& m) const override;
+
+    // -- Knot insertion and splitting -----------------------------------------
+
+    /// The same surface with the knot @p u inserted once into the U knots
+    /// (Boehm's algorithm in homogeneous coordinates, on each column of the
+    /// control net): one more row of control points, and evaluate() unchanged.
+    /// @throws std::invalid_argument if @p u is not strictly inside
+    ///         (uMin(), uMax()), as the constructor does for invalid input.
+    NurbsSurface insertKnotU(double u) const;
+
+    /// insertKnotU, in V.
+    NurbsSurface insertKnotV(double v) const;
+
+    /// The surface cut at the iso-line @p u: the parts over [uMin, u] and
+    /// [u, uMax], first and second. Each keeps the original parameters (it is
+    /// not renormalised) and evaluates as the original over its range.
+    /// @throws std::invalid_argument if @p u is not strictly inside
+    ///         (uMin(), uMax()).
+    std::pair<NurbsSurface, NurbsSurface> splitU(double u) const;
+
+    /// splitU, in V.
+    std::pair<NurbsSurface, NurbsSurface> splitV(double v) const;
 
     /// Whether the surface closes on itself in u (in v): its edges u = uMin
     /// and u = uMax coincide, as a cylinder's do at its seam.

@@ -1,10 +1,12 @@
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <string>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Constants.h"
@@ -453,6 +455,311 @@ std::pair<double, double> NurbsSurface::locate(const math::Vec3& point) const {
         }
     }
     return best;
+}
+
+// ---------------------------------------------------------------------------
+// Surface interface: second derivatives, invert, transformed
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// The p + 1 basis functions non-zero at @p t in @p span and their first two
+/// derivatives (The NURBS Book, A2.3 with n = 2): n[r], d1[r], d2[r].
+void basisAndSecondDerivatives(const std::vector<double>& knots, int span, int p, double t,
+                               double* n, double* d1, double* d2) {
+    double ndu[kMaxOrder][kMaxOrder];
+    double left[kMaxOrder];
+    double right[kMaxOrder];
+    ndu[0][0] = 1.0;
+    for (int j = 1; j <= p; ++j) {
+        left[j] = t - knots[static_cast<size_t>(span + 1 - j)];
+        right[j] = knots[static_cast<size_t>(span + j)] - t;
+        double saved = 0.0;
+        for (int r = 0; r < j; ++r) {
+            ndu[j][r] = right[r + 1] + left[j - r];
+            const double temp = ndu[r][j - 1] / ndu[j][r];
+            ndu[r][j] = saved + right[r + 1] * temp;
+            saved = left[j - r] * temp;
+        }
+        ndu[j][j] = saved;
+    }
+    double* const ders[3] = {n, d1, d2};
+    for (int j = 0; j <= p; ++j) {
+        n[j] = ndu[j][p];
+        d1[j] = 0.0;
+        d2[j] = 0.0;
+    }
+    const int top = std::min(2, p);
+    for (int r = 0; r <= p; ++r) {
+        double a[2][3];
+        int s1 = 0;
+        int s2 = 1;
+        a[0][0] = 1.0;
+        for (int k = 1; k <= top; ++k) {
+            double d = 0.0;
+            const int rk = r - k;
+            const int pk = p - k;
+            if (r >= k) {
+                a[s2][0] = a[s1][0] / ndu[pk + 1][rk];
+                d = a[s2][0] * ndu[rk][pk];
+            }
+            const int j1 = rk >= -1 ? 1 : -rk;
+            const int j2 = (r - 1 <= pk) ? k - 1 : p - r;
+            for (int j = j1; j <= j2; ++j) {
+                a[s2][j] = (a[s1][j] - a[s1][j - 1]) / ndu[pk + 1][rk + j];
+                d += a[s2][j] * ndu[rk + j][pk];
+            }
+            if (r <= pk) {
+                a[s2][k] = -a[s1][k - 1] / ndu[pk + 1][r];
+                d += a[s2][k] * ndu[r][pk];
+            }
+            ders[k][r] = d;
+            std::swap(s1, s2);
+        }
+    }
+    double factor = p;
+    for (int k = 1; k <= top; ++k) {
+        for (int j = 0; j <= p; ++j) ders[k][j] *= factor;
+        factor *= (p - k);
+    }
+}
+
+}  // namespace
+
+SurfaceDerivatives NurbsSurface::derivatives(double u, double v) const {
+    if (m_degreeU >= kMaxOrder || m_degreeV >= kMaxOrder) {
+        // Past the fixed arrays: differences of the first derivatives.
+        constexpr double h = 1e-6;
+        const auto first = [this](double a, double b) { return evaluateWithDerivatives(a, b); };
+        const double u0 = std::max(u - h, uMin());
+        const double u1 = std::min(u + h, uMax());
+        const double v0 = std::max(v - h, vMin());
+        const double v1 = std::min(v + h, vMax());
+        const SurfacePoint c = first(u, v);
+        SurfaceDerivatives d{c.point, c.du, c.dv, {}, {}, {}};
+        if (u1 > u0) d.duu = (first(u1, v).du - first(u0, v).du) * (1.0 / (u1 - u0));
+        if (v1 > v0) {
+            d.dvv = (first(u, v1).dv - first(u, v0).dv) * (1.0 / (v1 - v0));
+            d.duv = (first(u, v1).du - first(u, v0).du) * (1.0 / (v1 - v0));
+        }
+        return d;
+    }
+    u = std::clamp(u, uMin(), uMax());
+    v = std::clamp(v, vMin(), vMax());
+    const int p = m_degreeU;
+    const int q = m_degreeV;
+    const int spanU = findSpan(m_knotsU, controlPointCountU(), p, u);
+    const int spanV = findSpan(m_knotsV, controlPointCountV(), q, v);
+    double nu[kMaxOrder], dnu[kMaxOrder], ddnu[kMaxOrder];
+    double nv[kMaxOrder], dnv[kMaxOrder], ddnv[kMaxOrder];
+    basisAndSecondDerivatives(m_knotsU, spanU, p, u, nu, dnu, ddnu);
+    basisAndSecondDerivatives(m_knotsV, spanV, q, v, nv, dnv, ddnv);
+
+    // The weighted point A(u, v) and weight w(u, v), with their derivatives.
+    math::Vec3 a, au, av, auu, auv, avv;
+    double w = 0.0, wu = 0.0, wv = 0.0, wuu = 0.0, wuv = 0.0, wvv = 0.0;
+    for (int i = 0; i <= p; ++i) {
+        const auto& row = m_controlPoints[static_cast<size_t>(spanU - p + i)];
+        const auto& rowW = m_weights[static_cast<size_t>(spanU - p + i)];
+        for (int j = 0; j <= q; ++j) {
+            const size_t col = static_cast<size_t>(spanV - q + j);
+            const double weight = rowW[col];
+            const math::Vec3 wp = row[col] * weight;
+            const double b = nu[i] * nv[j];
+            const double bu = dnu[i] * nv[j];
+            const double bv = nu[i] * dnv[j];
+            const double buu = ddnu[i] * nv[j];
+            const double buv = dnu[i] * dnv[j];
+            const double bvv = nu[i] * ddnv[j];
+            a += wp * b;
+            au += wp * bu;
+            av += wp * bv;
+            auu += wp * buu;
+            auv += wp * buv;
+            avv += wp * bvv;
+            w += weight * b;
+            wu += weight * bu;
+            wv += weight * bv;
+            wuu += weight * buu;
+            wuv += weight * buv;
+            wvv += weight * bvv;
+        }
+    }
+    const double inv = 1.0 / w;
+    const math::Vec3 s = a * inv;
+    const math::Vec3 su = (au - s * wu) * inv;
+    const math::Vec3 sv = (av - s * wv) * inv;
+    const math::Vec3 suu = (auu - su * (2.0 * wu) - s * wuu) * inv;
+    const math::Vec3 suv = (auv - su * wv - sv * wu - s * wuv) * inv;
+    const math::Vec3 svv = (avv - sv * (2.0 * wv) - s * wvv) * inv;
+    return {s, su, sv, suu, suv, svv};
+}
+
+math::Vec2 NurbsSurface::invert(const math::Vec3& point) const {
+    const auto uv = locate(point);
+    return {uv.first, uv.second};
+}
+
+std::unique_ptr<Surface> NurbsSurface::transformed(const math::Mat4& m) const {
+    auto points = m_controlPoints;
+    for (auto& row : points) {
+        for (auto& p : row) p = m.transformPoint(p);
+    }
+    return std::make_unique<NurbsSurface>(std::move(points), m_weights, m_knotsU, m_knotsV,
+                                          m_degreeU, m_degreeV);
+}
+
+// ---------------------------------------------------------------------------
+// Knot insertion and splitting
+// ---------------------------------------------------------------------------
+
+namespace {
+
+using Hom = std::array<double, 4>;  // (w x, w y, w z, w)
+using HomGrid = std::vector<std::vector<Hom>>;
+
+HomGrid toHomogeneous(const std::vector<std::vector<math::Vec3>>& points,
+                      const std::vector<std::vector<double>>& weights, bool transpose) {
+    const size_t nu = points.size();
+    const size_t nv = points[0].size();
+    HomGrid g(transpose ? nv : nu, std::vector<Hom>(transpose ? nu : nv));
+    for (size_t i = 0; i < nu; ++i) {
+        for (size_t j = 0; j < nv; ++j) {
+            const double w = weights[i][j];
+            const Hom h{points[i][j].x * w, points[i][j].y * w, points[i][j].z * w, w};
+            (transpose ? g[j][i] : g[i][j]) = h;
+        }
+    }
+    return g;
+}
+
+void fromHomogeneous(const HomGrid& g, bool transpose, std::vector<std::vector<math::Vec3>>& points,
+                     std::vector<std::vector<double>>& weights) {
+    const size_t nu = transpose ? g[0].size() : g.size();
+    const size_t nv = transpose ? g.size() : g[0].size();
+    points.assign(nu, std::vector<math::Vec3>(nv));
+    weights.assign(nu, std::vector<double>(nv));
+    for (size_t i = 0; i < nu; ++i) {
+        for (size_t j = 0; j < nv; ++j) {
+            const Hom& h = transpose ? g[j][i] : g[i][j];
+            points[i][j] = {h[0] / h[3], h[1] / h[3], h[2] / h[3]};
+            weights[i][j] = h[3];
+        }
+    }
+}
+
+/// Boehm's insertion of the knot @p t into @p knots, applied to each column of
+/// the control net @p g (rows are along the parameter): the net gains a row.
+/// @p t must lie strictly inside the domain.
+void insertKnotRows(HomGrid& g, std::vector<double>& knots, int p, double t) {
+    const int n = static_cast<int>(g.size());
+    const int k = findSpan(knots, n, p, t);  // knots[k] <= t < knots[k + 1]
+    HomGrid q(g.size() + 1);
+    for (int i = 0; i <= n; ++i) {
+        if (i <= k - p) {
+            q[i] = g[i];
+        } else if (i > k) {
+            q[i] = g[i - 1];
+        } else {
+            const double denom = knots[i + p] - knots[i];
+            const double alpha = denom > 0.0 ? (t - knots[i]) / denom : 0.0;
+            q[i].resize(g[i].size());
+
+            for (size_t c = 0; c < g[i].size(); ++c) {
+                for (int d = 0; d < 4; ++d) {
+                    q[i][c][d] = (1.0 - alpha) * g[i - 1][c][d] + alpha * g[i][c][d];
+                }
+            }
+        }
+    }
+    knots.insert(knots.begin() + k + 1, t);
+    g = std::move(q);
+}
+
+void requireInside(double t, double lo, double hi, const char* what) {
+    if (!(t > lo && t < hi)) {
+        throw std::invalid_argument(std::string("NurbsSurface ") + what +
+                                    " must be strictly inside the parameter domain");
+    }
+}
+
+}  // namespace
+
+NurbsSurface NurbsSurface::insertKnotU(double u) const {
+    requireInside(u, uMin(), uMax(), "knot");
+    HomGrid g = toHomogeneous(m_controlPoints, m_weights, false);
+    auto knots = m_knotsU;
+    insertKnotRows(g, knots, m_degreeU, u);
+    std::vector<std::vector<math::Vec3>> pts;
+    std::vector<std::vector<double>> wts;
+    fromHomogeneous(g, false, pts, wts);
+    return {std::move(pts), std::move(wts), std::move(knots), m_knotsV, m_degreeU, m_degreeV};
+}
+
+NurbsSurface NurbsSurface::insertKnotV(double v) const {
+    requireInside(v, vMin(), vMax(), "knot");
+    HomGrid g = toHomogeneous(m_controlPoints, m_weights, true);  // rows along V
+    auto knots = m_knotsV;
+    insertKnotRows(g, knots, m_degreeV, v);
+    std::vector<std::vector<math::Vec3>> pts;
+    std::vector<std::vector<double>> wts;
+    fromHomogeneous(g, true, pts, wts);
+    return {std::move(pts), std::move(wts), m_knotsU, std::move(knots), m_degreeU, m_degreeV};
+}
+
+namespace {
+
+/// Cut @p g (rows along the parameter, knots @p knots, degree @p p) at @p t:
+/// insert it to multiplicity p, so the surface passes through a row of the net,
+/// then take the rows and knots either side of it.
+struct CutNet {
+    HomGrid lowRows, highRows;
+    std::vector<double> lowKnots, highKnots;
+};
+
+CutNet cutAt(HomGrid g, std::vector<double> knots, int p, double t) {
+    int mult = static_cast<int>(std::count(knots.begin(), knots.end(), t));
+    for (; mult < p; ++mult) insertKnotRows(g, knots, p, t);
+    // t's run of mult knots starts at f; the surface at t is the row before
+    // the run (a run of p + 1 leaves the surface discontinuous: the part
+    // above starts at the next row).
+    const int f = static_cast<int>(std::find(knots.begin(), knots.end(), t) - knots.begin());
+    CutNet cut;
+    cut.lowRows.assign(g.begin(), g.begin() + f);
+    cut.highRows.assign(g.begin() + (f - 1 + (mult - p)), g.end());
+    cut.lowKnots.assign(knots.begin(), knots.begin() + f);
+    cut.lowKnots.insert(cut.lowKnots.end(), static_cast<size_t>(p + 1), t);
+    cut.highKnots.assign(static_cast<size_t>(p + 1), t);
+    cut.highKnots.insert(cut.highKnots.end(), knots.begin() + (f + mult), knots.end());
+    return cut;
+}
+
+}  // namespace
+
+std::pair<NurbsSurface, NurbsSurface> NurbsSurface::splitU(double u) const {
+    requireInside(u, uMin(), uMax(), "split parameter");
+    CutNet cut = cutAt(toHomogeneous(m_controlPoints, m_weights, false), m_knotsU, m_degreeU, u);
+    std::vector<std::vector<math::Vec3>> lp, hp;
+    std::vector<std::vector<double>> lw, hw;
+    fromHomogeneous(cut.lowRows, false, lp, lw);
+    fromHomogeneous(cut.highRows, false, hp, hw);
+    return {NurbsSurface(std::move(lp), std::move(lw), std::move(cut.lowKnots), m_knotsV, m_degreeU,
+                         m_degreeV),
+            NurbsSurface(std::move(hp), std::move(hw), std::move(cut.highKnots), m_knotsV,
+                         m_degreeU, m_degreeV)};
+}
+
+std::pair<NurbsSurface, NurbsSurface> NurbsSurface::splitV(double v) const {
+    requireInside(v, vMin(), vMax(), "split parameter");
+    CutNet cut = cutAt(toHomogeneous(m_controlPoints, m_weights, true), m_knotsV, m_degreeV, v);
+    std::vector<std::vector<math::Vec3>> lp, hp;
+    std::vector<std::vector<double>> lw, hw;
+    fromHomogeneous(cut.lowRows, true, lp, lw);
+    fromHomogeneous(cut.highRows, true, hp, hw);
+    return {NurbsSurface(std::move(lp), std::move(lw), m_knotsU, std::move(cut.lowKnots), m_degreeU,
+                         m_degreeV),
+            NurbsSurface(std::move(hp), std::move(hw), m_knotsU, std::move(cut.highKnots),
+                         m_degreeU, m_degreeV)};
 }
 
 // ---------------------------------------------------------------------------
