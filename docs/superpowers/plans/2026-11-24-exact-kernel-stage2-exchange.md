@@ -73,9 +73,9 @@
 
 ```cpp
 TEST(ModelTolerance, AnInfiniteExtentGivesAFiniteResolution) {
-    EXPECT_TRUE(std::isfinite(math::ModelTolerance::forExtent(DBL_MAX).resolution));
-    EXPECT_EQ(math::ModelTolerance::forExtent(DBL_MAX).resolution,
-              math::ModelTolerance::forExtent(1e100).resolution);
+    EXPECT_TRUE(std::isfinite(math::ModelTolerance::forExtent(DBL_MAX).linear));
+    EXPECT_EQ(math::ModelTolerance::forExtent(DBL_MAX).linear,
+              math::ModelTolerance::forExtent(1e100).linear);
 }
 TEST(Triangulate2D, PointsSpreadTooLittleAreSaidToBe) {
     const auto t = geo::triangulateRegion({{0,0},{1e-62,0},{1e-62,1e-62},{0,1e-62}}, {});
