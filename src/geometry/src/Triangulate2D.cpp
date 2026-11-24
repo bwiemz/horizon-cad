@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <map>
+#include <cstring>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -18,6 +18,15 @@ namespace {
 using math::Vec2;
 
 constexpr int kNone = -1;
+
+std::uint64_t edgeKey(int a, int b) {
+    const auto lo = static_cast<std::uint64_t>(std::min(a, b));
+    const auto hi = static_cast<std::uint64_t>(std::max(a, b));
+    return (lo << 32) | hi;
+}
+
+/// How constraint recovery ended.
+enum class Recovery { Done, Blocked, GaveUp };
 
 struct Tri {
     std::array<int, 3> v{};                     // counter-clockwise
@@ -119,18 +128,26 @@ public:
         m_last = made.front();
     }
 
-    /// Makes a-b an edge and marks it constrained. False when it cannot be (the segment passes
-    /// through another vertex or crosses another constraint).
-    bool constrain(int a, int b) {
+    /// Makes a-b an edge and marks it constrained. Blocked when it cannot be (the segment
+    /// passes through another vertex or crosses another constraint), GaveUp when the flips did
+    /// not finish.
+    Recovery constrain(int a, int b) {
         if (a == b) {
-            return true;
+            return Recovery::Done;
         }
-        if (findEdge(a, b).first == kNone && !recover(a, b)) {
-            return false;
+        if (findEdge(a, b).first == kNone) {
+            const Recovery r = recover(a, b);
+            if (r != Recovery::Done) {
+                return r;
+            }
         }
         m_constrained.insert(key(a, b));
-        return true;
+        return Recovery::Done;
     }
+
+    /// Makes a-b a wall of the region: crossing it flips inside and outside. A segment that a
+    /// loop runs along twice (a slit, a bridge) stays an edge but is not a wall.
+    void markWall(int a, int b) { m_walls.insert(key(a, b)); }
 
     void lawson() {
         std::vector<std::pair<int, int>> stack;
@@ -165,9 +182,18 @@ public:
         }
     }
 
-    /// The triangles inside the region: those an odd number of constraint edges away from the
-    /// super-triangle, as a flood fill that flips at each constraint edge.
-    std::vector<int> insideTriangles() const {
+    struct Fill {
+        std::vector<int> inside;
+        /// The first edge across which the parities of two triangles disagree, if any.
+        std::pair<int, int> conflict{kNone, kNone};
+    };
+
+    /// The triangles inside the region: those an odd number of walls away from the
+    /// super-triangle, as a flood fill that flips at each wall. Where a neighbour is already
+    /// labelled it checks the labels agree, which they do exactly when the region is well
+    /// defined.
+    Fill fillRegion() const {
+        Fill fill;
         std::vector<int> parity(m_tris.size(), kNone);
         std::vector<int> queue;
         for (std::size_t t = 0; t < m_tris.size(); ++t) {
@@ -180,23 +206,28 @@ public:
             const Tri& t = tri(queue[i]);
             for (int k = 0; k < 3; ++k) {
                 const int nb = t.n[static_cast<std::size_t>(k)];
-                if (nb == kNone || parity[static_cast<std::size_t>(nb)] != kNone) {
+                if (nb == kNone) {
                     continue;
                 }
-                const bool wall = isConstrained(t.v[static_cast<std::size_t>((k + 1) % 3)],
-                                                t.v[static_cast<std::size_t>((k + 2) % 3)]);
-                parity[static_cast<std::size_t>(nb)] =
-                    parity[static_cast<std::size_t>(queue[i])] ^ (wall ? 1 : 0);
-                queue.push_back(nb);
+                const int ea = t.v[static_cast<std::size_t>((k + 1) % 3)];
+                const int eb = t.v[static_cast<std::size_t>((k + 2) % 3)];
+                const int expected =
+                    parity[static_cast<std::size_t>(queue[i])] ^ (isWall(ea, eb) ? 1 : 0);
+                int& label = parity[static_cast<std::size_t>(nb)];
+                if (label == kNone) {
+                    label = expected;
+                    queue.push_back(nb);
+                } else if (label != expected && fill.conflict.first == kNone) {
+                    fill.conflict = {ea, eb};
+                }
             }
         }
-        std::vector<int> inside;
         for (std::size_t t = 0; t < m_tris.size(); ++t) {
             if (m_tris[t].alive && parity[t] == 1 && !touchesSuper(m_tris[t])) {
-                inside.push_back(static_cast<int>(t));
+                fill.inside.push_back(static_cast<int>(t));
             }
         }
-        return inside;
+        return fill;
     }
 
     const Tri& triangle(int i) const { return tri(i); }
@@ -209,12 +240,9 @@ private:
     bool touchesSuper(const Tri& t) const {
         return t.v[0] >= m_first_super || t.v[1] >= m_first_super || t.v[2] >= m_first_super;
     }
-    static std::uint64_t key(int a, int b) {
-        const auto lo = static_cast<std::uint64_t>(std::min(a, b));
-        const auto hi = static_cast<std::uint64_t>(std::max(a, b));
-        return (lo << 32) | hi;
-    }
+    static std::uint64_t key(int a, int b) { return edgeKey(a, b); }
     bool isConstrained(int a, int b) const { return m_constrained.count(key(a, b)) != 0; }
+    bool isWall(int a, int b) const { return m_walls.count(key(a, b)) != 0; }
 
     static int indexOf(const Tri& t, int v) {
         return t.v[0] == v ? 0 : (t.v[1] == v ? 1 : (t.v[2] == v ? 2 : kNone));
@@ -352,7 +380,7 @@ private:
     }
 
     /// Flips the edges that cross the segment a-b until it is an edge.
-    bool recover(int a, int b) {
+    Recovery recover(int a, int b) {
         int start = kNone;
         int start_index = kNone;
         for (const int t : fan(a)) {
@@ -362,7 +390,7 @@ private:
             const int o1 = orient(a, c, b);
             const int o2 = orient(a, d, b);
             if ((o1 == 0 && alongSegment(a, c, b)) || (o2 == 0 && alongSegment(a, d, b))) {
-                return false;  // through a vertex
+                return Recovery::Blocked;  // through a vertex
             }
             if (o1 > 0 && o2 < 0) {
                 start = t;
@@ -370,15 +398,18 @@ private:
             }
         }
         if (start == kNone) {
-            return false;
+            return Recovery::GaveUp;
         }
         std::vector<std::pair<int, int>> crossed;
         int p = tri(start).v[static_cast<std::size_t>((start_index + 1) % 3)];
         int q = tri(start).v[static_cast<std::size_t>((start_index + 2) % 3)];
         int cur = tri(start).n[static_cast<std::size_t>(start_index)];
         for (std::size_t guard = 0; guard <= m_tris.size(); ++guard) {
-            if (isConstrained(p, q) || cur == kNone) {
-                return false;
+            if (cur == kNone) {
+                return Recovery::GaveUp;
+            }
+            if (isConstrained(p, q)) {
+                return Recovery::Blocked;  // crosses a constraint
             }
             crossed.emplace_back(p, q);
             const Tri& t = tri(cur);
@@ -393,7 +424,7 @@ private:
             }
             const int s = orient(a, b, e);
             if (s == 0) {
-                return false;  // through a vertex
+                return Recovery::Blocked;  // through a vertex
             }
             int left = q;  // the vertex that leaves the crossed edge
             if (s == orient(a, b, p)) {
@@ -408,12 +439,12 @@ private:
         const std::size_t cap = 8 * crossed.size() * crossed.size() + 64;
         for (std::size_t head = 0, steps = 0; head < queue.size(); ++head, ++steps) {
             if (steps > cap) {
-                return false;
+                return Recovery::GaveUp;
             }
             const auto [x, y] = queue[head];
             const auto [ti, i] = findEdge(x, y);
             if (ti == kNone) {
-                return false;
+                return Recovery::GaveUp;
             }
             const int ui = tri(ti).n[static_cast<std::size_t>(i)];
             const int apex_t = tri(ti).v[static_cast<std::size_t>(i)];
@@ -427,7 +458,7 @@ private:
                 queue.emplace_back(x, y);
             }
         }
-        return findEdge(a, b).first != kNone;
+        return findEdge(a, b).first != kNone ? Recovery::Done : Recovery::GaveUp;
     }
 
     bool alongSegment(int a, int c, int b) const {
@@ -442,19 +473,26 @@ private:
     std::vector<int> m_free;
     std::vector<int> m_stamp;
     std::unordered_set<std::uint64_t> m_constrained;
+    std::unordered_set<std::uint64_t> m_walls;
     int m_first_super = 0;
     int m_last = 0;
     int m_epoch = 0;
 };
 
-/// Finds an earlier point within a distance, by grid cells of that size.
+/// Finds the earliest point within a distance of a given one. With a distance of 0 it hashes
+/// the exact coordinates; otherwise it buckets points in cells of that size.
 class PointGrid {
 public:
     explicit PointGrid(double merge) : m_merge(merge), m_cell(merge > 0.0 ? merge : 1.0) {}
 
-    /// The index of a point within merge of p, or -1.
+    /// The lowest index of a point within merge of p, or -1.
     int find(const Vec2& p) const {
+        if (m_merge <= 0.0) {
+            const auto it = m_cells.find(exactKey(p));
+            return it == m_cells.end() ? -1 : it->second.front().second;
+        }
         const auto [cx, cy] = cell(p);
+        int best = -1;
         for (std::int64_t dx = -1; dx <= 1; ++dx) {
             for (std::int64_t dy = -1; dy <= 1; ++dy) {
                 const auto it = m_cells.find({cx + dx, cy + dy});
@@ -462,19 +500,39 @@ public:
                     continue;
                 }
                 for (const auto& [q, index] : it->second) {
-                    if ((q - p).length() <= m_merge) {
-                        return index;
+                    if ((q - p).length() <= m_merge && (best < 0 || index < best)) {
+                        best = index;
                     }
                 }
             }
         }
-        return -1;
+        return best;
     }
 
-    void add(const Vec2& p, int index) { m_cells[cell(p)].emplace_back(p, index); }
+    void add(const Vec2& p, int index) {
+        m_cells[m_merge <= 0.0 ? exactKey(p) : cell(p)].emplace_back(p, index);
+    }
 
 private:
-    std::pair<std::int64_t, std::int64_t> cell(const Vec2& p) const {
+    using Key = std::pair<std::int64_t, std::int64_t>;
+    struct KeyHash {
+        std::size_t operator()(const Key& k) const {
+            auto h = static_cast<std::uint64_t>(k.first) * 0x9E3779B97F4A7C15ULL;
+            h ^= static_cast<std::uint64_t>(k.second) + 0x9E3779B97F4A7C15ULL + (h << 6) + (h >> 2);
+            return static_cast<std::size_t>(h ^ (h >> 29));
+        }
+    };
+
+    static Key exactKey(const Vec2& p) {
+        const double x = p.x + 0.0;  // -0.0 becomes 0.0
+        const double y = p.y + 0.0;
+        Key k;
+        std::memcpy(&k.first, &x, sizeof(double));
+        std::memcpy(&k.second, &y, sizeof(double));
+        return k;
+    }
+
+    Key cell(const Vec2& p) const {
         const auto to_cell = [this](double v) {
             return static_cast<std::int64_t>(std::clamp(std::floor(v / m_cell), -9e18, 9e18));
         };
@@ -483,7 +541,7 @@ private:
 
     double m_merge;
     double m_cell;
-    std::map<std::pair<std::int64_t, std::int64_t>, std::vector<std::pair<Vec2, int>>> m_cells;
+    std::unordered_map<Key, std::vector<std::pair<Vec2, int>>, KeyHash> m_cells;
 };
 
 std::string loopName(std::size_t loop) {
@@ -588,8 +646,30 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
         }
     }
     const std::size_t boundary_count = result.points.size();
+    for (const int r : rep) {
+        result.boundaryVertex.push_back(static_cast<std::uint32_t>(r));
+    }
+    std::vector<std::vector<Vec2>> merged(loops.size());
+    for (std::size_t li = 0; li < loops.size(); ++li) {
+        for (std::size_t i = 0; i < loops[li]->size(); ++i) {
+            merged[li].push_back(result.points[static_cast<std::size_t>(rep[loop_starts[li] + i])]);
+        }
+    }
+    {
+        std::vector<int> distinct(rep.begin(),
+                                  rep.begin() + static_cast<std::ptrdiff_t>(outer.size()));
+        std::sort(distinct.begin(), distinct.end());
+        distinct.erase(std::unique(distinct.begin(), distinct.end()), distinct.end());
+        if (distinct.size() < 3) {
+            if (result.problem.empty()) {
+                result.problem = "the outer loop has fewer than 3 distinct points";
+            }
+            return result;
+        }
+    }
 
-    // Interior points that are strictly inside the region and clear of every other point.
+    // Interior points that are strictly inside the region (as the merged loops bound it) and
+    // clear of every other point.
     std::vector<int> inserted;
     for (std::size_t i = 0; i < boundary_count; ++i) {
         if (rep[i] == static_cast<int>(i)) {
@@ -597,12 +677,13 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
         }
     }
     for (const Vec2& p : interior) {
-        if (grid.find(p) >= 0 || math::classifyPoint(outer, p) != math::Containment::Inside) {
+        if (grid.find(p) >= 0 || math::classifyPoint(merged[0], p) != math::Containment::Inside) {
             continue;
         }
-        const bool in_hole = std::any_of(holes.begin(), holes.end(), [&p](const auto& h) {
-            return math::classifyPoint(h, p) != math::Containment::Outside;
-        });
+        bool in_hole = false;
+        for (std::size_t li = 1; li < merged.size() && !in_hole; ++li) {
+            in_hole = math::classifyPoint(merged[li], p) != math::Containment::Outside;
+        }
         if (in_hole) {
             continue;
         }
@@ -610,9 +691,6 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
         grid.add(p, index);
         result.points.push_back(p);
         inserted.push_back(index);
-    }
-    if (inserted.size() < 3) {
-        return result;
     }
 
     Vec2 lo = result.points[static_cast<std::size_t>(inserted.front())];
@@ -626,23 +704,77 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
     for (const int i : inserted) {
         cdt.insert(i);
     }
+    // A segment a loop runs along an even number of times (a slit, a bridge) is an edge but
+    // not a wall.
+    std::unordered_map<std::uint64_t, int> uses;
+    for (std::size_t li = 0; li < loops.size(); ++li) {
+        const std::size_t n = loops[li]->size();
+        for (std::size_t i = 0; i < n; ++i) {
+            const int a = rep[loop_starts[li] + i];
+            const int b = rep[loop_starts[li] + (i + 1) % n];
+            if (a != b) {
+                ++uses[edgeKey(a, b)];
+            }
+        }
+    }
     for (std::size_t li = 0; li < loops.size(); ++li) {
         const std::size_t base = loop_starts[li];
         const std::size_t n = loops[li]->size();
         for (std::size_t i = 0; i < n; ++i) {
             const int a = rep[base + i];
             const int b = rep[base + (i + 1) % n];
-            if (!cdt.constrain(a, b) && result.problem.empty()) {
+            const Recovery r = cdt.constrain(a, b);
+            if (r == Recovery::Done) {
+                if (a != b && uses[edgeKey(a, b)] % 2 == 1) {
+                    cdt.markWall(a, b);
+                }
+            } else if (result.problem.empty()) {
                 const std::string partner =
-                    partnerOf(result.points, rep, loop_starts, loops, li, i);
+                    r == Recovery::Blocked
+                        ? partnerOf(result.points, rep, loop_starts, loops, li, i)
+                        : std::string();
                 result.problem = segmentName(li, i, n) + " cannot be kept: " +
-                                 (partner.empty() ? "the loops cross or touch" : partner);
+                                 (r == Recovery::GaveUp
+                                      ? "edge recovery gave up"
+                                      : (partner.empty() ? "the loops cross or touch" : partner));
             }
         }
     }
     cdt.lawson();
 
-    for (const int t : cdt.insideTriangles()) {
+    // With the loops simple, one vertex of a hole says where the hole is.
+    for (std::size_t k = 1; k < merged.size() && result.problem.empty(); ++k) {
+        if (merged[k].empty()) {
+            continue;
+        }
+        const Vec2& p = merged[k].front();
+        if (math::classifyPoint(merged[0], p) != math::Containment::Inside) {
+            result.problem = loopName(k) + " is not inside the outer loop";
+            break;
+        }
+        for (std::size_t j = 1; j < merged.size(); ++j) {
+            if (j != k && math::classifyPoint(merged[j], p) != math::Containment::Outside) {
+                result.problem = loopName(k) + " is inside " + loopName(j);
+                break;
+            }
+        }
+    }
+
+    const Cdt::Fill fill = cdt.fillRegion();
+    if (fill.conflict.first != kNone && result.problem.empty()) {
+        const auto name = [&](int v) {
+            const auto index = static_cast<std::size_t>(v);
+            if (index < boundary_count) {
+                const std::size_t li = loopOf(loop_starts, index);
+                return pointName(li, index - loop_starts[li]);
+            }
+            return index < result.points.size() ? "interior point " + std::to_string(index)
+                                                : std::string("the outside");
+        };
+        result.problem = "parity of the region is ill-defined near the segment from " +
+                         name(fill.conflict.first) + " to " + name(fill.conflict.second);
+    }
+    for (const int t : fill.inside) {
         const auto& v = cdt.triangle(t).v;
         result.triangles.push_back({static_cast<std::uint32_t>(v[0]),
                                     static_cast<std::uint32_t>(v[1]),

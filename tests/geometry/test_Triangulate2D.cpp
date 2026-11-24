@@ -97,15 +97,16 @@ Triangulation2D checkRegion(const Loop& outer, const std::vector<Loop>& holes,
     }
     EXPECT_NEAR(total, expected, 1e-12 * expected);
 
-    // Each boundary segment is exactly one triangle's edge.
-    std::set<Edge> segments;
+    // Each boundary segment is an edge: one triangle's when the loops run along it once, both
+    // sides' when twice (a slit or bridge). Every other edge has a triangle on both sides.
+    std::map<Edge, int> segments;
     std::size_t base = 0;
     auto addLoop = [&](const Loop& loop) {
         for (std::size_t i = 0; i < loop.size(); ++i) {
             const std::uint32_t a = rep[base + i];
             const std::uint32_t b = rep[base + (i + 1) % loop.size()];
             if (a != b) {
-                segments.insert(undirected(a, b));
+                ++segments[undirected(a, b)];
             }
         }
         base += loop.size();
@@ -114,20 +115,34 @@ Triangulation2D checkRegion(const Loop& outer, const std::vector<Loop>& holes,
     for (const Loop& h : holes) {
         addLoop(h);
     }
-    for (const Edge& s : segments) {
+    for (const auto& [s, uses] : segments) {
         const auto it = edges.find(s);
         if (it == edges.end()) {
             ADD_FAILURE() << "segment " << s.first << "-" << s.second << " missing";
             continue;
         }
-        EXPECT_EQ(it->second.size(), 1U) << "segment " << s.first << "-" << s.second;
+        EXPECT_EQ(it->second.size(), uses % 2 == 1 ? 1U : 2U)
+            << "segment " << s.first << "-" << s.second;
     }
+    for (const auto& [edge, users] : edges) {
+        if (segments.count(edge) == 0) {
+            EXPECT_EQ(users.size(), 2U) << "edge " << edge.first << "-" << edge.second;
+        }
+    }
+
+    // boundaryVertex is the earliest index of the merge group.
+    EXPECT_EQ(t.boundaryVertex, rep);
 
     // Merged-away boundary points are referenced by no triangle.
     for (std::size_t i = 0; i < boundary.size(); ++i) {
         if (rep[i] != i) {
             EXPECT_EQ(used.count(static_cast<std::uint32_t>(i)), 0U);
         }
+    }
+
+    // Every kept interior point is used.
+    for (std::size_t i = boundary.size(); i < t.points.size(); ++i) {
+        EXPECT_EQ(used.count(static_cast<std::uint32_t>(i)), 1U) << "interior point " << i;
     }
 
     // Interior points inside the region are vertices.
@@ -163,6 +178,21 @@ Triangulation2D checkRegion(const Loop& outer, const std::vector<Loop>& holes,
         }
     }
     return t;
+}
+
+}  // namespace
+
+namespace {
+
+double triangleArea(const Triangulation2D& t) {
+    double total = 0.0;
+    for (const auto& tri : t.triangles) {
+        const Vec2& a = t.points[tri[0]];
+        const Vec2& b = t.points[tri[1]];
+        const Vec2& c = t.points[tri[2]];
+        total += 0.5 * ((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y));
+    }
+    return total;
 }
 
 }  // namespace
@@ -348,4 +378,139 @@ TEST(Triangulate2D, HoleVertexOnAnOuterSegmentIsReported) {
     const Triangulation2D t = triangulateRegion(outer, {hole});
     EXPECT_FALSE(t.problem.empty());
     EXPECT_NE(t.problem.find("outer segment 0"), std::string::npos) << t.problem;
+}
+
+TEST(Triangulate2D, SlitInTheOuterLoopIsPartOfTheRegion) {
+    // Dense points left of the slit, sparse right: a fill that reaches one side first
+    // by a long way labels the other side from it.
+    const Loop outer{{0, 0}, {10, 0}, {10, 10}, {5, 10}, {5, 0.5}, {5, 10}, {0, 10}};
+    for (std::uint32_t seed = 0; seed < 10; ++seed) {
+        std::mt19937 rng(seed);
+        const hz::test::Uniform left(0.01, 4.99);
+        const hz::test::Uniform right(5.01, 9.99);
+        const hz::test::Uniform up(0.01, 9.99);
+        Loop interior;
+        for (int i = 0; i < 400; ++i) {
+            const double x = left(rng);
+            interior.emplace_back(x, up(rng));
+        }
+        for (int i = 0; i < 5; ++i) {
+            const double x = right(rng);
+            interior.emplace_back(x, up(rng));
+        }
+        const Triangulation2D t = checkRegion(outer, {}, interior);
+        EXPECT_NEAR(triangleArea(t), 100.0, 1e-9) << "seed " << seed;
+    }
+}
+
+TEST(Triangulate2D, BridgeToAnInnerLoopIsPartOfTheRegion) {
+    const Loop outer{{0, 0}, {10, 0}, {10, 10}, {5, 10}, {5, 6},  {4, 6},
+                     {4, 4}, {6, 4},  {6, 6},   {5, 6},  {5, 10}, {0, 10}};
+    for (std::uint32_t seed = 0; seed < 10; ++seed) {
+        std::mt19937 rng(seed);
+        const hz::test::Uniform u(0.01, 9.99);
+        Loop interior;
+        for (int i = 0; i < 400; ++i) {
+            const double x = u(rng);
+            const double y = u(rng);
+            if (x < 5 || i % 50 == 0) {
+                interior.emplace_back(x, y);
+            }
+        }
+        const Triangulation2D t = triangulateRegion(outer, {}, interior);
+        EXPECT_TRUE(t.problem.empty()) << t.problem;
+        EXPECT_NEAR(triangleArea(t), 96.0, 1e-9) << "seed " << seed;
+    }
+}
+
+TEST(Triangulate2D, HoleOutsideTheOuterLoopIsReported) {
+    const Loop outer{{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    const Loop hole{{10, 10}, {10, 12}, {12, 12}, {12, 10}};
+    const Triangulation2D t = triangulateRegion(outer, {hole});
+    EXPECT_NE(t.problem.find("hole 0 is not inside the outer loop"), std::string::npos)
+        << t.problem;
+}
+
+TEST(Triangulate2D, HoleEnclosingTheOuterLoopIsReported) {
+    const Loop outer{{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    const Loop hole{{-1, -1}, {-1, 5}, {5, 5}, {5, -1}};
+    const Triangulation2D t = triangulateRegion(outer, {hole});
+    EXPECT_NE(t.problem.find("hole 0 is not inside the outer loop"), std::string::npos)
+        << t.problem;
+}
+
+TEST(Triangulate2D, HoleInsideAnotherHoleIsReported) {
+    const Loop outer{{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+    const Loop big{{2, 2}, {2, 8}, {8, 8}, {8, 2}};
+    const Loop small{{4, 4}, {4, 5}, {5, 5}, {5, 4}};
+    const Triangulation2D t = triangulateRegion(outer, {big, small});
+    EXPECT_NE(t.problem.find("hole 1 is inside hole 0"), std::string::npos) << t.problem;
+}
+
+TEST(Triangulate2D, CocircularLatticeAtManyScales) {
+    for (const double scale : {1e-6, 1.0, 1e6}) {
+        Loop outer;
+        for (const auto& [x, y] : {std::pair{0, 0}, {8, 0}, {8, 8}, {0, 8}}) {
+            outer.emplace_back(x * scale, y * scale);
+        }
+        Loop interior;
+        for (int i = 0; i <= 8; ++i) {
+            for (int j = 0; j <= 8; ++j) {
+                interior.emplace_back(i * scale, j * scale);
+            }
+        }
+        const Triangulation2D t = checkRegion(outer, {}, interior);
+        EXPECT_EQ(t.points.size(), 4U + 49U) << "scale " << scale;
+    }
+}
+
+TEST(Triangulate2D, BoundariesAtSmallAndLargeScales) {
+    for (const double scale : {1e-6, 1e6}) {
+        const Loop outer{{0, 0}, {10 * scale, 0}, {10 * scale, 10 * scale}, {0, 10 * scale}};
+        const Loop hole{{3 * scale, 3 * scale},
+                        {3 * scale, 7 * scale},
+                        {7 * scale, 7 * scale},
+                        {7 * scale, 3 * scale}};
+        checkRegion(outer, {hole},
+                    {{scale, scale}, {9 * scale, 5 * scale}, {5 * scale, 9 * scale}});
+    }
+}
+
+TEST(Triangulate2D, BoundaryVertexIsTheEarliestIndexOfAMergeGroup) {
+    const Loop outer{{0, 0}, {4, 0}, {4, 4}, {4 + 1e-9, 4}, {4, 4 + 1e-9}, {0, 4}};
+    const Triangulation2D t = triangulateRegion(outer, {}, {}, 1e-6);
+    EXPECT_TRUE(t.problem.empty()) << t.problem;
+    EXPECT_EQ(t.boundaryVertex, (std::vector<std::uint32_t>{0, 1, 2, 2, 2, 5}));
+    // Exact duplicates merge with merge = 0, and -0.0 equals 0.0.
+    const Loop dup{{0, 0}, {4, 0}, {4, 3}, {4, 3}, {-0.0, 3}, {0, 3}};
+    const Triangulation2D u = triangulateRegion(dup, {});
+    EXPECT_EQ(u.boundaryVertex, (std::vector<std::uint32_t>{0, 1, 2, 2, 4, 4}));
+}
+
+TEST(Triangulate2D, InteriorPointsAreClassifiedAgainstTheMergedLoops) {
+    // (1e-3,-1e-4) merges into (0,0); the segment is then (0,0)-(10,0), so (1,0) is on it.
+    const Loop outer{{0, 0}, {1e-3, -1e-4}, {10, 0}, {10, 10}, {0, 10}};
+    const Triangulation2D t = triangulateRegion(outer, {}, {{1, 0}}, 2e-3);
+    EXPECT_TRUE(t.problem.empty()) << t.problem;
+    EXPECT_EQ(t.points.size(), 5U);
+}
+
+TEST(Triangulate2D, DegenerateOuterLoopIsReported) {
+    EXPECT_FALSE(triangulateRegion({{0, 0}, {0, 0}, {1, 0}}, {}).problem.empty());
+    EXPECT_FALSE(triangulateRegion({}, {}).problem.empty());
+}
+
+TEST(Triangulate2D, TwentyThousandPointsOnTheUnitSquare) {
+    const Loop outer{{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    std::mt19937 rng(5);
+    const hz::test::Uniform u(0.0, 1.0);
+    Loop interior;
+    for (int i = 0; i < 20000; ++i) {
+        const double x = u(rng);
+        interior.emplace_back(x, u(rng));
+    }
+    const Triangulation2D t = triangulateRegion(outer, {}, interior);
+    EXPECT_TRUE(t.problem.empty()) << t.problem;
+    EXPECT_GT(t.points.size(), 19000U);
+    EXPECT_NEAR(triangleArea(t), 1.0, 1e-9);
 }
