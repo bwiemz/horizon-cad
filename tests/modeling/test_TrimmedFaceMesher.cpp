@@ -528,7 +528,145 @@ std::unique_ptr<topo::Solid> makeTriangleFace(std::shared_ptr<const geo::Surface
                         {{{line({0, 0}, {1, 0})}, {line({1, 0}, {0, 1})}, {line({0, 1}, {0, 0})}}});
 }
 
+/// The image on @p surface of the straight (u, v) segment from a to b as t runs from 0 to 1:
+/// the exact curve of an edge whose pcurve is that segment.
+class OnSurface : public geo::Curve3 {
+public:
+    OnSurface(std::shared_ptr<const geo::Surface> surface, const Vec2& a, const Vec2& b)
+        : s_(std::move(surface)), a_(a), b_(b) {}
+    geo::CurveKind kind() const override { return geo::CurveKind::Nurbs; }
+    Vec3 evaluate(double t) const override {
+        const Vec2 q = a_ + (b_ - a_) * t;
+        return s_->evaluate(q.x, q.y);
+    }
+    geo::CurveDerivatives derivatives(double t) const override {
+        const Vec2 q = a_ + (b_ - a_) * t;
+        const Vec2 d = b_ - a_;
+        const auto sd = s_->derivatives(q.x, q.y);
+        return {sd.point, sd.du * d.x + sd.dv * d.y,
+                sd.duu * (d.x * d.x) + sd.duv * (2.0 * d.x * d.y) + sd.dvv * (d.y * d.y)};
+    }
+    geo::Interval range() const override { return {0.0, 1.0}; }
+    bool periodic() const override { return false; }
+    double closestParameter(const Vec3& p) const override {
+        const auto dist = [&](double t) { return (evaluate(t) - p).length(); };
+        constexpr int kSteps = 1000;
+        double best = 0.0;
+        for (int i = 1; i <= kSteps; ++i) {
+            if (dist(static_cast<double>(i) / kSteps) < dist(best)) best = i / double(kSteps);
+        }
+        double lo = std::max(0.0, best - 1.0 / kSteps);
+        double hi = std::min(1.0, best + 1.0 / kSteps);
+        for (int i = 0; i < 100; ++i) {
+            const double x1 = hi - 0.618033988749895 * (hi - lo);
+            const double x2 = lo + 0.618033988749895 * (hi - lo);
+            if (dist(x1) <= dist(x2)) {
+                hi = x2;
+            } else {
+                lo = x1;
+            }
+        }
+        return 0.5 * (lo + hi);
+    }
+    std::unique_ptr<geo::Curve3> transformed(const math::Mat4& /*m*/) const override {
+        return nullptr;
+    }
+
+private:
+    std::shared_ptr<const geo::Surface> s_;
+    Vec2 a_;
+    Vec2 b_;
+};
+
+/// z = rise u g(v) over x = L u, y = L v, with g a cubic B-spline bump from 0 at v = 0 up to 1
+/// at v = 1/2 and back to 0 at v = 1. Along u = 0 the surface is the straight line x = 0, z = 0,
+/// but its normal there leans over by atan(rise g / L) and back as v runs across the bump.
+std::shared_ptr<geo::Surface> leaningSurface(double size, double rise) {
+    const std::vector<double> kv{0, 0, 0, 0, 0.25, 0.5, 0.75, 1, 1, 1, 1};
+    std::vector<std::vector<Vec3>> points(2, std::vector<Vec3>(7));
+    for (std::size_t i = 0; i < 2; ++i) {
+        for (std::size_t j = 0; j < 7; ++j) {
+            const double greville = (kv[j + 1] + kv[j + 2] + kv[j + 3]) / 3.0;
+            const double bump = j == 3 ? 1.5 : 0.0;  // 1.5 times the basis' peak of 2/3
+            points[i][j] = {size * static_cast<double>(i), size * greville,
+                            rise * static_cast<double>(i) * bump};
+        }
+    }
+    return std::make_shared<geo::NurbsSurface>(
+        points, std::vector<std::vector<double>>(2, std::vector<double>(7, 1.0)),
+        std::vector<double>{0, 0, 1, 1}, kv, 1, 3);
+}
+
 }  // namespace
+
+TEST(TrimmedFaceMesher, FilletLikeToriMeshWithinTheAngleAndTheCap) {
+    // Thin tori at tolerances where the angle, not the chord, sets the steps: refinement beside
+    // their boundary once ran away to the triangle cap (R10 r1 at 0.08, 0.3 and 0.5; R10 r3 at
+    // 0.3; R50 r1 at 0.3 and 0.5) until the edges themselves were halved.
+    const geo::Frame frame = geo::Frame::fromAxis({4, -2, 7}, {1, -2, 0.5});
+    const MeshOptions defaults;
+    const struct {
+        double major;
+        double minor;
+        double tol;
+    } cases[] = {{10, 1, 0.02}, {10, 1, 0.08}, {10, 1, 0.1}, {10, 1, 0.3}, {10, 1, 0.5},
+                 {10, 3, 0.3},  {50, 1, 0.05}, {50, 1, 0.3}, {50, 1, 0.5}};
+    for (const auto& c : cases) {
+        const auto torus = makeTorus(frame, c.major, c.minor);
+        MeshOptions options;
+        options.chordTolerance = c.tol;
+        const auto meshes = meshValid(*torus, options, 2.0 * (c.major + c.minor));
+        checkMeshes(*torus, meshes, options, slackFor(2.0 * (c.major + c.minor)));
+        EXPECT_LE(worstNeighbourAngle(meshes), options.maxAngle + 1e-12);
+        ASSERT_EQ(meshes.size(), 1u);
+        EXPECT_LT(meshes[0].triangles.size(), defaults.maxTrianglesPerFace / 4)
+            << "R" << c.major << " r" << c.minor << " at " << c.tol;
+    }
+}
+
+TEST(TrimmedFaceMesher, AnEdgeWhoseNormalLeansOverAndBackIsSplit) {
+    // The strip u in [0, 0.05] of leaningSurface: its side along u = 0 is a straight line whose
+    // ends face the same way, but whose middle leans by 0.46. Only measuring the turn through
+    // the middle splits it; the triangles beside it turn by less than the angle of 0.6 against
+    // one another, so the faces would never ask.
+    const double size = 10.0;
+    const double width = 0.05;
+    const auto surface = leaningSurface(size, 5.0);
+    const auto face = makeOpenFace(
+        surface, {{{line({0, 0}, {width, 0})},
+                   {line({width, 0}, {width, 1}), 0.0, 1.0,
+                    std::make_shared<OnSurface>(surface, Vec2{width, 0}, Vec2{width, 1}), 0.0, 1.0},
+                   {line({width, 1}, {0, 1})},
+                   {line({0, 1}, {0, 0})}}});
+    MeshOptions options;
+    options.chordTolerance = 0.01;
+    options.maxAngle = 0.6;
+    const auto meshes = meshValid(*face, options, 20.0);
+    const Inverse exact = [size](const geo::Surface&, const Vec3& p) {
+        return Vec2{p.x / size, p.y / size};
+    };
+    checkMeshes(*face, meshes, options, slackFor(20.0), false, exact);
+    ASSERT_EQ(meshes.size(), 1u);
+    const FaceMesh& m = meshes[0];
+    std::map<std::pair<std::uint32_t, std::uint32_t>, int> directed;
+    for (const auto& t : m.triangles) {
+        for (int k = 0; k < 3; ++k) ++directed[{t[k], t[(k + 1) % 3]}];
+    }
+    std::size_t along = 0;
+    for (const auto& [e, uses] : directed) {
+        const Vec3& a = m.points[e.first];
+        const Vec3& b = m.points[e.second];
+        if (directed.count({e.second, e.first}) != 0 || a.x != 0.0 || b.x != 0.0) continue;
+        ++along;
+        const Vec3 na = surface->normal(0.0, a.y / size);
+        const Vec3 nm = surface->normal(0.0, 0.5 * (a.y + b.y) / size);
+        const Vec3 nb = surface->normal(0.0, b.y / size);
+        const double turn = std::atan2(na.cross(nm).length(), na.dot(nm)) +
+                            std::atan2(nm.cross(nb).length(), nm.dot(nb));
+        EXPECT_LE(turn, options.maxAngle + 1e-9) << "segment from y " << a.y << " to " << b.y;
+    }
+    EXPECT_GT(along, 1u);
+}
 
 TEST(TrimmedFaceMesher, PcurvesThatDoNotShareTheirEdgesParametersStillMesh) {
     // Each boundary sample's (u, v) must be found on its pcurve by search: t^p is not the
@@ -606,9 +744,9 @@ TEST(TrimmedFaceMesher, NoTriangleFacesAgainstTheSurface) {
 }
 
 TEST(TrimmedFaceMesher, ACylindersSideAtATightToleranceHasNoNeedles) {
-    // Bent one way only, the side gets rows across it as well as the columns its bending needs,
-    // and its seam is sampled at the rows: two rows of 994 points each would make triangles
-    // 10 long and 0.03 wide.
+    // Bent one way only, the side gets rows across it (32 bent steps apart) as well as the
+    // columns its bending needs, and its seam is sampled at the rows: two rows of 994 points
+    // each would make triangles 10 long and 0.03 wide.
     const double r = 5.0;
     const auto cyl =
         model::exact::makeCylinder(geo::Frame::fromAxis({1, 2, 3}, {1, 1, 1}), r, 10.0);
@@ -625,7 +763,7 @@ TEST(TrimmedFaceMesher, ACylindersSideAtATightToleranceHasNoNeedles) {
     // The side: its caps are planes, triangulated from their rims alone.
     for (const FaceMesh& m : meshes) {
         if (m.face->topoId.tag() == "cylinder/side") {
-            EXPECT_LE(worstAspect({m}), 10.0);
+            EXPECT_LE(worstAspect({m}), 40.0);
         }
     }
 }
