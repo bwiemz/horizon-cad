@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "MeshEdgeSampler.h"  // the tolerance the mesher lays loops out with
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Curve2D.h"
@@ -23,9 +24,11 @@
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/ModelTolerance.h"
+#include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/TrimmedFaceMesher.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
@@ -646,6 +649,35 @@ TEST(TrimmedFaceMesher, ACurvedBoundaryIsHalvedWhereTheTrianglesBesideItTurn) {
     const auto meshes = meshValid(*patch, options, 30.0);
     checkMeshes(*patch, meshes, options, slackFor(30.0), false);
     EXPECT_LE(worstNeighbourAngle(meshes), options.maxAngle + 1e-12);
+}
+
+TEST(TrimmedFaceMesher, APartWhoseVerticesCoincideTakesItsToleranceFromItsSize) {
+    // A torus as one face has a single vertex: the box of its vertices is a point, and
+    // forExtent(0) is 1e-7 whatever the part's size. The tolerance sets joinAllowance, which
+    // decides whether a jump near a pole is a wrap, so the mesher must take the part's size
+    // from its edges too, as the read point and the validator's callers do (Ruling 24).
+    const double major = 10.0;
+    const double minor = 1.0;
+    const auto torus = makeTorus(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), major, minor);
+    // The box 2 (R + r) by 2 (R + r) by 2 r: the equator's and the meridian's extremes are
+    // among their samples.
+    const double size = std::sqrt(8.0 * (major + minor) * (major + minor) + 4.0 * minor * minor);
+    const double want = math::ModelTolerance::forExtent(size).linear;
+    const MeshOptions options;
+    model::detail::EdgeSampler sampler(*torus, options);
+    sampler.sampleEdges();
+    EXPECT_NEAR(sampler.tolerance().linear, want, want * 1e-12);
+    EXPECT_GT(sampler.tolerance().linear, 10.0 * math::ModelTolerance::forExtent(0.0).linear);
+    // One size for all: the mesher's tolerance is the solid's, and the read point meshes at
+    // 1e-4 of the size that tolerance comes from.
+    EXPECT_EQ(sampler.tolerance().linear, topo::exactTolerance(*torus).linear);
+    EXPECT_NEAR(topo::exactExtent(*torus), size, size * 1e-12);
+    std::string problem;
+    const auto polys = model::BoundaryMesh::extractFacePolygons(*torus);
+    EXPECT_EQ(polys.size(), model::BoundaryMesh::extractFacePolygons(
+                                *torus, 1e-4 * topo::exactExtent(*torus), &problem)
+                                .size());
+    EXPECT_TRUE(problem.empty()) << problem;
 }
 
 TEST(TrimmedFaceMesher, ACylinderUnderASmallTriangleCapStillMeshes) {

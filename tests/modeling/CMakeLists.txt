@@ -53,5 +53,8 @@ target_link_libraries(hz_modeling_tests
         GTest::gtest_main
 )
 
+# The mesher's internal edge sampler, for a test of the tolerance it lays loops out with.
+target_include_directories(hz_modeling_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/modeling/src)
+
 include(GoogleTest)
 gtest_discover_tests(hz_modeling_tests)

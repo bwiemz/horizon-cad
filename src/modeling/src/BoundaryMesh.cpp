@@ -9,9 +9,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/modeling/TrimmedFaceMesher.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
@@ -480,32 +480,10 @@ double BoundaryMesh::signedVolume(const std::vector<BoundaryPolygon>& polygons) 
 
 std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid& solid) {
     double chordTolerance = 0.0;
-    const bool hasExact =
-        std::any_of(solid.faces().begin(), solid.faces().end(),
-                    [](const topo::Face& f) { return f.alive && f.exactSurface; });
-    if (hasExact) {
-        // 1e-4 of the part's size: the box of its live vertices and of points along its exact
-        // edges (a round part's vertices may be one point on a circle).
-        Vec3 low(std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(),
-                 std::numeric_limits<double>::infinity());
-        Vec3 high = low * -1.0;
-        const auto include = [&low, &high](const Vec3& p) {
-            low = Vec3(std::min(low.x, p.x), std::min(low.y, p.y), std::min(low.z, p.z));
-            high = Vec3(std::max(high.x, p.x), std::max(high.y, p.y), std::max(high.z, p.z));
-        };
-        for (const auto& v : solid.vertices()) {
-            if (v.alive) include(v.point);
-        }
-        constexpr int kEdgeSamples = 16;
-        for (const auto& e : solid.edges()) {
-            if (!e.alive || !e.exactCurve) continue;
-            for (int k = 0; k <= kEdgeSamples; ++k) {
-                const double f = static_cast<double>(k) / kEdgeSamples;
-                include(e.exactCurve->evaluate(e.curveStart + (e.curveEnd - e.curveStart) * f));
-            }
-        }
-        const double diagonal = (high - low).length();
-        chordTolerance = std::isfinite(diagonal) && diagonal > 0.0 ? 1e-4 * diagonal : 1e-4;
+    if (topo::hasExactFaces(solid)) {
+        // 1e-4 of the part's size, the size its model tolerance comes from.
+        const double size = topo::exactExtent(solid);
+        chordTolerance = size > 0.0 ? 1e-4 * size : 1e-4;
     }
     return extractFacePolygons(solid, chordTolerance);
 }
@@ -520,8 +498,7 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
     // The exact faces, meshed in one pass (they share their edges' points): by face.
     std::unordered_map<const topo::Face*, FaceMesh> meshes;
     std::string firstProblem;
-    if (std::any_of(solid.faces().begin(), solid.faces().end(),
-                    [](const topo::Face& f) { return f.alive && f.exactSurface; })) {
+    if (topo::hasExactFaces(solid)) {
         MeshOptions options;
         options.chordTolerance = chordTolerance;
         for (auto& mesh : TrimmedFaceMesher::meshSolid(solid, options)) {

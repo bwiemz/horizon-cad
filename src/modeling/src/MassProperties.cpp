@@ -1,6 +1,5 @@
 #include "horizon/modeling/MassProperties.h"
 
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <stdexcept>
@@ -10,6 +9,7 @@
 #include "MassIntegrals.h"
 #include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/Faceting.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/HalfEdge.h"
 
 namespace hz::model {
@@ -33,18 +33,13 @@ using Triangle = std::array<Vec3, 3>;
 // NURBS integration). A face with holes is triangulated as a whole, its holes
 // bridged in: fans of its loops would give the right volume but count each
 // hole's area into the surface area instead of out of it.
-bool hasExactFaces(const topo::Solid& solid) {
-    return std::any_of(solid.faces().begin(), solid.faces().end(),
-                       [](const topo::Face& f) { return f.alive && f.exactSurface; });
-}
-
 std::vector<Triangle> boundaryTriangles(const topo::Solid& solid) {
     std::vector<Triangle> tris;
     // A face with an exact surface is read where every consumer reads faces: as the mesh
     // BoundaryMesh gives, wound outward. One that cannot be meshed leaves no volume to measure
     // (the props are invalid), never a hole in a volume that reads as smaller.
     std::unordered_set<const topo::Face*> exactFaces;
-    if (hasExactFaces(solid)) {
+    if (topo::hasExactFaces(solid)) {
         try {
             for (const auto& poly : BoundaryMesh::extractFacePolygons(solid)) {
                 if (poly.exactSurface) {
@@ -209,7 +204,7 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
     // A solid as read, bounded by curves, is measured in facets: the corners
     // of its loops alone (two on a cylinder's side) enclose nothing like it.
     // Where it cannot be cut into facets, its corners are all there is.
-    if (!hasExactFaces(solid) && describedByCurves(solid)) {
+    if (!topo::hasExactFaces(solid) && describedByCurves(solid)) {
         const auto faceted = facetCurved(solid);
         if (faceted.solid) return detail::measureLoops(*faceted.solid, material);
     }

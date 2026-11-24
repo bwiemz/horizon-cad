@@ -97,7 +97,8 @@ public:
         const auto it = plans_.find(f);
         return it == plans_.end() ? nullptr : &it->second;
     }
-    /// The model tolerance loops are laid out with.
+    /// The model tolerance loops are laid out with: topo::exactTolerance of the solid, set by
+    /// sampleEdges.
     const math::ModelTolerance& tolerance() const { return tol_; }
 
 private:

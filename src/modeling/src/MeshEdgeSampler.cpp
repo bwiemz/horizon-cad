@@ -9,6 +9,7 @@
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/surfaces/Surface.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/LoopUnwrap.h"
 
 namespace hz::model::detail {
@@ -117,17 +118,7 @@ std::vector<double> pcurveParameters(const HalfEdge& h, const geo::Surface& s,
 }  // namespace
 
 void EdgeSampler::sampleEdges() {
-    double lo[3] = {kInfinity, kInfinity, kInfinity};
-    double hi[3] = {-kInfinity, -kInfinity, -kInfinity};
-    for (const topo::Vertex& v : solid_.vertices()) {
-        if (!v.alive) continue;
-        const double xyz[3] = {v.point.x, v.point.y, v.point.z};
-        for (int k = 0; k < 3; ++k) {
-            lo[k] = std::min(lo[k], xyz[k]);
-            hi[k] = std::max(hi[k], xyz[k]);
-        }
-    }
-    tol_ = math::ModelTolerance::forExtent(std::hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]));
+    tol_ = topo::exactTolerance(solid_);
     for (const Face& f : solid_.faces()) {
         if (f.alive && f.exactSurface) planFace(f);
     }

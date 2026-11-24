@@ -7,6 +7,7 @@ add_library(hz_topology STATIC
     src/ExactValidator.cpp
     src/ExactLoopGeometry.cpp
     src/LoopUnwrap.cpp
+    src/ExactTolerance.cpp
 )
 
 target_include_directories(hz_topology

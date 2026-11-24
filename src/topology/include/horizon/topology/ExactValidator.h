@@ -32,7 +32,8 @@ struct ExactIssue {
 /// The solid must be combinatorially valid (`Solid::isValid`): twins, next pointers and origins
 /// are followed without null checks. Each pcurve is sampled at 17 parameters (its two ends and
 /// 15 between). Closeness tests use @p tolerance together with the edge's and vertices' own
-/// tolerances.
+/// tolerances. Pass topo::exactTolerance(solid) (horizon/topology/ExactTolerance.h): the mesher
+/// lays loops out with that tolerance, and a face this calls clean with it meshes.
 std::vector<ExactIssue> validateExact(const Solid& solid, const math::ModelTolerance& tolerance);
 
 }  // namespace hz::topo
