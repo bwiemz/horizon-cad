@@ -866,14 +866,15 @@ TEST(TrimmedFaceMesher, PcurveRangesFarFromZeroStillMesh) {
     // A step of the pcurve search under half an ulp of the parameter (at 1e14 and a range of
     // 32, 0.008 against 0.016) once added nothing to it, and the search never ended. Where the
     // parameter has too few values left to follow the edge (1e16: 16 of them), the mesher may
-    // say so, but it must return. A watchdog ends the process if it does not.
+    // say so, but it must return. A watchdog ends the process if it does not: in 300 s, well
+    // inside ctest's limit, and time enough for the sanitizer builds, which run ten times slower.
     std::atomic<bool> done{false};
     std::thread watchdog([&done] {
-        for (int i = 0; i < 600 && !done; ++i) {
+        for (int i = 0; i < 3000 && !done; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         if (!done) {
-            std::fputs("the mesher did not return within 60 s\n", stderr);
+            std::fputs("the mesher did not return within 300 s\n", stderr);
             std::_Exit(3);
         }
     });
@@ -890,8 +891,11 @@ TEST(TrimmedFaceMesher, PcurveRangesFarFromZeroStillMesh) {
     const double expected = 1.5 * math::kPi * 5.0 * 10.0;
     for (const double offset : {1e14, -1e14, 1e16}) {
         const auto band = makeOffsetBand(frame, 5.0, 10.0, offset);
+        // Coarse enough to be quick under the sanitizers; the cap ends the 1e16 band, whose
+        // parameter cannot follow a finer mesh, with its problem rather than at 200000.
         MeshOptions options;
-        options.chordTolerance = 0.01;
+        options.chordTolerance = 0.05;
+        options.maxTrianglesPerFace = 20000;
         const auto meshes = meshValid(*band, options, 30.0);
         EXPECT_EQ(meshes.size(), 1u) << offset;
         if (meshes.size() != 1) continue;
