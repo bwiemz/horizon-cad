@@ -210,7 +210,13 @@ bool DwgImport::load(const std::string& path, doc::Document& doc, std::string* e
         }
         return fail(error, whyNotRead(QString::fromLocal8Bit(tail)));
     }
-    const QString written = work.filePath(output);
+    // Named after the drawing, except by LibreDWG's MSVC builds: their own
+    // basename() finds no name in one with no folder in it, and they write
+    // ".dxf" (#238). The folder holds nothing else of the kind.
+    QString written = work.filePath(output);
+    if (!QFileInfo::exists(written)) {
+        written = work.filePath(QStringLiteral(".dxf"));
+    }
     if (QFileInfo(written).size() == 0) {
         return fail(error, QCoreApplication::translate(
                                "hz::ui::DwgImport", "LibreDWG read it, but wrote nothing of it"));

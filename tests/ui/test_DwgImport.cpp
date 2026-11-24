@@ -372,6 +372,14 @@ TEST(DwgImportReasons, TheConverterIsGivenTheDrawingAndNoOption) {
         << error;
 }
 
+TEST(DwgImportReasons, WhatAWindowsBuildNamesDotDxfIsRead) {
+    // LibreDWG's MSVC builds have their own basename(), which finds no name
+    // in one with no folder in it: given drawing.dwg they write ".dxf" (#238).
+    const std::string error = readWith("printf '  0\\nSECTION\\n' > .dxf");
+    EXPECT_EQ(error.rfind("LibreDWG read it, but what it made of it could not be read: ", 0), 0U)
+        << error;
+}
+
 TEST(DwgImportReasons, AReadErrorWithNoCodeGivesItsLastLine) {
     EXPECT_EQ(readWith("echo 'first' >&2; echo 'the reason' >&2; exit 1"),
               "LibreDWG could not read it (the reason)");
