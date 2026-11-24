@@ -1259,3 +1259,30 @@ TEST(NurbsSurfaceTyped, InsertingOrSplittingAtOrBeyondTheEndThrows) {
     }
     EXPECT_THROW((void)s.splitU(std::nan("")), std::invalid_argument);
 }
+
+TEST(NurbsSurfaceTyped, InvertingASeamPointStaysInTheHalfOpenRange) {
+    const NurbsSurface cyl = NurbsSurface::makeCylinder({0.5, -1, 2}, {0.2, 0.3, 1}, 1.5, 3.0);
+    const NurbsSurface torus = NurbsSurface::makeTorus({0, 1, 0}, {0.1, 1, 0.3}, 3.0, 0.8);
+    for (const NurbsSurface* s : {&cyl, &torus}) {
+        const Surface& surf = *s;
+        for (const double f : {0.0, 0.1, 0.27, 0.5, 0.73, 0.9}) {
+            const double v = at(s->vMin(), s->vMax(), f);
+            const double u = at(s->uMin(), s->uMax(), f);
+            std::vector<std::pair<double, double>> probes = {{s->uMin(), v}, {s->uMax(), v}};
+            if (s == &torus) {
+                probes.push_back({u, s->vMin()});
+                probes.push_back({u, s->vMax()});
+            }
+            for (const auto& [pu, pv] : probes) {
+                const Vec2 uv = surf.invert(s->evaluate(pu, pv));
+                EXPECT_GE(uv.x, s->uMin());
+                EXPECT_LT(uv.x, s->uMax());
+                if (s->closedV()) {
+                    EXPECT_GE(uv.y, s->vMin());
+                    EXPECT_LT(uv.y, s->vMax());
+                }
+                expectVecNear(s->evaluate(uv.x, uv.y), s->evaluate(pu, pv), 1e-9);
+            }
+        }
+    }
+}

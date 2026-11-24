@@ -596,7 +596,11 @@ SurfaceDerivatives NurbsSurface::derivatives(double u, double v) const {
 }
 
 math::Vec2 NurbsSurface::invert(const math::Vec3& point) const {
-    const auto uv = locate(point);
+    auto uv = locate(point);
+    // A periodic parameter lies in [min, max): the search may land on the
+    // far edge of the seam, which is the start of the range.
+    if (periodicU() && !(uv.first < uMax())) uv.first = uMin();
+    if (periodicV() && !(uv.second < vMax())) uv.second = vMin();
     return {uv.first, uv.second};
 }
 
