@@ -20,6 +20,7 @@
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
+#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
@@ -583,4 +584,311 @@ TEST(StepExact, AFaceWhoseSurfaceFacesInIsTurnedByItsLoops) {
     }
     EXPECT_EQ(turned, 1) << "the front face alone";
     EXPECT_EQ(firstIssue(*solids[0]), "");
+}
+
+// ---------------------------------------------------------------------------
+// Fix round 1
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A unit ball with a flat at x = 0.5, written consistently, as Parasolid-based writers write
+/// one: the sphere's face bounded by the flat's circle alone, used .F., with no seam (the
+/// reviewer's probe).
+std::string ballWithAFlat() {
+    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = SPHERICAL_SURFACE('',#4,1.);
+#6 = CARTESIAN_POINT('',(0.5,0.,0.));
+#8 = AXIS2_PLACEMENT_3D('',#6,#3,#2);
+#9 = CIRCLE('',#8,0.8660254037844386);
+#10 = CARTESIAN_POINT('',(0.5,0.,0.8660254037844386));
+#11 = VERTEX_POINT('',#10);
+#12 = EDGE_CURVE('',#11,#11,#9,.T.);
+#13 = ORIENTED_EDGE('',*,*,#12,.F.);
+#14 = EDGE_LOOP('',(#13));
+#15 = FACE_OUTER_BOUND('',#14,.T.);
+#16 = ADVANCED_FACE('',(#15),#5,.T.);
+#17 = PLANE('',#8);
+#18 = ORIENTED_EDGE('',*,*,#12,.T.);
+#19 = EDGE_LOOP('',(#18));
+#20 = FACE_OUTER_BOUND('',#19,.T.);
+#21 = ADVANCED_FACE('',(#20),#17,.T.);
+#22 = CLOSED_SHELL('',(#16,#21));
+#23 = MANIFOLD_SOLID_BREP('ball with a flat',#22);
+)");
+}
+
+/// A torus of radii 4 and 1 cut into two faces along four arcs (two parallels, two meridians)
+/// round its patch u, v in [0, pi/2]: the patch, and the rest of the torus, whose loop runs
+/// round the patch the other way. Written consistently, both faces .T.
+std::string torusPatchAndTheRest() {
+    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#4 = DIRECTION('',(0.,1.,0.));
+#5 = DIRECTION('',(0.,-1.,0.));
+#6 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#7 = TOROIDAL_SURFACE('',#6,4.,1.);
+#10 = CARTESIAN_POINT('',(5.,0.,0.));
+#11 = CARTESIAN_POINT('',(0.,5.,0.));
+#12 = CARTESIAN_POINT('',(0.,4.,1.));
+#13 = CARTESIAN_POINT('',(4.,0.,1.));
+#14 = VERTEX_POINT('',#10);
+#15 = VERTEX_POINT('',#11);
+#16 = VERTEX_POINT('',#12);
+#17 = VERTEX_POINT('',#13);
+#20 = CIRCLE('',#6,5.);
+#21 = CARTESIAN_POINT('',(0.,4.,0.));
+#22 = AXIS2_PLACEMENT_3D('',#21,#3,#4);
+#23 = CIRCLE('',#22,1.);
+#24 = CARTESIAN_POINT('',(0.,0.,1.));
+#25 = AXIS2_PLACEMENT_3D('',#24,#2,#3);
+#26 = CIRCLE('',#25,4.);
+#27 = CARTESIAN_POINT('',(4.,0.,0.));
+#28 = AXIS2_PLACEMENT_3D('',#27,#5,#3);
+#29 = CIRCLE('',#28,1.);
+#30 = EDGE_CURVE('',#14,#15,#20,.T.);
+#31 = EDGE_CURVE('',#15,#16,#23,.T.);
+#32 = EDGE_CURVE('',#17,#16,#26,.T.);
+#33 = EDGE_CURVE('',#14,#17,#29,.T.);
+#40 = ORIENTED_EDGE('',*,*,#30,.T.);
+#41 = ORIENTED_EDGE('',*,*,#31,.T.);
+#42 = ORIENTED_EDGE('',*,*,#32,.F.);
+#43 = ORIENTED_EDGE('',*,*,#33,.F.);
+#44 = EDGE_LOOP('',(#40,#41,#42,#43));
+#45 = FACE_OUTER_BOUND('',#44,.T.);
+#46 = ADVANCED_FACE('',(#45),#7,.T.);
+#50 = ORIENTED_EDGE('',*,*,#33,.T.);
+#51 = ORIENTED_EDGE('',*,*,#32,.T.);
+#52 = ORIENTED_EDGE('',*,*,#31,.F.);
+#53 = ORIENTED_EDGE('',*,*,#30,.F.);
+#54 = EDGE_LOOP('',(#50,#51,#52,#53));
+#55 = FACE_OUTER_BOUND('',#54,.T.);
+#56 = ADVANCED_FACE('',(#55),#7,.T.);
+#60 = CLOSED_SHELL('',(#46,#56));
+#61 = MANIFOLD_SOLID_BREP('torus in two',#60);
+)");
+}
+
+/// The nine control points (CCW about +z from (cos a, sin a, 0), r = 1) of the rational
+/// quadratic circle, as CARTESIAN_POINTs from #@p first, and the curve as #@p id: a closed
+/// B-spline whose join is at angle @p a.
+std::string splineCircle(int id, int first, double a) {
+    const double w = std::sqrt(0.5);
+    const double xs[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+    const double ys[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+    std::string text;
+    std::string points;
+    std::string weights;
+    for (int i = 0; i < 9; ++i) {
+        const double x = xs[i] * std::cos(a) - ys[i] * std::sin(a);
+        const double y = xs[i] * std::sin(a) + ys[i] * std::cos(a);
+        text += "#" + std::to_string(first + i) + " = CARTESIAN_POINT('',(" + real(x) + "," +
+                real(y) + ",0.));\n";
+        points += std::string(i == 0 ? "" : ",") + "#" + std::to_string(first + i);
+        weights += std::string(i == 0 ? "" : ",") + real(i % 2 == 1 ? w : 1.0);
+    }
+    return text + "#" + std::to_string(id) + " = ( BOUNDED_CURVE() B_SPLINE_CURVE(2,(" + points +
+           "),.CIRCULAR_ARC.,.T.,.F.) B_SPLINE_CURVE_WITH_KNOTS((3,2,2,2,3),"
+           "(0.,0.25,0.5,0.75,1.),.UNSPECIFIED.) CURVE() GEOMETRIC_REPRESENTATION_ITEM() "
+           "RATIONAL_B_SPLINE_CURVE((" +
+           weights + ")) REPRESENTATION_ITEM('') );\n";
+}
+
+/// externalStyleCylinder() with its bottom rim two edges, each half of a closed B-spline circle
+/// joined at (1, 0, 0), meeting at a new vertex at (-1, 0, 0).
+std::string cylinderWithASplitSplineRim() {
+    std::string text = replaced(externalStyleCylinder(), "#14 = EDGE_CURVE('',#7,#7,#5,.T.);\n",
+                                splineCircle(300, 310, 0.0) +
+                                    "#301 = CARTESIAN_POINT('',(-1.,0.,0.));\n"
+                                    "#302 = VERTEX_POINT('',#301);\n"
+                                    "#14 = EDGE_CURVE('',#7,#302,#300,.T.);\n"
+                                    "#303 = EDGE_CURVE('',#302,#7,#300,.T.);\n"
+                                    "#304 = ORIENTED_EDGE('',*,*,#303,.T.);\n"
+                                    "#305 = ORIENTED_EDGE('',*,*,#303,.F.);\n");
+    text = replaced(text, "#25 = EDGE_LOOP('',(#21,#22,#23,#24));",
+                    "#25 = EDGE_LOOP('',(#21,#304,#22,#23,#24));");
+    return replaced(text, "#37 = EDGE_LOOP('',(#36));", "#37 = EDGE_LOOP('',(#305,#36));");
+}
+
+/// externalStyleCylinder() with its top cap a flat bilinear B-spline patch over the rim, facing up:
+/// the rim's course on it is a circle in (u, v), which the general path fits, as closely as asked.
+std::string splineCappedCylinder() {
+    return replaced(externalStyleCylinder(), "#29 = PLANE('',#28);",
+                    "#320 = CARTESIAN_POINT('',(-1.5,-1.5,2.));\n"
+                    "#321 = CARTESIAN_POINT('',(-1.5,1.5,2.));\n"
+                    "#322 = CARTESIAN_POINT('',(1.5,-1.5,2.));\n"
+                    "#323 = CARTESIAN_POINT('',(1.5,1.5,2.));\n"
+                    "#29 = B_SPLINE_SURFACE_WITH_KNOTS('',1,1,((#320,#321),(#322,#323)),"
+                    ".UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.);");
+}
+
+}  // namespace
+
+// Ruling 17: on a sphere a loop bounds two regions, and its (u, v) area always picks the one that
+// holds no pole. A ball with a flat, its skin the sphere outside the flat's circle, is that other
+// region: this stage cannot represent it, so the solid is left out with why. It never comes in
+// turned inside out as the cap (whose volume, 0.654, read for the ball's 3.534).
+TEST(StepExact, ABallWithAFlatIsNeverTurnedInsideOut) {
+    const auto solids = StepFormat::fromString(ballWithAFlat(), nullptr, nullptr, inMillimetres());
+    EXPECT_TRUE(solids.empty()) << "it came in";
+    EXPECT_NE(StepFormat::lastError().find(
+                  "its face is the surface outside its loop (it holds a pole or wraps the "
+                  "surface), which this stage cannot represent (face #16)"),
+              std::string::npos)
+        << StepFormat::lastError();
+}
+
+// The same on a torus: cut into its patch u, v in [0, pi/2] and the rest, the rest is the torus
+// outside its loop, which this stage cannot represent. Its patch alone would be read.
+TEST(StepExact, ATorusFaceOutsideItsLoopIsNeverTurnedInsideOut) {
+    const auto solids =
+        StepFormat::fromString(torusPatchAndTheRest(), nullptr, nullptr, inMillimetres());
+    EXPECT_TRUE(solids.empty()) << "it came in";
+    EXPECT_NE(StepFormat::lastError().find("its face is the surface outside its loop (it holds a "
+                                           "pole or wraps the surface), which this stage cannot "
+                                           "represent (face #56)"),
+              std::string::npos)
+        << StepFormat::lastError();
+}
+
+// Ruling 18: a clean file with a loose UNCERTAINTY (0.01) is fitted to the model resolution, not
+// to its uncertainty: its edges' tolerances stay at the resolution and nothing says it is exact
+// only to the file's. Its top a B-spline patch, the rim's pcurve on it a circle in (u, v), which
+// the general path fitted to the file's 0.01 had stray 1e-4 or so.
+TEST(StepExact, ACleanFileWithALooseUncertaintyIsFitToTheResolution) {
+    ImportReport report;
+    const auto solids = StepFormat::fromString(
+        withEntities(splineCappedCylinder(), millimetresWithin("0.01")), &report);
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    const double resolution = topo::exactTolerance(*solids[0]).linear;
+    for (const auto& e : solids[0]->edges()) {
+        EXPECT_LE(e.tolerance, resolution) << e.topoId.tag();
+    }
+    EXPECT_FALSE(anySays(report.converted, "exact to")) << report.converted.front();
+    EXPECT_EQ(firstIssue(*solids[0]), "");
+}
+
+// Minor (a): a cylinder of radius 1e300 in a file in exametres overflows when scaled into
+// millimetres. The geometry's constructor throws; the read says why, and throws nothing.
+TEST(StepExact, AScaleIntoMillimetresThatOverflowsIsReportedNotThrown) {
+    const std::string text = withEntities(
+        replaced(externalStyleCylinder(), "#20 = CYLINDRICAL_SURFACE('',#19,1.);",
+                 "#20 = CYLINDRICAL_SURFACE('',#19,1.E300);"),
+        "#900 = (LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.EXA.,.METRE.));\n"
+        "#902 = (GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNIT_ASSIGNED_CONTEXT((#900)) "
+        "REPRESENTATION_CONTEXT('',''));\n");
+    std::vector<std::unique_ptr<topo::Solid>> solids;
+    EXPECT_NO_THROW(solids = StepFormat::fromString(text));
+    EXPECT_TRUE(solids.empty());
+    EXPECT_NE(StepFormat::lastError().find("failed to reconstruct solid #41"), std::string::npos)
+        << StepFormat::lastError();
+}
+
+// Minor (b): an edge on part of a closed B-spline curve, in a file whose UNCERTAINTY (5) is
+// larger than the curve: its far vertex is not taken for the curve's join, so each edge keeps its
+// half of the curve.
+TEST(StepExact, AnArcOfAClosedSplineKeepsItsHalfInALooseFile) {
+    ImportReport report;
+    const auto solids = StepFormat::fromString(
+        withEntities(cylinderWithASplitSplineRim(), millimetresWithin("5.")), &report);
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    int halves = 0;
+    for (const auto& e : solids[0]->edges()) {
+        if (dynamic_cast<const geo::NurbsCurve*>(e.exactCurve.get()) == nullptr) continue;
+        EXPECT_NEAR(std::abs(e.curveEnd - e.curveStart), 0.5, 1e-9) << e.topoId.tag();
+        ++halves;
+    }
+    EXPECT_EQ(halves, 2);
+    EXPECT_EQ(firstIssue(*solids[0]), "");
+}
+
+// Minor (c): a closed edge on a closed B-spline curve whose vertex is not at the curve's join has
+// no one range: it says so, not that its curve ends off its vertex.
+TEST(StepExact, AClosedSplineEdgeWhoseVertexIsOffItsJoinSaysSo) {
+    const std::string text = replaced(
+        externalStyleCylinder(), "#14 = EDGE_CURVE('',#7,#7,#5,.T.);",
+        splineCircle(300, 310, hz::math::kPi / 2) + "#14 = EDGE_CURVE('',#7,#7,#300,.T.);");
+    EXPECT_TRUE(StepFormat::fromString(text, nullptr, nullptr, inMillimetres()).empty());
+    EXPECT_NE(StepFormat::lastError().find(
+                  "its vertex is off where its closed B-spline curve joins (edge #14)"),
+              std::string::npos)
+        << StepFormat::lastError();
+}
+
+// Minor (e): edge ranges follow their sense. A cylinder whose bottom rim is two half circles, one
+// .T. across its circle's t = 0, one .F. on a circle about -z, and whose top rim is one closed
+// edge .F. on a circle about -z (the reviewer's probe): each edge runs from its start vertex
+// through the half it bounds, and the solid is clean and measures 2 pi.
+TEST(StepExact, EdgeRangesFollowTheirSenseAcrossAJoin) {
+    const std::string data = R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(0.,0.,-1.));
+#4 = DIRECTION('',(1.,0.,0.));
+#5 = DIRECTION('',(0.,1.,0.));
+#6 = CARTESIAN_POINT('',(0.,0.,2.));
+#10 = AXIS2_PLACEMENT_3D('',#1,#2,#5);
+#11 = CIRCLE('',#10,1.);
+#12 = AXIS2_PLACEMENT_3D('',#1,#3,#4);
+#13 = CIRCLE('',#12,1.);
+#14 = AXIS2_PLACEMENT_3D('',#6,#3,#5);
+#15 = CIRCLE('',#14,1.);
+#20 = CARTESIAN_POINT('',(1.,0.,0.));
+#21 = CARTESIAN_POINT('',(-1.,0.,0.));
+#22 = CARTESIAN_POINT('',(1.,0.,2.));
+#23 = VERTEX_POINT('',#20);
+#24 = VERTEX_POINT('',#21);
+#25 = VERTEX_POINT('',#22);
+#30 = EDGE_CURVE('',#23,#24,#11,.T.);
+#31 = EDGE_CURVE('',#24,#23,#13,.F.);
+#32 = EDGE_CURVE('',#25,#25,#15,.F.);
+#33 = LINE('',#20,VECTOR('',#2,1.));
+#34 = EDGE_CURVE('',#23,#25,#33,.T.);
+#40 = AXIS2_PLACEMENT_3D('',#1,#2,#4);
+#41 = CYLINDRICAL_SURFACE('',#40,1.);
+#42 = EDGE_LOOP('',(#43,#44,#45,#46,#47));
+#43 = ORIENTED_EDGE('',*,*,#30,.T.);
+#44 = ORIENTED_EDGE('',*,*,#31,.T.);
+#45 = ORIENTED_EDGE('',*,*,#34,.T.);
+#46 = ORIENTED_EDGE('',*,*,#32,.F.);
+#47 = ORIENTED_EDGE('',*,*,#34,.F.);
+#48 = FACE_OUTER_BOUND('',#42,.T.);
+#49 = ADVANCED_FACE('',(#48),#41,.T.);
+#50 = AXIS2_PLACEMENT_3D('',#1,#2,#4);
+#51 = PLANE('',#50);
+#52 = ORIENTED_EDGE('',*,*,#31,.F.);
+#53 = ORIENTED_EDGE('',*,*,#30,.F.);
+#54 = EDGE_LOOP('',(#52,#53));
+#55 = FACE_OUTER_BOUND('',#54,.T.);
+#56 = ADVANCED_FACE('',(#55),#51,.F.);
+#60 = AXIS2_PLACEMENT_3D('',#6,#2,#4);
+#61 = PLANE('',#60);
+#62 = ORIENTED_EDGE('',*,*,#32,.T.);
+#63 = EDGE_LOOP('',(#62));
+#64 = FACE_OUTER_BOUND('',#63,.T.);
+#65 = ADVANCED_FACE('',(#64),#61,.T.);
+#70 = CLOSED_SHELL('',(#49,#56,#65));
+#71 = MANIFOLD_SOLID_BREP('split rims',#70);
+)";
+    const auto solids =
+        StepFormat::fromString(hz::step_text::stepFile(data), nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    const topo::Solid& s = *solids[0];
+    std::multiset<std::string> middles;
+    for (const auto& e : s.edges()) {
+        ASSERT_NE(e.exactCurve, nullptr);
+        const Vec3 from = e.exactCurve->evaluate(e.curveStart);
+        const Vec3 to = e.exactCurve->evaluate(e.curveEnd);
+        EXPECT_NEAR((from - e.halfEdge->origin->point).length(), 0.0, 1e-12) << e.topoId.tag();
+        EXPECT_NEAR((to - e.halfEdge->twin->origin->point).length(), 0.0, 1e-12) << e.topoId.tag();
+        const Vec3 mid = e.exactCurve->evaluate(0.5 * (e.curveStart + e.curveEnd));
+        if (std::abs(mid.z) < 1e-9) middles.insert(mid.y > 0.0 ? "+y" : "-y");
+    }
+    EXPECT_EQ(middles, (std::multiset<std::string>{"+y", "-y"})) << "each half its own";
+    EXPECT_EQ(firstIssue(s), "");
+    const double volume = hz::model::MassPropertiesCalculator::compute(s).volume;
+    EXPECT_NEAR(volume, 2.0 * hz::math::kPi, 2.0 * hz::math::kPi * 1e-3);
 }

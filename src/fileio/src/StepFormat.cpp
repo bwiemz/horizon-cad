@@ -2347,8 +2347,9 @@ private:
     /// Puts edge @p e on @p curve, from @p start at curveStart to @p end at curveEnd: the
     /// parameters its vertices invert to, the way round @p sameSense says (EDGE_CURVE's sense
     /// against its curve's). A closed edge runs one whole period, or the whole of a closed
-    /// B-spline, which is not periodic here. False, with @p why said, for an edge that runs across
-    /// a closed B-spline's join, which no one range of it covers.
+    /// B-spline, which is not periodic here, from its join. False, with @p why said, for an edge
+    /// that runs across a closed B-spline's join, which no one range of it covers, and a closed
+    /// edge on a B-spline that does not close, or whose vertex is off the join.
     bool placeOnCurve(topo::Edge& e, std::shared_ptr<const geo::Curve3> curve,
                       const topo::Vertex* start, const topo::Vertex* end, bool sameSense,
                       std::string& why) const {
@@ -2370,14 +2371,26 @@ private:
             const Vec3 last = nurbs->evaluate(range.max);
             math::BoundingBox hull;
             for (const Vec3& p : nurbs->controlPoints()) hull.expand(p);
-            const double near = std::max(
-                m_lengthUncertainty,
-                math::ModelTolerance::forExtent((hull.max() - hull.min()).length()).linear);
+            // How near its ends must be to join, and a vertex to be at the join: the file's
+            // uncertainty, no coarser than a thousandth of the curve nor finer than its
+            // resolution.
+            const double size = (hull.max() - hull.min()).length();
+            const double near = std::max(std::min(m_lengthUncertainty, 1e-3 * size),
+                                         math::ModelTolerance::forExtent(size).linear);
             const auto atJoin = [&](const Vec3& p) {
                 return (p - first).length() <= near || (p - last).length() <= near;
             };
             const bool joins = (first - last).length() <= near;
             if (closed) {
+                // One period of a closed B-spline is its whole range, from its join round to it.
+                if (!joins) {
+                    why = "it is closed, but its B-spline curve is not";
+                    return false;
+                }
+                if (!atJoin(start->point)) {
+                    why = "its vertex is off where its closed B-spline curve joins";
+                    return false;
+                }
                 t0 = sameSense ? range.min : range.max;
                 t1 = sameSense ? range.max : range.min;
             } else if (joins) {
@@ -3894,17 +3907,76 @@ std::optional<double> loopArea(const std::vector<topo::HalfEdge*>& ring, const g
     return std::abs(area) <= 1e-12 * (hi.x - lo.x) * (hi.y - lo.y) ? 0.0 : area;
 }
 
-/// Turns @p face to face the way its outer loop runs in (u, v): counter-clockwise about its
-/// outward normal. The loops are the solid's topology, and same_sense only repeats it; Horizon's
-/// own writer (every file it wrote, a part's imported body among them) gives a face a surface
-/// turned either way and same_sense .T. regardless, which its carriers never read. A loop whose
-/// area says nothing (a seam joined only at poles, laid out next) leaves the face as its file
-/// says.
-void faceAsLoopsRun(topo::Face& face, const math::ModelTolerance& tolerance, std::size_t limit) {
-    if (face.outerLoop == nullptr) return;
+/// Whether @p s collapses an edge of its domain to a point: a pole, where its first or last row
+/// or column of control points is one point.
+bool collapsesAnEdge(const geo::NurbsSurface& s) {
+    const auto& net = s.controlPoints();
+    if (net.empty() || net.front().empty()) return false;
+    double size = 0.0;
+    for (const auto& row : net) {
+        for (const Vec3& p : row) size = std::max(size, (p - net.front().front()).length());
+    }
+    const double near = 1e-9 * size;
+    const auto onePoint = [near](const std::vector<Vec3>& points) {
+        return std::all_of(points.begin(), points.end(),
+                           [&](const Vec3& p) { return (p - points.front()).length() <= near; });
+    };
+    std::vector<Vec3> first;
+    std::vector<Vec3> last;
+    first.reserve(net.size());
+    last.reserve(net.size());
+    for (const auto& row : net) {
+        first.push_back(row.front());
+        last.push_back(row.back());
+    }
+    return onePoint(net.front()) || onePoint(net.back()) || onePoint(first) || onePoint(last);
+}
+
+/// Whether a loop on @p s determines the region it bounds: on a plane, a cylinder, a cone (a
+/// swept surface's B-spline among them) and a B-spline neither closed both ways nor coming to a
+/// pole, the region off the loop's disc reaches an edge of the surface no edge of the face
+/// bounds, so the face is the disc. On a sphere, a torus, or a B-spline closed both ways or with
+/// a pole, a loop bounds two regions, and its (u, v) area always picks the disc.
+bool loopsDetermineRegion(const geo::Surface& s) {
+    switch (s.kind()) {
+        case geo::SurfaceKind::Plane:
+        case geo::SurfaceKind::Cylinder:
+        case geo::SurfaceKind::Cone:
+            return true;
+        case geo::SurfaceKind::Sphere:
+        case geo::SurfaceKind::Torus:
+            return false;
+        case geo::SurfaceKind::Nurbs: {
+            const auto* nurbs = dynamic_cast<const geo::NurbsSurface*>(&s);
+            return nurbs != nullptr && !(nurbs->periodicU() && nurbs->periodicV()) &&
+                   !collapsesAnEdge(*nurbs);
+        }
+    }
+    return false;
+}
+
+/// Gives @p face its sense, or says why it has none this stage represents.
+///
+/// Where its loops determine its region (loopsDetermineRegion), the face faces the way its outer
+/// loop runs in (u, v), counter-clockwise about its outward normal: the loops are the solid's
+/// topology, and same_sense only repeats it (Horizon's own writer gave same_sense .T. whichever
+/// way a face's surface faced). Elsewhere the face keeps its file's sense (same_sense, with its
+/// shell's and bounds' flags); where its loop's unwrapped area says the other way, the face is
+/// the surface outside its loop (a ball's skin round a flat), which holds a pole or wraps the
+/// surface: not representable in this stage, so said why. A loop whose area says nothing (a
+/// seam joined only at poles, laid out next) leaves the face as its file says.
+std::string faceSense(topo::Face& face, const math::ModelTolerance& tolerance, std::size_t limit) {
+    if (face.outerLoop == nullptr) return {};
     const auto area = loopArea(ringOf(*face.outerLoop, limit), *face.exactSurface, tolerance);
-    if (!area || !std::isfinite(*area) || *area == 0.0) return;
-    face.reversed = *area < 0.0;
+    if (!area || !std::isfinite(*area) || *area == 0.0) return {};
+    const bool loopsSayReversed = *area < 0.0;
+    if (loopsDetermineRegion(*face.exactSurface)) {
+        face.reversed = loopsSayReversed;
+        return {};
+    }
+    if (loopsSayReversed == face.reversed) return {};
+    return "its face is the surface outside its loop (it holds a pole or wraps the surface), "
+           "which this stage cannot represent";
 }
 
 /// How many layouts layOutSeams tries for one face, at most. A well-formed face has a seam along
@@ -3988,24 +4060,26 @@ std::string threeFigures(double x) {
 /// and vertex's tolerance to cover how far the file has it stray, and checks the whole with
 /// topo::validateExact at the solid's model resolution.
 ///
-/// The base tolerance, each pcurve's fit target, is the file's @p uncertainty (mm; 0 where it
-/// gives none), never finer than the model resolution of the solid's size. It is a floor, not a
-/// ceiling: as an OpenCASCADE reader's per-entity tolerances do, each edge's tolerance (and each
-/// vertex's) grows to cover what is measured, its vertices' gaps, its pcurves' deviations and a
-/// curve's own stand-off from its surface (fitted to the base beyond it, never chased), up to
-/// the limit of a thousandth of the solid's size. Past the limit the solid is not exact, and the
-/// problem says so; so it does for a problem the validator finds, or a pcurve that cannot be
-/// built.
-ExactRead finishExact(topo::Solid& solid, double uncertainty, const std::atomic<bool>* cancelled) {
+/// Each pcurve is fitted to the larger of the model resolution of the solid's size and the
+/// curve's own stand-off from its surface (measured, never chased): a clean edge to the
+/// resolution, one that stands off to its gap. As an OpenCASCADE reader's per-entity tolerances
+/// do, each edge's tolerance (and each vertex's) grows to cover what is measured, its vertices'
+/// gaps, its pcurves' deviations and stand-offs, up to the limit of a thousandth of the solid's
+/// size (the resolution, where its size cannot be measured). Past the limit the solid is not
+/// exact, and the problem says so; so it does for a problem the validator finds, or a pcurve
+/// that cannot be built. The file's UNCERTAINTY_MEASURE sets neither.
+ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     ExactRead read;
     const double extent = topo::exactExtent(solid);
     const math::ModelTolerance resolution = math::ModelTolerance::forExtent(extent);
     read.resolution = resolution.linear;
-    const double limit = std::max(resolution.linear, 1e-3 * extent);
-    double base = resolution.linear;
-    if (std::isfinite(uncertainty) && uncertainty > 0.0) {
-        base = std::clamp(uncertainty, resolution.linear, limit);
-    }
+    const bool sized = 1e-3 * extent > resolution.linear;
+    const double limit = sized ? 1e-3 * extent : resolution.linear;
+    const std::string limitSays = "beyond the limit of " + threeFigures(limit) +
+                                  (sized ? " (a thousandth of the solid's size)"
+                                         : " (the model resolution: the solid's size could not "
+                                           "be measured)");
+    const double base = resolution.linear;
     const auto stop = [&] {
         if (cancelled == nullptr || !cancelled->load(std::memory_order_relaxed)) return false;
         read.problem = kCancelled;
@@ -4019,9 +4093,8 @@ ExactRead finishExact(topo::Solid& solid, double uncertainty, const std::atomic<
         if (by <= limit) {
             tolerance = std::max(tolerance, by);
         } else if (read.problem.empty()) {
-            read.problem = std::string(what) + " " + threeFigures(by) + " " + from +
-                           ", beyond the limit of " + threeFigures(limit) +
-                           " (a thousandth of the solid's size)" + whereIn(f, e);
+            read.problem = std::string(what) + " " + threeFigures(by) + " " + from + ", " +
+                           limitSays + whereIn(f, e);
         }
     };
 
@@ -4075,8 +4148,8 @@ ExactRead finishExact(topo::Solid& solid, double uncertainty, const std::atomic<
                     if (!pc.problem.empty() && pc.curve != nullptr && pc.standOff > base &&
                         pc.standOff <= limit) {
                         // The curve stands off its surface: no pcurve comes nearer, so it is fitted
-                        // to the base beyond its gap (twice the gap measured, which may peak
-                        // between the samples that measured it) and the edge's tolerance covers
+                        // to its gap (twice the gap measured, which may peak between the samples
+                        // that measured it, and the resolution) and the edge's tolerance covers
                         // what is measured.
                         pc = geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1,
                                            std::min(limit, 2.0 * pc.standOff + base));
@@ -4084,9 +4157,7 @@ ExactRead finishExact(topo::Solid& solid, double uncertainty, const std::atomic<
                     if (!pc.problem.empty() || pc.curve == nullptr) {
                         read.problem = std::isfinite(pc.standOff) && pc.standOff > limit
                                            ? "its curve stands " + threeFigures(pc.standOff) +
-                                                 " off its face's surface, beyond the limit of " +
-                                                 threeFigures(limit) +
-                                                 " (a thousandth of the solid's size)"
+                                                 " off its face's surface, " + limitSays
                                            : pc.problem;
                         read.problem += whereIn(&f, &e);
                         return read;
@@ -4111,7 +4182,10 @@ ExactRead finishExact(topo::Solid& solid, double uncertainty, const std::atomic<
     for (auto& f : solid.faces()) {
         if (stop()) return read;
         if (!f.alive || !f.exactSurface) continue;
-        faceAsLoopsRun(f, resolution, limitHalfEdges);
+        if (std::string why = faceSense(f, resolution, limitHalfEdges); !why.empty()) {
+            read.problem = why + whereIn(&f, nullptr);
+            return read;
+        }
         if (std::string why = layOutSeams(f, resolution, limitHalfEdges, cancelled); !why.empty()) {
             read.problem = why == kCancelled ? why : why + whereIn(&f, nullptr);
             return read;
@@ -4206,15 +4280,31 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
         SolidBuilder builder(parser, static_cast<int>(index), cancelled,
                              group.context != 0 ? contextRadians(parser, group.context) : 1.0,
                              uncertainty / mm);
+        // Its exact form, or nothing (decision 1b): a solid whose faces or edges cannot be read
+        // exactly, or whose exact form does not hold together, is left out, with why. Nothing
+        // faceted comes in in its place. (STEP embedded in a native part file is kept as it was
+        // read before, without its exact form: old parts still open.)
+        const std::string solidN = "solid " + std::to_string(index + 1);
         std::unique_ptr<topo::Solid> solid;
         std::string error;
+        std::string notExact;
+        ExactRead exact;
         try {
             solid = builder.build(group.msbs, group.surfaces, error);
+            if (solid != nullptr) {
+                notExact = builder.exactProblem();
+                // Into millimetres.
+                if (mm != 1.0) solid = model::Pattern::transformed(*solid, math::Mat4::scale(mm));
+                if (notExact.empty()) exact = finishExact(*solid, cancelled);
+            }
         } catch (const std::exception& e) {
             // The geometry constructors throw on inputs the reader's own
-            // checks let through (a degree-0 B-spline, ragged control rows).
+            // checks let through (a degree-0 B-spline, ragged control rows,
+            // a scale into millimetres that overflows).
             error = e.what();
+            solid = nullptr;
         }
+        if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) return built;
         if (solid == nullptr) {
             if (built.firstError.empty()) {
                 built.firstError = "failed to reconstruct solid #" +
@@ -4229,19 +4319,7 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
                                                 : " of its shells are open surfaces") +
                                      ", not a solid, and left out");
         }
-
-        // Its exact form, or nothing (decision 1b): a solid whose faces or edges cannot be read
-        // exactly, or whose exact form does not hold together, is left out, with why. Nothing
-        // faceted comes in in its place. (STEP embedded in a native part file is kept as it was
-        // read before, without its exact form: old parts still open.)
-        const std::string solidN = "solid " + std::to_string(index + 1);
-        std::string notExact = builder.exactProblem();
-
-        // Into millimetres.
-        if (mm != 1.0) solid = model::Pattern::transformed(*solid, math::Mat4::scale(mm));
         if (notExact.empty()) {
-            const ExactRead exact = finishExact(*solid, uncertainty, cancelled);
-            if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) return built;
             notExact = exact.problem;
             if (notExact.empty() && exact.largestEdgeTolerance > exact.resolution) {
                 built.exactTo.push_back(solidN + ": exact to " +

@@ -110,22 +110,29 @@ struct StepWritePart {
 /// that surface (STEP's parametrisations are the kernel's), and a B_SPLINE_SURFACE as that very
 /// B-spline, never recognised as a quadric. A SURFACE_OF_LINEAR_EXTRUSION is the one exception:
 /// with no typed extrusion yet, it comes in as its B-spline carrier. Its surface is never turned
-/// round: Face::reversed says which way the face faces. The reader's rule for it: the face faces
-/// the way its outer loop runs, counter-clockwise in (u, v) about its outward normal, wherever the
-/// loop's unwrapped area says so; only where it says nothing (a seam joined at poles alone) does
-/// the face take !same_sense, with its shell's and bounds' flags. The loops are the topology and
-/// same_sense only repeats it, and Horizon's own writer wrote same_sense .T. whichever way a
-/// face's surface faced. An edge keeps its curve (a LINE at its VECTOR's magnitude, a CIRCLE, an
-/// ELLIPSE, a B-spline) over the range its vertices invert to, the way its same_sense says, a
-/// closed edge a whole period. Each half-edge's pcurve is built (geo::pcurveOn), never read.
-/// Tolerances: the file's UNCERTAINTY_MEASURE (or, where it gives none, the model resolution of
-/// the solid's size) is each pcurve's fit target, a floor and not a ceiling: each edge's and
-/// vertex's tolerance grows to cover how far the file has it stray (its gaps, a curve's own
-/// stand-off from its surface), as per-entity tolerances do, up to a thousandth of the solid's
-/// size, and the report says how exact a solid so read is. A solid whose exact form cannot be
-/// made, strays beyond that, or does not hold together (topo::validateExact) is left out with
-/// why: nothing faceted comes in for it (StepReadOptions::keepWhenNotExact aside, for a native
-/// file's embedded STEP).
+/// round: Face::reversed says which way the face faces. The reader's rule for it: on a surface
+/// where a loop determines the region it bounds (a plane, a cylinder, a cone, a swept surface's
+/// B-spline, a B-spline neither closed both ways nor coming to a pole), the face faces the way
+/// its outer loop runs, counter-clockwise in (u, v) about its outward normal: the loops are the
+/// topology and same_sense only repeats it, and Horizon's own writer wrote same_sense .T.
+/// whichever way a face's surface faced. On a sphere, a torus or a B-spline closed both ways or
+/// with a pole, a loop bounds two regions, so the face takes !same_sense with its shell's and
+/// bounds' flags; where its loop runs the other way, the face is the surface outside its loop
+/// (a ball's skin round a flat: it holds a pole or wraps the surface), which this stage cannot
+/// represent, and the solid is left out with why. A loop whose area says nothing (a seam joined
+/// at poles alone) leaves the face as its flags say. An edge keeps its curve (a LINE at its
+/// VECTOR's magnitude, a CIRCLE, an ELLIPSE, a B-spline) over the range its vertices invert to,
+/// the way its same_sense says, a closed edge a whole period. Each half-edge's pcurve is built
+/// (geo::pcurveOn), never read. Tolerances: each pcurve is fitted to the model resolution of the
+/// solid's size, or to its curve's own stand-off from its surface where that is larger (measured,
+/// never chased); each edge's and vertex's tolerance grows to cover how far the file has it
+/// stray (its gaps, its stand-off), as per-entity tolerances do, up to a thousandth of the
+/// solid's size, and the report says how exact a solid so read is. The file's
+/// UNCERTAINTY_MEASURE says only how near a closed B-spline curve's ends must be to join (and a
+/// vertex to be at the join), no coarser than a thousandth of the curve. A solid whose exact form
+/// cannot be made, strays beyond the limit, or does not hold together (topo::validateExact) is
+/// left out with why: nothing faceted comes in for it (StepReadOptions::keepWhenNotExact aside,
+/// for a native file's embedded STEP).
 ///
 /// Faces keep their holes (FACE_BOUND). Solids come in in millimetres: the
 /// LENGTH_UNIT of each shape representation's context — an SI unit with any
