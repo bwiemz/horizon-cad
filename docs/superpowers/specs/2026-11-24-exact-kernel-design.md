@@ -268,6 +268,37 @@ a user can see. Each is several PRs.
 1. **Foundations.** Typed surfaces and curves, pcurves, the tolerance model,
    robust predicates, the exact validator, meshing of trimmed faces at the read
    point. Nothing in the app changes yet; everything is tested on its own.
+   *Landed:* typed analytic and NURBS surfaces and curves, pcurves, one
+   tolerance model, exact predicates, the exact validator, Pattern copies that
+   keep exact geometry, constrained Delaunay triangulation, and watertight
+   meshing of trimmed faces at `BoundaryMesh`'s read point; nothing reads exact
+   faces yet.
+
+   Carried to later stages:
+   - *Stage 2, performance:* cones and tori mesh heavily at the read point (a
+     frustum 9.5k triangles, ~235 ms; a one-vertex torus 21k); refine in the live
+     triangulation, grade by local radius, cache each face's mesh.
+   - *Stage 2, importer:* seamless periodic faces (a band between two rims) are
+     `LoopNotClosed` under the one-seam convention; the importer inserts seams.
+   - *Stage 2, callers:* `BooleanOp`, `InterferenceChecker` and `SolidTessellator`
+     catch `extractFacePolygons`' `std::runtime_error`; `SolidTessellator` tags one
+     face per `topoId`.
+   - *Stage 2, mass:* `MassProperties` surfaces the mesher's reason when props are invalid.
+   - *Stage 2, validator:* a periodic edge over one period and an unwrapped
+     loop's extent are unbounded; imported data is the first source.
+   - *Stage 2, `triangulateRegion`:* a lower spread guard (~1e-60) and a fuzzer, as STEP pcurves are adversarial.
+   - *Stage 2, transforms:* a non-similar transform (Ruling 9) converts the copy
+     to NURBS instead of emptying its exact fields.
+   - *Stage 2, STEP:* the writer folds Plane/Cylinder/Cone/Line scale factors (Ruling 5) into the parametrisation.
+   - *Stage 2, mixed solids:* test or orient the faceted subset of an exact plus faceted solid.
+   - *Stage 2, tolerance:* `ModelTolerance::forExtent(DBL_MAX)` gives an infinite tolerance.
+   - *Stage 3:* pole and apex topology (degenerate edges or not, a loop's jump
+     round a pole, `sameUv`'s arc-vs-chord there, a recognised sphere's frame z);
+     exact primitives name their edges and vertices.
+   - *Stage 4:* closed-form intersections read the surfaces' scale and axialScale.
+   - *Stage 5:* the validator's O(n²) self-intersection and hole checks, a crossing
+     at a sample point, near-concentric loops, and a global orientation check.
+   - *Stage 6:* `Torus::invert` assumes R >= r; fillets can make spindle tori.
 2. **Exact exchange.** STEP import keeps exact faces (no `facetCurved`);
    operations reach them through the faceted bridge; STEP export writes exact
    faces as they are; rendering and mass properties use the exact faces.

@@ -10,7 +10,7 @@ user can reach it in the application.
 | Area | What users of SolidWorks / AutoCAD expect | What Horizon has | Gap |
 |------|------------------------------------------|------------------|-----|
 | **AI** | Neither has an assistant that builds parts or edits drawings from a request. | Claude, GPT, Gemini and local models; tools for parts, assemblies, drawings (made and edited), views of the model; every change one undo step; `horizon-mcp` for outside AI clients. | **Ahead.** Keep widening the tools as features land. |
-| **Geometry kernel** | Exact B-Rep (Parasolid / ACIS): true cylinders, fillets and NURBS, booleans on exact surfaces. | A B-Rep whose faces are facets that record their true surface; booleans on the facets. Volumes converge with resolution. | **Largest gap**, and the costliest to close. Not a next step. |
+| **Geometry kernel** | Exact B-Rep (Parasolid / ACIS): true cylinders, fillets and NURBS, booleans on exact surfaces. | A B-Rep whose faces are facets that record their true surface; booleans on the facets. Volumes converge with resolution. Beside it, stage 1 of an exact kernel, which nothing in the application reads yet: typed analytic and NURBS surfaces and curves, pcurves, one tolerance model, exact predicates, an exact validator, constrained Delaunay triangulation, watertight meshing of trimmed faces. | **Largest gap**, being closed in-house in seven stages; stage 1 is done, and stage 2 (exact exchange) is the first the application sees. |
 | **Part features** | Extrude, revolve, sweep, loft, fillet, chamfer, shell, draft, hole wizard, patterns, mirror, ribs, configurations. | All of these but ribs; configurations; variables. Fillet and loft are experimental on hard inputs. | Small in breadth; robustness on hard inputs. |
 | **Sheet metal** | Base flange from an open sketch, edge flanges, hems, bend tables, flat pattern to DXF for cutting. | A folded-strip library (bends, K-factor, bend allowance, flat-pattern length), **not reachable** in the application. | **Large and cheap to start**: the maths exists. Next step. |
 | **Assemblies** | Mates, subassemblies, patterns, interference, exploded views, BOM, motion. | All, motion as studies of a mate driven through a range. Experimental. | Moderate: flexible subassemblies; motion over time, with forces. |
@@ -36,6 +36,13 @@ user can reach it in the application.
    serial-chain kinematics library, which a linkage is not; `study_motion`
    for the AI. Next: saving studies, several drivers, time and speed.)
 
-The kernel gap is real and is not on this list: closing it is a multi-year
-project. The facets-with-true-surfaces kernel keeps volumes, masses and
-exports right to a chosen accuracy, which is what most parts need.
+The kernel gap is real and is being closed in-house, in seven stages, which
+is a multi-year project, so it is not on this list of next steps. The design
+is in [the exact kernel spec](../specs/2026-11-24-exact-kernel-design.md).
+Stage 1 is done: typed analytic and NURBS surfaces and curves, pcurves, one
+tolerance model, exact robust predicates, an exact validator, Pattern copies
+that keep exact geometry, constrained Delaunay triangulation, and watertight
+meshing of trimmed faces at `BoundaryMesh`'s read point. Nothing in the
+application reads exact geometry until stage 2, exact exchange. Until then the
+facets-with-true-surfaces kernel keeps volumes, masses and exports right to a
+chosen accuracy, which is what most parts need.
