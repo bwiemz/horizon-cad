@@ -11,10 +11,14 @@ constexpr double kTwoPi = 6.283185307179586476925286766559;
 constexpr double kInf = std::numeric_limits<double>::infinity();
 constexpr double kHalfPi = 1.5707963267948966192313216916398;
 
-/// An angle normalised into [0, 2 pi); a tiny negative angle that rounds up to 2 pi gives 0.
+/// An angle within one turn of [0, 2 pi) normalised into it; a tiny negative angle that rounds
+/// up to 2 pi gives 0.
 double wrapAngle(double a) {
     if (a < 0.0) {
         a += kTwoPi;
+    }
+    if (a >= kTwoPi) {
+        a -= kTwoPi;  // an angle past a full turn, e.g. longitude + pi
     }
     return a >= kTwoPi ? 0.0 : a;
 }
@@ -183,10 +187,26 @@ math::Vec2 Cone::invert(const math::Vec3& point) const {
     const math::Vec3 p = point - frame_.origin;
     const double q = radialDistance(frame_, p);
     const double h = p.dot(frame_.z);
-    // Project (q, h) onto the generator line (r + w tan a, w), w = s v.
+    const double u1 = longitude(frame_, p);
     const double t = std::tan(halfAngle_);
-    const double w = ((q - radius_) * t + h) / (1.0 + t * t);
-    return {longitude(frame_, p), w / axialScale_};
+    // The generator line (r + w tan a, w), w = s v, runs through the apex into the other
+    // nappe, which lies at longitude u + pi. Project (q, h) onto it in the meridian plane
+    // at u1 (signed radius q) and at u1 + pi (signed radius -q); the nearer one wins.
+    const auto project = [&](double signedQ, double& dist2) {
+        const double w = ((signedQ - radius_) * t + h) / (1.0 + t * t);
+        const double dr = signedQ - radius_ - w * t;
+        const double dh = h - w;
+        dist2 = dr * dr + dh * dh;
+        return w;
+    };
+    double d1 = 0.0;
+    double d2 = 0.0;
+    const double w1 = project(q, d1);
+    const double w2 = project(-q, d2);
+    if (d2 < d1) {
+        return {wrapAngle(u1 + kTwoPi / 2.0), w2 / axialScale_};
+    }
+    return {u1, w1 / axialScale_};
 }
 
 std::unique_ptr<Surface> Cone::transformed(const math::Mat4& m) const {

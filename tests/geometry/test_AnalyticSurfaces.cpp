@@ -263,3 +263,31 @@ TEST(AnalyticSurfaces, AFrameFromAShortAxisIsStillUnit) {
     expectNear(f.z, {0, 0, 1});
     EXPECT_NEAR(f.x.length(), 1.0, 1e-12);
 }
+
+TEST(AnalyticSurfaces, ConeInvertsPastItsApexOntoTheOtherNappe) {
+    const Cone c(tiltedFrame(), 3.2, std::atan(0.55));  // apex at v = -5.82
+    for (double u : kUs) {
+        for (double v : {-5.5, -8.0, -30.0}) {
+            const math::Vec2 uv = c.invert(c.evaluate(u, v));
+            expectNear(c.evaluate(uv.x, uv.y), c.evaluate(u, v), 1e-9);
+            EXPECT_GE(uv.x, 0.0);
+            EXPECT_LT(uv.x, 2 * kPi);
+        }
+    }
+}
+
+TEST(AnalyticSurfaces, ConeInvertsOffSurfacePointsToTheNearestGenerator) {
+    const Cone c(Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 0.0, std::atan(0.1));  // apex at 0
+    // Far below the apex the other nappe's generator (u = pi) is nearer.
+    const math::Vec2 uv = c.invert({1, 0, -100});
+    EXPECT_NEAR(uv.x, kPi, 1e-12);
+    const math::Vec3 hit = c.evaluate(uv.x, uv.y);
+    EXPECT_NEAR((math::Vec3{1, 0, -100} - hit).length(), 8.96, 0.01);
+    // The nearest point to a point on the axis below the apex is on a generator, at u = 0.
+    const math::Vec2 axis = c.invert({0, 0, -3});
+    EXPECT_DOUBLE_EQ(axis.x, 0.0);
+    EXPECT_NEAR(axis.y, -3.0 / 1.01, 1e-12);
+    // The apex itself.
+    const math::Vec2 apex = c.invert({0, 0, 0});
+    expectNear(c.evaluate(apex.x, apex.y), {0, 0, 0});
+}

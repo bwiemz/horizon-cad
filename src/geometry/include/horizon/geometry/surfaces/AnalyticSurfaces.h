@@ -95,8 +95,8 @@ public:
     /// The zero vector at the apex, where rounding leaves a radius of a few ulps
     /// instead of zero.
     math::Vec3 normal(double u, double v) const override;
-    /// The nearest point of the generator line in the point's meridian plane;
-    /// a point on the axis gives u = 0.
+    /// The nearest point of the whole generator line, past the apex included
+    /// (there it is at u + pi, on the other nappe); a point on the axis gives u = 0.
     math::Vec2 invert(const math::Vec3& point) const override;
     std::unique_ptr<Surface> transformed(const math::Mat4& m) const override;
 
@@ -161,7 +161,8 @@ public:
     bool periodicU() const override;
     bool periodicV() const override;
     /// The nearest point of the minor circle in the point's meridian plane; a
-    /// point on the axis gives u = 0.
+    /// point on the axis gives u = 0. Assumes R >= r (a ring torus): a spindle
+    /// torus's tube crosses the axis, so the other half-plane may hold a nearer point.
     math::Vec2 invert(const math::Vec3& point) const override;
     std::unique_ptr<Surface> transformed(const math::Mat4& m) const override;
 
