@@ -185,6 +185,12 @@ struct Checker {
                close(a.y, b.y, d.dv.length(), s.periodicV(), s.vRange());
     }
 
+    /// The period of a periodic parameter, 0 for one that is not.
+    static double periodOf(bool periodic, geo::Interval r) {
+        const double p = r.max - r.min;
+        return periodic && std::isfinite(p) ? p : 0.0;
+    }
+
     LoopInfo checkLoop(const Face& f, const Wire* w, bool outer) {
         LoopInfo info;
         info.wire = w;
@@ -229,12 +235,8 @@ struct Checker {
         // The loop as chords of its pcurves' own (u, v) values, unwrapped so that it is
         // continuous: a periodic surface's seam must not collapse the rectangle, and a loop
         // written inside [0, 2 pi) must not break where it crosses the seam.
-        const auto period = [](bool periodic, geo::Interval r) {
-            const double p = r.max - r.min;
-            return periodic && std::isfinite(p) ? p : 0.0;
-        };
-        if (!detail::unwrapLoop(ring, kSamples, period(s.periodicU(), s.uRange()),
-                                period(s.periodicV(), s.vRange()), info.poly)) {
+        if (!detail::unwrapLoop(ring, kSamples, s, periodOf(s.periodicU(), s.uRange()),
+                                periodOf(s.periodicV(), s.vRange()), info.poly)) {
             report(ExactIssueKind::LoopNotClosed, &f, w->halfEdge->edge,
                    "loop closes only after winding round the surface");
             return info;
@@ -255,30 +257,37 @@ struct Checker {
         return info;
     }
 
-    void checkLoopRelations(const Face& f, const std::vector<LoopInfo>& loops) {
-        const auto uvTol = uvTolerance(*f.exactSurface);
+    void checkLoopRelations(const Face& f, std::vector<LoopInfo>& loops) {
+        const geo::Surface& surface = *f.exactSurface;
+        const auto uvTol = uvTolerance(surface);
+        if (loops.empty() || !loops[0].usable) return;
+        // Each loop was unwrapped from its own first pcurve, so an inner loop may sit a period
+        // away from the outer one: bring them into one window before comparing.
+        for (size_t j = 1; j < loops.size(); ++j) {
+            if (!loops[j].usable) continue;
+            detail::alignToReference(loops[j].poly, loops[0].poly,
+                                     periodOf(surface.periodicU(), surface.uRange()),
+                                     periodOf(surface.periodicV(), surface.vRange()));
+        }
         for (size_t i = 0; i < loops.size(); ++i) {
             if (!loops[i].usable) continue;
             for (size_t j = i + 1; j < loops.size(); ++j) {
                 if (!loops[j].usable) continue;
-                if (detail::loopsCross(loops[i].poly, loops[j].poly, uvTol)) {
+                const bool crossing = detail::loopsCross(loops[i].poly, loops[j].poly, uvTol);
+                if (crossing) {
                     report(ExactIssueKind::LoopsCross, &f, loops[j].wire->halfEdge->edge,
                            "two loops of the face cross");
                 }
-            }
-        }
-        if (loops.empty() || !loops[0].usable) return;
-        for (size_t j = 1; j < loops.size(); ++j) {
-            if (!loops[j].usable || detail::loopsCross(loops[0].poly, loops[j].poly, uvTol)) {
-                continue;
-            }
-            const bool outside = std::any_of(
-                loops[j].poly.begin(), loops[j].poly.end(), [&](const detail::LoopSegment& seg) {
-                    return detail::clearlyOutside(loops[0].poly, seg.a);
-                });
-            if (outside) {
-                report(ExactIssueKind::HoleOutsideOuterLoop, &f, loops[j].wire->halfEdge->edge,
-                       "inner loop lies outside the outer loop");
+                if (i != 0 || crossing) continue;
+                const bool outside =
+                    std::any_of(loops[j].poly.begin(), loops[j].poly.end(),
+                                [&](const detail::LoopSegment& seg) {
+                                    return detail::clearlyOutside(loops[0].poly, seg.a);
+                                });
+                if (outside) {
+                    report(ExactIssueKind::HoleOutsideOuterLoop, &f, loops[j].wire->halfEdge->edge,
+                           "inner loop lies outside the outer loop");
+                }
             }
         }
     }

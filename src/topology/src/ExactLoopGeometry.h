@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "horizon/geometry/curves/Curve2D.h"
+#include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/topology/HalfEdge.h"
 
@@ -33,9 +34,16 @@ using UvTolerance = std::function<double(const math::Vec2&)>;
 /// round) and chains them, shifting each by whole periods (periodU, periodV; 0 where the surface
 /// is not periodic in that direction) so it continues the previous one. False when the loop
 /// closes only after winding a whole number of periods round the surface; @p out is then not
-/// meaningful. Every half-edge must carry a pcurve.
-bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, double periodU,
-                double periodV, LoopPolygon& out);
+/// meaningful. At a join where the surface's derivative along an axis vanishes (a pole or an
+/// apex) that axis is not shifted: the jump there is a move along the singular side, not a wrap.
+/// Every half-edge must carry a pcurve.
+bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo::Surface& surface,
+                double periodU, double periodV, LoopPolygon& out);
+
+/// Shifts @p loop by whole periods so it lies in the window of @p reference (nearest by the
+/// middle of its extent), for loops of one face that were each unwrapped from their own start.
+void alignToReference(LoopPolygon& loop, const LoopPolygon& reference, double periodU,
+                      double periodV);
 
 /// Signed area (positive counter-clockwise) of the chords' polygon.
 double signedArea(const LoopPolygon& loop);

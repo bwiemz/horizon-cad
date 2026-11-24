@@ -42,9 +42,10 @@ void bisect(const LoopSegment& s, LoopSegment halves[2]) {
 }
 
 /// Chords that cross are a real crossing only once both are so close to their curves that the
-/// curves cannot pass between them; until then bisect and look again. A crossing exactly at a
-/// bisection point is two touching pairs and is missed; that needs the curves to meet at a
-/// sampled parameter and is not what sagging chords produce. Depth exhausted counts as real.
+/// curves cannot pass between them; until then bisect and look again. Depth exhausted counts as
+/// real. Blind spot: a crossing is missed whenever one curve's sample point lies exactly on the
+/// other's straight chord (the touching pairs are not proper crossings), as at a bisection
+/// point; that needs the curves to meet at a sampled parameter, which sagging chords do not do.
 bool crossesForReal(const LoopSegment& s, const LoopSegment& t, const UvTolerance& tol, int depth) {
     if (!chordsCross(s, t)) return false;
     if (depth >= kMaxRefinement) return true;
@@ -70,16 +71,24 @@ double distanceToSegment(const Vec2& p, const Vec2& a, const Vec2& b) {
 
 }  // namespace
 
-bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, double periodU,
-                double periodV, LoopPolygon& out) {
+bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo::Surface& surface,
+                double periodU, double periodV, LoopPolygon& out) {
     out.clear();
     Vec2 prevEnd;
     for (const HalfEdge* h : ring) {
         Vec2 shift;
         const Vec2 start = sampleAt(*h, 0, samples);
         if (!out.empty()) {
-            if (periodU > 0.0) shift.x = std::round((prevEnd.x - start.x) / periodU) * periodU;
-            if (periodV > 0.0) shift.y = std::round((prevEnd.y - start.y) / periodV) * periodV;
+            // Where a derivative vanishes the join is a move along a pole or apex, not a wrap.
+            const auto d = surface.derivatives(start.x, start.y);
+            const double du = d.du.length();
+            const double dv = d.dv.length();
+            if (periodU > 0.0 && du > 1e-9 * dv) {
+                shift.x = std::round((prevEnd.x - start.x) / periodU) * periodU;
+            }
+            if (periodV > 0.0 && dv > 1e-9 * du) {
+                shift.y = std::round((prevEnd.y - start.y) / periodV) * periodV;
+            }
         }
         Vec2 a = start + shift;
         for (int i = 1; i < samples; ++i) {
@@ -94,8 +103,11 @@ bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, double pe
     }
     if (out.empty()) return true;
     const Vec2 gap = out.front().a - prevEnd;
-    const bool windsU = periodU > 0.0 && std::round(gap.x / periodU) != 0.0;
-    const bool windsV = periodV > 0.0 && std::round(gap.y / periodV) != 0.0;
+    const auto d = surface.derivatives(out.front().a.x, out.front().a.y);
+    const bool windsU =
+        periodU > 0.0 && d.du.length() > 1e-9 * d.dv.length() && std::round(gap.x / periodU) != 0.0;
+    const bool windsV =
+        periodV > 0.0 && d.dv.length() > 1e-9 * d.du.length() && std::round(gap.y / periodV) != 0.0;
     return !windsU && !windsV;
 }
 
@@ -104,12 +116,39 @@ double signedArea(const LoopPolygon& loop) {
     // About the first point: far from the origin the products would lose their precision.
     const Vec2 o = loop.front().a;
     double twice = 0.0;
-    for (const auto& s : loop) {
-        const Vec2 p = s.a - o;
-        const Vec2 q = s.b - o;
+    for (size_t i = 0; i < loop.size(); ++i) {
+        const Vec2 p = loop[i].a - o;
+        const Vec2 q = loop[i].b - o;
         twice += p.x * q.y - q.x * p.y;
+        // The jump from one pcurve's end to the next one's start: nothing but rounding on most
+        // surfaces, a run along the pole or apex on others.
+        const Vec2 r = loop[(i + 1) % loop.size()].a - o;
+        twice += q.x * r.y - r.x * q.y;
     }
     return twice / 2.0;
+}
+
+void alignToReference(LoopPolygon& loop, const LoopPolygon& reference, double periodU,
+                      double periodV) {
+    if (loop.empty() || reference.empty()) return;
+    const auto middle = [](const LoopPolygon& l) {
+        Vec2 lo = l.front().a;
+        Vec2 hi = lo;
+        for (const auto& s : l) {
+            lo = {std::min(lo.x, s.a.x), std::min(lo.y, s.a.y)};
+            hi = {std::max(hi.x, s.a.x), std::max(hi.y, s.a.y)};
+        }
+        return (lo + hi) * 0.5;
+    };
+    const Vec2 gap = middle(reference) - middle(loop);
+    Vec2 delta;
+    if (periodU > 0.0) delta.x = std::round(gap.x / periodU) * periodU;
+    if (periodV > 0.0) delta.y = std::round(gap.y / periodV) * periodV;
+    for (auto& s : loop) {
+        s.shift = s.shift + delta;
+        s.a = s.a + delta;
+        s.b = s.b + delta;
+    }
 }
 
 bool selfIntersects(const LoopPolygon& loop, const UvTolerance& tolerance) {
@@ -135,15 +174,15 @@ bool loopsCross(const LoopPolygon& p, const LoopPolygon& q, const UvTolerance& t
 bool clearlyOutside(const LoopPolygon& outer, const Vec2& point) {
     std::vector<Vec2> poly;
     poly.reserve(outer.size());
-    double worstSag = 0.0;
-    for (const auto& s : outer) {
-        poly.push_back(s.a);
-        worstSag = std::max(worstSag, sag(s));
-    }
+    for (const auto& s : outer) poly.push_back(s.a);
     if (math::classifyPoint(poly, point) != math::Containment::Outside) return false;
-    double nearest = std::numeric_limits<double>::infinity();
-    for (const auto& s : outer) nearest = std::min(nearest, distanceToSegment(point, s.a, s.b));
-    return nearest > worstSag;
+    // Each chord has its own band: the curve it stands for may lie that far (its sag) from it.
+    // A point within a chord's band might be inside the true curve; one margin for the whole
+    // loop would let a big arc hide holes beside every other side.
+    for (const auto& s : outer) {
+        if (distanceToSegment(point, s.a, s.b) <= sag(s)) return false;
+    }
+    return true;
 }
 
 }  // namespace hz::topo::detail

@@ -272,75 +272,113 @@ TEST(ExactValidator, APcurveWindingTwiceRoundAClosedEdgeIsReported) {
 
 namespace {
 
-/// One face on a half-cylinder (radius 2, height 3) spanning u in [3 pi/2, 5 pi/2], across the
-/// seam of the surface's [0, 2 pi) range; its twins have no face. @p seamU is the u the right
-/// side's pcurve is written at (5 pi/2 is continuous, pi/2 is what inversion would give).
+constexpr double kRadius = 2.0;
+constexpr double kHeight = 3.0;
+
+/// Adds a quadrilateral loop of four half-edges to @p face on the cylinder of @p frame and
+/// radius kRadius: from corner i to corner i+1, alternately along an arc (v constant) and a line
+/// along z (u constant). Corners are (u, v) and may lie beyond 2 pi; @p written[i] is added to
+/// half-edge i's pcurve (a whole-period shift, to write it in another window of the surface).
+/// The twins have no face.
+topo::Wire* addQuadLoop(topo::Solid& solid, topo::Face* face, const geo::Frame& frame,
+                        const math::Vec2 (&corner)[4], const math::Vec2 (&written)[4], bool outer) {
+    const geo::Cylinder surface(frame, kRadius);
+    topo::Wire* w = solid.allocWire();
+    if (outer) {
+        face->outerLoop = w;
+    } else {
+        face->innerLoops.push_back(w);
+    }
+    topo::Vertex* v[4];
+    topo::HalfEdge* he[4];
+    topo::HalfEdge* tw[4];
+    topo::Edge* ed[4];
+    for (int i = 0; i < 4; ++i) {
+        v[i] = solid.allocVertex();
+        v[i]->point = surface.evaluate(corner[i].x, corner[i].y);
+        he[i] = solid.allocHalfEdge();
+        tw[i] = solid.allocHalfEdge();
+        ed[i] = solid.allocEdge();
+    }
+    for (int i = 0; i < 4; ++i) {
+        const int j = (i + 1) % 4;
+        he[i]->origin = v[i];
+        he[i]->next = he[j];
+        he[i]->prev = he[(i + 3) % 4];
+        he[i]->face = face;
+        he[i]->twin = tw[i];
+        he[i]->edge = ed[i];
+        tw[i]->origin = v[j];
+        tw[i]->twin = he[i];
+        tw[i]->edge = ed[i];
+        ed[i]->halfEdge = he[i];
+        v[i]->halfEdge = he[i];
+        he[i]->pcurve =
+            std::make_shared<geo::Line2D>(corner[i] + written[i], corner[j] + written[i]);
+        he[i]->pcurveStart = 0.0;
+        he[i]->pcurveEnd = 1.0;
+        if (corner[i].y == corner[j].y) {  // an arc about the axis at this height
+            geo::Frame at = frame;
+            at.origin = frame.origin + frame.z * corner[i].y;
+            ed[i]->exactCurve = std::make_shared<geo::CircleCurve>(at, kRadius);
+            ed[i]->curveStart = corner[i].x;
+            ed[i]->curveEnd = corner[j].x;
+        } else {  // a line along z
+            const double up = corner[j].y > corner[i].y ? 1.0 : -1.0;
+            ed[i]->exactCurve = std::make_shared<geo::LineCurve>(v[i]->point, frame.z * up);
+            ed[i]->curveStart = 0.0;
+            ed[i]->curveEnd = std::fabs(corner[j].y - corner[i].y);
+        }
+    }
+    w->halfEdge = he[0];
+    return w;
+}
+
+/// One face on a half-cylinder spanning u in [3 pi/2, 5 pi/2], across the seam of the surface's
+/// [0, 2 pi) range. @p seamU is the u the right side's pcurve is written at (5 pi/2 is
+/// continuous, pi/2 is what inversion would give). With @p holeU, a hole 0.4 wide and 1 high
+/// about that u; @p holeInverted writes its first pcurve a period lower.
 struct HalfCylinderFace {
     topo::Solid solid;
-    std::shared_ptr<geo::Cylinder> surface;
-    explicit HalfCylinderFace(double seamU) {
+    explicit HalfCylinderFace(double seamU, const double* holeU = nullptr,
+                              bool holeInverted = false) {
         const geo::Frame frame = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
-        constexpr double r = 2.0;
-        constexpr double h = 3.0;
         const double a = 1.5 * math::kPi;
         const double b = 2.5 * math::kPi;
-        surface = std::make_shared<geo::Cylinder>(frame, r);
         topo::Face* f = solid.allocFace();
-        f->exactSurface = surface;
-        topo::Wire* w = solid.allocWire();
-        f->outerLoop = w;
-        const math::Vec2 uv[4] = {{a, 0}, {b, 0}, {b, h}, {a, h}};
-        topo::Vertex* v[4];
-        topo::HalfEdge* he[4];
-        topo::HalfEdge* tw[4];
-        topo::Edge* ed[4];
-        for (int i = 0; i < 4; ++i) {
-            v[i] = solid.allocVertex();
-            v[i]->point = surface->evaluate(uv[i].x, uv[i].y);
-            he[i] = solid.allocHalfEdge();
-            tw[i] = solid.allocHalfEdge();
-            ed[i] = solid.allocEdge();
+        f->exactSurface = std::make_shared<geo::Cylinder>(frame, kRadius);
+        const math::Vec2 outerCorner[4] = {{a, 0}, {b, 0}, {b, kHeight}, {a, kHeight}};
+        const math::Vec2 outerWritten[4] = {{0, 0}, {seamU - b, 0}, {0, 0}, {0, 0}};
+        addQuadLoop(solid, f, frame, outerCorner, outerWritten, true);
+        if (holeU) {
+            // Clockwise, starting at the bottom right.
+            const double u = *holeU;
+            const math::Vec2 holeCorner[4] = {
+                {u + 0.2, 1}, {u - 0.2, 1}, {u - 0.2, 2}, {u + 0.2, 2}};
+            const math::Vec2 holeWritten[4] = {
+                {holeInverted ? -math::kTwoPi : 0.0, 0}, {0, 0}, {0, 0}, {0, 0}};
+            addQuadLoop(solid, f, frame, holeCorner, holeWritten, false);
         }
-        for (int i = 0; i < 4; ++i) {
-            const int j = (i + 1) % 4;
-            he[i]->origin = v[i];
-            he[i]->next = he[j];
-            he[i]->prev = he[(i + 3) % 4];
-            he[i]->face = f;
-            he[i]->twin = tw[i];
-            he[i]->edge = ed[i];
-            tw[i]->origin = v[j];
-            tw[i]->twin = he[i];
-            tw[i]->edge = ed[i];
-            ed[i]->halfEdge = he[i];
-            v[i]->halfEdge = he[i];
-            math::Vec2 s = uv[i];
-            math::Vec2 t = uv[j];
-            if (i == 1) s.x = t.x = seamU;
-            he[i]->pcurve = std::make_shared<geo::Line2D>(s, t);
-            he[i]->pcurveStart = 0.0;
-            he[i]->pcurveEnd = 1.0;
-        }
-        w->halfEdge = he[0];
-        // Bottom and top arcs; the top runs backwards, from b to a. Sides are lines along z.
-        ed[0]->exactCurve = std::make_shared<geo::CircleCurve>(frame, r);
-        ed[0]->curveStart = a;
-        ed[0]->curveEnd = b;
-        geo::Frame top = frame;
-        top.origin = {0, 0, h};
-        ed[2]->exactCurve = std::make_shared<geo::CircleCurve>(top, r);
-        ed[2]->curveStart = b;
-        ed[2]->curveEnd = a;
-        ed[1]->exactCurve = std::make_shared<geo::LineCurve>(v[1]->point, Vec3{0, 0, 1});
-        ed[1]->curveStart = 0.0;
-        ed[1]->curveEnd = h;
-        ed[3]->exactCurve = std::make_shared<geo::LineCurve>(v[3]->point, Vec3{0, 0, -1});
-        ed[3]->curveStart = 0.0;
-        ed[3]->curveEnd = h;
     }
 };
 
 }  // namespace
+
+TEST(ExactValidator, AHoleStraddlingTheSeamIsCleanWhicheverWindowItIsWrittenIn) {
+    const double u = math::kTwoPi;
+    for (const bool inverted : {false, true}) {
+        HalfCylinderFace face(2.5 * math::kPi, &u, inverted);
+        EXPECT_TRUE(topo::validateExact(face.solid, kTol).empty()) << inverted;
+    }
+}
+
+TEST(ExactValidator, AHoleCrossingTheEdgeIsFoundWhicheverWindowItIsWrittenIn) {
+    const double u = 2.5 * math::kPi - 0.03;  // astride the face's own right side, off a sample
+    for (const bool inverted : {false, true}) {
+        HalfCylinderFace face(2.5 * math::kPi, &u, inverted);
+        expectKinds(face.solid, ExactIssueKind::LoopsCross);
+    }
+}
 
 TEST(ExactValidator, AFaceAcrossTheSeamIsCleanWhetherItsPcurvesAreContinuousOrInverted) {
     for (const double seamU : {2.5 * math::kPi, 0.5 * math::kPi}) {
@@ -421,4 +459,148 @@ TEST(ExactValidator, AThinAnnulusIsCleanWhateverWhereItsLoopsStart) {
 TEST(ExactValidator, AnAnnulusWhoseInnerCircleReallyCrossesTheOuterIsLoopsCross) {
     Annulus overlapping(10.0, 9.85, {1.0, 0}, math::kPi / 16.0);
     expectKinds(overlapping.solid, ExactIssueKind::LoopsCross);
+}
+
+TEST(ExactValidator, ASphereLuneWhoseMeridiansMeetAtThePolesIsClean) {
+    const geo::Frame frame = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
+    constexpr double r = 1.0;
+    topo::Solid solid;
+    topo::Face* f = solid.allocFace();
+    auto sphere = std::make_shared<geo::Sphere>(frame, r);
+    f->exactSurface = sphere;
+    topo::Wire* w = solid.allocWire();
+    f->outerLoop = w;
+    const double half = 0.5 * math::kPi;
+    topo::Vertex* south = solid.allocVertex();
+    topo::Vertex* north = solid.allocVertex();
+    south->point = {0, 0, -r};
+    north->point = {0, 0, r};
+    // Counter-clockwise in (u, v): up the meridian u = pi, along the north pole, down u = 0.
+    topo::HalfEdge* he[2] = {solid.allocHalfEdge(), solid.allocHalfEdge()};
+    for (int i = 0; i < 2; ++i) {
+        const double u = i == 0 ? math::kPi : 0.0;
+        const double from = i == 0 ? -half : half;
+        const double to = -from;
+        topo::HalfEdge* tw = solid.allocHalfEdge();
+        topo::Edge* e = solid.allocEdge();
+        he[i]->origin = i == 0 ? south : north;
+        tw->origin = i == 0 ? north : south;
+        he[i]->next = he[1 - i];
+        he[i]->prev = he[1 - i];
+        he[i]->face = f;
+        he[i]->twin = tw;
+        tw->twin = he[i];
+        he[i]->edge = tw->edge = e;
+        e->halfEdge = he[i];
+        he[i]->pcurve = std::make_shared<geo::Line2D>(math::Vec2{u, from}, math::Vec2{u, to});
+        he[i]->pcurveStart = 0.0;
+        he[i]->pcurveEnd = 1.0;
+        // The meridian as a great circle: v is the angle from the equator toward z.
+        geo::Frame mf;
+        mf.x = {std::cos(u), std::sin(u), 0};
+        mf.y = {0, 0, 1};
+        mf.z = mf.x.cross(mf.y);
+        e->exactCurve = std::make_shared<geo::CircleCurve>(mf, r);
+        e->curveStart = from;
+        e->curveEnd = to;
+    }
+    south->halfEdge = he[0];
+    north->halfEdge = he[1];
+    w->halfEdge = he[0];
+    EXPECT_TRUE(topo::validateExact(solid, kTol).empty());
+}
+
+namespace {
+
+/// A planar face outside a circle of radius 1000 about the origin's upper half and above the
+/// line y = 0: a straight side and a semicircle, with a clockwise hole of radius 1 at (0, y).
+struct SemicircleFace {
+    topo::Solid solid;
+    explicit SemicircleFace(double holeY) {
+        const geo::Frame frame = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
+        topo::Face* f = solid.allocFace();
+        f->exactSurface = std::make_shared<geo::Plane>(frame);
+        topo::Wire* w = solid.allocWire();
+        f->outerLoop = w;
+        topo::Vertex* v0 = solid.allocVertex();
+        topo::Vertex* v1 = solid.allocVertex();
+        v0->point = {-1000, 0, 0};
+        v1->point = {1000, 0, 0};
+        topo::HalfEdge* h0 = solid.allocHalfEdge();
+        topo::HalfEdge* h1 = solid.allocHalfEdge();
+        topo::Edge* e0 = solid.allocEdge();
+        topo::Edge* e1 = solid.allocEdge();
+        topo::HalfEdge* t0 = solid.allocHalfEdge();
+        topo::HalfEdge* t1 = solid.allocHalfEdge();
+        h0->origin = v0;
+        t0->origin = v1;
+        h1->origin = v1;
+        t1->origin = v0;
+        h0->next = h0->prev = h1;
+        h1->next = h1->prev = h0;
+        h0->face = h1->face = f;
+        h0->twin = t0;
+        t0->twin = h0;
+        h1->twin = t1;
+        t1->twin = h1;
+        h0->edge = t0->edge = e0;
+        h1->edge = t1->edge = e1;
+        e0->halfEdge = h0;
+        e1->halfEdge = h1;
+        v0->halfEdge = h0;
+        v1->halfEdge = h1;
+        w->halfEdge = h0;
+        h0->pcurve = std::make_shared<geo::Line2D>(math::Vec2{-1000, 0}, math::Vec2{1000, 0});
+        h0->pcurveStart = 0.0;
+        h0->pcurveEnd = 1.0;
+        e0->exactCurve = std::make_shared<geo::LineCurve>(Vec3{-1000, 0, 0}, Vec3{1, 0, 0});
+        e0->curveStart = 0.0;
+        e0->curveEnd = 2000.0;
+        h1->pcurve = std::make_shared<geo::Circle2D>(math::Vec2{0, 0}, 1000.0);
+        h1->pcurveStart = 0.0;
+        h1->pcurveEnd = math::kPi;
+        e1->exactCurve = std::make_shared<geo::CircleCurve>(frame, 1000.0);
+        e1->curveStart = 0.0;
+        e1->curveEnd = math::kPi;
+        // The hole: one clockwise circle, the mirrored frame running it the same way.
+        topo::Wire* hw = solid.allocWire();
+        f->innerLoops.push_back(hw);
+        topo::Vertex* hv = solid.allocVertex();
+        hv->point = {1, holeY, 0};
+        topo::HalfEdge* hh = solid.allocHalfEdge();
+        topo::HalfEdge* ht = solid.allocHalfEdge();
+        topo::Edge* he = solid.allocEdge();
+        hh->origin = ht->origin = hv;
+        hh->next = hh->prev = hh;
+        hh->face = f;
+        hh->twin = ht;
+        ht->twin = hh;
+        hh->edge = ht->edge = he;
+        he->halfEdge = hh;
+        hv->halfEdge = hh;
+        hw->halfEdge = hh;
+        hh->pcurve = std::make_shared<geo::Circle2D>(math::Vec2{0, holeY}, 1.0);
+        hh->pcurveStart = math::kTwoPi;
+        hh->pcurveEnd = 0.0;
+        geo::Frame mirrored = frame;
+        mirrored.origin = {0, holeY, 0};
+        mirrored.y = mirrored.y * -1.0;
+        he->exactCurve = std::make_shared<geo::CircleCurve>(mirrored, 1.0);
+        he->curveStart = 0.0;
+        he->curveEnd = math::kTwoPi;
+    }
+};
+
+}  // namespace
+
+TEST(ExactValidator, AHoleBesideAStraightSideIsNotHiddenByAnotherSidesSag) {
+    // The semicircle's 16 chords sag about 4.8; the hole is 1.5 to 3.5 beyond the straight side,
+    // which has no sag at all.
+    const auto tol = math::ModelTolerance::forExtent(2000.0);
+    SemicircleFace outside(-2.5);
+    const auto issues = topo::validateExact(outside.solid, tol);
+    ASSERT_EQ(issues.size(), 1u);
+    EXPECT_EQ(issues[0].kind, ExactIssueKind::HoleOutsideOuterLoop);
+    SemicircleFace inside(500.0);
+    EXPECT_TRUE(topo::validateExact(inside.solid, tol).empty());
 }
