@@ -3,6 +3,7 @@
 #include <limits>
 #include <vector>
 
+#include "horizon/geometry/curves/Curve3.h"
 #include "horizon/math/Vec3.h"
 
 namespace hz::geo {
@@ -12,7 +13,7 @@ namespace hz::geo {
 /// Stores control points in 3D, per-point weights, a knot vector, and the
 /// polynomial degree.  Evaluation uses the De Boor algorithm in homogeneous
 /// coordinates so that rational weights are handled correctly.
-class NurbsCurve {
+class NurbsCurve : public Curve3 {
 public:
     NurbsCurve(std::vector<math::Vec3> controlPoints, std::vector<double> weights,
                std::vector<double> knots, int degree);
@@ -34,7 +35,22 @@ public:
     // -- Evaluation ----------------------------------------------------------
 
     /// Evaluate the curve at parameter @p t using De Boor's algorithm.
-    math::Vec3 evaluate(double t) const;
+    math::Vec3 evaluate(double t) const override;
+
+    // -- Curve3 --------------------------------------------------------------
+
+    CurveKind kind() const override;
+    /// The point and its first and second derivatives, from derivative().
+    CurveDerivatives derivatives(double t) const override;
+    /// [tMin(), tMax()].
+    Interval range() const override;
+    /// Always false: a closed NURBS curve is not a periodic parametrisation here.
+    bool periodic() const override;
+    /// closestPoint().
+    double closestParameter(const math::Vec3& point) const override;
+    /// The control points moved by @p m (a NURBS is affine invariant); weights and knots
+    /// are unchanged, so parameters are kept.
+    std::unique_ptr<Curve3> transformed(const math::Mat4& m) const override;
 
     // -- Derivatives & Tessellation (Task 2) ---------------------------------
 

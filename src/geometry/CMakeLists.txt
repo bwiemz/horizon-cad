@@ -8,6 +8,8 @@ add_library(hz_geometry STATIC
     src/curves/Arc2D.cpp
     src/curves/Line3D.cpp
     src/curves/NurbsCurve.cpp
+    src/curves/AnalyticCurves.cpp
+    src/curves/Nurbs2D.cpp
     src/surfaces/NurbsSurface.cpp
     src/surfaces/SurfaceBuilder.cpp
     src/surfaces/SurfaceRecognition.cpp

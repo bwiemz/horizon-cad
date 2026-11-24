@@ -4,6 +4,7 @@ add_executable(hz_geometry_tests
     test_NurbsSurface.cpp
     test_AnalyticSurfaces.cpp
     test_SurfaceRecognition.cpp
+    test_Curve3.cpp
 )
 
 target_link_libraries(hz_geometry_tests
