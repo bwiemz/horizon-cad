@@ -612,6 +612,14 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
                                   const std::vector<Vec2>& interior, double merge) {
     Triangulation2D result;
     const double tol = std::max(merge, 0.0);
+    const auto finite = [](const std::vector<Vec2>& ps) {
+        return std::all_of(ps.begin(), ps.end(),
+                           [](const Vec2& q) { return std::isfinite(q.x) && std::isfinite(q.y); });
+    };
+    if (!finite(outer) || !finite(interior) || !std::all_of(holes.begin(), holes.end(), finite)) {
+        result.problem = "a point is not finite";
+        return result;
+    }
 
     // Boundary points first, in input order; one that is within tol of an earlier one stands
     // for that one.
@@ -713,26 +721,31 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
         state ^= state << 17;
         std::swap(inserted[i - 1], inserted[static_cast<std::size_t>(state % i)]);
     }
-    const auto zorder = [&](int index) {
+    // Each point's Z-order code, once; ties go by index, so every sort orders them alike.
+    std::vector<std::uint64_t> zorder(result.points.size(), 0);
+    const auto cell = [](double v, double from, double to) {
+        const double f = to > from ? (v - from) / (to - from) : 0.0;
+        return static_cast<std::uint32_t>(std::clamp(f, 0.0, 1.0) * 65535.0);
+    };
+    for (const int index : inserted) {
         const Vec2& p = result.points[static_cast<std::size_t>(index)];
-        const auto cell = [](double v, double from, double to) {
-            const double f = to > from ? (v - from) / (to - from) : 0.0;
-            return static_cast<std::uint32_t>(std::clamp(f, 0.0, 1.0) * 65535.0);
-        };
-        std::uint64_t code = 0;
         const std::uint32_t cx = cell(p.x, lo.x, hi.x);
         const std::uint32_t cy = cell(p.y, lo.y, hi.y);
+        std::uint64_t& code = zorder[static_cast<std::size_t>(index)];
         for (int bit = 0; bit < 16; ++bit) {
             code |= static_cast<std::uint64_t>((cx >> bit) & 1U) << (2 * bit);
             code |= static_cast<std::uint64_t>((cy >> bit) & 1U) << (2 * bit + 1);
         }
-        return code;
-    };
+    }
     for (std::size_t from = 0, size = 1; from < inserted.size(); from += size, size *= 2) {
         const auto first = inserted.begin() + static_cast<std::ptrdiff_t>(from);
         const auto last =
             inserted.begin() + static_cast<std::ptrdiff_t>(std::min(inserted.size(), from + size));
-        std::sort(first, last, [&](int a, int b) { return zorder(a) < zorder(b); });
+        std::sort(first, last, [&](int a, int b) {
+            const std::uint64_t za = zorder[static_cast<std::size_t>(a)];
+            const std::uint64_t zb = zorder[static_cast<std::size_t>(b)];
+            return za < zb || (za == zb && a < b);
+        });
     }
     Cdt cdt(result.points, lo, hi);
     for (const int i : inserted) {

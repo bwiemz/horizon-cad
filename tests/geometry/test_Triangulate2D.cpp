@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <map>
 #include <random>
 #include <set>
@@ -518,6 +519,22 @@ TEST(Triangulate2D, ALoopGivenTwiceInTheSameDirectionIsReported) {
     const Loop twice{{0, 0}, {4, 0}, {4, 4}, {0, 4}, {0, 0}, {4, 0}, {4, 4}, {0, 4}};
     const Triangulation2D t = triangulateRegion(twice, {});
     EXPECT_FALSE(t.problem.empty());
+}
+
+TEST(Triangulate2D, APointThatIsNotFiniteIsReported) {
+    const double nan = std::nan("");
+    const double inf = std::numeric_limits<double>::infinity();
+    const Loop square{{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    const Loop hole{{1, 1}, {1, 2}, {2, 2}, {2, 1}};
+    const std::vector<Triangulation2D> results = {
+        triangulateRegion({{0, 0}, {4, 0}, {nan, 4}, {0, 4}}, {}),
+        triangulateRegion(square, {{{1, 1}, {1, inf}, {2, 2}, {2, 1}}}),
+        triangulateRegion(square, {hole}, {{3, 3}, {-inf, 3}}),
+        triangulateRegion({{0, 0}, {4, 0}, {4, 4}, {0, nan}}, {}, {{1, 1}})};
+    for (const Triangulation2D& t : results) {
+        EXPECT_NE(t.problem.find("not finite"), std::string::npos) << t.problem;
+        EXPECT_TRUE(t.triangles.empty());
+    }
 }
 
 TEST(Triangulate2D, TwentyThousandPointsOnTheUnitSquare) {
