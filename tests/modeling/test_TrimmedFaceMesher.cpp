@@ -1400,6 +1400,28 @@ TEST(TrimmedFaceMesher, AFrustumIsMeshedWithFewTriangles) {
     }
 }
 
+TEST(TrimmedFaceMesher, ATorusIsMeshedWithFewTriangles) {
+    // R10 r3 at 1e-4 of its diagonal: spaced along u for its outer equator everywhere, it took
+    // 33480 triangles. Each row now takes its own radius's step: 27184 (Ruling 5's bound is
+    // 28000; under the mesher's check no grid of aligned rows gets below about 24k).
+    const double major = 10.0;
+    const double minor = 3.0;
+    for (const Vec3& axis : {Vec3{0, 0, 1}, Vec3{1, -2, 0.5}}) {
+        const auto torus = makeTorus(geo::Frame::fromAxis({4, -2, 7}, axis), major, minor);
+        const double size = topo::exactExtent(*torus);
+        MeshOptions options;
+        options.chordTolerance = 1e-4 * size;
+        const auto meshes = meshValid(*torus, options, size);
+        const Summary s = checkMeshes(*torus, meshes, options, slackFor(size));
+        EXPECT_LE(worstNeighbourAngle(meshes), options.maxAngle + 1e-12);
+        ASSERT_EQ(meshes.size(), 1u);
+        EXPECT_LE(meshes[0].triangles.size(), 28000u);
+        const double area = 4.0 * math::kPi * math::kPi * major * minor;
+        const double volume = 2.0 * math::kPi * math::kPi * major * minor * minor;
+        EXPECT_NEAR(s.volume, volume, area * options.chordTolerance);
+    }
+}
+
 TEST(TrimmedFaceMesher, AGridTooFineForDoublesSaysSoPromptly) {
     // A unit square on a surface with a bump inside, its straight sides flat and exactly on its
     // axes, so they sample at any tolerance. At the smallest tolerances the grid's step is 0 or
