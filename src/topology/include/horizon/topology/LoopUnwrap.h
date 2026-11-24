@@ -20,6 +20,12 @@ namespace hz::topo {
 /// pass the same count.
 inline constexpr int kLoopSamples = 17;
 
+/// The parameter of sample @p i of @p samples along @p h's pcurve: pcurveStart at i = 0,
+/// pcurveEnd at i = samples - 1 (either way round), evenly between. Every caller that must agree
+/// with the unwrapping (the validator's checks, the mesher's layout) samples through this one
+/// formula, so their samples are the same to the last bit.
+double loopSampleParameter(const HalfEdge& h, int i, int samples);
+
 /// One chord of a sampled pcurve: the curve between parameters t0 and t1, shifted by whole
 /// periods so the loop it belongs to is continuous; a and b are its (shifted) ends.
 struct LoopSegment {

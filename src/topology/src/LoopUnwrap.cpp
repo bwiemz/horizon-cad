@@ -10,8 +10,7 @@ namespace {
 using math::Vec2;
 
 Vec2 sampleAt(const HalfEdge& h, int i, int samples) {
-    const double t = h.pcurveStart + (h.pcurveEnd - h.pcurveStart) * i / (samples - 1);
-    return h.pcurve->evaluate(t);
+    return h.pcurve->evaluate(loopSampleParameter(h, i, samples));
 }
 
 double periodOf(bool periodic, geo::Interval r) {
@@ -20,6 +19,10 @@ double periodOf(bool periodic, geo::Interval r) {
 }
 
 }  // namespace
+
+double loopSampleParameter(const HalfEdge& h, int i, int samples) {
+    return h.pcurveStart + (h.pcurveEnd - h.pcurveStart) * i / (samples - 1);
+}
 
 double uPeriod(const geo::Surface& surface) {
     return periodOf(surface.periodicU(), surface.uRange());
@@ -73,9 +76,8 @@ bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo
         }
         Vec2 a = start + shift;
         for (int i = 1; i < samples; ++i) {
-            const double t0 =
-                h->pcurveStart + (h->pcurveEnd - h->pcurveStart) * (i - 1) / (samples - 1);
-            const double t1 = h->pcurveStart + (h->pcurveEnd - h->pcurveStart) * i / (samples - 1);
+            const double t0 = loopSampleParameter(*h, i - 1, samples);
+            const double t1 = loopSampleParameter(*h, i, samples);
             const Vec2 b = h->pcurve->evaluate(t1) + shift;
             out.push_back({h->pcurve.get(), t0, t1, shift, a, b});
             a = b;

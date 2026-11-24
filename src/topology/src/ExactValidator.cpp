@@ -37,10 +37,9 @@ struct Checker {
         issues.push_back({kind, f, e, std::move(detail)});
     }
 
-    // A pcurve's sample at index i of kSamples, from pcurveStart to pcurveEnd (either way round).
+    // A pcurve's sample at index i of kSamples, at the unwrapping's own parameters.
     static Vec2 sample(const HalfEdge& h, int i) {
-        const double t = h.pcurveStart + (h.pcurveEnd - h.pcurveStart) * i / (kSamples - 1);
-        return h.pcurve->evaluate(t);
+        return h.pcurve->evaluate(loopSampleParameter(h, i, kSamples));
     }
 
     void checkEdge(const Edge& e) {
