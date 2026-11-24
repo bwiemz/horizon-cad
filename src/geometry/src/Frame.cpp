@@ -35,9 +35,15 @@ Frame Frame::fromAxis(const math::Vec3& origin, const math::Vec3& axis, const ma
 Frame Frame::transformed(const math::Mat4& m) const {
     Frame f;
     f.origin = m.transformPoint(origin);
-    f.x = m.transformDirection(x).normalized();
-    f.y = m.transformDirection(y).normalized();
-    f.z = m.transformDirection(z).normalized();
+    // Divided by their lengths, not normalized(): under a scale below 1e-7 every axis is
+    // shorter than normalized()'s cut-off.
+    const auto unit = [&m](const math::Vec3& axis) {
+        const math::Vec3 d = m.transformDirection(axis);
+        return d / d.length();
+    };
+    f.x = unit(x);
+    f.y = unit(y);
+    f.z = unit(z);
     return f;
 }
 

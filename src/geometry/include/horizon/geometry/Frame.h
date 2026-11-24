@@ -20,7 +20,7 @@ struct Frame {
                           const math::Vec3& xHint = {1.0, 0.0, 0.0});
 
     /// This frame moved by @p m: the origin as a point, each axis as a direction
-    /// and normalised. After a reflection the result is left-handed.
+    /// divided by its length (at any scale). After a reflection the result is left-handed.
     Frame transformed(const math::Mat4& m) const;
 
     /// The uniform scale of @p m: the length of its transformed x axis.

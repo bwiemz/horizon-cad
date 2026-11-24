@@ -180,6 +180,19 @@ TEST(Curve3, LineScaleKeepsParameters) {
     EXPECT_NEAR(s->closestParameter({6.0, 1.0, 0.0}), 2.0, 1e-12);
 }
 
+TEST(Curve3, ALineWithATinyDirectionStillRunsAlongIt) {
+    // A direction is a direction at any length: normalized() returned zero below 1e-7, which
+    // made a line of a part 1e-8 across a point.
+    const LineCurve l({0.0, 0.0, 0.0}, {1e-8, 0.0, 0.0});
+    expectNear(l.direction(), {1.0, 0.0, 0.0});
+    expectNear(l.evaluate(1.0), {1.0, 0.0, 0.0});
+    // Scaled down by 1e-8, it keeps its parameters: t = 1 is 1e-8 along.
+    const auto tiny = LineCurve({0.0, 0.0, 0.0}, {0.0, 3.0, 4.0})
+                          .transformed(math::Mat4::scale({1e-8, 1e-8, 1e-8}));
+    expectNear(tiny->evaluate(1.0), {0.0, 0.6e-8, 0.8e-8}, 1e-22);
+    EXPECT_NEAR(tiny->closestParameter({0.0, 0.6e-8, 0.8e-8}), 1.0, 1e-12);
+}
+
 TEST(Curve3, NurbsRangeAndTransform) {
     const NurbsCurve c = NurbsCurve::makeCircle({0.0, 0.0, 0.0}, 1.0);
     EXPECT_EQ(c.range().min, c.tMin());

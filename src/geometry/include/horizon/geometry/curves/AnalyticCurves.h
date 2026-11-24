@@ -9,7 +9,7 @@ namespace hz::geo {
 /// parameters stay put.
 class LineCurve : public Curve3 {
 public:
-    /// @p direction is normalised and must be non-zero.
+    /// @p direction is divided by its length (at any length) and must be non-zero.
     LineCurve(const math::Vec3& origin, const math::Vec3& direction, double scale = 1.0);
 
     CurveKind kind() const override;

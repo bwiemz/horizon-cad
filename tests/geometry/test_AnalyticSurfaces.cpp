@@ -264,6 +264,17 @@ TEST(AnalyticSurfaces, AFrameFromAShortAxisIsStillUnit) {
     EXPECT_NEAR(f.x.length(), 1.0, 1e-12);
 }
 
+TEST(AnalyticSurfaces, AFrameScaledDownToATinyPartKeepsUnitAxes) {
+    // Scaled by 1e-8 each axis is 1e-8 long before it is made unit again; normalized() returned
+    // zero there, and a cylinder moved with its frame collapsed onto its axis.
+    const math::Mat4 m = math::Mat4::scale({1e-8, 1e-8, 1e-8});
+    const Frame f = tiltedFrame().transformed(m);
+    for (const math::Vec3& axis : {f.x, f.y, f.z}) EXPECT_NEAR(axis.length(), 1.0, 1e-12);
+    const auto c = Cylinder(tiltedFrame(), 2.0).transformed(m);
+    expectNear(c->evaluate(0.7, 1.3),
+               m.transformPoint(Cylinder(tiltedFrame(), 2.0).evaluate(0.7, 1.3)), 1e-22);
+}
+
 TEST(AnalyticSurfaces, ConeInvertsPastItsApexOntoTheOtherNappe) {
     const Cone c(tiltedFrame(), 3.2, std::atan(0.55));  // apex at v = -5.82
     for (double u : kUs) {

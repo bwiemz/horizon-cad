@@ -27,8 +27,10 @@ double wrapAngle(double a) {
 
 // ---- Line ----
 
+// Not normalized(): that returns the zero vector for lengths below 1e-7, and a tiny part's
+// directions (or a direction scaled down with its part) are that short.
 LineCurve::LineCurve(const math::Vec3& origin, const math::Vec3& direction, double scale)
-    : origin_(origin), direction_(direction.normalized()), scale_(scale) {}
+    : origin_(origin), direction_(direction / direction.length()), scale_(scale) {}
 
 CurveKind LineCurve::kind() const {
     return CurveKind::Line;

@@ -272,13 +272,16 @@ TEST(ExactPrimitives, TheirPcurvesFollowTheirCurvesAndTheirNormalsPointOut) {
 }
 
 TEST(ExactPrimitives, ATinyBlockStillAgrees) {
-    const auto tol = math::ModelTolerance::forExtent(1e-6);
-    const auto block = model::exact::makeBlock({0, 0, 0}, {1e-6, 1e-6, 1e-6});
+    // 1e-8 across: below the 1e-7 at which normalized() gives zero, so an edge's direction must
+    // be divided by its length.
+    const auto tol = math::ModelTolerance::forExtent(1e-8);
+    const auto block = model::exact::makeBlock({0, 0, 0}, {1e-8, 1e-8, 1e-8});
     ASSERT_NE(block, nullptr);
     expectPcurvesFollowCurves(*block, tol);
     for (const auto& e : block->edges()) {
-        EXPECT_NEAR(e.curveEnd - e.curveStart, 1e-6, 1e-12);
+        EXPECT_NEAR(e.curveEnd - e.curveStart, 1e-8, 1e-14);
     }
+    EXPECT_TRUE(topo::validateExact(*block, tol).empty());
 }
 
 TEST(ExactPrimitives, DegenerateRequestsGiveNothing) {
@@ -339,6 +342,28 @@ TEST(ExactPrimitives, AppendedPlacedCopiesStayValid) {
         model::Pattern::append(both, *block, math::Mat4::translation({50, 0, 0}) * m);
         model::Pattern::append(both, *cyl, math::Mat4::translation({0, 60, 0}) * m);
         EXPECT_TRUE(topo::validateExact(both, tol).empty());
+    }
+}
+
+TEST(ExactPrimitives, CopiesScaledDownToATinyPartStayValid) {
+    // Scaled by 1e-8, a copy's frames and lines are built from directions 1e-8 long; made unit
+    // with normalized(), they were zero and the copy collapsed (at 0.001 mm the model's
+    // resolution is 1e-10, so such a part is still 500 times it).
+    const math::Mat4 m = math::Mat4::scale({1e-8, 1e-8, 1e-8});
+    const auto cyl =
+        model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    const auto plate = model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {20, 20}, 5.0);
+    const struct {
+        const topo::Solid* solid;
+        double size;
+    } cases[] = {{cyl.get(), 15e-8}, {plate.get(), 58e-8}};
+    for (const auto& c : cases) {
+        const auto copy = model::Pattern::transformed(*c.solid, m);
+        ASSERT_NE(copy, nullptr);
+        const auto issues = topo::validateExact(*copy, math::ModelTolerance::forExtent(c.size));
+        EXPECT_TRUE(issues.empty())
+            << issues.size()
+            << " issues, the first: " << (issues.empty() ? "" : issues.front().detail);
     }
 }
 
