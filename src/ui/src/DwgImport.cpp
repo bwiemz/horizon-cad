@@ -126,7 +126,7 @@ bool DwgImport::load(const std::string& path, doc::Document& doc, std::string* e
     }
     // dwg2dxf opens files by narrow names, which on Windows hold only the
     // characters of the code page: it reads a copy, by a plain name, in the
-    // folder it runs in, and writes beside it.
+    // folder it runs in, and writes beside it the same name with ".dxf".
     const QString input = QStringLiteral("drawing.dwg");
     const QString output = QStringLiteral("drawing.dxf");
     if (!QFile::copy(QString::fromStdString(path), work.filePath(input))) {
@@ -137,7 +137,11 @@ bool DwgImport::load(const std::string& path, doc::Document& doc, std::string* e
 
     QProcess process;
     process.setProgram(program);
-    process.setArguments({QStringLiteral("-o"), output, input});
+    // The drawing and nothing else. Where there is no getopt (MSVC), LibreDWG
+    // builds dwg2dxf with its own (programs/getopt.c), which starts again at
+    // the first argument on every call: given any option it reads that option
+    // for ever, and never reads the file (#238).
+    process.setArguments({input});
     process.setWorkingDirectory(work.path());
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     // Its tracing writes megabytes for a drawing.
