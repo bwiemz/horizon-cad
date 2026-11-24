@@ -592,6 +592,13 @@ TEST(StepExact, AFaceWhoseSurfaceFacesInIsTurnedByItsLoops) {
 
 namespace {
 
+/// Why a face on a sphere, a torus or a B-spline with a pole or closed both ways, whose loop runs
+/// against its same_sense, is left out: it cannot tell which is wrong.
+constexpr const char* kAgainstItsLoops =
+    "its loops run against its same_sense: either the face is the surface outside its loop (it "
+    "holds a pole or wraps the surface), which this stage cannot represent, or the file's "
+    "same_sense is wrong";
+
 /// A unit ball with a flat at x = 0.5, written consistently, as Parasolid-based writers write
 /// one: the sphere's face bounded by the flat's circle alone, used .F., with no seam (the
 /// reviewer's probe).
@@ -735,9 +742,7 @@ std::string splineCappedCylinder() {
 TEST(StepExact, ABallWithAFlatIsNeverTurnedInsideOut) {
     const auto solids = StepFormat::fromString(ballWithAFlat(), nullptr, nullptr, inMillimetres());
     EXPECT_TRUE(solids.empty()) << "it came in";
-    EXPECT_NE(StepFormat::lastError().find(
-                  "its face is the surface outside its loop (it holds a pole or wraps the "
-                  "surface), which this stage cannot represent (face #16)"),
+    EXPECT_NE(StepFormat::lastError().find(kAgainstItsLoops + std::string(" (face #16)")),
               std::string::npos)
         << StepFormat::lastError();
 }
@@ -748,9 +753,7 @@ TEST(StepExact, ATorusFaceOutsideItsLoopIsNeverTurnedInsideOut) {
     const auto solids =
         StepFormat::fromString(torusPatchAndTheRest(), nullptr, nullptr, inMillimetres());
     EXPECT_TRUE(solids.empty()) << "it came in";
-    EXPECT_NE(StepFormat::lastError().find("its face is the surface outside its loop (it holds a "
-                                           "pole or wraps the surface), which this stage cannot "
-                                           "represent (face #56)"),
+    EXPECT_NE(StepFormat::lastError().find(kAgainstItsLoops + std::string(" (face #56)")),
               std::string::npos)
         << StepFormat::lastError();
 }
@@ -891,4 +894,141 @@ TEST(StepExact, EdgeRangesFollowTheirSenseAcrossAJoin) {
     EXPECT_EQ(firstIssue(s), "");
     const double volume = hz::model::MassPropertiesCalculator::compute(s).volume;
     EXPECT_NEAR(volume, 2.0 * hz::math::kPi, 2.0 * hz::math::kPi * 1e-3);
+}
+
+// ---------------------------------------------------------------------------
+// Fix round 2
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// The reviewer's ball with a flat at x = 0.5 on a rational B-spline sphere (closed in u, a pole
+/// at each end of v), its poles opened to circles of radius @p eps (0: exact poles), the sphere's
+/// face written .T. and used against the flat's circle.
+std::string splineBallWithAFlat(double eps) {
+    const double w = std::sqrt(0.5);
+    const double xs[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+    const double ys[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+    const double rs[5] = {0, 1, 1, 1, 0};
+    const double zs[5] = {-1, -1, 0, 1, 1};
+    const double wv[5] = {1, w, 1, w, 1};
+    std::string text;
+    std::string net;
+    std::string weights;
+    int id = 200;
+    for (int i = 0; i < 9; ++i) {
+        const double wu = i % 2 == 1 ? w : 1.0;
+        net += i == 0 ? "(" : ",(";
+        weights += i == 0 ? "(" : ",(";
+        for (int j = 0; j < 5; ++j) {
+            const double r = (j == 0 || j == 4) ? eps : rs[j];
+            text += "#" + std::to_string(id) + " = CARTESIAN_POINT('',(" + real(xs[i] * r) + "," +
+                    real(ys[i] * r) + "," + real(zs[j]) + "));\n";
+            net += std::string(j == 0 ? "#" : ",#") + std::to_string(id);
+            weights += std::string(j == 0 ? "" : ",") + real(wu * wv[j]);
+            ++id;
+        }
+        net += ")";
+        weights += ")";
+    }
+    text += "#5 = ( BOUNDED_SURFACE() B_SPLINE_SURFACE(2,2,(" + net +
+            "),.UNSPECIFIED.,.T.,.F.,.F.) B_SPLINE_SURFACE_WITH_KNOTS((3,2,2,2,3),(3,2,3),"
+            "(0.,0.25,0.5,0.75,1.),(0.,0.5,1.),.UNSPECIFIED.) GEOMETRIC_REPRESENTATION_ITEM() "
+            "RATIONAL_B_SPLINE_SURFACE((" +
+            weights + ")) REPRESENTATION_ITEM('') SURFACE() );\n";
+    text += R"(#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#6 = CARTESIAN_POINT('',(0.5,0.,0.));
+#8 = AXIS2_PLACEMENT_3D('',#6,#3,#2);
+#9 = CIRCLE('',#8,0.8660254037844386);
+#10 = CARTESIAN_POINT('',(0.5,0.,0.8660254037844386));
+#11 = VERTEX_POINT('',#10);
+#12 = EDGE_CURVE('',#11,#11,#9,.T.);
+#13 = ORIENTED_EDGE('',*,*,#12,.F.);
+#14 = EDGE_LOOP('',(#13));
+#15 = FACE_OUTER_BOUND('',#14,.T.);
+#16 = ADVANCED_FACE('',(#15),#5,.T.);
+#17 = PLANE('',#8);
+#18 = ORIENTED_EDGE('',*,*,#12,.T.);
+#19 = EDGE_LOOP('',(#18));
+#20 = FACE_OUTER_BOUND('',#19,.T.);
+#21 = ADVANCED_FACE('',(#20),#17,.T.);
+#22 = CLOSED_SHELL('',(#16,#21));
+#23 = MANIFOLD_SOLID_BREP('ball with a flat',#22);
+)";
+    return hz::step_text::stepFile(text);
+}
+
+/// externalStyleCylinder() with a hemispherical dimple of radius 1 in its top: the top cap a
+/// sphere about (0, 0, 2), below its rim, bounded by the rim and a seam from it down to the pole
+/// and back. The sphere's surface faces out of the sphere, into the material, yet its face says
+/// same_sense .T., as Horizon's writer wrote faces whichever way their surfaces faced.
+std::string cylinderWithADimpleWrittenFacingIn() {
+    std::string text = replaced(externalStyleCylinder(), "#29 = PLANE('',#28);",
+                                "#29 = SPHERICAL_SURFACE('',#28,1.);\n"
+                                "#340 = AXIS2_PLACEMENT_3D('',#8,#3,#9);\n"
+                                "#341 = CIRCLE('',#340,1.);\n"
+                                "#342 = CARTESIAN_POINT('',(0.,0.,1.));\n"
+                                "#343 = VERTEX_POINT('',#342);\n"
+                                "#344 = EDGE_CURVE('',#13,#343,#341,.T.);\n"
+                                "#345 = ORIENTED_EDGE('',*,*,#344,.T.);\n"
+                                "#346 = ORIENTED_EDGE('',*,*,#344,.F.);");
+    return replaced(text, "#31 = EDGE_LOOP('',(#30));", "#31 = EDGE_LOOP('',(#30,#345,#346));");
+}
+
+}  // namespace
+
+// The Important finding: a B-spline ball's poles opened a hair (as a fitted surface's are) are
+// still poles within the solid's limit, so its face outside the flat is never taken for one its
+// loops decide, and never comes in turned inside out as the cap.
+TEST(StepExact, ASplineBallWithItsPolesOpenedIsNeverTurnedInsideOut) {
+    for (const double eps : {0.0, 1e-7, 1e-5}) {
+        SCOPED_TRACE(eps);
+        const auto solids =
+            StepFormat::fromString(splineBallWithAFlat(eps), nullptr, nullptr, inMillimetres());
+        EXPECT_TRUE(solids.empty()) << "it came in";
+        EXPECT_NE(StepFormat::lastError().find(kAgainstItsLoops + std::string(" (face #16)")),
+                  std::string::npos)
+            << StepFormat::lastError();
+    }
+}
+
+// Item 1: a loop that uses a seam of its own fixes its region, so on a sphere it decides the
+// face's sense as on a plane. A dimple written .T. with its surface facing into the material
+// comes in reversed, every normal pointing out of the material.
+TEST(StepExact, ASeamedSphereCapWrittenFacingInComesInFacingOut) {
+    const auto solids = StepFormat::fromString(cylinderWithADimpleWrittenFacingIn(), nullptr,
+                                               nullptr, inMillimetres());
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    const topo::Face* dimple = faceOfKind(*solids[0], geo::SurfaceKind::Sphere);
+    ASSERT_NE(dimple, nullptr);
+    EXPECT_TRUE(dimple->reversed);
+    const Vec3 centre{0, 0, 2};
+    for (const Vec3& p : {Vec3{0.6, 0, 1.2}, Vec3{0, -0.6, 1.2}, Vec3{0, 0, 1}}) {
+        EXPECT_GT(outward(*dimple, p).dot((centre - p).normalized()), 0.99) << "into the dimple";
+    }
+    const topo::Face* side = faceOfKind(*solids[0], geo::SurfaceKind::Cylinder);
+    ASSERT_NE(side, nullptr);
+    EXPECT_GT(outward(*side, Vec3{1, 0, 1}).x, 0.99);
+    EXPECT_EQ(firstIssue(*solids[0]), "");
+}
+
+// Item 4: a closed B-spline rim whose vertex is 5e-3 off the curve's join, in a file of 0.01
+// uncertainty: off the join by a thousandth of the curve (2.8e-3), but within the solid's limit
+// (a thousandth of its height of 100), so the vertex is at the join and the edge grows to cover
+// its gap.
+TEST(StepExact, AClosedSplineJoinIsFoundWithinTheSolidsLimit) {
+    std::string text = replaced(externalStyleCylinder(), "#8 = CARTESIAN_POINT('',(0.,0.,2.));",
+                                "#8 = CARTESIAN_POINT('',(0.,0.,100.));");
+    text = replaced(text, "#12 = CARTESIAN_POINT('',(1.,0.,2.));",
+                    "#12 = CARTESIAN_POINT('',(1.,0.,100.));");
+    text = replaced(text, "#14 = EDGE_CURVE('',#7,#7,#5,.T.);",
+                    splineCircle(300, 310, 5e-3) + "#14 = EDGE_CURVE('',#7,#7,#300,.T.);");
+    ImportReport report;
+    const auto solids =
+        StepFormat::fromString(withEntities(text, millimetresWithin("0.01")), &report);
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    EXPECT_GE(largestEdgeTolerance(*solids[0]), 4.9e-3);
+    EXPECT_TRUE(anySays(report.converted, "exact to")) << report.converted.size();
+    EXPECT_EQ(firstIssue(*solids[0]), "");
 }

@@ -1480,6 +1480,7 @@ public:
                 if (!shellsOf(solidId, plan, error)) return nullptr;
             }
         }
+        m_vertexSize = vertexSize(plan);
         auto solid = assemble(plan, error);
         if (solid == nullptr) return nullptr;
 
@@ -1524,6 +1525,62 @@ private:
         bool isVoid = false;
         std::size_t outer = 0;
     };
+
+    /// The size of the solid @p plan builds, as its vertices measure it (the diagonal of the box
+    /// round them): known before any edge is read, which the solid's own extent, from its exact
+    /// curves, is not. A round part's vertices may measure it smaller; 0 when none reads.
+    double vertexSize(const std::vector<ShellRef>& plan) const {
+        math::BoundingBox box;
+        std::unordered_set<int> seen;
+        const auto vertex = [&](const StepValue& ref) {
+            const StepInstance* v =
+                ref.isRef() && seen.insert(ref.ref).second ? m_parser.find(ref.ref) : nullptr;
+            const StepList* args = v != nullptr ? v->leaf("VERTEX_POINT") : nullptr;
+            if (args == nullptr || args->size() < 2 || !(*args)[1].isRef()) return;
+            if (const auto p = readPoint((*args)[1].ref); p && finite(*p)) box.expand(*p);
+        };
+        for (const ShellRef& shellRef : plan) {
+            const StepInstance* shell = m_parser.find(shellRef.id);
+            const StepList* faces = shell ? shell->leaf("CLOSED_SHELL") : nullptr;
+            if (faces == nullptr && shell != nullptr) faces = shell->leaf("OPEN_SHELL");
+            if (faces == nullptr || faces->size() < 2 || !(*faces)[1].isList()) continue;
+            for (const StepValue& faceRef : *(*faces)[1].items) {
+                const StepInstance* face = faceRef.isRef() ? m_parser.find(faceRef.ref) : nullptr;
+                const StepList* fArgs = face ? face->leaf("ADVANCED_FACE") : nullptr;
+                if (fArgs == nullptr && face != nullptr) fArgs = face->leaf("FACE_SURFACE");
+                if (fArgs == nullptr || fArgs->size() < 2 || !(*fArgs)[1].isList()) continue;
+                for (const StepValue& boundRef : *(*fArgs)[1].items) {
+                    const StepInstance* bound =
+                        boundRef.isRef() ? m_parser.find(boundRef.ref) : nullptr;
+                    const StepList* b = bound ? bound->leaf("FACE_OUTER_BOUND") : nullptr;
+                    if (b == nullptr && bound != nullptr) b = bound->leaf("FACE_BOUND");
+                    const StepInstance* loop = b != nullptr && b->size() >= 2 && (*b)[1].isRef()
+                                                   ? m_parser.find((*b)[1].ref)
+                                                   : nullptr;
+                    if (loop == nullptr) continue;
+                    if (const StepList* vl = loop->leaf("VERTEX_LOOP"); vl && vl->size() >= 2) {
+                        vertex((*vl)[1]);
+                    }
+                    const StepList* edges = loop->leaf("EDGE_LOOP");
+                    if (edges == nullptr || edges->size() < 2 || !(*edges)[1].isList()) continue;
+                    for (const StepValue& oeRef : *(*edges)[1].items) {
+                        const StepInstance* oe = oeRef.isRef() ? m_parser.find(oeRef.ref) : nullptr;
+                        const StepList* oeArgs = oe ? oe->leaf("ORIENTED_EDGE") : nullptr;
+                        if (oeArgs == nullptr || oeArgs->size() < 4 || !(*oeArgs)[3].isRef()) {
+                            continue;
+                        }
+                        const StepInstance* ec = m_parser.find((*oeArgs)[3].ref);
+                        const StepList* ecArgs = ec ? ec->leaf("EDGE_CURVE") : nullptr;
+                        if (ecArgs == nullptr || ecArgs->size() < 3) continue;
+                        vertex((*ecArgs)[1]);
+                        vertex((*ecArgs)[2]);
+                    }
+                }
+            }
+        }
+        const double size = box.isValid() ? (box.max() - box.min()).length() : 0.0;
+        return std::isfinite(size) ? size : 0.0;
+    }
 
     /// The solid of the shells in @p plan, each built as it says.
     std::unique_ptr<topo::Solid> assemble(const std::vector<ShellRef>& plan, std::string& error) {
@@ -2372,10 +2429,13 @@ private:
             math::BoundingBox hull;
             for (const Vec3& p : nurbs->controlPoints()) hull.expand(p);
             // How near its ends must be to join, and a vertex to be at the join: the file's
-            // uncertainty, no coarser than a thousandth of the curve nor finer than its
-            // resolution.
+            // uncertainty, no finer than the curve's resolution and no coarser than the
+            // solid's limit, a thousandth of its size. The solid's exact extent is not known
+            // while its edges are read, so its size is its vertices' (vertexSize), or the
+            // curve's where that is larger: vertices alone may measure a round part smaller.
             const double size = (hull.max() - hull.min()).length();
-            const double near = std::max(std::min(m_lengthUncertainty, 1e-3 * size),
+            const double cap = 1e-3 * std::max(m_vertexSize, size);
+            const double near = std::max(std::min(m_lengthUncertainty, cap),
                                          math::ModelTolerance::forExtent(size).linear);
             const auto atJoin = [&](const Vec3& p) {
                 return (p - first).length() <= near || (p - last).length() <= near;
@@ -2850,6 +2910,7 @@ private:
     const std::atomic<bool>* m_cancelled;
     double m_radiansPerUnit;     ///< of the file's plane angle unit
     double m_lengthUncertainty;  ///< the file's, in its length unit; 0 where it gives none
+    double m_vertexSize = 0.0;   ///< the solid's size as its vertices measure it (vertexSize)
     std::unique_ptr<topo::Solid> m_solid;
     std::unordered_map<int, topo::Vertex*> m_vertices;
     std::map<int, EdgeRecord> m_edges;
@@ -3907,37 +3968,31 @@ std::optional<double> loopArea(const std::vector<topo::HalfEdge*>& ring, const g
     return std::abs(area) <= 1e-12 * (hi.x - lo.x) * (hi.y - lo.y) ? 0.0 : area;
 }
 
-/// Whether @p s collapses an edge of its domain to a point: a pole, where its first or last row
-/// or column of control points is one point.
-bool collapsesAnEdge(const geo::NurbsSurface& s) {
-    const auto& net = s.controlPoints();
-    if (net.empty() || net.front().empty()) return false;
-    double size = 0.0;
-    for (const auto& row : net) {
-        for (const Vec3& p : row) size = std::max(size, (p - net.front().front()).length());
+/// Points along the edge of @p s's domain where u (@p alongV false) or v (true) is @p at: 17 of
+/// them, both ends included.
+std::vector<Vec3> domainEdge(const geo::NurbsSurface& s, bool alongV, double at) {
+    constexpr int kSteps = 16;
+    std::vector<Vec3> points;
+    points.reserve(kSteps + 1);
+    for (int k = 0; k <= kSteps; ++k) {
+        const double f = static_cast<double>(k) / kSteps;
+        points.push_back(alongV ? s.evaluate(s.uMin() + (s.uMax() - s.uMin()) * f, at)
+                                : s.evaluate(at, s.vMin() + (s.vMax() - s.vMin()) * f));
     }
-    const double near = 1e-9 * size;
-    const auto onePoint = [near](const std::vector<Vec3>& points) {
-        return std::all_of(points.begin(), points.end(),
-                           [&](const Vec3& p) { return (p - points.front()).length() <= near; });
-    };
-    std::vector<Vec3> first;
-    std::vector<Vec3> last;
-    first.reserve(net.size());
-    last.reserve(net.size());
-    for (const auto& row : net) {
-        first.push_back(row.front());
-        last.push_back(row.back());
-    }
-    return onePoint(net.front()) || onePoint(net.back()) || onePoint(first) || onePoint(last);
+    return points;
 }
 
 /// Whether a loop on @p s determines the region it bounds: on a plane, a cylinder, a cone (a
 /// swept surface's B-spline among them) and a B-spline neither closed both ways nor coming to a
 /// pole, the region off the loop's disc reaches an edge of the surface no edge of the face
 /// bounds, so the face is the disc. On a sphere, a torus, or a B-spline closed both ways or with
-/// a pole, a loop bounds two regions, and its (u, v) area always picks the disc.
-bool loopsDetermineRegion(const geo::Surface& s) {
+/// a pole, a loop bounds two regions, and its (u, v) area always picks the disc. A B-spline is
+/// judged within @p near (the solid's limit, a thousandth of its size), not NurbsSurface's own
+/// closure: an edge of its domain whose points spread no further is a pole, and a direction
+/// whose two edges come no further apart is closed, so a fitted surface's pole opened a hair, or
+/// a torus-like surface closed only nearly, is not taken for one the loops decide. Erring that
+/// way only leaves a solid out.
+bool loopsDetermineRegion(const geo::Surface& s, double near) {
     switch (s.kind()) {
         case geo::SurfaceKind::Plane:
         case geo::SurfaceKind::Cylinder:
@@ -3948,8 +4003,27 @@ bool loopsDetermineRegion(const geo::Surface& s) {
             return false;
         case geo::SurfaceKind::Nurbs: {
             const auto* nurbs = dynamic_cast<const geo::NurbsSurface*>(&s);
-            return nurbs != nullptr && !(nurbs->periodicU() && nurbs->periodicV()) &&
-                   !collapsesAnEdge(*nurbs);
+            if (nurbs == nullptr) return false;
+            const auto spread = [](const std::vector<Vec3>& points) {
+                math::BoundingBox box;
+                for (const Vec3& p : points) box.expand(p);
+                return (box.max() - box.min()).length();
+            };
+            const auto apart = [](const std::vector<Vec3>& a, const std::vector<Vec3>& b) {
+                double most = 0.0;
+                for (std::size_t k = 0; k < a.size() && k < b.size(); ++k) {
+                    most = std::max(most, (a[k] - b[k]).length());
+                }
+                return most;
+            };
+            const auto uLow = domainEdge(*nurbs, false, nurbs->uMin());
+            const auto uHigh = domainEdge(*nurbs, false, nurbs->uMax());
+            const auto vLow = domainEdge(*nurbs, true, nurbs->vMin());
+            const auto vHigh = domainEdge(*nurbs, true, nurbs->vMax());
+            const bool pole = spread(uLow) <= near || spread(uHigh) <= near ||
+                              spread(vLow) <= near || spread(vHigh) <= near;
+            const bool closedBothWays = apart(uLow, uHigh) <= near && apart(vLow, vHigh) <= near;
+            return !pole && !closedBothWays;
         }
     }
     return false;
@@ -3957,26 +4031,36 @@ bool loopsDetermineRegion(const geo::Surface& s) {
 
 /// Gives @p face its sense, or says why it has none this stage represents.
 ///
-/// Where its loops determine its region (loopsDetermineRegion), the face faces the way its outer
-/// loop runs in (u, v), counter-clockwise about its outward normal: the loops are the solid's
-/// topology, and same_sense only repeats it (Horizon's own writer gave same_sense .T. whichever
-/// way a face's surface faced). Elsewhere the face keeps its file's sense (same_sense, with its
-/// shell's and bounds' flags); where its loop's unwrapped area says the other way, the face is
-/// the surface outside its loop (a ball's skin round a flat), which holds a pole or wraps the
-/// surface: not representable in this stage, so said why. A loop whose area says nothing (a
-/// seam joined only at poles, laid out next) leaves the face as its file says.
-std::string faceSense(topo::Face& face, const math::ModelTolerance& tolerance, std::size_t limit) {
+/// Where its loops determine its region (loopsDetermineRegion within @p near), or its outer loop
+/// uses a seam of its own (both sides of one edge, a period apart, so its (u, v) region is
+/// fixed), the face faces the way its outer loop runs in (u, v), counter-clockwise about its
+/// outward normal: the loops are the solid's topology, and same_sense only repeats it (Horizon's
+/// own writer gave same_sense .T. whichever way a face's surface faced). Elsewhere the face
+/// keeps its file's sense (same_sense, with its shell's and bounds' flags); where its loop's
+/// unwrapped area says the other way, either the face is the surface outside its loop (a ball's
+/// skin round a flat), which holds a pole or wraps the surface and this stage cannot represent,
+/// or its file's same_sense is wrong: which, it cannot tell, so it says both. A loop whose area
+/// says nothing (a seam joined only at poles, laid out next) leaves the face as its file says.
+/// (A loop that runs along a pole without a seam does not fix its region here: which way round
+/// the pole it runs is the next pcurve's window's, not the file's; stage 3's pole topology.)
+std::string faceSense(topo::Face& face, const math::ModelTolerance& tolerance, std::size_t limit,
+                      double near) {
     if (face.outerLoop == nullptr) return {};
-    const auto area = loopArea(ringOf(*face.outerLoop, limit), *face.exactSurface, tolerance);
+    const std::vector<topo::HalfEdge*> ring = ringOf(*face.outerLoop, limit);
+    const auto area = loopArea(ring, *face.exactSurface, tolerance);
     if (!area || !std::isfinite(*area) || *area == 0.0) return {};
     const bool loopsSayReversed = *area < 0.0;
-    if (loopsDetermineRegion(*face.exactSurface)) {
+    const bool seamed = std::any_of(ring.begin(), ring.end(), [&face](const topo::HalfEdge* h) {
+        return h->twin != nullptr && h->twin->face == &face;
+    });
+    if (seamed || loopsDetermineRegion(*face.exactSurface, near)) {
         face.reversed = loopsSayReversed;
         return {};
     }
     if (loopsSayReversed == face.reversed) return {};
-    return "its face is the surface outside its loop (it holds a pole or wraps the surface), "
-           "which this stage cannot represent";
+    return "its loops run against its same_sense: either the face is the surface outside its "
+           "loop (it holds a pole or wraps the surface), which this stage cannot represent, or "
+           "the file's same_sense is wrong";
 }
 
 /// How many layouts layOutSeams tries for one face, at most. A well-formed face has a seam along
@@ -4182,7 +4266,7 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     for (auto& f : solid.faces()) {
         if (stop()) return read;
         if (!f.alive || !f.exactSurface) continue;
-        if (std::string why = faceSense(f, resolution, limitHalfEdges); !why.empty()) {
+        if (std::string why = faceSense(f, resolution, limitHalfEdges, limit); !why.empty()) {
             read.problem = why + whereIn(&f, nullptr);
             return read;
         }
@@ -4295,14 +4379,22 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
                 notExact = builder.exactProblem();
                 // Into millimetres.
                 if (mm != 1.0) solid = model::Pattern::transformed(*solid, math::Mat4::scale(mm));
-                if (notExact.empty()) exact = finishExact(*solid, cancelled);
             }
         } catch (const std::exception& e) {
             // The geometry constructors throw on inputs the reader's own
             // checks let through (a degree-0 B-spline, ragged control rows,
-            // a scale into millimetres that overflows).
+            // a scale into millimetres that overflows): no solid at all.
             error = e.what();
             solid = nullptr;
+        }
+        if (solid != nullptr && notExact.empty()) {
+            // A throw making the exact form leaves the solid, as read, without one: left out of
+            // an import, kept as it was in a native file's embedded STEP.
+            try {
+                exact = finishExact(*solid, cancelled);
+            } catch (const std::exception& e) {
+                notExact = std::string("its exact form could not be made: ") + e.what();
+            }
         }
         if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) return built;
         if (solid == nullptr) {
