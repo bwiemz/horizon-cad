@@ -278,8 +278,9 @@ TEST(PortableRandom, UniformIntDrawsTheSameInRangeOnEveryPlatform) {
 // The exact path's results are pinned by a golden vector recorded from the implementation that
 // kept its expansions on the heap: 10^4 incircle quadruples on the 200 x 200 lattice, in four
 // kinds taken in turn (see goldenQuad). Kinds 0 and 1 are exactly cocircular, so the exact path
-// answers 0; kind 3 nudges the fourth corner by one ulp, so the exact path decides a nonzero
-// sign the filter cannot. Moving the expansions onto the stack changes no sign.
+// answers 0; kind 3 nudges the fourth corner by one ulp, so nearly all of its quadruples are
+// decided on the exact path (2446 of 2500), with a nonzero sign the filter cannot give. Moving
+// the expansions onto the stack changes no sign.
 namespace golden {
 // Deterministic quadruple generator over the 200x200 lattice.
 struct GoldenRng {
@@ -303,7 +304,7 @@ struct Quad {
 //         opposite sides, so it is exactly cocircular as well and the exact path answers 0.
 // Kind 2: four random lattice points (the filter decides nearly all of them).
 // Kind 3: a unit-lattice rectangle whose fourth corner is moved one ulp in x, toward or away
-//         from the circle: the exact path decides a nonzero sign.
+//         from the circle: nearly all are decided on the exact path (2446 of 2500), nonzero.
 // Every draw from the generator is sequenced by its own statement: the order of evaluation of
 // function arguments is unspecified, and the vector must not depend on the compiler.
 inline Quad goldenQuad(GoldenRng& r, int kind) {

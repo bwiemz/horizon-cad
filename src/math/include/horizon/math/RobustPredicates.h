@@ -5,20 +5,26 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
 
-// Range of validity: the results are exact for finite inputs as long as no intermediate product
-// underflows or overflows. A predicate of degree n multiplies n coordinate differences, so its
-// range depends on n. The scale is that of the coordinate differences (zero always counts):
-//   orient2d and classifyPoint (degree 2): about 1e-150 to 1e150;
-//   orient3d (degree 3):                    about 1e-100 to 1e100;
-//   incircle (degree 4):                    about 1e-60 to 1e75.
-// (Measured on near-degenerate configurations scaled by powers of two: the sign is kept from
-// 4.8e-153 to 6.7e153, 1.8e-102 to 2.2e102 and 6.9e-77 to 5.8e76, for coordinates with few
-// mantissa bits.) With full 53-bit mantissas the exact terms reach down further: a degree-n
-// product has error terms about 2^(-53 (n - 1)) below its leading term, so incircle's lowest
-// ones (about scale^4 * 1e-48) underflow near 1e-65 and the sign is lost from about 1e-60
-// (a cocircular rectangle at 6e-62 already answers -1, not 0). Above its range a
-// predicate returns 0; just below it, the error terms of the exact arithmetic underflow and it
-// may return the wrong sign, then 0 further down. Nothing crashes.
+// Range of validity: the results are exact for finite inputs as long as no intermediate value
+// overflows or underflows. Two things bound it:
+//  - Above: the largest coordinate differences. A predicate of degree n multiplies n of them,
+//    so it holds up to about 1e150 (orient2d, classifyPoint), 1e100 (orient3d) and 1e75
+//    (incircle); above that it returns 0.
+//  - Below: the smallest NONZERO coordinate magnitude m, not the differences. The error term of
+//    a difference can be as small as the last bit of one coordinate, ulp(m) ~ m * 2^-52, and
+//    the exact arithmetic multiplies n of them, so it needs ulp(m)^n >= 2^-1074 (the smallest
+//    double). That gives m of about 1e-146 (degree 2), 7.6e-93 (degree 3) and 9.5e-66
+//    (degree 4). Below it the error terms underflow and the sign may be wrong, then 0.
+//    Measured: orient2d on (p,q), (2p,2q), (-p,-q) is wrong in about a quarter of cases from
+//    1e-155 to 1e-148 and never at 1e-145; orient3d on u, v, 2u, -v from 1e-105 to 1e-93 and
+//    never at 1e-90; incircle on full-mantissa rectangles at 1e-66 and never from 1e-65 up.
+// So keep every nonzero coordinate above about 1e-140 (orient2d, classifyPoint), 1e-90
+// (orient3d) and 1e-60 (incircle); the margin over the measured onsets is deliberate. Differences
+// in range do not help: the exactly cocircular rectangle (1.528379950790292, 3.5558643899770326),
+// (9.0470469239970971e-90, 3.5558643899770326), (9.0470469239970971e-90, 7.0334986959029244e-90),
+// (1.528379950790292, 7.0334986959029244e-90) has differences around 1, yet one tiny coordinate
+// per axis makes incircle return -1 instead of 0. A caller that may hold smaller nonzero
+// coordinates must flush them to 0 first. Nothing crashes.
 
 namespace hz::math {
 
