@@ -59,6 +59,7 @@ struct Checker {
                 }
             }
         }
+        checkEdgeRange(e);
         for (const HalfEdge* h : {e.halfEdge, e.halfEdge->twin}) {
             if (!h->face || !h->alive) continue;
             if (!h->pcurve) {
@@ -68,6 +69,43 @@ struct Checker {
             // A face without a surface is reported once, by checkFace.
             if (h->face->exactSurface) checkPcurve(e, *h);
         }
+    }
+
+    /// A periodic curve's edge covers at most one period, plus its parametric tolerance (the
+    /// effective tolerance over the curve's speed). Reported once per edge.
+    void checkEdgeRange(const Edge& e) {
+        if (!e.exactCurve || !e.exactCurve->periodic()) return;
+        const geo::Interval range = e.exactCurve->range();
+        const double period = range.max - range.min;
+        if (!std::isfinite(period) || !(period > 0.0)) return;
+        const double speed = e.exactCurve->derivatives(e.curveStart).d1.length();
+        const double slack = speed > 0.0 ? tol.effective(e.tolerance) / speed : 0.0;
+        const double span = std::fabs(e.curveEnd - e.curveStart);
+        if (span > period + slack) {
+            report(ExactIssueKind::RangeTooLong, nullptr, &e,
+                   "curve range " + num(span) + " exceeds its period " + num(period));
+        }
+    }
+
+    /// True when an unwrapped loop spans more than one period plus @p allowance (a distance) on
+    /// a periodic axis; where the surface's derivative along it vanishes, nothing bounds it.
+    static bool exceedsPeriod(const LoopPolygon& poly, const geo::Surface& s, double allowance,
+                              double periodU, double periodV) {
+        if (poly.empty()) return false;
+        Vec2 lo = poly.front().a;
+        Vec2 hi = lo;
+        for (const LoopSegment& seg : poly) {
+            for (const Vec2& p : {seg.a, seg.b}) {
+                lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)};
+                hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
+            }
+        }
+        const auto d = s.derivatives(poly.front().a.x, poly.front().a.y);
+        const auto over = [&](double extent, double period, double speed) {
+            return period > 0.0 && speed > 0.0 && extent > period + allowance / speed;
+        };
+        return over(hi.x - lo.x, periodU, d.du.length()) ||
+               over(hi.y - lo.y, periodV, d.dv.length());
     }
 
     void checkPcurve(const Edge& e, const HalfEdge& h) {
@@ -223,6 +261,11 @@ struct Checker {
             return info;
         }
         info.usable = true;
+        if (exceedsPeriod(info.poly, s, *std::max_element(allowances.begin(), allowances.end()),
+                          uPeriod(s), vPeriod(s))) {
+            report(ExactIssueKind::RangeTooLong, &f, w->halfEdge->edge,
+                   "loop spans more than one period of the surface");
+        }
         const double area = detail::signedArea(info.poly);
         // Outer loops run counter-clockwise unless the face is reversed; inner loops the
         // other way.

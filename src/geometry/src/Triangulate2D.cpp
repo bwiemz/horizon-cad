@@ -24,6 +24,10 @@ constexpr int kNone = -1;
 /// product passes the largest double and the exact predicates are no longer exact.
 constexpr double kWidest = 1e70;
 
+/// The narrowest non-zero spread. The incircle predicate is exact for coordinate differences
+/// down to about 1e-70; the super-triangle's and the triangles' products need margin above it.
+constexpr double kNarrowest = 1e-60;
+
 std::uint64_t edgeKey(int a, int b) {
     const auto lo = static_cast<std::uint64_t>(std::min(a, b));
     const auto hi = static_cast<std::uint64_t>(std::max(a, b));
@@ -715,6 +719,11 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
     }
     if (!(hi.x - lo.x <= kWidest) || !(hi.y - lo.y <= kWidest)) {
         result.problem = "the points spread too far for exact predicates";
+        return result;
+    }
+    const double spread = std::max(hi.x - lo.x, hi.y - lo.y);
+    if (spread > 0.0 && spread < kNarrowest) {
+        result.problem = "the points spread too little for exact predicates";
         return result;
     }
     // In a biased randomized order (BRIO): rounds of doubling size drawn at random, each sorted

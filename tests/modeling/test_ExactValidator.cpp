@@ -726,3 +726,47 @@ TEST(ExactValidator, AHoleInsideAnotherHoleIsReportedAsTheMesherReportsIt) {
     ASSERT_EQ(meshes.size(), 1u);
     EXPECT_TRUE(meshes[0].problem.empty()) << meshes[0].problem;
 }
+
+TEST(ExactValidator, AnEdgeOverMoreThanOnePeriodIsRangeTooLong) {
+    auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    topo::Edge* rim = nullptr;
+    for (auto& e : cyl->edges()) {
+        if (dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get())) {
+            rim = &e;
+            break;
+        }
+    }
+    ASSERT_NE(rim, nullptr);
+    rim->curveEnd += math::kTwoPi;
+    int count = 0;
+    for (const auto& i : topo::validateExact(*cyl, kTol)) {
+        if (i.kind == ExactIssueKind::RangeTooLong && i.edge == rim) ++count;
+    }
+    EXPECT_EQ(count, 1);
+}
+
+TEST(ExactValidator, ALoopWiderThanAPeriodIsRangeTooLong) {
+    auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    topo::Face* side = nullptr;
+    for (auto& f : cyl->faces()) {
+        if (f.topoId.tag() == "cylinder/side") side = &f;
+    }
+    ASSERT_NE(side, nullptr);
+    const double wide = 3.0 * math::kPi;
+    const double h = 10.0;
+    // The side's four pcurves, in loop order, rewritten to span u over 3 pi and still join.
+    const math::Vec2 pts[4][2] = {
+        {{0, 0}, {wide, 0}}, {{wide, 0}, {wide, h}}, {{wide, h}, {0, h}}, {{0, h}, {0, 0}}};
+    topo::HalfEdge* he = side->outerLoop->halfEdge;
+    for (const auto& seg : pts) {
+        he->pcurve = std::make_shared<geo::Line2D>(seg[0], seg[1]);
+        he->pcurveStart = 0.0;
+        he->pcurveEnd = 1.0;
+        he = he->next;
+    }
+    int count = 0;
+    for (const auto& i : topo::validateExact(*cyl, kTol)) {
+        if (i.kind == ExactIssueKind::RangeTooLong && i.face == side) ++count;
+    }
+    EXPECT_EQ(count, 1);
+}

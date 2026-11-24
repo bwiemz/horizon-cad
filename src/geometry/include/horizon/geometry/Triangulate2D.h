@@ -28,8 +28,8 @@ struct Triangulation2D {
     /// and input index, a point where loops touch, a misplaced hole, or where the labelling
     /// disagrees) and why. The triangles are then best effort: callers treat a non-empty
     /// problem as failure. An input point that is not finite gives that problem and nothing
-    /// else; points spread more than 1e70 apart (beyond what the exact predicates hold) give it
-    /// and no triangles.
+    /// else; points spread more than 1e70 apart, or non-zero but under 1e-60 (beyond what the exact
+    /// predicates hold), give it and no triangles.
     std::string problem;
 };
 

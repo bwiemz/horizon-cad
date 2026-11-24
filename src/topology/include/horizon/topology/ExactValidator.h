@@ -18,7 +18,8 @@ enum class ExactIssueKind {
     LoopSelfIntersects,    ///< A loop crosses itself.
     LoopsCross,            ///< Two loops of one face cross.
     HoleOutsideOuterLoop,  ///< An inner loop lies outside the face's outer loop.
-    HoleInsideHole         ///< An inner loop lies inside another inner loop of the face.
+    HoleInsideHole,        ///< An inner loop lies inside another inner loop of the face.
+    RangeTooLong  ///< An edge's curve range, or a loop's unwrapped extent, exceeds one period.
 };
 
 struct ExactIssue {

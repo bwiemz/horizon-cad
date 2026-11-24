@@ -566,3 +566,8 @@ TEST(Triangulate2D, TwentyThousandPointsOnTheUnitSquare) {
     EXPECT_GT(t.points.size(), 19000U);
     EXPECT_NEAR(triangleArea(t), 1.0, 1e-9);
 }
+
+TEST(Triangulate2D, PointsSpreadTooLittleAreSaidToBe) {
+    const auto t = triangulateRegion({{0, 0}, {1e-62, 0}, {1e-62, 1e-62}, {0, 1e-62}}, {});
+    EXPECT_NE(t.problem.find("spread too little"), std::string::npos) << t.problem;
+}

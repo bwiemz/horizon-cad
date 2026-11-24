@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cfloat>
 #include <cmath>
 #include <limits>
 
@@ -11,8 +12,13 @@ TEST(ModelTolerance, ScalesWithThePartsSize) {
     EXPECT_DOUBLE_EQ(ModelTolerance::forExtent(100.0).linear, 1e-5);
     EXPECT_DOUBLE_EQ(ModelTolerance::forExtent(1e-3).linear, 1e-10);
     // Never finer than 64 units in the last place of the extent.
-    const double huge = 1e300;
+    const double huge = 1e100;
     EXPECT_GE(ModelTolerance::forExtent(huge).linear, 64 * (std::nextafter(huge, INFINITY) - huge));
+}
+
+TEST(ModelTolerance, AnInfiniteExtentGivesAFiniteResolution) {
+    EXPECT_TRUE(std::isfinite(ModelTolerance::forExtent(DBL_MAX).linear));
+    EXPECT_EQ(ModelTolerance::forExtent(DBL_MAX).linear, ModelTolerance::forExtent(1e100).linear);
 }
 
 TEST(ModelTolerance, AMeaninglessExtentIsTakenAsOne) {

@@ -13,11 +13,16 @@ struct ModelTolerance {
     /// Angular resolution, in radians.
     double angular = 1e-10;
 
+    /// The largest extent a tolerance is scaled to: the upper end of the robust predicates' range.
+    static constexpr double kLargestExtent = 1e100;
+
     /// A tolerance scaled to a part of the given size. An extent that is not finite and
-    /// positive is taken as 1. The result is never finer than 64 units in the last place of
-    /// the extent, so it stays meaningful for very large parts.
+    /// positive is taken as 1; one above 1e100 (the predicates' upper range) as 1e100. The result
+    /// is never finer than 64 units in the last place of the extent, so it stays meaningful for
+    /// very large parts.
     static ModelTolerance forExtent(double extent) {
         if (!std::isfinite(extent) || extent <= 0.0) extent = 1.0;
+        extent = std::min(extent, kLargestExtent);
         const double ulp = std::nextafter(extent, std::numeric_limits<double>::infinity()) - extent;
         ModelTolerance t;
         t.linear = std::max(1e-7 * extent, 64.0 * ulp);
