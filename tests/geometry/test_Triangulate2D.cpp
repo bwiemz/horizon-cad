@@ -50,6 +50,7 @@ bool insideRegion(const Loop& outer, const std::vector<Loop>& holes, const Vec2&
 Triangulation2D checkRegion(const Loop& outer, const std::vector<Loop>& holes,
                             const Loop& interior = {}, double merge = 0.0) {
     const Triangulation2D t = triangulateRegion(outer, holes, interior, merge);
+    EXPECT_TRUE(t.problem.empty()) << t.problem;
 
     // Index contract: points[i] is the i-th boundary point.
     std::vector<Vec2> boundary = outer;
@@ -222,6 +223,7 @@ TEST(Triangulate2D, KeepsBoundaryIndicesAcrossLoops) {
     const Loop outer{{0, 0}, {10, 0}, {10, 10}, {0, 10}};
     const Loop hole{{3, 3}, {3, 7}, {7, 7}, {7, 3}};
     const Triangulation2D t = triangulateRegion(outer, {hole}, {{1, 1}, {9, 9}});
+    EXPECT_TRUE(t.problem.empty());
     ASSERT_EQ(t.points.size(), 10U);
     EXPECT_EQ(t.points[4].x, 3.0);
     EXPECT_EQ(t.points[7].y, 3.0);
@@ -235,6 +237,7 @@ TEST(Triangulate2D, InteriorPointOnABoundarySegmentIsDropped) {
     // On the outer edge, on a hole edge, on a corner, and inside the hole.
     const Triangulation2D t =
         triangulateRegion(outer, {hole}, {{2, 0}, {1, 2}, {4, 4}, {2, 2}, {0.5, 0.5}}, 0.0);
+    EXPECT_TRUE(t.problem.empty());
     ASSERT_EQ(t.points.size(), 9U);
     EXPECT_EQ(t.points[8].x, 0.5);
     checkRegion(outer, {hole}, {{2, 0}, {1, 2}, {4, 4}, {2, 2}, {0.5, 0.5}});
@@ -243,6 +246,7 @@ TEST(Triangulate2D, InteriorPointOnABoundarySegmentIsDropped) {
 TEST(Triangulate2D, InteriorPointWithinMergeOfABoundaryPointIsDropped) {
     const Loop outer{{0, 0}, {4, 0}, {4, 4}, {0, 4}};
     const Triangulation2D t = triangulateRegion(outer, {}, {{1e-4, 1e-4}, {2, 2}}, 1e-3);
+    EXPECT_TRUE(t.problem.empty());
     ASSERT_EQ(t.points.size(), 5U);
     EXPECT_EQ(t.points[4].x, 2.0);
 }
@@ -309,4 +313,39 @@ TEST(Triangulate2D, ReentrantStarWithHoleAndManyPoints) {
         interior.emplace_back(x, y);
     }
     checkRegion(outer, {hole}, interior);
+}
+
+TEST(Triangulate2D, HoleCrossingTheOuterLoopIsReported) {
+    const Loop outer{{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+    const Loop hole{{5, 5}, {5, 15}, {8, 15}, {8, 5}};  // sticks out through the top edge
+    const Triangulation2D t = triangulateRegion(outer, {hole});
+    EXPECT_FALSE(t.problem.empty());
+    // Segment 2 of the outer loop (10,10)-(0,10), and the hole's segment 0 or 2, cross.
+    EXPECT_NE(t.problem.find("outer segment 2"), std::string::npos) << t.problem;
+    EXPECT_NE(t.problem.find("hole 0 segment"), std::string::npos) << t.problem;
+}
+
+TEST(Triangulate2D, FigureEightOuterLoopIsReported) {
+    const Loop outer{{0, 0}, {4, 4}, {4, 0}, {0, 4}};  // segments 0 and 2 cross at (2,2)
+    const Triangulation2D t = triangulateRegion(outer, {});
+    EXPECT_FALSE(t.problem.empty());
+    EXPECT_NE(t.problem.find("outer segment 0"), std::string::npos) << t.problem;
+    EXPECT_NE(t.problem.find("outer segment 2"), std::string::npos) << t.problem;
+}
+
+TEST(Triangulate2D, HoleTouchingTheOuterLoopAtAVertexIsReported) {
+    const Loop outer{{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+    const Loop hole{{10, 10}, {7, 8}, {8, 6}};
+    const Triangulation2D t = triangulateRegion(outer, {hole});
+    EXPECT_FALSE(t.problem.empty());
+    EXPECT_NE(t.problem.find("hole 0 point 0"), std::string::npos) << t.problem;
+    EXPECT_NE(t.problem.find("outer point 2"), std::string::npos) << t.problem;
+}
+
+TEST(Triangulate2D, HoleVertexOnAnOuterSegmentIsReported) {
+    const Loop outer{{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+    const Loop hole{{5, 0}, {7, 3}, {3, 3}};  // (5,0) lies on the outer's segment 0
+    const Triangulation2D t = triangulateRegion(outer, {hole});
+    EXPECT_FALSE(t.problem.empty());
+    EXPECT_NE(t.problem.find("outer segment 0"), std::string::npos) << t.problem;
 }

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -485,6 +486,67 @@ private:
     std::map<std::pair<std::int64_t, std::int64_t>, std::vector<std::pair<Vec2, int>>> m_cells;
 };
 
+std::string loopName(std::size_t loop) {
+    return loop == 0 ? std::string("outer") : "hole " + std::to_string(loop - 1);
+}
+
+std::size_t loopOf(const std::vector<std::size_t>& starts, std::size_t index) {
+    std::size_t li = 0;
+    while (li + 1 < starts.size() && starts[li + 1] <= index) {
+        ++li;
+    }
+    return li;
+}
+
+std::string pointName(std::size_t loop, std::size_t i) {
+    return loopName(loop) + " point " + std::to_string(i);
+}
+
+std::string segmentName(std::size_t loop, std::size_t i, std::size_t loop_size) {
+    return loopName(loop) + " segment " + std::to_string(i) + " (points " + std::to_string(i) +
+           "-" + std::to_string((i + 1) % loop_size) + ")";
+}
+
+/// A segment that crosses, or has an endpoint on, segment (loop, i): named for the message.
+std::string partnerOf(const std::vector<Vec2>& pts, const std::vector<int>& rep,
+                      const std::vector<std::size_t>& starts,
+                      const std::vector<const std::vector<Vec2>*>& loops, std::size_t loop,
+                      std::size_t i) {
+    const auto endpoints = [&](std::size_t l, std::size_t k) {
+        const std::size_t n = loops[l]->size();
+        return std::pair<const Vec2&, const Vec2&>(
+            pts[static_cast<std::size_t>(rep[starts[l] + k])],
+            pts[static_cast<std::size_t>(rep[starts[l] + (k + 1) % n])]);
+    };
+    const auto [a, b] = endpoints(loop, i);
+    const auto between = [](const Vec2& p, const Vec2& q, const Vec2& r) {  // r on p-q's box
+        return std::min(p.x, q.x) <= r.x && r.x <= std::max(p.x, q.x) &&
+               std::min(p.y, q.y) <= r.y && r.y <= std::max(p.y, q.y);
+    };
+    for (std::size_t l = 0; l < loops.size(); ++l) {
+        for (std::size_t k = 0; k < loops[l]->size(); ++k) {
+            if (l == loop && k == i) {
+                continue;
+            }
+            const auto [c, d] = endpoints(l, k);
+            const int o1 = math::orient2d(a, b, c);
+            const int o2 = math::orient2d(a, b, d);
+            const int o3 = math::orient2d(c, d, a);
+            const int o4 = math::orient2d(c, d, b);
+            const bool shares = (a.x == c.x && a.y == c.y) || (a.x == d.x && a.y == d.y) ||
+                                (b.x == c.x && b.y == c.y) || (b.x == d.x && b.y == d.y);
+            const bool crosses = o1 * o2 < 0 && o3 * o4 < 0;
+            const bool on = (o1 == 0 && between(a, b, c)) || (o2 == 0 && between(a, b, d)) ||
+                            (o3 == 0 && between(c, d, a)) || (o4 == 0 && between(c, d, b));
+            if (crosses || (on && !shares)) {
+                return std::string(crosses ? "it crosses " : "it touches ") + loopName(l) +
+                       " segment " + std::to_string(k);
+            }
+        }
+    }
+    return {};
+}
+
 }  // namespace
 
 Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
@@ -501,10 +563,23 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
     }
     PointGrid grid(tol);
     std::vector<int> rep;
+    std::vector<std::size_t> loop_starts;  // the first boundary index of each loop
     for (const auto* loop : loops) {
-        for (const Vec2& p : *loop) {
+        loop_starts.push_back(result.points.size());
+        for (std::size_t i = 0; i < loop->size(); ++i) {
+            const Vec2& p = (*loop)[i];
             const int index = static_cast<int>(result.points.size());
             const int earlier = grid.find(p);
+            if (earlier >= 0 && result.problem.empty()) {
+                const std::size_t li = loop_starts.size() - 1;
+                const std::size_t ej = loopOf(loop_starts, static_cast<std::size_t>(earlier));
+                if (ej != li) {
+                    result.problem =
+                        pointName(li, i) + " coincides with " +
+                        pointName(ej, static_cast<std::size_t>(earlier) - loop_starts[ej]) +
+                        ": the loops touch";
+                }
+            }
             rep.push_back(earlier >= 0 ? earlier : index);
             if (earlier < 0) {
                 grid.add(p, index);
@@ -551,12 +626,19 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
     for (const int i : inserted) {
         cdt.insert(i);
     }
-    std::size_t base = 0;
-    for (const auto* loop : loops) {
-        for (std::size_t i = 0; i < loop->size(); ++i) {
-            cdt.constrain(rep[base + i], rep[base + (i + 1) % loop->size()]);
+    for (std::size_t li = 0; li < loops.size(); ++li) {
+        const std::size_t base = loop_starts[li];
+        const std::size_t n = loops[li]->size();
+        for (std::size_t i = 0; i < n; ++i) {
+            const int a = rep[base + i];
+            const int b = rep[base + (i + 1) % n];
+            if (!cdt.constrain(a, b) && result.problem.empty()) {
+                const std::string partner =
+                    partnerOf(result.points, rep, loop_starts, loops, li, i);
+                result.problem = segmentName(li, i, n) + " cannot be kept: " +
+                                 (partner.empty() ? "the loops cross or touch" : partner);
+            }
         }
-        base += loop->size();
     }
     cdt.lawson();
 
