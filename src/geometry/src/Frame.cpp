@@ -1,6 +1,7 @@
 #include "horizon/geometry/Frame.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 
 namespace hz::geo {
@@ -8,9 +9,10 @@ namespace hz::geo {
 Frame Frame::fromAxis(const math::Vec3& origin, const math::Vec3& axis, const math::Vec3& xHint) {
     Frame f;
     f.origin = origin;
+    assert(axis.length() > 0.0 && "Frame::fromAxis needs a non-zero axis");
     f.z = axis.normalized();
     math::Vec3 x = xHint - f.z * xHint.dot(f.z);
-    if (x.length() < 1e-9 * std::max(1.0, xHint.length())) {
+    if (x.length() <= 1e-9 * xHint.length() || xHint.length() == 0.0) {
         // The hint is (nearly) parallel to the axis: take the world axis least aligned with it.
         const double ax = std::abs(f.z.x);
         const double ay = std::abs(f.z.y);
@@ -20,7 +22,11 @@ Frame Frame::fromAxis(const math::Vec3& origin, const math::Vec3& axis, const ma
                                                     : math::Vec3{0.0, 0.0, 1.0};
         x = w - f.z * w.dot(f.z);
     }
-    f.x = x.normalized();
+    x = x / x.length();
+    // Re-orthogonalise once: a hint a hair off parallel leaves rounding error along z.
+    x = x - f.z * x.dot(f.z);
+    x = x / x.length();
+    f.x = x;
     f.y = f.z.cross(f.x);
     return f;
 }

@@ -77,9 +77,13 @@ void checkAll(const Surface& s) {
     checkInvertRoundTrip(s);
     const math::Mat4 rigid = math::Mat4::translation({3.0, -1.0, 2.0}) *
                              math::Mat4::rotationZ(0.7) * math::Mat4::rotationX(-0.4);
-    checkTransformCommutes(s, rigid);
-    checkTransformCommutes(s, math::Mat4::scale(2.5));
-    checkTransformCommutes(s, math::Mat4::scale({-1.0, 1.0, 1.0}));
+    for (const math::Mat4& m :
+         {rigid, math::Mat4::scale(2.5), math::Mat4::scale({-1.0, 1.0, 1.0})}) {
+        checkTransformCommutes(s, m);
+        const auto t = s.transformed(m);
+        checkDerivatives(*t);
+        checkInvertRoundTrip(*t);
+    }
 }
 
 }  // namespace
@@ -123,7 +127,25 @@ TEST(AnalyticSurfaces, InversionAtTheSeamStaysInRange) {
         const math::Vec2 uv = c.invert(c.evaluate(u, 0.5));
         EXPECT_GE(uv.x, 0.0);
         EXPECT_LT(uv.x, 2 * kPi) << u;
+        if (u > kPi) {
+            if (u > 2 * kPi) {
+                EXPECT_NEAR(uv.x, 0.0, 1e-9) << u;
+            } else {
+                EXPECT_NEAR(uv.x, 2 * kPi, 1e-9) << u;
+            }
+        } else {
+            EXPECT_NEAR(uv.x, 2 * kPi, 1e-9) << u;
+        }
     }
+}
+
+TEST(AnalyticSurfaces, AFrameFromANearlyParallelHintIsOrthonormal) {
+    const Frame f = Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1e-12, 0, 1});
+    EXPECT_NEAR(f.x.length(), 1.0, 1e-12);
+    EXPECT_NEAR(f.x.dot(f.z), 0.0, 1e-12);
+    EXPECT_NEAR(f.y.dot(f.x), 0.0, 1e-12);
+    const Frame g = Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1e-14, 0, 1e-14});
+    EXPECT_NEAR(g.x.length(), 1.0, 1e-12);
 }
 
 TEST(AnalyticSurfaces, APointOnTheAxisInvertsToFiniteParameters) {

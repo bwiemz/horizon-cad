@@ -1,7 +1,5 @@
 #pragma once
 
-#include <limits>
-
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 
@@ -16,7 +14,8 @@ struct Frame {
     math::Vec3 z{0.0, 0.0, 1.0};
 
     /// A frame with z along @p axis, x along @p xHint made perpendicular to it
-    /// (any perpendicular when the hint is parallel to the axis), and y = z x x.
+    /// (any perpendicular when the hint is parallel to the axis), and y = z x x. The axis must be
+    /// non-zero.
     static Frame fromAxis(const math::Vec3& origin, const math::Vec3& axis,
                           const math::Vec3& xHint = {1.0, 0.0, 0.0});
 
