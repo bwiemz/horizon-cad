@@ -57,7 +57,10 @@ struct Expansion {
         if (n >= N) std::abort();
         v[n++] = d;
     }
-    double back() const { return v[n - 1]; }
+    double back() const {
+        assert(n > 0);
+        return v[n - 1];
+    }
 };
 
 struct SumPair {

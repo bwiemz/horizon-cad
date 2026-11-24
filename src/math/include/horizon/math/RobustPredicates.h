@@ -10,9 +10,13 @@
 // range depends on n. The scale is that of the coordinate differences (zero always counts):
 //   orient2d and classifyPoint (degree 2): about 1e-150 to 1e150;
 //   orient3d (degree 3):                    about 1e-100 to 1e100;
-//   incircle (degree 4):                    about 1e-75 to 1e75.
+//   incircle (degree 4):                    about 1e-60 to 1e75.
 // (Measured on near-degenerate configurations scaled by powers of two: the sign is kept from
-// 4.8e-153 to 6.7e153, 1.8e-102 to 2.2e102 and 6.9e-77 to 5.8e76.) Above its range a
+// 4.8e-153 to 6.7e153, 1.8e-102 to 2.2e102 and 6.9e-77 to 5.8e76, for coordinates with few
+// mantissa bits.) With full 53-bit mantissas the exact terms reach down further: a degree-n
+// product has error terms about 2^(-53 (n - 1)) below its leading term, so incircle's lowest
+// ones (about scale^4 * 1e-48) underflow near 1e-65 and the sign is lost from about 1e-60
+// (a cocircular rectangle at 6e-62 already answers -1, not 0). Above its range a
 // predicate returns 0; just below it, the error terms of the exact arithmetic underflow and it
 // may return the wrong sign, then 0 further down. Nothing crashes.
 
