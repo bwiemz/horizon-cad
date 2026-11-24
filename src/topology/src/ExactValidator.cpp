@@ -261,18 +261,36 @@ struct Checker {
                 if (crossing) {
                     report(ExactIssueKind::LoopsCross, &f, loops[j].wire->halfEdge->edge,
                            "two loops of the face cross");
+                    continue;
                 }
-                if (i != 0 || crossing) continue;
-                const bool outside = std::any_of(
-                    loops[j].poly.begin(), loops[j].poly.end(), [&](const LoopSegment& seg) {
-                        return detail::clearlyOutside(loops[0].poly, seg.a);
-                    });
-                if (outside) {
-                    report(ExactIssueKind::HoleOutsideOuterLoop, &f, loops[j].wire->halfEdge->edge,
-                           "inner loop lies outside the outer loop");
+                if (i == 0) {
+                    const bool outside = std::any_of(
+                        loops[j].poly.begin(), loops[j].poly.end(), [&](const LoopSegment& seg) {
+                            return detail::clearlyOutside(loops[0].poly, seg.a);
+                        });
+                    if (outside) {
+                        report(ExactIssueKind::HoleOutsideOuterLoop, &f,
+                               loops[j].wire->halfEdge->edge,
+                               "inner loop lies outside the outer loop");
+                    }
+                    continue;
+                }
+                // Two holes that do not cross are apart or nested; the mesher needs them apart.
+                if (inside(loops[j].poly, loops[i].poly) || inside(loops[i].poly, loops[j].poly)) {
+                    report(ExactIssueKind::HoleInsideHole, &f, loops[j].wire->halfEdge->edge,
+                           "inner loops " + std::to_string(i - 1) + " and " +
+                               std::to_string(j - 1) + " lie one inside the other");
                 }
             }
         }
+    }
+
+    /// True when a sample of @p loop lies clearly inside @p around (beyond each of its chords'
+    /// sag): for loops that do not cross, the whole of @p loop is then inside.
+    static bool inside(const LoopPolygon& loop, const LoopPolygon& around) {
+        return std::any_of(loop.begin(), loop.end(), [&](const LoopSegment& seg) {
+            return detail::clearlyInside(around, seg.a);
+        });
     }
 };
 

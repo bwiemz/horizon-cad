@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <memory>
 #include <set>
+#include <string>
+#include <vector>
 
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
@@ -15,6 +17,7 @@
 #include "horizon/math/Constants.h"
 #include "horizon/math/ModelTolerance.h"
 #include "horizon/modeling/ExactPrimitives.h"
+#include "horizon/modeling/TrimmedFaceMesher.h"
 #include "horizon/topology/ExactValidator.h"
 
 using namespace hz;
@@ -644,4 +647,82 @@ TEST(ExactValidator, AHoleBesideAStraightSideIsNotHiddenByAnotherSidesSag) {
     EXPECT_EQ(issues[0].kind, ExactIssueKind::HoleOutsideOuterLoop);
     SemicircleFace inside(500.0);
     EXPECT_TRUE(topo::validateExact(inside.solid, tol).empty());
+}
+
+namespace {
+
+/// A planar face: an outer circle of radius @p outer about the origin, counter-clockwise, and
+/// one clockwise circular hole for each of @p holes (its centre and radius), in that order.
+struct CircleWithHoles {
+    struct Hole {
+        math::Vec2 centre;
+        double radius;
+    };
+    topo::Solid solid;
+    CircleWithHoles(double outer, const std::vector<Hole>& holes) {
+        const geo::Frame frame = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
+        topo::Face* f = solid.allocFace();
+        f->exactSurface = std::make_shared<geo::Plane>(frame);
+        std::vector<Hole> loops{{{0, 0}, outer}};
+        loops.insert(loops.end(), holes.begin(), holes.end());
+        for (std::size_t k = 0; k < loops.size(); ++k) {
+            const bool isOuter = k == 0;
+            const Hole& c = loops[k];
+            topo::Wire* w = solid.allocWire();
+            if (isOuter) {
+                f->outerLoop = w;
+            } else {
+                f->innerLoops.push_back(w);
+            }
+            topo::Vertex* v = solid.allocVertex();
+            v->point = {c.centre.x + c.radius, c.centre.y, 0};
+            topo::HalfEdge* he = solid.allocHalfEdge();
+            topo::HalfEdge* tw = solid.allocHalfEdge();
+            topo::Edge* e = solid.allocEdge();
+            he->origin = tw->origin = v;
+            he->next = he->prev = he;
+            he->face = f;
+            he->twin = tw;
+            tw->twin = he;
+            he->edge = tw->edge = e;
+            e->halfEdge = he;
+            v->halfEdge = he;
+            w->halfEdge = he;
+            geo::Frame cf = frame;
+            cf.origin = {c.centre.x, c.centre.y, 0};
+            he->pcurve = std::make_shared<geo::Circle2D>(c.centre, c.radius);
+            // A hole runs clockwise: its 3D circle's frame is mirrored so it runs the same way.
+            he->pcurveStart = isOuter ? 0.0 : math::kTwoPi;
+            he->pcurveEnd = isOuter ? math::kTwoPi : 0.0;
+            if (!isOuter) cf.y = cf.y * -1.0;
+            e->exactCurve = std::make_shared<geo::CircleCurve>(cf, c.radius);
+            e->curveStart = 0.0;
+            e->curveEnd = math::kTwoPi;
+        }
+    }
+};
+
+}  // namespace
+
+TEST(ExactValidator, AHoleInsideAnotherHoleIsReportedAsTheMesherReportsIt) {
+    // Concentric holes of radius 5 and 2 in a circle of radius 10: no loops cross and each hole
+    // is inside the outer loop, but the smaller hole lies inside the larger one. The mesher
+    // rejects that face, and a face the validator calls clean must mesh (Ruling 15).
+    for (const auto& holes : {std::vector<CircleWithHoles::Hole>{{{0, 0}, 5.0}, {{0, 0}, 2.0}},
+                              std::vector<CircleWithHoles::Hole>{{{0, 0}, 2.0}, {{0, 0}, 5.0}},
+                              std::vector<CircleWithHoles::Hole>{{{-4, 0}, 5.0}, {{-5, 1}, 2.0}}}) {
+        CircleWithHoles face(10.0, holes);
+        const auto issues = topo::validateExact(face.solid, kTol);
+        ASSERT_EQ(issues.size(), 1u) << holes[0].radius;
+        EXPECT_EQ(issues[0].kind, ExactIssueKind::HoleInsideHole);
+        const auto meshes = model::TrimmedFaceMesher::meshSolid(face.solid, {});
+        ASSERT_EQ(meshes.size(), 1u);
+        EXPECT_NE(meshes[0].problem.find("is inside hole"), std::string::npos) << meshes[0].problem;
+    }
+    // Side by side, the same holes are clean and mesh.
+    CircleWithHoles apart(10.0, {{{-4, 0}, 5.0}, {{5, 0}, 2.0}});
+    EXPECT_TRUE(topo::validateExact(apart.solid, kTol).empty());
+    const auto meshes = model::TrimmedFaceMesher::meshSolid(apart.solid, {});
+    ASSERT_EQ(meshes.size(), 1u);
+    EXPECT_TRUE(meshes[0].problem.empty()) << meshes[0].problem;
 }

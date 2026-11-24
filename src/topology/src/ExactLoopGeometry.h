@@ -33,4 +33,8 @@ bool loopsCross(const LoopPolygon& p, const LoopPolygon& q, const UvTolerance& t
 /// chord approximation cannot be what puts it there.
 bool clearlyOutside(const LoopPolygon& outer, const math::Vec2& point);
 
+/// True when @p point lies inside @p loop by more than the chords' greatest sag (each chord's
+/// own, as for clearlyOutside).
+bool clearlyInside(const LoopPolygon& loop, const math::Vec2& point);
+
 }  // namespace hz::topo::detail

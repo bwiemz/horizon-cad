@@ -17,7 +17,8 @@ enum class ExactIssueKind {
     LoopWrongOrientation,  ///< A loop's signed area in (u, v) has the wrong sign for its face.
     LoopSelfIntersects,    ///< A loop crosses itself.
     LoopsCross,            ///< Two loops of one face cross.
-    HoleOutsideOuterLoop   ///< An inner loop lies outside the face's outer loop.
+    HoleOutsideOuterLoop,  ///< An inner loop lies outside the face's outer loop.
+    HoleInsideHole         ///< An inner loop lies inside another inner loop of the face.
 };
 
 struct ExactIssue {

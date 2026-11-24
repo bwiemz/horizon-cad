@@ -102,18 +102,31 @@ bool loopsCross(const LoopPolygon& p, const LoopPolygon& q, const UvTolerance& t
     return false;
 }
 
-bool clearlyOutside(const LoopPolygon& outer, const Vec2& point) {
+namespace {
+
+/// True when @p point lies on the @p side of @p loop's chords and beyond every chord's band.
+bool clearly(math::Containment side, const LoopPolygon& loop, const Vec2& point) {
     std::vector<Vec2> poly;
-    poly.reserve(outer.size());
-    for (const auto& s : outer) poly.push_back(s.a);
-    if (math::classifyPoint(poly, point) != math::Containment::Outside) return false;
+    poly.reserve(loop.size());
+    for (const auto& s : loop) poly.push_back(s.a);
+    if (math::classifyPoint(poly, point) != side) return false;
     // Each chord has its own band: the curve it stands for may lie that far (its sag) from it.
-    // A point within a chord's band might be inside the true curve; one margin for the whole
-    // loop would let a big arc hide holes beside every other side.
-    for (const auto& s : outer) {
+    // A point within a chord's band might be on the other side of the true curve; one margin for
+    // the whole loop would let a big arc hide holes beside every other side.
+    for (const auto& s : loop) {
         if (distanceToSegment(point, s.a, s.b) <= sag(s)) return false;
     }
     return true;
+}
+
+}  // namespace
+
+bool clearlyOutside(const LoopPolygon& outer, const Vec2& point) {
+    return clearly(math::Containment::Outside, outer, point);
+}
+
+bool clearlyInside(const LoopPolygon& loop, const Vec2& point) {
+    return clearly(math::Containment::Inside, loop, point);
 }
 
 }  // namespace hz::topo::detail
