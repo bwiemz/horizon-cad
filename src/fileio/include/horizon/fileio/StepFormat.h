@@ -97,6 +97,20 @@ struct StepWritePart {
 /// CONTEXT_DEPENDENT_SHAPE_REPRESENTATION, assemblies within assemblies
 /// compounded. The writer writes an assembly the same way.
 ///
+/// Exact faces (the exact kernel, stage 2): each solid comes in with its exact form beside its
+/// carriers (Face::surface and Edge::curve, unchanged). A face keeps the surface its file gives
+/// it: a PLANE, CYLINDRICAL_SURFACE, CONICAL_SURFACE, SPHERICAL_SURFACE or TOROIDAL_SURFACE as
+/// that surface (STEP's parametrisations are the kernel's), and a B_SPLINE_SURFACE as that very
+/// B-spline, never recognised as a quadric. A SURFACE_OF_LINEAR_EXTRUSION is the one exception:
+/// with no typed extrusion yet, it comes in as its B-spline carrier. A face whose same_sense (with
+/// its shell's) is false is reversed; its surface is never turned round. An edge keeps its curve
+/// (a LINE at its VECTOR's magnitude, a CIRCLE, an ELLIPSE, a B-spline) over the range its
+/// vertices invert to, the way its same_sense says, a closed edge a whole period. Each half-edge's
+/// pcurve is built (geo::pcurveOn), never read. An edge's tolerance grows to cover how far the
+/// file has it stray from its faces and vertices, up to the file's UNCERTAINTY_MEASURE, and the
+/// report says how exact a solid so read is. A solid whose exact form cannot be made, or does not
+/// hold together (topo::validateExact), is left out with why: nothing faceted comes in for it.
+///
 /// Faces keep their holes (FACE_BOUND). Solids come in in millimetres: the
 /// LENGTH_UNIT of each shape representation's context — an SI unit with any
 /// prefix, or a conversion-based unit such as the inch — scales them. A file
@@ -130,8 +144,9 @@ public:
                                 const WriteOptions& options = {}, WriteReport* report = nullptr);
 
     /// Read all MANIFOLD_SOLID_BREP solids from a Part-21 file, in
-    /// millimetres whatever the file's length unit. A solid that cannot be
-    /// rebuilt is left out and named in @p report; the others still come in.
+    /// millimetres whatever the file's length unit, each with its exact form
+    /// (see above). A solid that cannot be rebuilt, or made exact, is left out
+    /// and named in @p report; the others still come in.
     /// Returns an empty vector when none can be read (see lastError()).
     ///
     /// @p cancelled, when given, is looked at all the way through: once it

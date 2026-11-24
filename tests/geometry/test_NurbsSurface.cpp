@@ -1286,3 +1286,49 @@ TEST(NurbsSurfaceTyped, InvertingASeamPointStaysInTheHalfOpenRange) {
         }
     }
 }
+
+// A surface that closes is periodic, as Surface has it: a parameter past either end of its range
+// is the point a period back, round the seam, and its derivatives are that point's. Clamped,
+// a pcurve that ran back across a closed B-spline's seam evaluated at the seam itself (Task 5 of
+// the exact kernel's stage 2 met it reading a cylinder written as a B-spline). A direction that
+// does not close still clamps.
+TEST(NurbsSurfaceTest, AClosedSurfaceEvaluatesRoundItsSeam) {
+    const auto cylinder = NurbsSurface::makeCylinder(Vec3(1, 2, 3), Vec3(0, 0, 1), 2.0, 3.0);
+    const double period = cylinder.uMax() - cylinder.uMin();
+    const double v = cylinder.vMin() + 0.4 * (cylinder.vMax() - cylinder.vMin());
+    for (const double f : {0.03, 0.25, 0.5, 0.97}) {
+        const double u = cylinder.uMin() + f * period;
+        for (const double turns : {-2.0, -1.0, 1.0, 3.0}) {
+            const double far = u + turns * period;
+            EXPECT_LT((cylinder.evaluate(far, v) - cylinder.evaluate(u, v)).length(), 1e-12);
+            const auto a = cylinder.derivatives(far, v);
+            const auto b = cylinder.derivatives(u, v);
+            EXPECT_LT((a.du - b.du).length(), 1e-9);
+            EXPECT_LT((a.dv - b.dv).length(), 1e-9);
+            EXPECT_LT((cylinder.normal(far, v) - cylinder.normal(u, v)).length(), 1e-12);
+        }
+    }
+    // Along the axis it does not close: past its end is its end.
+    EXPECT_LT((cylinder.evaluate(cylinder.uMin(), cylinder.vMax() + 1.0) -
+               cylinder.evaluate(cylinder.uMin(), cylinder.vMax()))
+                  .length(),
+              1e-12);
+}
+
+// A search lying along a patch's edge finds a point further along it: its step across the edge,
+// a hair outward, is shortened alone. Shortened with it, the step along the edge came to
+// nothing, the search stopped where it began, and a straight edge of a box written by Horizon
+// read as standing up to 8 off its own face.
+TEST(NurbsSurfaceTest, APointOnAPatchsEdgeIsFoundFromBesideIt) {
+    const NurbsSurface patch({{Vec3(0, 0, 0), Vec3(0, 20, 0)}, {Vec3(10, 0, 0), Vec3(10, 20, 0)}},
+                             {{1, 1}, {1, 1}}, {0, 0, 1, 1}, {0, 0, 1, 1}, 1, 1);
+    // From where a walk along the edge u = 0 had come, a hair inside it.
+    const auto [u, v] = patch.project(Vec3(0, 7.5, 0), 0x1.4ap-194, 0x1.a000000000007p-2);
+    EXPECT_NEAR(u, 0.0, 1e-12);
+    EXPECT_NEAR(v, 0.375, 1e-12);
+    for (const double from : {0.9, 0.5, 0.1}) {
+        const auto [u2, v2] = patch.project(Vec3(0, 20.0 * (1.0 - from), 0), 1e-30, from);
+        EXPECT_NEAR(u2, 0.0, 1e-12);
+        EXPECT_NEAR(v2, 1.0 - from, 1e-12);
+    }
+}

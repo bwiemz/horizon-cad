@@ -6,6 +6,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/geometry/Pcurve.h"
@@ -621,4 +622,34 @@ TEST(Pcurve, AFailureHasNoCurveAndAnInfiniteDeviation) {
     const Pcurve nan = pcurveOn(plane, c, 0.0, std::nan(""), 1e-6);
     EXPECT_EQ(nan.curve, nullptr);
     EXPECT_TRUE(std::isinf(nan.deviation));
+}
+
+// A rim running back across a closed B-spline's seam, against u: its samples, a period below
+// the range, are measured where they are on the surface, not clamped onto the seam (which read
+// as the curve standing off the surface by the height of the cylinder).
+TEST(Pcurve, ARimRunningBackAcrossAClosedSplinesSeamFollows) {
+    const NurbsSurface cyl = NurbsSurface::makeCylinder({0, 0, 0}, {0, 0, 1}, 1.0, 2.0);
+    ASSERT_TRUE(cyl.periodicU());
+    const math::Vec3 seam = cyl.evaluate(cyl.uMin(), cyl.vMax());
+    const Frame fr = Frame::fromAxis({0, 0, 2}, {0, 0, 1}, {seam.x, seam.y, 0});
+    for (const Frame& frame : {fr, Frame::fromAxis(fr.origin, {0, 0, -1}, fr.x)}) {
+        const CircleCurve rim(frame, 1.0);
+        for (const auto& [t0, t1] : {std::pair{kTwoPi, 0.0}, std::pair{0.0, kTwoPi}}) {
+            const Pcurve pc = pcurveOn(cyl, rim, t0, t1, 1e-7);
+            EXPECT_TRUE(pc.problem.empty()) << pc.problem;
+            expectFollows(cyl, rim, t0, t1, pc, 2e-7);
+        }
+    }
+}
+
+// A straight edge along a patch's own edge (a box's, as Horizon writes one) follows it, either
+// way: the search for each sample, from the one before along that edge, finds it.
+TEST(Pcurve, ALineAlongAPatchsEdgeFollowsIt) {
+    const NurbsSurface patch({{{0, 0, 0}, {0, 20, 0}}, {{10, 0, 0}, {10, 20, 0}}}, {{1, 1}, {1, 1}},
+                             {0, 0, 1, 1}, {0, 0, 1, 1}, 1, 1);
+    const NurbsCurve edge({{0, 20, 0}, {0, 0, 0}}, {1, 1}, {0, 0, 1, 1}, 1);
+    for (const auto& [t0, t1] : {std::pair{0.0, 1.0}, std::pair{1.0, 0.0}}) {
+        const Pcurve pc = pcurveOn(patch, edge, t0, t1, 1e-7);
+        expectFollows(patch, edge, t0, t1, pc, 1e-7);
+    }
 }

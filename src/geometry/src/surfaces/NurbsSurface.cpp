@@ -13,6 +13,20 @@
 
 namespace hz::geo {
 
+namespace {
+
+/// @p t brought round a closed direction's seam into [lo, hi]: past either end of a surface that
+/// closes is the same point a period back, as a periodic Surface's parameters are. Within the
+/// range, or along a direction that does not close, @p t as given (evaluation clamps it).
+double roundTheSeam(double t, double lo, double hi, bool closed) {
+    const double period = hi - lo;
+    if (!closed || !(t < lo || t > hi) || !std::isfinite(t) || !(period > 0.0)) return t;
+    const double r = std::fmod(t - lo, period);
+    return r < 0.0 ? lo + r + period : lo + r;
+}
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
@@ -171,6 +185,8 @@ double NurbsSurface::vMax() const {
 // ---------------------------------------------------------------------------
 
 math::Vec3 NurbsSurface::evaluate(double u, double v) const {
+    u = roundTheSeam(u, uMin(), uMax(), m_closedU);
+    v = roundTheSeam(v, vMin(), vMax(), m_closedV);
     const int numU = controlPointCountU();
 
     // Pass 1: for each row (U index), evaluate the V-direction curve at v.
@@ -318,6 +334,8 @@ void basisAndDerivatives(const std::vector<double>& knots, int span, int p, doub
 }  // namespace
 
 SurfacePoint NurbsSurface::evaluateWithDerivatives(double u, double v) const {
+    u = roundTheSeam(u, uMin(), uMax(), m_closedU);
+    v = roundTheSeam(v, vMin(), vMax(), m_closedV);
     if (m_degreeU >= kMaxOrder || m_degreeV >= kMaxOrder) {
         // Past the fixed arrays: differences of evaluate(), one-sided at an
         // edge of the domain.
@@ -385,7 +403,10 @@ std::pair<double, double> NurbsSurface::project(const math::Vec3& point, double 
     v = keep(v, v0, v1, m_closedV);
     // A step that would leave the domain goes halfway to its edge instead:
     // clamped onto an edge where the surface degenerates (a pole, an apex),
-    // the search stuck there, u no longer turning the point.
+    // the search stuck there, u no longer turning the point. Each parameter's
+    // step is shortened alone: one search lying along an edge, its step
+    // across it a hair outward, had its step along it shortened with it, to
+    // nothing, and stopped where it began.
     const auto shorten = [](double t, double d, double lo, double hi, bool closed, double& alpha) {
         if (closed || d == 0.0) return;
         if (t + d < lo && t > lo) alpha = std::min(alpha, 0.5 * (t - lo) / -d);
@@ -406,11 +427,12 @@ std::pair<double, double> NurbsSurface::project(const math::Vec3& point, double 
         const double gv = r.dot(s.dv);
         double du = -((c + damping) * gu - b * gv) / det;
         double dv = -((a + damping) * gv - b * gu) / det;
-        double alpha = 1.0;
-        shorten(u, du, u0, u1, m_closedU, alpha);
-        shorten(v, dv, v0, v1, m_closedV, alpha);
-        du *= alpha;
-        dv *= alpha;
+        double alphaU = 1.0;
+        double alphaV = 1.0;
+        shorten(u, du, u0, u1, m_closedU, alphaU);
+        shorten(v, dv, v0, v1, m_closedV, alphaV);
+        du *= alphaU;
+        dv *= alphaV;
         // Still by the step, not by where it lands: on a seam a step of
         // 1e-17 lands a period away.
         const bool still = std::abs(du) <= 1e-15 * (u1 - u0) && std::abs(dv) <= 1e-15 * (v1 - v0);
@@ -527,6 +549,8 @@ void basisAndSecondDerivatives(const std::vector<double>& knots, int span, int p
 }  // namespace
 
 SurfaceDerivatives NurbsSurface::derivatives(double u, double v) const {
+    u = roundTheSeam(u, uMin(), uMax(), m_closedU);
+    v = roundTheSeam(v, vMin(), vMax(), m_closedV);
     if (m_degreeU >= kMaxOrder || m_degreeV >= kMaxOrder) {
         // Past the fixed arrays: differences of the first derivatives.
         constexpr double h = 1e-6;

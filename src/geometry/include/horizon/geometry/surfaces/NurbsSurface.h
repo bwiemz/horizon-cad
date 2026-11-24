@@ -75,7 +75,10 @@ public:
 
     // -- Evaluation ----------------------------------------------------------
 
-    /// Evaluate the surface at parameters (u, v) using tensor-product De Boor.
+    /// Evaluate the surface at parameters (u, v) using tensor-product De Boor. Along a
+    /// direction that closes (periodicU, periodicV) a parameter past either end is taken a
+    /// period back, round the seam, as a periodic Surface's are; along one that does not, it
+    /// is clamped to the domain.
     math::Vec3 evaluate(double u, double v) const override;
 
     // -- Derivatives & Normal (Task 2) ----------------------------------------
@@ -93,7 +96,7 @@ public:
     /// basis differentiated. Allocates nothing up to degree 15 in each
     /// direction (beyond, it differences evaluate() 1e-7 apart, as
     /// derivativeU and derivativeV once did everywhere). (u, v) is clamped to
-    /// the domain, as evaluate() clamps it.
+    /// the domain, or taken round the seam, as evaluate() takes it.
     SurfacePoint evaluateWithDerivatives(double u, double v) const;
 
     // -- Surface interface ----------------------------------------------------
@@ -102,7 +105,8 @@ public:
 
     /// The point and its first and second partial derivatives, exactly: the
     /// quotient rule on the homogeneous surface, from the basis functions'
-    /// derivatives. (u, v) is clamped to the domain. Beyond degree 15 in
+    /// derivatives. (u, v) is clamped to the domain, or taken round the seam, as
+    /// evaluate() takes it. Beyond degree 15 in
     /// either direction the derivatives are differences of evaluate().
     SurfaceDerivatives derivatives(double u, double v) const override;
 
