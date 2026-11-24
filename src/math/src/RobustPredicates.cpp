@@ -1,8 +1,10 @@
 #include "horizon/math/RobustPredicates.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 
 // Exact geometric predicates after Shewchuk, "Adaptive Precision Floating-Point Arithmetic and
 // Fast Robust Geometric Predicates". A filtered determinant decides almost every call; when its
@@ -27,9 +29,36 @@ int signOf(double v) {
 // ---------------------------------------------------------------------------------------------
 // Expansions: sums of doubles, stored with increasing magnitude and non-overlapping, so that
 // the sign of the whole is the sign of the last (largest) component.
+//
+// An expansion lives on the stack, in an array whose capacity N is part of its type and is the
+// worst-case length of the expression that produces it, derived from how the operations below
+// build their results (zero components are dropped, which only shortens them):
+//   difference of two doubles         <= 2 components (the rounded sum and its error)
+//   grow(e, b)                        <= |e| + 1
+//   add(e, f) / subtract(e, f)        <= |e| + |f|   (one grow per component of f)
+//   scale(e, b)                       <= 2 |e|       (two-product error and sum error per term)
+//   multiply(e, f)                    <= 2 |e| |f|   (|f| scaled copies of e, added)
+// Hence orient2d's determinant has at most 16 components (2*2*2 per product, two products),
+// orient3d's at most 192 (2 * 16 * 2 = 64 per term, three terms) and incircle's at most 1536
+// (a lift is 16, the cross term 16, 2*16*16 = 512 per term, three terms). These are the lengths
+// of this straightforward evaluation; Shewchuk's published 1152 for incircle belongs to his
+// term-by-term arrangement, which this file does not use. The capacity is checked on every
+// store: a result that would not fit is a bug in the bound, asserted in debug builds and
+// aborting in release builds, never a write past the end.
 // ---------------------------------------------------------------------------------------------
 
-using Expansion = std::vector<double>;
+template <std::size_t N>
+struct Expansion {
+    double v[N];  // deliberately uninitialised: only the first n are ever read
+    std::size_t n = 0;
+
+    void push(double d) {
+        assert(n < N && "expansion capacity exceeded: the bound is wrong");
+        if (n >= N) std::abort();
+        v[n++] = d;
+    }
+    double back() const { return v[n - 1]; }
+};
 
 struct SumPair {
     double sum, err;
@@ -53,105 +82,125 @@ SumPair twoProduct(double a, double b) {
     return {p, std::fma(a, b, -p)};
 }
 
-Expansion fromDifference(double a, double b) {
+Expansion<2> fromDifference(double a, double b) {
     const SumPair d = twoSum(a, -b);
-    Expansion e;
-    if (d.err != 0.0) e.push_back(d.err);
-    if (d.sum != 0.0 || e.empty()) e.push_back(d.sum);
+    Expansion<2> e;
+    if (d.err != 0.0) e.push(d.err);
+    if (d.sum != 0.0 || e.n == 0) e.push(d.sum);
     return e;
 }
 
-Expansion growExpansion(const Expansion& e, double b) {
-    Expansion h;
-    h.reserve(e.size() + 1);
+// h += b, in place. Each output component is written at or behind the input component being
+// read, and one more may be appended, so the result needs |h| + 1 slots (checked by push).
+template <std::size_t N>
+void growInPlace(Expansion<N>& h, double b) {
+    const std::size_t count = h.n;
+    h.n = 0;
     double q = b;
-    for (const double c : e) {
-        const SumPair s = twoSum(q, c);
+    for (std::size_t i = 0; i < count; ++i) {
+        // h.v[i] is read before the write at index h.n <= i, so the store cannot clobber it.
+        const SumPair s = twoSum(q, h.v[i]);
         q = s.sum;
-        if (s.err != 0.0) h.push_back(s.err);
+        if (s.err != 0.0) h.push(s.err);
     }
-    if (q != 0.0 || h.empty()) h.push_back(q);
+    if (q != 0.0 || h.n == 0) {
+        // The final slot may be one past the old length; push checks the capacity.
+        h.push(q);
+    }
+}
+
+// h += f, in place; the caller sizes h for |h| + |f| components.
+template <std::size_t N, std::size_t M>
+void addInto(Expansion<N>& h, const Expansion<M>& f) {
+    for (std::size_t i = 0; i < f.n; ++i) growInPlace(h, f.v[i]);
+}
+
+template <std::size_t N, std::size_t M>
+Expansion<N + M> add(const Expansion<N>& e, const Expansion<M>& f) {
+    Expansion<N + M> h;
+    for (std::size_t i = 0; i < e.n; ++i) h.push(e.v[i]);
+    addInto(h, f);
     return h;
 }
 
-Expansion add(const Expansion& e, const Expansion& f) {
-    Expansion h = e;
-    for (const double c : f) h = growExpansion(h, c);
+template <std::size_t N, std::size_t M>
+Expansion<N + M> subtract(const Expansion<N>& e, const Expansion<M>& f) {
+    Expansion<N + M> h;
+    for (std::size_t i = 0; i < e.n; ++i) h.push(e.v[i]);
+    for (std::size_t i = 0; i < f.n; ++i) growInPlace(h, -f.v[i]);
     return h;
 }
 
-Expansion negate(Expansion e) {
-    for (double& c : e) c = -c;
-    return e;
-}
-
-Expansion scale(const Expansion& e, double b) {
-    Expansion h;
-    h.reserve(2 * e.size());
-    const SumPair first = twoProduct(e[0], b);
+template <std::size_t N>
+Expansion<2 * N> scale(const Expansion<N>& e, double b) {
+    Expansion<2 * N> h;
+    const SumPair first = twoProduct(e.v[0], b);
     double q = first.sum;
-    if (first.err != 0.0) h.push_back(first.err);
-    for (std::size_t i = 1; i < e.size(); ++i) {
-        const SumPair p = twoProduct(e[i], b);
+    if (first.err != 0.0) h.push(first.err);
+    for (std::size_t i = 1; i < e.n; ++i) {
+        const SumPair p = twoProduct(e.v[i], b);
         const SumPair s = twoSum(q, p.err);
-        if (s.err != 0.0) h.push_back(s.err);
+        if (s.err != 0.0) h.push(s.err);
         const SumPair t = fastTwoSum(p.sum, s.sum);
         q = t.sum;
-        if (t.err != 0.0) h.push_back(t.err);
+        if (t.err != 0.0) h.push(t.err);
     }
-    if (q != 0.0 || h.empty()) h.push_back(q);
+    if (q != 0.0 || h.n == 0) h.push(q);
     return h;
 }
 
-Expansion multiply(const Expansion& e, const Expansion& f) {
-    Expansion h{0.0};
-    for (const double c : f) h = add(h, scale(e, c));
+template <std::size_t N, std::size_t M>
+Expansion<2 * N * M> multiply(const Expansion<N>& e, const Expansion<M>& f) {
+    Expansion<2 * N * M> h;
+    {
+        const Expansion<2 * N> first = scale(e, f.v[0]);
+        for (std::size_t i = 0; i < first.n; ++i) h.push(first.v[i]);
+    }
+    for (std::size_t i = 1; i < f.n; ++i) addInto(h, scale(e, f.v[i]));
     return h;
 }
 
-Expansion subtract(const Expansion& e, const Expansion& f) {
-    return add(e, negate(f));
-}
-
-int signOf(const Expansion& e) {
+template <std::size_t N>
+int signOf(const Expansion<N>& e) {
     return signOf(e.back());
 }
 
 // 2x2 cross term  px*qy - qx*py  of expansions.
-Expansion cross(const Expansion& px, const Expansion& py, const Expansion& qx,
-                const Expansion& qy) {
+template <std::size_t A, std::size_t B, std::size_t C, std::size_t D>
+Expansion<2 * A * D + 2 * C * B> cross(const Expansion<A>& px, const Expansion<B>& py,
+                                       const Expansion<C>& qx, const Expansion<D>& qy) {
     return subtract(multiply(px, qy), multiply(qx, py));
 }
 
 int orient2dExact(const Vec2& a, const Vec2& b, const Vec2& c) {
-    const Expansion acx = fromDifference(a.x, c.x), acy = fromDifference(a.y, c.y);
-    const Expansion bcx = fromDifference(b.x, c.x), bcy = fromDifference(b.y, c.y);
-    return signOf(cross(acx, acy, bcx, bcy));
+    const auto acx = fromDifference(a.x, c.x), acy = fromDifference(a.y, c.y);
+    const auto bcx = fromDifference(b.x, c.x), bcy = fromDifference(b.y, c.y);
+    return signOf(cross(acx, acy, bcx, bcy));  // <= 16 components
 }
 
 int orient3dExact(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d) {
-    const Expansion adx = fromDifference(a.x, d.x), ady = fromDifference(a.y, d.y),
-                    adz = fromDifference(a.z, d.z);
-    const Expansion bdx = fromDifference(b.x, d.x), bdy = fromDifference(b.y, d.y),
-                    bdz = fromDifference(b.z, d.z);
-    const Expansion cdx = fromDifference(c.x, d.x), cdy = fromDifference(c.y, d.y),
-                    cdz = fromDifference(c.z, d.z);
-    const Expansion det =
+    const auto adx = fromDifference(a.x, d.x), ady = fromDifference(a.y, d.y),
+               adz = fromDifference(a.z, d.z);
+    const auto bdx = fromDifference(b.x, d.x), bdy = fromDifference(b.y, d.y),
+               bdz = fromDifference(b.z, d.z);
+    const auto cdx = fromDifference(c.x, d.x), cdy = fromDifference(c.y, d.y),
+               cdz = fromDifference(c.z, d.z);
+    const auto det =
         add(add(multiply(adz, cross(bdx, bdy, cdx, cdy)), multiply(bdz, cross(cdx, cdy, adx, ady))),
-            multiply(cdz, cross(adx, ady, bdx, bdy)));
+            multiply(cdz, cross(adx, ady, bdx, bdy)));  // <= 192 components
     return signOf(det);
 }
 
 int incircleExact(const Vec2& a, const Vec2& b, const Vec2& c, const Vec2& d) {
-    const Expansion adx = fromDifference(a.x, d.x), ady = fromDifference(a.y, d.y);
-    const Expansion bdx = fromDifference(b.x, d.x), bdy = fromDifference(b.y, d.y);
-    const Expansion cdx = fromDifference(c.x, d.x), cdy = fromDifference(c.y, d.y);
-    const Expansion alift = add(multiply(adx, adx), multiply(ady, ady));
-    const Expansion blift = add(multiply(bdx, bdx), multiply(bdy, bdy));
-    const Expansion clift = add(multiply(cdx, cdx), multiply(cdy, cdy));
-    const Expansion det = add(
+    const auto adx = fromDifference(a.x, d.x), ady = fromDifference(a.y, d.y);
+    const auto bdx = fromDifference(b.x, d.x), bdy = fromDifference(b.y, d.y);
+    const auto cdx = fromDifference(c.x, d.x), cdy = fromDifference(c.y, d.y);
+    const auto alift = add(multiply(adx, adx), multiply(ady, ady));
+    const auto blift = add(multiply(bdx, bdx), multiply(bdy, bdy));
+    const auto clift = add(multiply(cdx, cdx), multiply(cdy, cdy));
+    const auto det = add(
         add(multiply(alift, cross(bdx, bdy, cdx, cdy)), multiply(blift, cross(cdx, cdy, adx, ady))),
-        multiply(clift, cross(adx, ady, bdx, bdy)));
+        multiply(clift, cross(adx, ady, bdx, bdy)));  // <= 1536 components
     return signOf(det);
 }
 
