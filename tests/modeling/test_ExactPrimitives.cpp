@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 
@@ -176,4 +177,119 @@ TEST(ExactPrimitives, OuterLoopsRunCounterClockwiseInUvAndInnerLoopsTheOtherWay)
             }
         }
     }
+}
+
+namespace {
+
+geo::Frame leftHanded(const geo::Frame& f) {
+    geo::Frame g = f;
+    g.y = f.y * -1.0;
+    return g;
+}
+
+/// At interior fractions of a half-edge's pcurve, its face's surface lies on the edge's curve
+/// run in that half-edge's direction.
+void expectPcurvesFollowCurves(const topo::Solid& solid, const math::ModelTolerance& tol) {
+    for (const auto& e : solid.edges()) {
+        for (const topo::HalfEdge* h : {static_cast<const topo::HalfEdge*>(e.halfEdge),
+                                        static_cast<const topo::HalfEdge*>(e.halfEdge->twin)}) {
+            // The curve run in h's direction: forward for e.halfEdge, backwards for its twin.
+            const bool forward = h == e.halfEdge;
+            for (const double f : {0.25, 0.5, 0.75}) {
+                const math::Vec2 uv =
+                    h->pcurve->evaluate(h->pcurveStart + f * (h->pcurveEnd - h->pcurveStart));
+                const Vec3 p = h->face->exactSurface->evaluate(uv.x, uv.y);
+                const double g = forward ? f : 1.0 - f;
+                const Vec3 q =
+                    e.exactCurve->evaluate(e.curveStart + g * (e.curveEnd - e.curveStart));
+                EXPECT_TRUE(tol.within((p - q).length()))
+                    << h->face->topoId.tag() << " f=" << f << " off by " << (p - q).length();
+            }
+        }
+    }
+}
+
+/// Every face's outward normal points away from the solid's centroid; the hole's wall points
+/// toward the hole's axis.
+void expectNormalsOutward(const topo::Solid& solid, const Vec3& centroid,
+                          const Vec3* holeAxisPoint) {
+    for (const auto& f : solid.faces()) {
+        const topo::HalfEdge* he = f.outerLoop->halfEdge;
+        const math::Vec2 uv = he->pcurve->evaluate(he->pcurveStart);
+        // A point strictly inside the pcurve's span avoids a degenerate corner.
+        const math::Vec2 uv2 = he->pcurve->evaluate(0.5 * (he->pcurveStart + he->pcurveEnd));
+        for (const math::Vec2& q : {uv, uv2}) {
+            const auto d = f.exactSurface->derivatives(q.x, q.y);
+            Vec3 n = d.du.cross(d.dv);
+            if (f.reversed) n = n * -1.0;
+            const Vec3 p = f.exactSurface->evaluate(q.x, q.y);
+            if (f.topoId.tag() == "hole/wall") {
+                ASSERT_NE(holeAxisPoint, nullptr);
+                Vec3 radial = p - *holeAxisPoint;
+                radial.z = 0.0;
+                EXPECT_LT(n.dot(radial), 0.0);
+            } else if (f.topoId.tag() == "cylinder/side") {
+                Vec3 radial = p - centroid;
+                const auto* c = dynamic_cast<const geo::Cylinder*>(f.exactSurface.get());
+                radial = radial - c->frame().z * radial.dot(c->frame().z);
+                EXPECT_GT(n.dot(radial), 0.0);
+            } else {
+                EXPECT_GT(n.dot(p - centroid), 0.0) << f.topoId.tag();
+            }
+        }
+    }
+}
+
+}  // namespace
+
+TEST(ExactPrimitives, TheirPcurvesFollowTheirCurvesAndTheirNormalsPointOut) {
+    for (const Vec3& at : {Vec3{0, 0, 0}, Vec3{-7, 3, 11}, Vec3{100, -50, 20}}) {
+        const auto tol = math::ModelTolerance::forExtent(200.0);
+        const auto block = model::exact::makeBlock(at, at + Vec3{2, 3, 4});
+        expectPcurvesFollowCurves(*block, tol);
+        expectNormalsOutward(*block, at + Vec3{1, 1.5, 2}, nullptr);
+
+        const auto plate =
+            model::exact::makePlateWithHole(at, at + Vec3{40, 30, 10}, {at.x + 15, at.y + 12}, 5.0);
+        expectPcurvesFollowCurves(*plate, tol);
+        const Vec3 axis{at.x + 15, at.y + 12, at.z};
+        expectNormalsOutward(*plate, at + Vec3{20, 15, 5}, &axis);
+
+        for (const Vec3& dir : {Vec3{0, 0, 1}, Vec3{1, 1, 1}, Vec3{-2, 1, 0.5}}) {
+            const geo::Frame right = geo::Frame::fromAxis(at, dir);
+            for (const geo::Frame& base : {right, leftHanded(right)}) {
+                const auto cyl = model::exact::makeCylinder(base, 5.0, 10.0);
+                ASSERT_NE(cyl, nullptr);
+                expectPcurvesFollowCurves(*cyl, tol);
+                expectNormalsOutward(*cyl, at + right.z * 5.0, nullptr);
+                expectGeometryMeetsTopology(*cyl);
+            }
+        }
+    }
+}
+
+TEST(ExactPrimitives, ATinyBlockStillAgrees) {
+    const auto tol = math::ModelTolerance::forExtent(1e-6);
+    const auto block = model::exact::makeBlock({0, 0, 0}, {1e-6, 1e-6, 1e-6});
+    ASSERT_NE(block, nullptr);
+    expectPcurvesFollowCurves(*block, tol);
+    for (const auto& e : block->edges()) {
+        EXPECT_NEAR(e.curveEnd - e.curveStart, 1e-6, 1e-12);
+    }
+}
+
+TEST(ExactPrimitives, DegenerateRequestsGiveNothing) {
+    const geo::Frame f = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
+    EXPECT_EQ(model::exact::makeCylinder(f, 0.0, 10.0), nullptr);
+    EXPECT_EQ(model::exact::makeCylinder(f, -1.0, 10.0), nullptr);
+    EXPECT_EQ(model::exact::makeCylinder(f, 5.0, 0.0), nullptr);
+    EXPECT_EQ(model::exact::makeCylinder(f, 5.0, -2.0), nullptr);
+    EXPECT_EQ(model::exact::makeBlock({0, 0, 0}, {0, 1, 1}), nullptr);
+    EXPECT_EQ(model::exact::makeBlock({0, 0, 0}, {1, -1, 1}), nullptr);
+    EXPECT_EQ(model::exact::makeBlock({0, 0, 0}, {1, 1, 0}), nullptr);
+    EXPECT_EQ(model::exact::makePlateWithHole({0, 0, 0}, {0, 40, 10}, {20, 20}, 5.0), nullptr);
+    EXPECT_EQ(model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {20, 20}, 0.0), nullptr);
+    EXPECT_EQ(model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {3, 20}, 5.0), nullptr);
+    EXPECT_EQ(model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {20, 35}, 5.0), nullptr);
+    EXPECT_EQ(model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {5, 20}, 5.0), nullptr);
 }

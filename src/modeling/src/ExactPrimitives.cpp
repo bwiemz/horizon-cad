@@ -1,9 +1,9 @@
 #include "horizon/modeling/ExactPrimitives.h"
 
 #include <array>
-#include <cmath>
 #include <map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -148,7 +148,7 @@ Block buildBlock(Solid& solid, const Vec3& min, const Vec3& max) {
     std::map<std::pair<Vertex*, Vertex*>, HalfEdge*> open;
     for (const Side& s : sides) {
         const geo::Frame frame =
-            geo::Frame::fromAxis(pts[static_cast<size_t>(s.corners[0])], s.normal);
+            geo::Frame::fromAxis(pts[static_cast<size_t>(s.corners[0])], s.normal, {1.0, 0.0, 0.0});
         Face* f = bd.face("box", s.role, std::make_shared<geo::Plane>(frame));
         std::vector<HalfEdge*> hes;
         for (size_t i = 0; i < 4; ++i) {
@@ -166,8 +166,8 @@ Block buildBlock(Solid& solid, const Vec3& min, const Vec3& max) {
             }
             // The edge's curve starts at the half-edge that was built first.
             const Vec3 d = c - a;
-            bd.edge(twin->second, hes[i], std::make_shared<geo::LineCurve>(c, d * -1.0), 0.0,
-                    d.length());
+            bd.edge(twin->second, hes[i], std::make_shared<geo::LineCurve>(c, d / (-d.length())),
+                    0.0, d.length());
             open.erase(twin);
         }
         if (std::string(s.role) == "bottom") {
@@ -184,12 +184,18 @@ Block buildBlock(Solid& solid, const Vec3& min, const Vec3& max) {
 }  // namespace
 
 std::unique_ptr<Solid> makeBlock(const Vec3& min, const Vec3& max) {
+    if (!(min.x < max.x) || !(min.y < max.y) || !(min.z < max.z)) return nullptr;
     auto solid = std::make_unique<Solid>();
     buildBlock(*solid, min, max);
     return solid;
 }
 
-std::unique_ptr<Solid> makeCylinder(const geo::Frame& base, double radius, double height) {
+std::unique_ptr<Solid> makeCylinder(const geo::Frame& frame, double radius, double height) {
+    if (!(radius > 0.0) || !(height > 0.0) || !(frame.z.length() > 0.0)) return nullptr;
+    // Whatever the handedness of the frame given, build on a right-handed one with the same
+    // origin, axis and seam direction: the surfaces' normals and the rims' directions follow
+    // from it.
+    const geo::Frame base = geo::Frame::fromAxis(frame.origin, frame.z, frame.x);
     auto solid = std::make_unique<Solid>();
     Builder bd(*solid);
 
@@ -239,13 +245,18 @@ std::unique_ptr<Solid> makeCylinder(const geo::Frame& base, double radius, doubl
 
 std::unique_ptr<Solid> makePlateWithHole(const Vec3& min, const Vec3& max, const Vec2& holeCentre,
                                          double holeRadius) {
+    if (!(min.x < max.x) || !(min.y < max.y) || !(min.z < max.z) || !(holeRadius > 0.0) ||
+        !(holeCentre.x - holeRadius > min.x) || !(holeCentre.x + holeRadius < max.x) ||
+        !(holeCentre.y - holeRadius > min.y) || !(holeCentre.y + holeRadius < max.y)) {
+        return nullptr;
+    }
     auto solid = std::make_unique<Solid>();
     Block block = buildBlock(*solid, min, max);
     Builder& bd = block.builder;
 
     const double height = max.z - min.z;
     const geo::Frame base =
-        geo::Frame::fromAxis({holeCentre.x, holeCentre.y, min.z}, {0.0, 0.0, 1.0});
+        geo::Frame::fromAxis({holeCentre.x, holeCentre.y, min.z}, {0.0, 0.0, 1.0}, {1.0, 0.0, 0.0});
     const Vec3 up = base.z * height;
     Vertex* vb = bd.vertex(base.origin + base.x * holeRadius);
     Vertex* vt = bd.vertex(base.origin + base.x * holeRadius + up);
