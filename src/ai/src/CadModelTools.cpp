@@ -387,6 +387,21 @@ ToolResult addHole(const CadContext& context, const json& in) {
     auto feature = doc::HoleFeature::make(face, position, diameter, depth);
     const std::string type =
         choice(in, "type", {"simple", "counterbore", "countersink"}, std::string("simple"));
+    // A parameter of another kind of hole is refused, not ignored: a local model
+    // asked for a counterbore with a countersink's sink_diameter, and got a plain
+    // hole without a word. The message names what this kind takes instead.
+    if ((has(in, "bore_diameter") || has(in, "bore_depth")) && type != "counterbore") {
+        throw ArgError(
+            std::string("bore_diameter and bore_depth are a counterbore's: give "
+                        "\"type\": \"counterbore\"") +
+            (type == "countersink" ? "; a countersink takes sink_diameter and sink_angle" : ""));
+    }
+    if ((has(in, "sink_diameter") || has(in, "sink_angle")) && type != "countersink") {
+        throw ArgError(
+            std::string("sink_diameter and sink_angle are a countersink's: give "
+                        "\"type\": \"countersink\"") +
+            (type == "counterbore" ? "; a counterbore takes bore_diameter and bore_depth" : ""));
+    }
 
     std::map<std::string, double> values;
     values["type"] = type == "counterbore" ? 1.0 : type == "countersink" ? 2.0 : 0.0;
@@ -850,7 +865,8 @@ void registerModelTools(ToolRegistry& registry, const Context& context) {
                                        "front, back, left, right")},
                  {"position", pointSchema("world point on the face [x,y,z]")},
                  {"diameter", numberSchema("mm")},
-                 {"depth", numberSchema("mm (not needed with through_all)")},
+                 {"depth", numberSchema("the hole's own depth, mm (a counterbore's is "
+                                        "bore_depth); not needed with through_all")},
                  {"through_all", booleanSchema("through the whole part")},
                  {"type", enumSchema({"simple", "counterbore", "countersink"}, "default simple")},
                  {"bore_diameter", numberSchema("counterbore, mm")},
