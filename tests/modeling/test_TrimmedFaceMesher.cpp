@@ -895,7 +895,9 @@ TEST(TrimmedFaceMesher, PcurveRangesFarFromZeroStillMesh) {
         const auto meshes = meshValid(*band, options, 30.0);
         EXPECT_EQ(meshes.size(), 1u) << offset;
         if (meshes.size() != 1) continue;
-        if (std::fabs(offset) < 1e15) EXPECT_TRUE(meshes[0].problem.empty()) << meshes[0].problem;
+        if (std::fabs(offset) < 1e15) {
+            EXPECT_TRUE(meshes[0].problem.empty()) << meshes[0].problem;
+        }
         if (!meshes[0].problem.empty()) continue;
         double area = 0.0;
         for (const auto& t : meshes[0].triangles) {
