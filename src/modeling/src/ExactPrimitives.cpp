@@ -151,6 +151,7 @@ Block buildBlock(Solid& solid, const Vec3& min, const Vec3& max) {
             geo::Frame::fromAxis(pts[static_cast<size_t>(s.corners[0])], s.normal, {1.0, 0.0, 0.0});
         Face* f = bd.face("box", s.role, std::make_shared<geo::Plane>(frame));
         std::vector<HalfEdge*> hes;
+        hes.reserve(4);
         for (size_t i = 0; i < 4; ++i) {
             hes.push_back(bd.halfEdge(v[static_cast<size_t>(s.corners[i])]));
         }

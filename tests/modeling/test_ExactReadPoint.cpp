@@ -58,9 +58,10 @@ std::string breakOneFace(topo::Solid& solid) {
 
 TEST(ExactReadPoint, MassPropertiesOfExactSolidsAreTheirShapes) {
     const auto cyl = exactCylinder();
-    EXPECT_NEAR(MassPropertiesCalculator::compute(*cyl).volume, M_PI * 25 * 10, M_PI * 250 * 1e-3);
+    EXPECT_NEAR(MassPropertiesCalculator::compute(*cyl).volume, math::kPi * 25 * 10,
+                math::kPi * 250 * 1e-3);
     const auto plate = exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {20, 20}, 5.0);
-    const double v = 40.0 * 40 * 10 - M_PI * 25 * 10;
+    const double v = 40.0 * 40 * 10 - math::kPi * 25 * 10;
     EXPECT_NEAR(MassPropertiesCalculator::compute(*plate).volume, v, v * 1e-3);
 }
 
@@ -84,7 +85,7 @@ TEST(ExactReadPoint, FacetedSolidsReadAsBefore) {
 
 TEST(ExactReadPoint, CylinderSurfaceAreaFromThePolygons) {
     const auto cyl = exactCylinder();
-    const double expected = 2 * M_PI * 5 * 10 + 2 * M_PI * 25;
+    const double expected = 2 * math::kPi * 5 * 10 + 2 * math::kPi * 25;
     const auto polys = BoundaryMesh::extractFacePolygons(*cyl);
     EXPECT_NEAR(area(polys), expected, expected * 1e-3);
     EXPECT_GT(BoundaryMesh::signedVolume(polys), 0.0);  // wound outward
@@ -92,7 +93,7 @@ TEST(ExactReadPoint, CylinderSurfaceAreaFromThePolygons) {
 
 TEST(ExactReadPoint, AMirroredExactCylinderStillMeasuresPositive) {
     const auto cyl = exactCylinder();
-    const double expected = M_PI * 25 * 10;
+    const double expected = math::kPi * 25 * 10;
     for (const math::Mat4& m :
          {math::Mat4::scale({-1, 1, 1}), math::Mat4::reflection({0, 0, 0}, {0, 1, 0})}) {
         const auto mirrored = model::Pattern::transformed(*cyl, m);

@@ -308,6 +308,7 @@ private:
             // face cannot split its boundary alone, and refining beside a curved chord instead
             // only makes slivers that lean towards the curve's osculating plane.
             std::vector<Vec3> normals;
+            normals.reserve(t.triangles.size());
             for (const auto& tri : t.triangles) {
                 normals.push_back((xyz[tri[1]] - xyz[tri[0]]).cross(xyz[tri[2]] - xyz[tri[0]]));
             }
