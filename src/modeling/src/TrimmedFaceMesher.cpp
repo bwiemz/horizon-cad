@@ -36,6 +36,8 @@ constexpr int kRefineRounds = 64;    // rounds of refinement
 constexpr int kGoldenSteps = 80;     // narrows a bracket by 0.618^80, below 1e-16
 constexpr double kMarchSteps = 8.0;  // steps of the pcurve search per edge segment
 constexpr double kKeepAway = 0.5;    // grid points nearer the boundary (in spacings) go
+constexpr double kRowSpacing = 4.0;  // rows across a surface bent one way, in its bent steps
+constexpr double kMaxRows = 64.0;    // and at most this many of them
 constexpr std::uint32_t kUnused = std::numeric_limits<std::uint32_t>::max();
 constexpr int kFits = -1;     // a triangle that needs no point
 constexpr int kCentroid = 3;  // one that needs its centroid; 0 to 2 name an edge to split
@@ -70,6 +72,11 @@ double distanceToTriangle(const Vec3& p, const Vec3& a, const Vec3& b, const Vec
     }
     return std::min(
         {distanceToSegment(p, a, b), distanceToSegment(p, b, c), distanceToSegment(p, c, a)});
+}
+
+/// The angle between two directions, neither of them zero.
+double angleBetween(const Vec3& a, const Vec3& b) {
+    return std::atan2(a.cross(b).length(), a.dot(b));
 }
 
 /// The angle a chord may turn through on a curve of curvature @p kappa: @p maxAngle, or less
@@ -170,6 +177,15 @@ struct Spacing {
     double sv = 1.0;
     double du = kInfinity;
     double dv = kInfinity;
+    int flat = -1;  // for a surface bent one way, the parameter (0 u, 1 v) it is flat along
+};
+
+/// A face's grid, planned before its edges are sampled so that straight edges along a surface
+/// bent one way can be sampled at its rows.
+struct Plan {
+    Vec2 lo;
+    Vec2 hi;
+    Spacing spacing;
 };
 
 /// A face's loops (outer first) in unwrapped (u, v), with each sample's position.
@@ -185,19 +201,26 @@ public:
     void sampleEdges() {
         double lo[3] = {kInfinity, kInfinity, kInfinity};
         double hi[3] = {-kInfinity, -kInfinity, -kInfinity};
-        for (const Edge& e : solid_.edges()) {
-            if (!e.alive || !e.halfEdge || !e.halfEdge->twin) continue;
-            sampleEdge(e, edges_[&e]);
-            for (const Vec3& p : edges_[&e].points) {
-                const double xyz[3] = {p.x, p.y, p.z};
-                for (int k = 0; k < 3; ++k) {
-                    lo[k] = std::min(lo[k], xyz[k]);
-                    hi[k] = std::max(hi[k], xyz[k]);
-                }
+        for (const topo::Vertex& v : solid_.vertices()) {
+            const double xyz[3] = {v.point.x, v.point.y, v.point.z};
+            for (int k = 0; k < 3; ++k) {
+                lo[k] = std::min(lo[k], xyz[k]);
+                hi[k] = std::max(hi[k], xyz[k]);
             }
         }
-        const double extent = std::hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
-        tol_ = math::ModelTolerance::forExtent(extent);
+        tol_ = math::ModelTolerance::forExtent(
+            std::hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]));
+        for (const Face& f : solid_.faces()) {
+            if (f.alive && f.exactSurface) plan(f);
+        }
+        for (const Edge& e : solid_.edges()) {
+            if (!e.alive || !e.halfEdge) continue;
+            if (!e.halfEdge->twin) {
+                edges_[&e].problem = "an edge of the face has no twin";
+                continue;
+            }
+            sampleEdge(e, edges_[&e]);
+        }
     }
 
     FaceMesh meshFace(const Face& f) const {
@@ -221,6 +244,68 @@ private:
     /// (a triangle on a boundary chord errs by at most 8/9 of the chord's sag there).
     double sideTolerance() const { return 0.5 * opt_.chordTolerance; }
 
+    /// Plans @p f's grid over its outer loop's box in (u, v), the loop laid out as boundaryOf
+    /// lays it out from the same samples. A face that cannot be laid out gets no plan, and
+    /// boundaryOf says why.
+    void plan(const Face& f) {
+        const geo::Surface& s = *f.exactSurface;
+        std::vector<const HalfEdge*> ring;
+        if (!f.outerLoop ||
+            !topo::loopHalfEdges(f, *f.outerLoop, 2 * solid_.edges().size() + 1, ring)) {
+            return;
+        }
+        std::vector<double> allowances;
+        for (const HalfEdge* h : ring) {
+            if (!h->pcurve || !h->edge || !h->next->edge) return;
+            allowances.push_back(topo::joinAllowance(*h, tol_));
+        }
+        topo::LoopPolygon poly;
+        if (!topo::unwrapLoop(ring, topo::kLoopSamples, s, topo::uPeriod(s), topo::vPeriod(s),
+                              allowances, poly) ||
+            poly.empty()) {
+            return;
+        }
+        Plan p{poly.front().a, poly.front().a, {}};
+        for (const auto& seg : poly) {
+            p.lo = {std::min(p.lo.x, seg.a.x), std::min(p.lo.y, seg.a.y)};
+            p.hi = {std::max(p.hi.x, seg.a.x), std::max(p.hi.y, seg.a.y)};
+        }
+        p.spacing = spacingOf(s, p.lo, p.hi);
+        plans_[&f] = p;
+    }
+
+    /// How many segments a half-edge along a planned face's flat direction needs to meet each
+    /// of its rows; 0 for any other half-edge. Along means its pcurve keeps the bent parameter
+    /// exactly (a ruling of a cylinder or cone), at its ends and its middle.
+    double rowsAlong(const HalfEdge& h) const {
+        if (!h.face || !h.pcurve) return 0.0;
+        const auto it = plans_.find(h.face);
+        if (it == plans_.end() || it->second.spacing.flat < 0) return 0.0;
+        const Plan& p = it->second;
+        const bool flatU = p.spacing.flat == 0;
+        const auto bent = [&](const Vec2& q) { return flatU ? q.y : q.x; };
+        const auto along = [&](const Vec2& q) { return flatU ? q.x : q.y; };
+        const Vec2 a = h.pcurve->evaluate(h.pcurveStart);
+        const Vec2 m = h.pcurve->evaluate(0.5 * (h.pcurveStart + h.pcurveEnd));
+        const Vec2 b = h.pcurve->evaluate(h.pcurveEnd);
+        if (bent(a) != bent(m) || bent(m) != bent(b)) return 0.0;
+        const double span = along(p.hi) - along(p.lo);
+        const double rows = std::ceil(span / (flatU ? p.spacing.du : p.spacing.dv));
+        return std::max(1.0, std::round(std::fabs(along(b) - along(a)) / (span / rows)));
+    }
+
+    /// True when @p s's normal turns by more than maxAngle from (u, v) @p a through @p c to
+    /// @p b. Where the surface has no normal (a pole, an apex) nothing is measured.
+    bool turns(const geo::Surface& s, const Vec2& a, const Vec2& c, const Vec2& b) const {
+        const Vec3 na = s.normal(a.x, a.y);
+        const Vec3 nc = s.normal(c.x, c.y);
+        const Vec3 nb = s.normal(b.x, b.y);
+        if (na.lengthSquared() == 0.0 || nc.lengthSquared() == 0.0 || nb.lengthSquared() == 0.0) {
+            return false;
+        }
+        return angleBetween(na, nc) + angleBetween(nc, nb) > opt_.maxAngle;
+    }
+
     void sampleEdge(const Edge& e, EdgeSamples& es) {
         if (!e.exactCurve) {
             es.problem = "an edge has no exact curve";
@@ -231,8 +316,8 @@ private:
         const double cap = static_cast<double>(opt_.maxTrianglesPerFace) + 2.0;
         const bool closed = fwd->origin == fwd->twin->origin;
         const double n =
-            std::max(segmentsFor(c, e.curveStart, e.curveEnd, sideTolerance(), opt_.maxAngle),
-                     closed ? 3.0 : 1.0);
+            std::max({segmentsFor(c, e.curveStart, e.curveEnd, sideTolerance(), opt_.maxAngle),
+                      closed ? 3.0 : 1.0, rowsAlong(*fwd), rowsAlong(*fwd->twin)});
         if (!(n <= cap)) {
             es.problem = "an edge needs " + num(n) + " segments, more than the triangle cap";
             return;
@@ -248,8 +333,9 @@ private:
             for (const double t : es.t) es.points.push_back(c.evaluate(t));
             es.points.front() = fwd->origin->point;
             es.points.back() = fwd->twin->origin->point;
-            // A segment whose (u, v) midpoint on either face strays from its chord is halved:
-            // a face cannot split its boundary, so the edge must be fine enough for both.
+            // A segment is halved where, on either face, its (u, v) midpoint strays from its
+            // chord or the surface's normal turns by more than maxAngle along it: a face cannot
+            // split its boundary, so the edge must be fine enough for both.
             std::vector<bool> halve(es.t.size() - 1, false);
             bool any = false;
             for (const HalfEdge* h : {fwd, static_cast<const HalfEdge*>(fwd->twin)}) {
@@ -260,10 +346,13 @@ private:
                 const geo::Surface& s = *h->face->exactSurface;
                 std::vector<double> ps = pcurveParameters(*h, s, pts);
                 for (std::size_t k = 0; k + 1 < pts.size(); ++k) {
-                    const Vec2 m =
-                        (h->pcurve->evaluate(ps[k]) + h->pcurve->evaluate(ps[k + 1])) * 0.5;
+                    const Vec2 a = h->pcurve->evaluate(ps[k]);
+                    const Vec2 b = h->pcurve->evaluate(ps[k + 1]);
+                    const Vec2 c = h->pcurve->evaluate(0.5 * (ps[k] + ps[k + 1]));
+                    const Vec2 m = (a + b) * 0.5;
                     if (distanceToSegment(s.evaluate(m.x, m.y), pts[k], pts[k + 1]) >
-                        sideTolerance()) {
+                            sideTolerance() ||
+                        turns(s, a, c, b)) {
                         halve[forward ? k : pts.size() - 2 - k] = true;
                         any = true;
                     }
@@ -306,10 +395,9 @@ private:
             std::vector<double> allowances;
             for (const HalfEdge* h : ring) {
                 const auto es = edges_.find(h->edge);
-                if (es == edges_.end() || !h->pcurve) {
-                    return "a half-edge of the face has no pcurve or no edge";
-                }
+                if (es == edges_.end()) return "a half-edge of the face has no edge";
                 if (!es->second.problem.empty()) return es->second.problem;
+                if (!h->pcurve) return "a half-edge of the face has no pcurve";
                 if (params_.count(h) == 0) return "a half-edge of the face was not sampled";
                 allowances.push_back(topo::joinAllowance(*h, tol_));
             }
@@ -374,6 +462,26 @@ private:
         }
         if (su > 0.0 && std::isfinite(su)) sp.su = su;
         if (sv > 0.0 && std::isfinite(sv)) sp.sv = sv;
+        // A surface bent one way only (a cylinder, a cone) gets rows the other way too,
+        // kRowSpacing of its bent steps apart in space, so that its triangles are not needles
+        // between two far boundaries; at most kMaxRows of them, and fewer where they would take
+        // more than a quarter of the triangle cap. Its straight edges that way are sampled at
+        // the rows (rowsAlong).
+        const auto rows = [&](double bent, double bentScale, double flatScale, double bentSpan,
+                              double flatSpan) {
+            const double columns = std::max(1.0, std::ceil(bentSpan / bent));
+            const double most = std::min(
+                kMaxRows,
+                std::max(1.0, 0.25 * static_cast<double>(opt_.maxTrianglesPerFace) / columns));
+            return std::max(kRowSpacing * bent * bentScale / flatScale, flatSpan / most);
+        };
+        if (std::isfinite(sp.du) && !std::isfinite(sp.dv)) {
+            sp.dv = rows(sp.du, sp.su, sp.sv, hi.x - lo.x, hi.y - lo.y);
+            sp.flat = 1;
+        } else if (std::isfinite(sp.dv) && !std::isfinite(sp.du)) {
+            sp.du = rows(sp.dv, sp.sv, sp.su, hi.y - lo.y, hi.x - lo.x);
+            sp.flat = 0;
+        }
         return sp;
     }
 
@@ -431,10 +539,10 @@ private:
     }
 
     /// kFits when the triangle's (u, v) centroid, and the midpoints of its edges that are not
-    /// boundary segments, map within the chord tolerance of it, and it faces within half the
-    /// options' angle of the surface's du x dv at its centroid. Otherwise where it needs a point:
-    /// an edge k (from vertex k to k + 1) whose midpoint strays, as the centroid would leave that
-    /// edge in place, or kCentroid.
+    /// boundary segments, map within the chord tolerance of it, and it faces the way the
+    /// surface's du x dv does at its centroid. Otherwise where it needs a point: an edge k (from
+    /// vertex k to k + 1) whose midpoint strays, as the centroid would leave that edge in place,
+    /// or kCentroid.
     int misfit(const geo::Surface& s, const std::array<Vec2, 3>& uv, const std::array<Vec3, 3>& p,
                const std::array<bool, 3>& onBoundary) const {
         const Vec3 n = (p[1] - p[0]).cross(p[2] - p[0]);
@@ -451,22 +559,18 @@ private:
         }
         const Vec2 c = (uv[0] + uv[1] + uv[2]) / 3.0;
         if (!near(c)) return kCentroid;
-        const Vec3 sn = s.normal(c.x, c.y);
-        if (sn.lengthSquared() == 0.0) return kFits;  // a pole or apex: no direction to keep to
-        const double cosine = n.dot(sn) / ln;
-        return cosine > 0.0 && cosine >= std::cos(0.5 * opt_.maxAngle) ? kFits : kCentroid;
+        const Vec3 sn = s.normal(c.x, c.y);  // zero at a pole or apex: nothing to keep to
+        return sn.lengthSquared() == 0.0 || n.dot(sn) > 0.0 ? kFits : kCentroid;
     }
 
     /// Triangulates the face's region, refining until every triangle fits, into @p out.
     std::string triangulate(const Face& f, const Boundary& b, FaceMesh& out) const {
         const geo::Surface& s = *f.exactSurface;
-        Vec2 lo = b.uv[0][0];
-        Vec2 hi = lo;
-        for (const Vec2& p : b.uv[0]) {
-            lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)};
-            hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
-        }
-        const Spacing sp = spacingOf(s, lo, hi);
+        const auto planned = plans_.find(&f);
+        if (planned == plans_.end()) return "the face's grid was not planned";
+        const Vec2& lo = planned->second.lo;
+        const Vec2& hi = planned->second.hi;
+        const Spacing& sp = planned->second.spacing;
         std::vector<std::vector<Vec2>> loopsW;
         std::vector<Vec2> uvs;
         std::vector<Vec3> xyzs;
@@ -492,6 +596,13 @@ private:
             }
             if (round > 0 && t.points.size() <= kept) return "refining the face stalled";
             kept = t.points.size();
+            for (std::size_t i = 0; i < boundaryCount; ++i) {
+                const Vec3& a = xyzs[i];
+                const Vec3& b = xyzs[t.boundaryVertex[i]];
+                if (a.x != b.x || a.y != b.y || a.z != b.z) {
+                    return "two boundary points of the face meet in (u, v) at different positions";
+                }
+            }
             std::unordered_set<std::uint64_t> walls;
             std::size_t base = 0;
             for (const auto& loop : loopsW) {
@@ -526,6 +637,45 @@ private:
                         added.push_back((t.points[a] + t.points[b]) * 0.5);
                     }
                 }
+            }
+            // Triangles that share an edge turn by no more than maxAngle. Two that turn more are
+            // each made smaller: their longest edge that is not a boundary segment is split (the
+            // edge they share may be short), or with none, their centroid added.
+            std::vector<Vec3> normals;
+            for (const auto& tri : t.triangles) {
+                normals.push_back((xyz[tri[1]] - xyz[tri[0]]).cross(xyz[tri[2]] - xyz[tri[0]]));
+            }
+            std::unordered_map<std::uint64_t, std::size_t> sides;
+            std::vector<bool> turned(t.triangles.size(), false);
+            for (std::size_t i = 0; i < t.triangles.size(); ++i) {
+                for (std::size_t k = 0; k < 3; ++k) {
+                    const std::uint64_t key =
+                        edgeKey(t.triangles[i][k], t.triangles[i][(k + 1) % 3]);
+                    if (walls.count(key) != 0) continue;
+                    const auto [other, first] = sides.emplace(key, i);
+                    if (!first &&
+                        angleBetween(normals[other->second], normals[i]) > opt_.maxAngle) {
+                        turned[other->second] = turned[i] = true;
+                    }
+                }
+            }
+            for (std::size_t i = 0; i < t.triangles.size(); ++i) {
+                if (!turned[i]) continue;
+                const auto& tri = t.triangles[i];
+                double longest = 0.0;
+                std::uint64_t pick = 0;
+                Vec2 at = (t.points[tri[0]] + t.points[tri[1]] + t.points[tri[2]]) / 3.0;
+                for (std::size_t k = 0; k < 3; ++k) {
+                    const std::uint32_t a = tri[k];
+                    const std::uint32_t b = tri[(k + 1) % 3];
+                    const double length = (t.points[a] - t.points[b]).length();
+                    if (walls.count(edgeKey(a, b)) == 0 && length > longest) {
+                        longest = length;
+                        pick = edgeKey(a, b);
+                        at = (t.points[a] + t.points[b]) * 0.5;
+                    }
+                }
+                if (longest == 0.0 || split.insert(pick).second) added.push_back(at);
             }
             if (added.empty()) {
                 emit(f, t, uv, xyz, out);
@@ -577,6 +727,7 @@ private:
     const MeshOptions& opt_;
     math::ModelTolerance tol_;
     std::unordered_map<const Edge*, EdgeSamples> edges_;
+    std::unordered_map<const Face*, Plan> plans_;
     /// Each sampled half-edge's pcurve parameter at each of its edge's samples, in its own
     /// direction.
     std::unordered_map<const HalfEdge*, std::vector<double>> params_;

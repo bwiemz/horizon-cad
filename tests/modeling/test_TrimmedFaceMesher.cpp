@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -56,10 +57,13 @@ double distanceToTriangle(const Vec3& p, const Vec3& a, const Vec3& b, const Vec
         {distanceToSegment(p, a, b), distanceToSegment(p, b, c), distanceToSegment(p, c, a)});
 }
 
-/// The surface's parameters at @p p, a periodic one moved by whole periods to lie nearest
-/// @p near: a triangle at the seam has vertices that invert to both sides of it.
-Vec2 uvNear(const geo::Surface& s, const Vec3& p, const Vec2& near) {
-    Vec2 uv = s.invert(p);
+/// The parameters of a point of a surface: the surface's own inversion unless a test knows
+/// better.
+using Inverse = std::function<Vec2(const geo::Surface&, const Vec3&)>;
+
+/// @p uv moved by whole periods of @p s to lie nearest @p near: a triangle at the seam has
+/// vertices that invert to both sides of it.
+Vec2 uvNear(const geo::Surface& s, Vec2 uv, const Vec2& near) {
     if (s.periodicU()) {
         const double period = s.uRange().max - s.uRange().min;
         uv.x += std::round((near.x - uv.x) / period) * period;
@@ -92,7 +96,8 @@ struct Summary {
 /// triangle's (u, v) centroid and edge midpoints; every triangle facing the way the surface's
 /// outward normal does at its centroid; normals the surface's, outward.
 Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshes,
-                    const MeshOptions& options, double slack, bool closed = true) {
+                    const MeshOptions& options, double slack, bool closed = true,
+                    const Inverse& inverse = {}) {
     Summary out;
     std::size_t live = 0;
     for (const auto& f : solid.faces()) live += f.alive ? 1 : 0;
@@ -106,6 +111,8 @@ Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshe
         EXPECT_EQ(m.points.size(), m.normals.size()) << tag;
         const geo::Surface& s = *m.face->exactSurface;
         const double sign = m.face->reversed ? -1.0 : 1.0;
+        std::vector<Vec2> uvs;
+        for (const Vec3& q : m.points) uvs.push_back(inverse ? inverse(s, q) : s.invert(q));
 
         std::map<std::pair<std::uint32_t, std::uint32_t>, int> directed;
         double worst = 0.0;
@@ -119,9 +126,9 @@ Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshe
             const Vec3& a = m.points[t[0]];
             const Vec3& b = m.points[t[1]];
             const Vec3& c = m.points[t[2]];
-            const Vec2 ua = s.invert(a);
-            const Vec2 ub = uvNear(s, b, ua);
-            const Vec2 uc = uvNear(s, c, ua);
+            const Vec2 ua = uvs[t[0]];
+            const Vec2 ub = uvNear(s, uvs[t[1]], ua);
+            const Vec2 uc = uvNear(s, uvs[t[2]], ua);
             const Vec2 centroid = (ua + ub + uc) / 3.0;
             for (const Vec2& q : {centroid, (ua + ub) * 0.5, (ub + uc) * 0.5, (uc + ua) * 0.5}) {
                 worst = std::max(worst, distanceToTriangle(s.evaluate(q.x, q.y), a, b, c));
@@ -142,8 +149,8 @@ Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshe
             }
         }
         for (std::size_t i = 0; i < m.points.size(); ++i) {
-            const Vec2 uv = s.invert(m.points[i]);
-            EXPECT_NEAR(m.normals[i].dot(s.normal(uv.x, uv.y) * sign), 1.0, 1e-9) << tag;
+            EXPECT_LT((s.evaluate(uvs[i].x, uvs[i].y) - m.points[i]).length(), slack) << tag;
+            EXPECT_NEAR(m.normals[i].dot(s.normal(uvs[i].x, uvs[i].y) * sign), 1.0, 1e-9) << tag;
         }
     }
     EXPECT_FALSE(boundary.empty());
@@ -166,6 +173,42 @@ double totalArea(const Summary& s) {
     double sum = 0.0;
     for (const auto& [tag, a] : s.area) sum += a;
     return sum;
+}
+
+/// The largest angle between the normals of two triangles that share an edge of a face's mesh.
+double worstNeighbourAngle(const std::vector<FaceMesh>& meshes) {
+    double worst = 0.0;
+    for (const FaceMesh& m : meshes) {
+        std::map<std::pair<std::uint32_t, std::uint32_t>, Vec3> first;
+        for (const auto& t : m.triangles) {
+            const Vec3 n = (m.points[t[1]] - m.points[t[0]]).cross(m.points[t[2]] - m.points[t[0]]);
+            for (int k = 0; k < 3; ++k) {
+                const auto key = std::minmax(t[k], t[(k + 1) % 3]);
+                const auto [it, fresh] = first.emplace(key, n);
+                if (!fresh) {
+                    worst = std::max(worst,
+                                     std::atan2(it->second.cross(n).length(), it->second.dot(n)));
+                }
+            }
+        }
+    }
+    return worst;
+}
+
+/// The worst triangle of the meshes: its longest side over its height onto that side.
+double worstAspect(const std::vector<FaceMesh>& meshes) {
+    double worst = 0.0;
+    for (const FaceMesh& m : meshes) {
+        for (const auto& t : m.triangles) {
+            const Vec3& a = m.points[t[0]];
+            const Vec3& b = m.points[t[1]];
+            const Vec3& c = m.points[t[2]];
+            const double longest = std::max({(b - a).length(), (c - b).length(), (a - c).length()});
+            const double twiceArea = (b - a).cross(c - a).length();
+            worst = std::max(worst, longest * longest / twiceArea);
+        }
+    }
+    return worst;
 }
 
 /// The model tolerance a part of this size is checked to.
@@ -235,14 +278,16 @@ std::unique_ptr<topo::Solid> makeTorus(const geo::Frame& frame, double major, do
 }
 
 /// A side of an open face: its pcurve from start to end, and its edge's curve over
-/// [curveStart, curveEnd]; without a curve, the edge is the line between the side's ends.
+/// [curveStart, curveEnd]; without a curve, the edge is the line between the side's ends. Its
+/// start vertex sits @c offset away from the surface's point.
 struct Side {
-    std::shared_ptr<const geo::Curve2D> pcurve;
+    std::shared_ptr<const geo::Curve2D> pcurve{};
     double start = 0.0;
     double end = 1.0;
-    std::shared_ptr<const geo::Curve3> curve;
+    std::shared_ptr<const geo::Curve3> curve{};
     double curveStart = 0.0;
     double curveEnd = 0.0;
+    Vec3 offset{};
 };
 
 /// One open face on @p surface: the first loop its outer one, the rest holes, each running as
@@ -264,7 +309,7 @@ std::unique_ptr<topo::Solid> makeOpenFace(std::shared_ptr<const geo::Surface> su
         for (std::size_t i = 0; i < n; ++i) {
             const Vec2 uv = sides[i].pcurve->evaluate(sides[i].start);
             v[i] = solid->allocVertex();
-            v[i]->point = face->exactSurface->evaluate(uv.x, uv.y);
+            v[i]->point = face->exactSurface->evaluate(uv.x, uv.y) + sides[i].offset;
             h[i] = solid->allocHalfEdge();
             h[i]->origin = v[i];
             h[i]->face = face;
@@ -368,7 +413,249 @@ std::vector<Side> quadOnCylinder(const geo::Frame& frame, double radius,
     return sides;
 }
 
+/// From a to b as t^p runs from 0 to 1: a pcurve whose parameter is not its edge's.
+class Warped : public geo::Curve2D {
+public:
+    Warped(const Vec2& a, const Vec2& b, double power) : a_(a), b_(b), p_(power) {}
+    Vec2 evaluate(double t) const override { return a_ + (b_ - a_) * std::pow(t, p_); }
+    Vec2 derivative(double t, int order) const override {
+        if (order == 1) return (b_ - a_) * (p_ * std::pow(t, p_ - 1.0));
+        if (order == 2) return (b_ - a_) * (p_ * (p_ - 1.0) * std::pow(t, p_ - 2.0));
+        return {};
+    }
+    double tMin() const override { return 0.0; }
+    double tMax() const override { return 1.0; }
+    bool isClosed() const override { return false; }
+
+private:
+    Vec2 a_;
+    Vec2 b_;
+    double p_;
+};
+
+/// Three quarters of a cylinder, u in [0, 3 pi/2], v in [0, h], each side's pcurve warped by
+/// t^power; the top and left sides run their pcurves backwards, from 1 down to 0.
+std::unique_ptr<topo::Solid> makeWarpedBand(const geo::Frame& frame, double r, double h,
+                                            double power) {
+    const double end = 1.5 * math::kPi;
+    const std::array<Vec2, 4> corner = {{{0, 0}, {end, 0}, {end, h}, {0, h}}};
+    std::vector<Side> sides;
+    for (std::size_t i = 0; i < 4; ++i) {
+        const Vec2& a = corner[i];
+        const Vec2& b = corner[(i + 1) % 4];
+        const bool backwards = i >= 2;
+        Side side{backwards ? std::make_shared<Warped>(b, a, power)
+                            : std::make_shared<Warped>(a, b, power),
+                  backwards ? 1.0 : 0.0, backwards ? 0.0 : 1.0};
+        if (a.y == b.y) {  // an arc about the axis at this height
+            geo::Frame at = frame;
+            at.origin = frame.origin + frame.z * a.y;
+            side.curve = std::make_shared<geo::CircleCurve>(at, r);
+            side.curveStart = a.x;
+            side.curveEnd = b.x;
+        }
+        sides.push_back(side);
+    }
+    return makeOpenFace(std::make_shared<geo::Cylinder>(frame, r), {sides});
+}
+
+/// A cubic B-spline over [0, 1] that is zero but for one basis function, on @p knots: the five
+/// knots it spans, between 0 and 1 (clamped at both ends).
+std::vector<double> clusteredKnots(const std::array<double, 5>& inner) {
+    std::vector<double> knots{0, 0, 0, 0};
+    knots.insert(knots.end(), inner.begin(), inner.end());
+    knots.insert(knots.end(), {1, 1, 1, 1});
+    return knots;
+}
+
+/// The flat square [0, L]^2 with one narrow feature where the fifth basis function of each
+/// direction is non-zero: its control point raised by @p rise and pulled back along x by
+/// @p pull (enough pull folds the surface over itself). Elsewhere x = L u, y = L v, z = 0.
+std::shared_ptr<geo::Surface> featuredSquare(double size, const std::array<double, 5>& innerU,
+                                             const std::array<double, 5>& innerV, double rise,
+                                             double pull) {
+    const std::vector<double> ku = clusteredKnots(innerU);
+    const std::vector<double> kv = clusteredKnots(innerV);
+    // Control points at the Greville abscissae reproduce x = L u and y = L v exactly.
+    const auto greville = [](const std::vector<double>& k, std::size_t i) {
+        return (k[i + 1] + k[i + 2] + k[i + 3]) / 3.0;
+    };
+    std::vector<std::vector<Vec3>> points(9, std::vector<Vec3>(9));
+    for (std::size_t i = 0; i < 9; ++i) {
+        for (std::size_t j = 0; j < 9; ++j) {
+            points[i][j] = {size * greville(ku, i), size * greville(kv, j), 0.0};
+        }
+    }
+    points[4][4] = points[4][4] + Vec3{-pull, 0.0, rise};
+    return std::make_shared<geo::NurbsSurface>(
+        points, std::vector<std::vector<double>>(9, std::vector<double>(9, 1.0)), ku, kv, 3, 3);
+}
+
+/// The parameters of a point of featuredSquare(size, ..., pull): v is y / L exactly, and u
+/// lies within pull / L of x / L, where a fine search along it finds the point. The surface's
+/// own inversion starts from a 16 x 16 grid and can miss a feature that narrow.
+Inverse featureInverse(double size, double pull) {
+    return [size, pull](const geo::Surface& s, const Vec3& p) {
+        const double v = p.y / size;
+        const auto dist = [&](double u) { return (s.evaluate(u, v) - p).length(); };
+        const double reach = pull / size + 0.01;
+        const double lo = std::max(0.0, p.x / size - reach);
+        const double hi = std::min(1.0, p.x / size + reach);
+        constexpr int kSteps = 400;
+        double best = lo;
+        for (int i = 0; i <= kSteps; ++i) {
+            const double u = lo + (hi - lo) * i / kSteps;
+            if (dist(u) < dist(best)) best = u;
+        }
+        double a = std::max(lo, best - (hi - lo) / kSteps);
+        double b = std::min(hi, best + (hi - lo) / kSteps);
+        for (int i = 0; i < 100; ++i) {  // golden section
+            const double x1 = b - 0.618033988749895 * (b - a);
+            const double x2 = a + 0.618033988749895 * (b - a);
+            if (dist(x1) <= dist(x2)) {
+                b = x2;
+            } else {
+                a = x1;
+            }
+        }
+        return Vec2{0.5 * (a + b), v};
+    };
+}
+
+/// The triangle (0,0), (1,0), (0,1) of @p surface's (u, v) as one open face of straight edges.
+std::unique_ptr<topo::Solid> makeTriangleFace(std::shared_ptr<const geo::Surface> surface) {
+    return makeOpenFace(std::move(surface),
+                        {{{line({0, 0}, {1, 0})}, {line({1, 0}, {0, 1})}, {line({0, 1}, {0, 0})}}});
+}
+
 }  // namespace
+
+TEST(TrimmedFaceMesher, PcurvesThatDoNotShareTheirEdgesParametersStillMesh) {
+    // Each boundary sample's (u, v) must be found on its pcurve by search: t^p is not the
+    // edge's parameter, and the top and left sides run their pcurves backwards.
+    const geo::Frame frame = geo::Frame::fromAxis({1, 2, 3}, {0.3, 1, 0.2});
+    for (const double power : {0.5, 2.0, 3.0}) {
+        const auto band = makeWarpedBand(frame, 5.0, 10.0, power);
+        for (const double tol : {1e-3, 0.05}) {
+            MeshOptions options;
+            options.chordTolerance = tol;
+            const Summary s =
+                checkMeshes(*band, meshValid(*band, options, 30.0), options, slackFor(30.0), false);
+            const double area = 1.5 * math::kPi * 5.0 * 10.0;
+            EXPECT_NEAR(s.area.at("open/face"), area, 2e-3 * area) << power << " " << tol;
+        }
+    }
+}
+
+TEST(TrimmedFaceMesher, NeighbouringTrianglesTurnByNoMoreThanTheAngle) {
+    // The twisted patch's straight edges carry no sag at all, yet its normal turns by nearly
+    // half a radian along them: the angle alone must split them.
+    const auto patch = makeTwistedPatch(10.0, 5.0);
+    for (const double angle : {0.35, 0.1, 0.05}) {
+        for (const double tol : {0.01, 1e-3}) {
+            MeshOptions options;
+            options.chordTolerance = tol;
+            options.maxAngle = angle;
+            const auto meshes = meshValid(*patch, options, 20.0);
+            checkMeshes(*patch, meshes, options, slackFor(20.0), false);
+            EXPECT_LE(worstNeighbourAngle(meshes), angle + 1e-12) << angle << " " << tol;
+        }
+    }
+    const auto torus = makeTorus(geo::Frame::fromAxis({4, -2, 7}, {1, -2, 0.5}), 10.0, 3.0);
+    for (const double angle : {0.35, 0.1}) {
+        MeshOptions options;
+        options.chordTolerance = 0.05;
+        options.maxAngle = angle;
+        const auto meshes = meshValid(*torus, options, 30.0);
+        checkMeshes(*torus, meshes, options, slackFor(30.0));
+        EXPECT_LE(worstNeighbourAngle(meshes), angle + 1e-12) << angle;
+    }
+}
+
+TEST(TrimmedFaceMesher, AFeatureOnlyATrianglesCentroidSeesIsFound) {
+    // A bump 0.4 across at the centroid of a triangle 10 a side: its sides and their midpoints
+    // are flat, so only the centroid shows the face is not.
+    const double third = 1.0 / 3.0;
+    const std::array<double, 5> around = {third - 0.02, third - 0.01, third, third + 0.01,
+                                          third + 0.02};
+    const auto face = makeTriangleFace(featuredSquare(10.0, around, around, 0.1, 0.0));
+    MeshOptions options;
+    options.chordTolerance = 0.01;
+    const auto meshes = meshValid(*face, options, 20.0);
+    checkMeshes(*face, meshes, options, slackFor(20.0), false, featureInverse(10.0, 0.0));
+    ASSERT_EQ(meshes.size(), 1u);
+    EXPECT_GT(meshes[0].triangles.size(), 1u);
+}
+
+TEST(TrimmedFaceMesher, NoTriangleFacesAgainstTheSurface) {
+    // A fold at the centroid of a triangle 10 a side: there the surface turns back over itself
+    // and faces down, while a triangle through the three corners faces up. With a tolerance too
+    // loose to see the fold and no limit on the angle, only the triangles' orientation does.
+    const double third = 1.0 / 3.0;
+    const std::array<double, 5> rising = {third - 0.04 / 3.0, third - 0.01 / 3.0,
+                                          third + 0.02 / 3.0, third + 0.05 / 3.0,
+                                          third + 0.08 / 3.0};
+    const std::array<double, 5> around = {third - 0.02, third - 0.01, third, third + 0.01,
+                                          third + 0.02};
+    const auto face = makeTriangleFace(featuredSquare(10.0, rising, around, 0.1, 0.5));
+    MeshOptions options;
+    options.chordTolerance = 1.0;
+    options.maxAngle = math::kPi;
+    const auto meshes = TrimmedFaceMesher::meshSolid(*face, options);
+    checkMeshes(*face, meshes, options, slackFor(20.0), false, featureInverse(10.0, 0.5));
+}
+
+TEST(TrimmedFaceMesher, ACylindersSideAtATightToleranceHasNoNeedles) {
+    // Bent one way only, the side gets rows across it as well as the columns its bending needs,
+    // and its seam is sampled at the rows: two rows of 994 points each would make triangles
+    // 10 long and 0.03 wide.
+    const double r = 5.0;
+    const auto cyl =
+        model::exact::makeCylinder(geo::Frame::fromAxis({1, 2, 3}, {1, 1, 1}), r, 10.0);
+    MeshOptions options;
+    options.chordTolerance = 1e-5 * r;
+    const auto start = std::chrono::steady_clock::now();
+    const auto meshes = meshValid(*cyl, options, 20.0);
+    const std::chrono::duration<double, std::milli> took = std::chrono::steady_clock::now() - start;
+    std::size_t triangles = 0;
+    for (const FaceMesh& m : meshes) triangles += m.triangles.size();
+    std::printf("[ timing   ] cylinder at 1e-5 r: %zu triangles in %.0f ms\n", triangles,
+                took.count());
+    checkMeshes(*cyl, meshes, options, slackFor(20.0));
+    // The side: its caps are planes, triangulated from their rims alone.
+    for (const FaceMesh& m : meshes) {
+        if (m.face->topoId.tag() == "cylinder/side") {
+            EXPECT_LE(worstAspect({m}), 10.0);
+        }
+    }
+}
+
+TEST(TrimmedFaceMesher, BoundaryPointsThatMeetInUvAtDifferentPositionsSaySo) {
+    // A loop pinched at (1, 1) by two vertices, one lifted 1e-3 off the plane: the triangles
+    // there could keep only one of the two positions, so the face says so instead.
+    const auto face =
+        makeOpenFace(std::make_shared<geo::Plane>(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1})),
+                     {{{line({0, 0}, {2, 0})},
+                       {line({2, 0}, {1, 1})},
+                       {line({1, 1}, {2, 2})},
+                       {line({2, 2}, {0, 2})},
+                       {line({0, 2}, {1, 1})},
+                       {line({1, 1}, {0, 0}), 0.0, 1.0, nullptr, 0.0, 0.0, Vec3{0, 0, 1e-3}}}});
+    const auto meshes = TrimmedFaceMesher::meshSolid(*face, MeshOptions{});
+    ASSERT_EQ(meshes.size(), 1u);
+    EXPECT_FALSE(meshes[0].problem.empty());
+    EXPECT_TRUE(meshes[0].triangles.empty());
+}
+
+TEST(TrimmedFaceMesher, AnEdgeWithNoTwinSaysSo) {
+    // A copy of an open sheet keeps no half-edges without a face: its edges have no twins.
+    const auto copy = model::Pattern::transformed(*makeTwistedPatch(10.0, 5.0),
+                                                  math::Mat4::translation({1, 2, 3}));
+    const auto meshes = TrimmedFaceMesher::meshSolid(*copy, MeshOptions{});
+    ASSERT_EQ(meshes.size(), 1u);
+    EXPECT_NE(meshes[0].problem.find("no twin"), std::string::npos) << meshes[0].problem;
+    EXPECT_TRUE(meshes[0].triangles.empty());
+}
 
 TEST(TrimmedFaceMesher, AFaceAcrossTheSeamMeshesWhicheverWindowItsPcurvesAreWrittenIn) {
     // Half a cylinder, u in [3 pi/2, 5 pi/2], across the surface's seam at 2 pi, with a hole
