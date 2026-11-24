@@ -15,6 +15,13 @@
 #include <atomic>
 #include <mutex>
 
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX  // windows.h's min and max macros would take std::max
+#endif
+#include <windows.h>
+#endif
+
 #include "horizon/document/Document.h"
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/DxfFormat.h"
@@ -140,8 +147,21 @@ bool DwgImport::load(const std::string& path, doc::Document& doc, std::string* e
     process.setStandardOutputFile(QProcess::nullDevice());
     const QString messages = work.filePath(QStringLiteral("messages.txt"));
     process.setStandardErrorFile(messages);
+#ifdef Q_OS_WIN
+    // A program that cannot load (a DLL missing) or that crashes shows a
+    // dialog on Windows and waits for it to be answered: no one answers it,
+    // and the reading waited out its time saying nothing of why. A child
+    // inherits its parent's error mode, so with this it fails at once, with
+    // the status it failed with. Set only while it starts.
+    const UINT errorMode =
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+#endif
     process.start();
-    if (!process.waitForStarted(kStartMs)) {
+    const bool started = process.waitForStarted(kStartMs);
+#ifdef Q_OS_WIN
+    SetErrorMode(errorMode);
+#endif
+    if (!started) {
         return fail(error,
                     QCoreApplication::translate("hz::ui::DwgImport",
                                                 "LibreDWG's dwg2dxf (%1) could not be started: %2")
@@ -167,10 +187,15 @@ bool DwgImport::load(const std::string& path, doc::Document& doc, std::string* e
                                nullptr, std::max(1, limit / 1000)));
     }
     if (process.exitStatus() == QProcess::CrashExit) {
-        return fail(error, QCoreApplication::translate(
-                               "hz::ui::DwgImport",
-                               "LibreDWG stopped while reading it: the file may be damaged, or "
-                               "hold something LibreDWG cannot read yet"));
+        // The status it stopped with (on Windows 0xC0000135: a DLL missing;
+        // 0xC0000005: an access violation), for whoever reads the log.
+        return fail(error,
+                    QCoreApplication::translate(
+                        "hz::ui::DwgImport",
+                        "LibreDWG stopped while reading it: the file may be damaged, or "
+                        "hold something LibreDWG cannot read yet") +
+                        QStringLiteral(" [0x%1]").arg(static_cast<quint32>(process.exitCode()), 8,
+                                                      16, QLatin1Char('0')));
     }
     if (process.exitCode() != 0) {
         QFile said(messages);

@@ -37,6 +37,10 @@ jobs:
             triplet: x64-windows
             werror: 'OFF'
             translations: 'ON'
+            # LibreDWG's dwg2dxf does not finish here on any file (#238):
+            # the DWG conversion tests are left out until it does. The step
+            # "Diagnose LibreDWG's dwg2dxf" below says why.
+            test_exclude: 'DwgImportTest\.|ImportExportTest\..*Dwg'
           - os: ubuntu-22.04
             preset: linux-debug
             triplet: x64-linux
@@ -212,10 +216,42 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "MSVC /W4 warnings: ${total}"
 
+      # Why dwg2dxf does not finish on Windows (#238): run it on one drawing
+      # with a time limit, and list what it needs to load. Reported, never
+      # failing the job; removed with the exclusion once it works.
+      - name: Diagnose LibreDWG's dwg2dxf
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $tools = "build/${{ matrix.preset }}/vcpkg_installed/${{ matrix.triplet }}/tools/libredwg"
+          Get-ChildItem $tools | Format-Table Name, Length -AutoSize | Out-String | Write-Host
+          if (Get-Command dumpbin -ErrorAction SilentlyContinue) {
+            dumpbin /nologo /dependents "$tools/dwg2dxf.exe" | Write-Host
+          }
+          $work = Join-Path $env:RUNNER_TEMP "dwg-diagnosis"
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          Copy-Item tests/fileio/fixtures/dwg/line_2018.dwg (Join-Path $work "drawing.dwg")
+          foreach ($cliArgs in @(@("--version"), @("-o", "drawing.dxf", "drawing.dwg"))) {
+            $p = Start-Process -FilePath (Resolve-Path "$tools/dwg2dxf.exe") -ArgumentList $cliArgs `
+              -WorkingDirectory $work -NoNewWindow -PassThru `
+              -RedirectStandardOutput (Join-Path $work "out.txt") `
+              -RedirectStandardError (Join-Path $work "err.txt")
+            if (-not $p.WaitForExit(60000)) {
+              Write-Host "dwg2dxf $($cliArgs -join ' ') did not finish in 60 s"
+              $p.Kill()
+            } else {
+              Write-Host ("dwg2dxf {0}: exit code 0x{1:X8}" -f ($cliArgs -join ' '), $p.ExitCode)
+            }
+            Get-Content (Join-Path $work "out.txt"), (Join-Path $work "err.txt") -TotalCount 40 `
+              -ErrorAction SilentlyContinue | Write-Host
+          }
+          Get-ChildItem $work | Format-Table Name, Length -AutoSize | Out-String | Write-Host
+
       # A test that hangs (a dialog nothing answers) fails in 15 minutes,
       # not at the job's limit with every test after it unrun.
       - name: Test
-        run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} --output-on-failure --parallel 4 --timeout 900
+        run: ctest --test-dir build/${{ matrix.preset }} -C ${{ matrix.config || 'Debug' }} --output-on-failure --parallel 4 --timeout 900 ${{ matrix.test_exclude && format('-E "{0}"', matrix.test_exclude) || '' }}
 
       # The window tests are built only when Qt has an offscreen platform
       # plugin. Qt without one skipped all of them, in every job, and said

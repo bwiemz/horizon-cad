@@ -321,9 +321,13 @@ std::string readWith(const QByteArray& body, int timeoutMs = 60'000) {
 }
 
 TEST(DwgImportReasons, AConverterThatCrashesCostsOnlyThisFile) {
-    EXPECT_EQ(readWith("kill -SEGV $$"),
-              "LibreDWG stopped while reading it: the file may be damaged, or hold something "
-              "LibreDWG cannot read yet");
+    // The status it stopped with follows, for the log.
+    const std::string error = readWith("kill -SEGV $$");
+    EXPECT_EQ(error.rfind("LibreDWG stopped while reading it: the file may be damaged, or hold "
+                          "something LibreDWG cannot read yet [0x",
+                          0),
+              0U)
+        << error;
 }
 
 TEST(DwgImportReasons, AConverterThatNeverFinishesIsStopped) {
