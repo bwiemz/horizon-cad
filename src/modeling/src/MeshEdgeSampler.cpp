@@ -220,7 +220,22 @@ void EdgeSampler::planFace(const Face& f) {
         p.lo = {std::min(p.lo.x, seg.a.x), std::min(p.lo.y, seg.a.y)};
         p.hi = {std::max(p.hi.x, seg.a.x), std::max(p.hi.y, seg.a.y)};
     }
-    p.spacing = spacingOf(s, p.lo, p.hi);
+    // A full-period band: no holes, and an outer loop of rims (along u, at the box's bottom and
+    // top, both there) and the seam (along v, its twin in this face too).
+    bool band = f.innerLoops.empty() && p.lo.y < p.hi.y;
+    bool bottom = false;
+    bool top = false;
+    for (const HalfEdge* h : ring) {
+        const Vec2 a = h->pcurve->evaluate(h->pcurveStart);
+        const Vec2 m = h->pcurve->evaluate(0.5 * (h->pcurveStart + h->pcurveEnd));
+        const Vec2 b = h->pcurve->evaluate(h->pcurveEnd);
+        const bool rim = a.y == m.y && m.y == b.y && (a.y == p.lo.y || a.y == p.hi.y);
+        const bool seam = a.x == m.x && m.x == b.x && h->twin && h->twin->face == &f;
+        bottom = bottom || (rim && a.y == p.lo.y);
+        top = top || (rim && a.y == p.hi.y);
+        band = band && (rim || seam);
+    }
+    p.spacing = spacingOf(s, p.lo, p.hi, band && bottom && top);
     plans_[&f] = p;
 }
 
@@ -363,9 +378,22 @@ double EdgeSampler::rowStep(const geo::Surface& s, double u0, double u1, double 
     return step;
 }
 
+/// The u step at which @p s's u-line at @p v, over [lo.x, hi.x], sags no more than sideTolerance
+/// and turns no more than stepAngle, by its whole curvature: as segmentsFor samples a rim along
+/// it.
+double EdgeSampler::uLineStep(const geo::Surface& s, const Vec2& lo, const Vec2& hi,
+                              double v) const {
+    const auto d = s.derivatives(0.5 * (lo.x + hi.x), v);
+    const double lu = d.du.length();
+    const double kappa = d.du.cross(d.duu).length() / (lu * lu * lu);
+    return lu > 0.0 && kappa > 0.0 ? allowedTurn(kappa, sideTolerance(), stepAngle()) / (kappa * lu)
+                                   : kInfinity;
+}
+
 /// How finely the surface bends over [lo, hi] in (u, v), from a lattice of samples, for grid
-/// sides that sag no more than sideTolerance.
-Spacing EdgeSampler::spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2& hi) const {
+/// sides that sag no more than sideTolerance; @p band for a face that is a full-period band.
+Spacing EdgeSampler::spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2& hi,
+                               bool band) const {
     const double half = sideTolerance();
     Spacing sp;
     double su = 0.0;
@@ -404,10 +432,12 @@ Spacing EdgeSampler::spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2
     // where even two bands would not fit. Its straight edges that way are sampled at the rows
     // (rowsAlong; a cone's, between them).
     //
-    // A cone's rows are nearer: its diagonals between rows stray sideways (kConeStray), and rows
-    // that are staggered, every other one half a step along, halve that. Its rows start half a row
-    // in from each end: the boundary's samples do not line up with the first row's, and the
-    // diagonals there reach up to a whole step across.
+    // A cone's full-period band may have nearer rows: its diagonals between rows stray sideways
+    // (kConeStray), and rows that are staggered, every other one half a step along, halve that.
+    // Its rows start half a row in from each end: the rims' samples do not line up with the first
+    // row's, and the diagonals there reach up to a whole step across. Any other cone face keeps
+    // these rows: staggered rows meeting a slanted or curved boundary stopped refinement
+    // converging there.
     const auto rows = [&](double bent, double bentScale, double flatScale, double bentSpan,
                           double flatSpan, double nearest) {
         const double columns = std::max(1.0, std::ceil(bentSpan / bent));
@@ -419,17 +449,36 @@ Spacing EdgeSampler::spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2
                                       flatSpan / (bands - 0.5));
     };
     if (std::isfinite(sp.du) && !std::isfinite(sp.dv)) {
-        sp.staggered = s.kind() == geo::SurfaceKind::Cone && twist > 0.0;
-        sp.dv = rows(sp.du, sp.su, sp.sv, hi.x - lo.x, hi.y - lo.y,
-                     sp.staggered ? kConeStray * opt_.chordTolerance / (twist * sp.du) : kInfinity);
-        if (std::isfinite(sp.dv)) {
-            sp.flat = 1;
-        } else {
-            sp.staggered = false;
+        sp.dv = rows(sp.du, sp.su, sp.sv, hi.x - lo.x, hi.y - lo.y, kInfinity);
+        if (std::isfinite(sp.dv)) sp.flat = 1;
+        if (band && sp.flat == 1 && s.kind() == geo::SurfaceKind::Cone && twist > 0.0) {
+            // A cone's full-period band (Ruling 7), by the columns it is meshed with: its grid's
+            // step or its rims' samples, whichever is finer (on a flat cone the angle samples the
+            // rims far finer than its bending spaces the grid). Staggered rows only where its rows
+            // as they are, or the strip between its rims, stray too far for whole-step diagonals.
+            const double bottomRim = uLineStep(s, lo, hi, lo.y);
+            const double topRim = uLineStep(s, lo, hi, hi.y);
+            const double column = std::min({sp.du, bottomRim, topRim});
+            const double nearest = kConeStray * opt_.chordTolerance / (twist * column);
+            const double span = hi.y - lo.y;
+            if (span / std::ceil(span / sp.dv) > 0.5 * nearest) {
+                const double dv = rows(column, sp.su, sp.sv, hi.x - lo.x, span, nearest);
+                if (std::isfinite(dv)) {
+                    sp.du = column;
+                    sp.dv = dv;
+                    sp.staggered = true;
+                    // A rim sampled at the columns' own step has its samples on the column
+                    // lines: the row beside it is the one shifted half a step from them.
+                    const double rowCount = std::ceil(span / dv);
+                    sp.shiftFirst = column == bottomRim ||
+                                    (column == topRim && std::fmod(rowCount - 1.0, 2.0) == 0.0);
+                    // Square cells in w: with rows far apart in w for their steps, a point that
+                    // refinement puts between them joins row points many steps along, and
+                    // those diagonals stray.
+                    sp.su = sp.sv * sp.dv / sp.du;
+                }
+            }
         }
-        // Square cells in w: with rows far apart in w for their steps, a point that refinement
-        // puts between them joins row points many steps along, and those diagonals stray.
-        if (sp.staggered) sp.su = sp.sv * sp.dv / sp.du;
     } else if (std::isfinite(sp.dv) && !std::isfinite(sp.du)) {
         sp.du = rows(sp.dv, sp.sv, sp.su, hi.y - lo.y, hi.x - lo.x, kInfinity);
         if (std::isfinite(sp.du)) sp.flat = 0;

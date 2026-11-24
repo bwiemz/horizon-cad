@@ -724,6 +724,79 @@ private:
     Vec2 b_;
 };
 
+/// A circle in (u, v) run clockwise, as a hole's loop runs, over [0, 2 pi].
+class ClockwiseCircle : public geo::Curve2D {
+public:
+    ClockwiseCircle(const Vec2& centre, double radius) : c_(centre), r_(radius) {}
+    Vec2 evaluate(double t) const override {
+        return {c_.x + r_ * std::cos(t), c_.y - r_ * std::sin(t)};
+    }
+    Vec2 derivative(double t, int order) const override {
+        if (order == 1) return {-r_ * std::sin(t), -r_ * std::cos(t)};
+        return {-r_ * std::cos(t), r_ * std::sin(t)};
+    }
+    double tMin() const override { return 0.0; }
+    double tMax() const override { return math::kTwoPi; }
+    bool isClosed() const override { return true; }
+
+private:
+    Vec2 c_;
+    double r_;
+};
+
+/// The image on a surface of a pcurve, as an edge's curve over the pcurve's range.
+class PcurveImage : public geo::Curve3 {
+public:
+    PcurveImage(std::shared_ptr<const geo::Surface> surface,
+                std::shared_ptr<const geo::Curve2D> pcurve)
+        : s_(std::move(surface)), c_(std::move(pcurve)) {}
+    geo::CurveKind kind() const override { return geo::CurveKind::Nurbs; }
+    Vec3 evaluate(double t) const override {
+        const Vec2 q = c_->evaluate(t);
+        return s_->evaluate(q.x, q.y);
+    }
+    geo::CurveDerivatives derivatives(double t) const override {
+        const Vec2 q = c_->evaluate(t);
+        const Vec2 d = c_->derivative(t, 1);
+        const Vec2 dd = c_->derivative(t, 2);
+        const auto sd = s_->derivatives(q.x, q.y);
+        return {sd.point, sd.du * d.x + sd.dv * d.y,
+                sd.duu * (d.x * d.x) + sd.duv * (2.0 * d.x * d.y) + sd.dvv * (d.y * d.y) +
+                    sd.du * dd.x + sd.dv * dd.y};
+    }
+    geo::Interval range() const override { return {c_->tMin(), c_->tMax()}; }
+    bool periodic() const override { return c_->isClosed(); }
+    double closestParameter(const Vec3& p) const override {
+        const auto dist = [&](double t) { return (evaluate(t) - p).length(); };
+        constexpr int kSteps = 1000;
+        const double t0 = c_->tMin();
+        const double step = (c_->tMax() - t0) / kSteps;
+        double best = t0;
+        for (int i = 1; i <= kSteps; ++i) {
+            if (dist(t0 + step * i) < dist(best)) best = t0 + step * i;
+        }
+        double lo = std::max(t0, best - step);
+        double hi = std::min(c_->tMax(), best + step);
+        for (int i = 0; i < 100; ++i) {
+            const double x1 = hi - 0.618033988749895 * (hi - lo);
+            const double x2 = lo + 0.618033988749895 * (hi - lo);
+            if (dist(x1) <= dist(x2)) {
+                hi = x2;
+            } else {
+                lo = x1;
+            }
+        }
+        return 0.5 * (lo + hi);
+    }
+    std::unique_ptr<geo::Curve3> transformed(const math::Mat4& /*m*/) const override {
+        return nullptr;
+    }
+
+private:
+    std::shared_ptr<const geo::Surface> s_;
+    std::shared_ptr<const geo::Curve2D> c_;
+};
+
 /// z = rise u g(v) over x = L u, y = L v, with g a cubic B-spline bump from 0 at v = 0 up to 1
 /// at v = 1/2 and back to 0 at v = 1. Along u = 0 the surface is the straight line x = 0, z = 0,
 /// but its normal there leans over by atan(rise g / L) and back as v runs across the bump.
@@ -1445,5 +1518,117 @@ TEST(TrimmedFaceMesher, AGridTooFineForDoublesSaysSoPromptly) {
             << tol;
         EXPECT_TRUE(meshes[0].triangles.empty());
         EXPECT_LT(took.count(), 1000.0) << tol;
+    }
+}
+
+namespace {
+
+/// The cone of the review's probes, at @p degrees, its frame tilted.
+std::shared_ptr<geo::Cone> tiltedCone(double degrees) {
+    return std::make_shared<geo::Cone>(geo::Frame::fromAxis({1, 2, 3}, {0.3, -1, 0.4}), 2.0,
+                                       degrees * math::kPi / 180.0);
+}
+
+/// The open face on @p cone inside the (u, v) polygon @p corners, its edges their images.
+std::vector<Side> conePatchSides(const std::shared_ptr<geo::Cone>& cone,
+                                 const std::vector<Vec2>& corners) {
+    std::vector<Side> sides;
+    sides.reserve(corners.size());
+    for (std::size_t i = 0; i < corners.size(); ++i) {
+        const Vec2& a = corners[i];
+        const Vec2& b = corners[(i + 1) % corners.size()];
+        sides.push_back({line(a, b), 0.0, 1.0, std::make_shared<OnSurface>(cone, a, b), 0.0, 1.0});
+    }
+    return sides;
+}
+
+}  // namespace
+
+TEST(TrimmedFaceMesher, ConeFacesThatAreNotBandsMesh) {
+    // Ruling 7's regressions. A cone face whose boundary is not two rims and a seam keeps the
+    // grid of one u step: staggered rows that met a slanted or curved boundary stopped
+    // refinement converging, one point a round along a band, until the round cap.
+    std::vector<std::pair<std::unique_ptr<topo::Solid>, double>> faces;
+    // A rhombus at 45 degrees.
+    faces.emplace_back(
+        makeOpenFace(
+            tiltedCone(45.0),
+            {conePatchSides(tiltedCone(45.0), {{0.2, 0.5}, {2.4, 1.5}, {2.8, 6.5}, {0.6, 5.5}})}),
+        0.005);
+    // A rectangle with a round hole, at 30 degrees.
+    {
+        const auto cone = tiltedCone(30.0);
+        const auto hole = std::make_shared<ClockwiseCircle>(Vec2{1.25, 3.0}, 0.4);
+        faces.emplace_back(
+            makeOpenFace(cone,
+                         {conePatchSides(cone, {{0.0, 0.0}, {2.5, 0.0}, {2.5, 6.0}, {0.0, 6.0}}),
+                          {{hole, 0.0, math::kTwoPi, std::make_shared<PcurveImage>(cone, hole), 0.0,
+                            math::kTwoPi}}}),
+            0.0015);
+    }
+    // A whole turn of the cone with an oblique top, at 45 degrees.
+    faces.emplace_back(
+        makeOpenFace(
+            tiltedCone(45.0),
+            {conePatchSides(tiltedCone(45.0),
+                            {{0.0, 0.0}, {math::kTwoPi, 0.0}, {math::kTwoPi, 6.0}, {0.0, 3.0}})}),
+        0.01);
+    // A rectangle at 20 degrees, 0.001: refinement there moves along a band one cell a round,
+    // and meets the tolerance in round 93 (it took 64 rounds and stopped).
+    faces.emplace_back(
+        makeOpenFace(
+            tiltedCone(20.0),
+            {conePatchSides(tiltedCone(20.0), {{0.0, 0.0}, {2.5, 0.0}, {2.5, 6.0}, {0.0, 6.0}})}),
+        0.001);
+    for (std::size_t i = 0; i < faces.size(); ++i) {
+        const topo::Solid& face = *faces[i].first;
+        MeshOptions options;
+        options.chordTolerance = faces[i].second;
+        const auto meshes = TrimmedFaceMesher::meshSolid(face, options);
+        ASSERT_EQ(meshes.size(), 1u);
+        EXPECT_TRUE(meshes[0].problem.empty()) << "face " << i << ": " << meshes[0].problem;
+        checkMeshes(face, meshes, options, slackFor(topo::exactExtent(face)), false);
+    }
+}
+
+TEST(TrimmedFaceMesher, FlatConesAreNoHeavierThanWithOneStep) {
+    // Frusta at 85 and 88 degrees from radius 10 to 1: their rims are sampled far finer by the
+    // angle than the cone's bending spaces its grid. Staggered rows from the bending's step
+    // added 8 to 16 rows of a few columns: 3192 triangles where one u step took 1210 (85 degrees
+    // at 1e-3), 1868 where it took 212 (88 degrees at 1e-2). From the rims' step they need none
+    // at 1e-2 and few at 1e-3.
+    for (const double degrees : {85.0, 88.0}) {
+        const double slope = std::tan(degrees * math::kPi / 180.0);
+        const double height = 9.0 / slope;
+        for (const bool widening : {true, false}) {
+            const auto frustum = makeFrustum(10.0, 1.0, height, widening);
+            const double size = topo::exactExtent(*frustum);
+            for (const auto& [relative, bound] :
+                 {std::pair<double, std::size_t>{1e-3, 1210}, {1e-2, 212}}) {
+                MeshOptions options;
+                options.chordTolerance = relative * size;
+                const auto meshes = TrimmedFaceMesher::meshSolid(*frustum, options);
+                checkMeshes(*frustum, meshes, options, slackFor(size));
+                std::size_t triangles = 0;
+                for (const FaceMesh& m : meshes) triangles += m.triangles.size();
+                EXPECT_LE(triangles, bound) << degrees << " " << widening << " " << relative;
+            }
+        }
+    }
+}
+
+TEST(TrimmedFaceMesher, ANearlyCylindricalConeMeshesLikeACylinder) {
+    // Radius 5 to 4.99 over 10, at 1e-4 of its size: a cylinder r5 h10 takes 1010 triangles.
+    // Rows staggered from its slight twist took 1348.
+    for (const bool widening : {true, false}) {
+        const auto frustum = makeFrustum(5.0, 4.99, 10.0, widening);
+        const double size = topo::exactExtent(*frustum);
+        MeshOptions options;
+        options.chordTolerance = 1e-4 * size;
+        const auto meshes = TrimmedFaceMesher::meshSolid(*frustum, options);
+        checkMeshes(*frustum, meshes, options, slackFor(size));
+        std::size_t triangles = 0;
+        for (const FaceMesh& m : meshes) triangles += m.triangles.size();
+        EXPECT_LE(triangles, 1050u) << widening;
     }
 }

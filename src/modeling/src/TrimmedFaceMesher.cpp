@@ -31,7 +31,10 @@ using math::Vec3;
 using topo::Face;
 using topo::HalfEdge;
 
-constexpr int kRefineRounds = 64;    // rounds of refinement
+// Rounds of refinement. A front of splits can move one cell a round (each split leaves a stray
+// diagonal in the next cell along a band), and on cone patches the slowest took 131 rounds;
+// rounds that change little are cheap, as triangles found to fit are not measured again.
+constexpr int kRefineRounds = 256;
 constexpr double kKeepAway = 0.5;    // grid points nearer the boundary (in spacings) go
 constexpr int kBoundaryRounds = 32;  // rounds of halving edges that faces ask to have halved
 constexpr std::uint32_t kUnused = std::numeric_limits<std::uint32_t>::max();
@@ -41,6 +44,23 @@ constexpr int kCentroid = 3;  // one that needs its centroid; 0 to 2 name an edg
 std::uint64_t edgeKey(std::uint32_t a, std::uint32_t b) {
     return (static_cast<std::uint64_t>(std::min(a, b)) << 32) | std::max(a, b);
 }
+
+using TriangleKey = std::array<std::uint32_t, 3>;
+
+/// A triangle's vertices from its lowest index on, in the same turn: one key however written.
+TriangleKey canonical(const TriangleKey& t) {
+    const std::size_t k = t[0] < t[1] ? (t[0] < t[2] ? 0 : 2) : (t[1] < t[2] ? 1 : 2);
+    return {t[k], t[(k + 1) % 3], t[(k + 2) % 3]};
+}
+
+struct TriangleHash {
+    std::size_t operator()(const TriangleKey& t) const {
+        std::uint64_t h = t[0];
+        h = h * 0x9E3779B97F4A7C15ULL ^ t[1];
+        h = h * 0x9E3779B97F4A7C15ULL ^ t[2];
+        return static_cast<std::size_t>(h ^ (h >> 29));
+    }
+};
 
 /// The distance from @p p to the triangle abc. Written with cross products: the usual
 /// barycentric form multiplies dot products together, and on a long thin triangle (a sliver
@@ -179,7 +199,7 @@ private:
             const double n = j < sp.rowSteps.size()
                                  ? std::clamp(std::ceil((hi.x - lo.x) / sp.rowSteps[j]), 1.0, nu)
                                  : nu;
-            const bool shifted = sp.staggered && j % 2 == 1;
+            const bool shifted = sp.staggered && (j % 2 == 1) != sp.shiftFirst;
             rows.push_back({(hi.x - lo.x) / n, shifted ? 0.5 : 1.0,
                             static_cast<std::size_t>(shifted ? n : n - 1.0)});
             points += static_cast<double>(rows.back().count);
@@ -316,6 +336,10 @@ private:
         }
         std::vector<Vec2> uv(uvs);
         std::vector<Vec3> xyz(xyzs);
+        // Triangles found to fit. A triangle's verdict depends on its vertices alone (they fix
+        // which of its edges are boundary segments), so one that refinement leaves in place is
+        // not measured again; the points each round adds are the same.
+        std::unordered_set<TriangleKey, TriangleHash> fits;
         std::size_t kept = 0;
         for (int round = 0;; ++round) {
             if (t.triangles.size() > opt_.maxTrianglesPerFace) {
@@ -333,6 +357,8 @@ private:
             std::vector<Vec2> added;
             std::unordered_set<std::uint64_t> split;
             for (const auto& tri : t.triangles) {
+                const TriangleKey key = canonical(tri);
+                if (fits.count(key) != 0) continue;
                 const std::array<Vec2, 3> tuv = {uv[tri[0]], uv[tri[1]], uv[tri[2]]};
                 const std::array<Vec3, 3> txyz = {xyz[tri[0]], xyz[tri[1]], xyz[tri[2]]};
                 std::array<bool, 3> onBoundary{};
@@ -340,7 +366,9 @@ private:
                     onBoundary[k] = walls.count(edgeKey(tri[k], tri[(k + 1) % 3])) != 0;
                 }
                 const int m = misfit(s, tuv, txyz, onBoundary);
-                if (m == kCentroid) {
+                if (m == kFits) {
+                    fits.insert(key);
+                } else if (m == kCentroid) {
                     added.push_back((t.points[tri[0]] + t.points[tri[1]] + t.points[tri[2]]) / 3.0);
                 } else if (m != kFits) {
                     const std::uint32_t a = tri[static_cast<std::size_t>(m)];

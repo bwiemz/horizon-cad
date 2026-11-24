@@ -58,9 +58,12 @@ struct Spacing {
     /// A torus's grid: each interior row's own u step (EdgeSampler::rowStep), bottom row first.
     /// Empty for a grid of one u step.
     std::vector<double> rowSteps;
-    /// A cone's grid: rows dv apart from half a row in at each end, every other one half a step
-    /// along u. Its straight edges along v are sampled at multiples of dv, between the rows.
+    /// A cone's full-period band whose rows would stray (Ruling 7): rows dv apart from half a row
+    /// in at each end, every other one half a step along u. Its straight edges along v are
+    /// sampled at multiples of dv, between the rows.
     bool staggered = false;
+    /// Which staggered rows are shifted: the odd ones, or with shiftFirst the even ones.
+    bool shiftFirst = false;
 };
 
 /// A face's grid, planned before its edges are sampled so that straight edges along a surface
@@ -127,7 +130,8 @@ private:
     bool turns(const geo::Surface& s, const Vec2& a, const Vec2& c, const Vec2& b) const;
     void sampleEdge(const Edge& e, EdgeSamples& es);
     void suitEdge(const Edge& e, EdgeSamples& es);
-    Spacing spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2& hi) const;
+    Spacing spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2& hi, bool band) const;
+    double uLineStep(const geo::Surface& s, const Vec2& lo, const Vec2& hi, double v) const;
 
     const topo::Solid& solid_;
     const MeshOptions& opt_;
