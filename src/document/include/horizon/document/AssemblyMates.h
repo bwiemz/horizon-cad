@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -79,6 +80,11 @@ public:
     /// Start the next solve from @p transforms (by component id): where the
     /// last one left them, so a drag moves on from there.
     void place(const std::map<uint64_t, math::Mat4>& transforms);
+
+    /// Drive mate @p index (its place among the assembly's mates, which
+    /// gather() keeps in order) to @p value: held at it, its limits set
+    /// aside, as a motion study's driver is.
+    void drive(std::size_t index, double value);
 
     const std::vector<model::SolverComponent>& components() const { return m_components; }
     const std::vector<model::SolverMate>& mates() const { return m_mates; }
