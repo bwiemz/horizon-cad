@@ -20,6 +20,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QPushButton>
+#include <QSlider>
 #include <QStatusBar>
 #include <QTabBar>
 #include <QTableWidget>
@@ -51,6 +52,7 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/MotionPlayer.h"
 #include "horizon/ui/ViewportWidget.h"
 
 using hz::math::Vec3;
@@ -1472,4 +1474,127 @@ TEST(AssembliesTest, AMirroredComponentIsItsPartMirrored) {
 
     trigger(w, "action_undo");
     EXPECT_EQ(assembly.components().size(), 1u);
+}
+
+// Motion studies: a Distance mate driven through a range, the assembly's
+// mates solved at each step, played in a window beside the main one.
+namespace {
+
+/// Two 10 mm blocks, the second's bottom @p gap above the first's top by a
+/// Distance mate: its id, and theirs.
+struct Slide {
+    uint64_t mate = 0;
+    uint64_t base = 0;
+    uint64_t lid = 0;
+};
+Slide makeSlide(MainWindow& w, hz::doc::AssemblyDocument& assembly, const QString& block,
+                const std::string& top, double gap) {
+    insert(w, block);
+    insert(w, block);
+    Slide slide;
+    slide.base = assembly.components()[0].id;
+    slide.lid = assembly.components()[1].id;
+    hz::doc::Mate held;
+    held.type = hz::doc::MateType::Distance;
+    held.a = {slide.base, hz::topo::TopologyID::fromTag(top)};
+    held.b = {slide.lid, hz::topo::TopologyID::fromTag(top.substr(0, top.size() - 3) + "bottom")};
+    held.value = gap;
+    slide.mate = assembly.addMate(held);
+    return slide;
+}
+
+/// Study the slide from @p from to @p to in @p steps; the player once it
+/// shows (null if it did not).
+hz::ui::MotionPlayer* study(MainWindow& w, double from, double to, int steps) {
+    FormFiller range(QStringLiteral("Motion Study Range"),
+                     FormAnswers()
+                         .number(QStringLiteral("from"), from)
+                         .number(QStringLiteral("to"), to)
+                         .number(QStringLiteral("steps"), steps));
+    trigger(w, "action_motion_study");
+    EXPECT_TRUE(range.seen());
+    waitUntil([&w] { return w.findChild<hz::ui::MotionPlayer*>() != nullptr; }, 20000);
+    return w.findChild<hz::ui::MotionPlayer*>();
+}
+
+double posedHeight(const hz::doc::AssemblyDocument& assembly, uint64_t id) {
+    return assembly.displayTransform(*assembly.component(id)).transformPoint(Vec3()).z;
+}
+
+}  // namespace
+
+TEST(AssembliesTest, AMotionStudyPlaysASlideAndKeepsAPosition) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    const Slide slide = makeSlide(w, assembly, block, top, 5.0);
+    const Vec3 placed = translationOf(*assembly.component(slide.lid));
+    const std::size_t steps = assembly.mates().size();
+
+    hz::ui::MotionPlayer* player = study(w, 5.0, 25.0, 4);
+    ASSERT_NE(player, nullptr) << w.statusBar()->currentMessage().toStdString();
+    ASSERT_EQ(player->motion().frames.size(), 5u);
+    EXPECT_TRUE(player->motion().complete);
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("no parts clash")))
+        << w.statusBar()->currentMessage().toStdString();
+    // Shown, not placed: the first position drawn, the lid where it was.
+    EXPECT_NEAR(posedHeight(assembly, slide.lid), 15.0, 1e-6);
+    auto* slider = player->findChild<QSlider*>(QStringLiteral("motion_position"));
+    ASSERT_NE(slider, nullptr);
+    slider->setValue(4);
+    EXPECT_NEAR(posedHeight(assembly, slide.lid), 35.0, 1e-6);
+    EXPECT_NEAR((translationOf(*assembly.component(slide.lid)) - placed).length(), 0.0, 1e-9)
+        << "a study moves nothing";
+    EXPECT_EQ(assembly.mates().size(), steps);
+
+    // Kept: placed there, the mate holding it there, as one undo step.
+    player->findChild<QPushButton*>(QStringLiteral("motion_keep"))->click();
+    EXPECT_TRUE(assembly.pose().empty());
+    EXPECT_NEAR(translationOf(*assembly.component(slide.lid)).z, 35.0, 1e-6);
+    EXPECT_DOUBLE_EQ(assembly.mate(slide.mate)->value, 25.0);
+    trigger(w, "action_undo");
+    EXPECT_NEAR((translationOf(*assembly.component(slide.lid)) - placed).length(), 0.0, 1e-9);
+    EXPECT_DOUBLE_EQ(assembly.mate(slide.mate)->value, 5.0);
+}
+
+TEST(AssembliesTest, AMotionStudyEndsWithAnEditOrAnotherTab) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    const Slide slide = makeSlide(w, assembly, block, top, 5.0);
+
+    ASSERT_NE(study(w, 5.0, 15.0, 2), nullptr);
+    EXPECT_FALSE(assembly.pose().empty());
+    // Its positions are of the assembly as it was: an edit ends it.
+    chooseInTree(w, slide.lid);
+    {
+        FormFiller move(QStringLiteral("Move Component"), FormAnswers().number("dx", 1));
+        trigger(w, "action_move_component");
+        EXPECT_TRUE(move.seen());
+    }
+    EXPECT_TRUE(waitUntil([&w] { return w.findChild<hz::ui::MotionPlayer*>() == nullptr; }, 5000));
+    EXPECT_TRUE(assembly.pose().empty());
+
+    // So does another tab.
+    ASSERT_NE(study(w, 5.0, 15.0, 2), nullptr);
+    trigger(w, "action_new");
+    EXPECT_TRUE(waitUntil([&w] { return w.findChild<hz::ui::MotionPlayer*>() == nullptr; }, 5000));
+    EXPECT_TRUE(assembly.pose().empty());
+}
+
+TEST(AssembliesTest, AMotionStudyNeedsAMateThatDrives) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    stackTwo(w, assembly, block, top);
+    trigger(w, "action_motion_study");
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("Distance or Angle mate")))
+        << w.statusBar()->currentMessage().toStdString();
+    EXPECT_EQ(w.findChild<hz::ui::MotionPlayer*>(), nullptr);
 }
