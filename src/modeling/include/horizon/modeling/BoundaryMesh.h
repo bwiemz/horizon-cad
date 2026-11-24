@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "horizon/math/Vec3.h"
@@ -15,6 +16,7 @@ struct Wire;
 
 namespace hz::geo {
 class NurbsSurface;
+class Surface;
 }  // namespace hz::geo
 
 namespace hz::model {
@@ -33,6 +35,9 @@ struct BoundaryPolygon {
     std::shared_ptr<geo::NurbsSurface> surface;  ///< Source face surface (may be null).
     /// Source face's ideal surface (topo::Face::analyticSurface; may be null).
     std::shared_ptr<geo::NurbsSurface> analyticSurface;
+    /// Source face's exact surface (topo::Face::exactSurface), set on the triangles an exact
+    /// face reads as; null for every other polygon.
+    std::shared_ptr<const geo::Surface> exactSurface;
 };
 
 /// Faithful boundary evaluation of a B-Rep solid from its face loops.
@@ -49,7 +54,25 @@ public:
     /// oriented so it encloses positive volume (outward normals); a solid
     /// whose loops are consistently wound inward is flipped globally.
     /// Faces with fewer than 3 loop vertices are skipped.
+    ///
+    /// A face with an exact surface (topo::Face::exactSurface) is meshed by
+    /// TrimmedFaceMesher and read as one polygon per triangle, each with its face's topoId
+    /// and exactSurface and wound outward (a mesh is never inverted, whatever the solid's
+    /// loops do); a face without one is read from its loop as above. Faces keep the solid's
+    /// order, an exact face's triangles standing where the face stands. This overload meshes
+    /// at a chord tolerance of 1e-4 times the diagonal of the box around the solid's vertices and
+    /// points along its exact edges, and throws std::runtime_error if an exact face cannot be
+    /// meshed (never a silent hole).
     static std::vector<BoundaryPolygon> extractFacePolygons(const topo::Solid& solid);
+
+    /// As above, at the given chord tolerance (absolute: scale it with the part). A face that
+    /// cannot be meshed is never a silent hole. With @p problem given, it is set to the first
+    /// such face's topoId tag and the mesher's reason ("<tag>: <reason>"; empty when every
+    /// exact face meshed) and the faces that could be read still are, the failed face
+    /// contributing nothing. With @p problem null, std::runtime_error is thrown with that text.
+    static std::vector<BoundaryPolygon> extractFacePolygons(const topo::Solid& solid,
+                                                            double chordTolerance,
+                                                            std::string* problem = nullptr);
 
     /// Triangulate a planar (or near-planar) polygon by ear clipping in its
     /// dominant plane, preserving winding.  Handles non-convex polygons.
