@@ -244,6 +244,52 @@ TEST(ExactValidator, ALoopWiderThanAPeriodIsRangeTooLong) {
   - `test_StepCurved`'s faceted-bridge tests (`AnImportedBodyIsBuiltInFacets` and others) still pass. They test the faceted copy, which this task does not change.
 - [ ] **Step 5: Commit:** `feat(fileio): STEP solids come in with exact faces, or are left out with why`.
 
+**Amended during execution (the controller's rulings 8–14; the ledger has the reasons):**
+- *Plan defect.* The gate leaves a solid out before the faceted bridge is reached. The tests the gate turns red until Tasks 6, 8 and 11 land are listed in the SDD workspace's `known-red.md`, with their causes. No later task may add a failure outside that list. Task 12 requires it empty.
+- *Tolerance.*
+  - The file's UNCERTAINTY, else the resolution, is the base tolerance.
+  - Edge and vertex tolerances grow to cover the measured gaps, up to 1e-3 × the solid's extent.
+  - Past that limit, the solid is left out with why.
+- *Old native files.* An embedded STEP body whose exact form fails opens as on master, and the load report says so.
+- *Face sense.* It comes from the outer loop's unwrapped area where that is decisive, and otherwise from `!same_sense`. Horizon's own writer wrote `.T.` whatever the facing.
+
+---
+
+### Task 5b: Pcurves fast enough to import
+
+*(Added by the controller's Ruling 16.)*
+
+After Task 5, the general-path pcurve dominates import time:
+- IronCAD imports 10× slower than on master, Shapr3D 3.1× and irnas 2.3×.
+- Reading back Horizon's own all-B-spline STEP takes minutes: 232 s for the Inventor hinge's export. That is also how part files with an imported body open, because their embedded STEP is all-B-spline.
+- Two corpus tests time out.
+
+This is the spec's anti-goal "unbounded slowdowns".
+
+**Files:**
+- Modify `src/geometry/src/Pcurve.cpp`, and `src/geometry/src/surfaces/NurbsSurface.cpp` if projection is the cost.
+- Modify `StepFormat.cpp` only where the reader repeats work.
+- Test: `tests/geometry/test_Pcurve.cpp`, plus a timing harness in the scratch directory (not a ctest).
+
+**Budget** (Debug, the same build and machine, master `54f72335` against this branch):
+1. Each corpus file's `hz_step_acceptance` `readMs` is ≤ 2× master's.
+2. Reading back today's writer's STEP of each corpus part is ≤ 2× master's read of the same text. This is the "sent out and read back" step, and what opening an old part file costs.
+3. The full ctest has no test over 60 s.
+
+Where the budget cannot be met, the report says which file, by how much, and where the time goes, and the controller rules on it.
+
+**Requirements:**
+- Every Task 4 test still passes, with the same accuracy.
+- The reported deviation is still ≥ the true one.
+- No pcurve that met its tolerance before now fails.
+
+**Steps:**
+- [ ] **Step 1:** Profile the slow cases: the Inventor export read-back, IronCAD, and Shapr3D. Record where the time goes.
+- [ ] **Step 2:** Write a failing test for each speed-up that changes behaviour. For example, a closed form for an iso-curve of a B-spline surface, or a straight edge on a parallelogram patch, must come back as a Line2D.
+- [ ] **Step 3:** Implement. The review of Task 4 suggested driving refinement with the cheap measure and confirming with the strict measure only on the final fit.
+- [ ] **Step 4:** Re-measure the budget. Run the full ctest, every failure of which must be in `known-red.md`.
+- [ ] **Step 5: Commit:** `perf(geometry): pcurves on B-spline faces cost what an import can afford`.
+
 ---
 
 ### Task 6: Seams where a periodic face has none
@@ -277,6 +323,8 @@ TEST(ExactValidator, ALoopWiderThanAPeriodIsRangeTooLong) {
 - [ ] **Step 2: Run them, expect failure.**
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run them; run the full ctest; re-run `hz_step_acceptance` and update the report's count.**
+  - Cause A clears from `known-red.md`.
+  - `ARimAMicrometreOffItsSurfaceStillBoundsIt`'s far half, a rim 0.01 off, is beyond the 1e-3 × extent limit even when seamed. Re-baseline it to be left out with its reason, and name it in the commit.
 - [ ] **Step 5: Commit:** `feat(modeling): a periodic face with no seam is given one`.
 
 ---
@@ -315,6 +363,34 @@ TEST(ExactValidator, ALoopWiderThanAPeriodIsRangeTooLong) {
 
 ---
 
+### Task 7b: The read point meshes faces that reach a pole or an apex
+
+*(Added by the controller's Ruling 15.)*
+
+After Task 5, cones with an apex (drill points), full spheres and sphere caps validate clean, but `TrimmedFaceMesher` cannot mesh them. It reports "halving the face's boundary did not meet the angle" after 32 rounds, about 2 s per face. Task 9 would then drop the whole exact counterpart of any part with a drill point.
+
+**Files:**
+- Modify `src/modeling/src/TrimmedFaceMesher.cpp` and its header.
+- Test: `tests/modeling/test_TrimmedFaceMesher.cpp`.
+
+**Requirements:**
+- A face whose unwrapped loop runs along a pole or an apex (a stretch of constant v where the surface collapses to a point) is meshed with that point as one vertex, fanned to its neighbours.
+- The mesh is watertight across the face's other edges, as every read-point mesh is.
+- Anything the mesher still cannot mesh fails in under 50 ms, with its reason.
+
+**Steps:**
+- [ ] **Step 1: Write the failing tests.**
+  - `TrimmedFaceMesher.AConeWithItsApexMeshes`: a full cone and a drill point read from STEP. The mesh is watertight, its volume converges to πr²h/3, and it is meshed in under 50 ms.
+  - `TrimmedFaceMesher.AWholeSphereMeshes`: an OpenCASCADE-style ball with one seam from pole to pole.
+  - `TrimmedFaceMesher.ASphereCapMeshes`.
+  - `TrimmedFaceMesher.WhatItCannotMeshFailsFast`.
+- [ ] **Step 2: Run them, expect failure.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run them, then the full ctest. Every failure must be in `known-red.md`.**
+- [ ] **Step 5: Commit:** `feat(modeling): the read point meshes faces that come to a point`.
+
+---
+
 ### Task 8: The STEP writer writes exact faces
 
 **Files:** Modify `src/fileio/src/StepFormat.cpp` (`writeSolid` ~873, `writeSurface` ~258, `writeCurve` ~235). Test: `tests/fileio/test_StepExact.cpp`, `tests/fileio/test_PartFormat.cpp`.
@@ -326,7 +402,9 @@ TEST(ExactValidator, ALoopWiderThanAPeriodIsRangeTooLong) {
 - Produces, for an edge with `exactCurve`:
   - LINE (VECTOR magnitude = the line's scale), CIRCLE, ELLIPSE or B_SPLINE_CURVE_WITH_KNOTS;
   - EDGE_CURVE `same_sense` from whether curveStart < curveEnd runs with the edge.
-- Faces without exact geometry go through today's paths unchanged. No PCURVE is written.
+- Faces without exact geometry go through today's paths unchanged, with one exception (Ruling 13). A planar face without exact geometry is written as a PLANE from its plane, not as a bilinear B-spline patch sized to its facet polygon: that patch cannot contain its own true-circle rims, so Horizon's export could never be read back exact. This clears cause C from `known-red.md`.
+- No PCURVE is written.
+- `same_sense` is written truthfully: `!reversed` for exact faces, and, for faceted faces, whether the written surface's normal agrees with the face's loops.
 - `ImportedBodyFeature`'s embedded STEP text, in NativeFormat, therefore keeps it exact.
 
 - [ ] **Step 1: Write the failing tests.**
@@ -420,14 +498,14 @@ TEST(ExactValidator, ALoopWiderThanAPeriodIsRangeTooLong) {
 
 - [ ] **Step 1:** Run the acceptance tool and the oracle locally if `cadquery-ocp` installs, otherwise in CI on a draft PR. Write every file's exact failures into the manifest, with the reasons the tool prints.
 - [ ] **Step 2:** Add the checks. Re-baseline any test that asserted a faceted import result the exact path changed, and name each in the commit.
-- [ ] **Step 3:** Run the full ctest and `hz_interop_tests`; expect PASS.
+- [ ] **Step 3:** Run the full ctest and `hz_interop_tests`; expect PASS. Cause H clears from `known-red.md`.
 - [ ] **Step 4: Commit:** `test(interop): the corpus checks exact imports against OpenCASCADE; the regression list`.
 
 ---
 
 ### Task 12: Stage gate
 
-- [ ] **Step 1:** Full suite: `QT_QPA_PLATFORM=offscreen ctest --test-dir build/linux-system-qt -j"$(nproc)"`. Expect "100% tests passed".
+- [ ] **Step 1:** Full suite: `QT_QPA_PLATFORM=offscreen ctest --test-dir build/linux-system-qt -j"$(nproc)"`. Expect "100% tests passed". `known-red.md` is empty.
 - [ ] **Step 2:** Format: `find src tests -name '*.h' -o -name '*.cpp' | xargs ~/.local/bin/clang-format-15 --dry-run --Werror`. Expect no output.
 - [ ] **Step 3:** The CI-equivalent clang-tidy gate on every changed `src/*.cpp`. Use a compile database stripped of `-mno-direct-extern-access` and checks `-*,bugprone-*,performance-*`. Only checks that clang-tidy-15 has and that are not in ci.yml's backlog count. Read file lists with `while read`, since the shell is zsh. Expect no gated findings.
 - [ ] **Step 4:** Docs.
