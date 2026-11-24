@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -62,8 +64,19 @@ std::vector<double> pcurveParameters(const HalfEdge& h, const geo::Surface& s,
     const double s1 = h.pcurveEnd;
     std::vector<double> out(pts.size(), h.pcurveStart);
     out.back() = s1;
-    const double step = (s1 - h.pcurveStart) / (kMarchSteps * static_cast<double>(pts.size() - 1));
-    if (step == 0.0) return out;
+    const double span = s1 - h.pcurveStart;
+    if (span == 0.0) return out;
+    // The march visits start + span * (k / total) for whole k, not a running sum: a step under
+    // half an ulp of a far-offset parameter (1e16 and a few segments) would add nothing. Nor
+    // is a step worth less than a few ulps (the grid would repeat one parameter for many k), so
+    // total stops where steps do.
+    const double ulps = 4.0 * std::numeric_limits<double>::epsilon() *
+                        std::max(std::fabs(h.pcurveStart), std::fabs(s1));
+    const double total = std::clamp(kMarchSteps * static_cast<double>(pts.size() - 1), 1.0,
+                                    std::max(1.0, std::floor(std::fabs(span) / ulps)));
+    const auto gridAt = [&](double k) {
+        return k >= total ? s1 : h.pcurveStart + span * (k / total);
+    };
     for (std::size_t j = 1; j + 1 < pts.size(); ++j) {
         const auto dist = [&](double x) {
             const Vec2 q = c.evaluate(x);
@@ -75,8 +88,15 @@ std::vector<double> pcurveParameters(const HalfEdge& h, const geo::Surface& s,
         double best = before;
         double nearest = dist(best);
         double after = s1;
-        while (best != s1) {
-            const double next = (s1 - best) / step <= 1.0 ? s1 : best + step;
+        // On from the first grid point more than half a step past where the last one was found
+        // (nearer, a rounding of the distance could end the march before it began).
+        double first =
+            std::clamp(std::floor((before - h.pcurveStart) / span * total), 0.0, total) + 1.0;
+        if (std::fabs(gridAt(first) - before) < 0.5 * std::fabs(span) / total) first += 1.0;
+        const auto steps = static_cast<std::int64_t>(total - first);
+        for (std::int64_t i = 0; i <= steps; ++i) {
+            const double k = first + static_cast<double>(i);
+            const double next = gridAt(k);
             const double d = dist(next);
             if (d > nearest) {
                 after = next;

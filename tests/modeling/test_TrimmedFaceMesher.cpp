@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -10,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -462,6 +464,51 @@ std::unique_ptr<topo::Solid> makeWarpedBand(const geo::Frame& frame, double r, d
     return makeOpenFace(std::make_shared<geo::Cylinder>(frame, r), {sides});
 }
 
+/// From a to b as t runs over [offset, offset + length]: a pcurve whose parameter range sits far
+/// from zero, as an imported edge's may.
+class Offset : public geo::Curve2D {
+public:
+    Offset(const Vec2& a, const Vec2& b, double offset, double length)
+        : a_(a), b_(b), offset_(offset), length_(length) {}
+    Vec2 evaluate(double t) const override { return a_ + (b_ - a_) * ((t - offset_) / length_); }
+    Vec2 derivative(double t, int order) const override {
+        (void)t;
+        return order == 1 ? (b_ - a_) / length_ : Vec2{};
+    }
+    double tMin() const override { return offset_; }
+    double tMax() const override { return offset_ + length_; }
+    bool isClosed() const override { return false; }
+
+private:
+    Vec2 a_;
+    Vec2 b_;
+    double offset_;
+    double length_;
+};
+
+/// Three quarters of a cylinder like makeWarpedBand's, each side's pcurve running over
+/// [offset, offset + 32].
+std::unique_ptr<topo::Solid> makeOffsetBand(const geo::Frame& frame, double r, double h,
+                                            double offset) {
+    const double end = 1.5 * math::kPi;
+    const std::array<Vec2, 4> corner = {{{0, 0}, {end, 0}, {end, h}, {0, h}}};
+    std::vector<Side> sides;
+    for (std::size_t i = 0; i < 4; ++i) {
+        const Vec2& a = corner[i];
+        const Vec2& b = corner[(i + 1) % 4];
+        Side side{std::make_shared<Offset>(a, b, offset, 32.0), offset, offset + 32.0};
+        if (a.y == b.y) {  // an arc about the axis at this height
+            geo::Frame at = frame;
+            at.origin = frame.origin + frame.z * a.y;
+            side.curve = std::make_shared<geo::CircleCurve>(at, r);
+            side.curveStart = a.x;
+            side.curveEnd = b.x;
+        }
+        sides.push_back(side);
+    }
+    return makeOpenFace(std::make_shared<geo::Cylinder>(frame, r), {sides});
+}
+
 /// A cubic B-spline over [0, 1] that is zero but for one basis function, on @p knots: the five
 /// knots it spans, between 0 and 1 (clamped at both ends).
 std::vector<double> clusteredKnots(const std::array<double, 5>& inner) {
@@ -812,6 +859,43 @@ TEST(TrimmedFaceMesher, PcurvesThatDoNotShareTheirEdgesParametersStillMesh) {
             EXPECT_NEAR(s.area.at("open/face"), area, 2e-3 * area) << power << " " << tol;
         }
     }
+}
+
+TEST(TrimmedFaceMesher, PcurveRangesFarFromZeroStillMesh) {
+    // A step of the pcurve search under half an ulp of the parameter (at 1e14 and a range of
+    // 32, 0.008 against 0.016) once added nothing to it, and the search never ended. Where the
+    // parameter has too few values left to follow the edge (1e16: 16 of them), the mesher may
+    // say so, but it must return. A watchdog ends the process if it does not.
+    std::atomic<bool> done{false};
+    std::thread watchdog([&done] {
+        for (int i = 0; i < 600 && !done; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (!done) {
+            std::fputs("the mesher did not return within 60 s\n", stderr);
+            std::_Exit(3);
+        }
+    });
+    const geo::Frame frame = geo::Frame::fromAxis({1, 2, 3}, {0.3, 1, 0.2});
+    const double expected = 1.5 * math::kPi * 5.0 * 10.0;
+    for (const double offset : {1e14, -1e14, 1e16}) {
+        const auto band = makeOffsetBand(frame, 5.0, 10.0, offset);
+        MeshOptions options;
+        options.chordTolerance = 0.01;
+        const auto meshes = meshValid(*band, options, 30.0);
+        EXPECT_EQ(meshes.size(), 1u) << offset;
+        if (meshes.size() != 1) continue;
+        if (std::fabs(offset) < 1e15) EXPECT_TRUE(meshes[0].problem.empty()) << meshes[0].problem;
+        if (!meshes[0].problem.empty()) continue;
+        double area = 0.0;
+        for (const auto& t : meshes[0].triangles) {
+            const Vec3& a = meshes[0].points[t[0]];
+            area += 0.5 * (meshes[0].points[t[1]] - a).cross(meshes[0].points[t[2]] - a).length();
+        }
+        EXPECT_NEAR(area, expected, 0.02 * expected) << offset;
+    }
+    done = true;
+    watchdog.join();
 }
 
 TEST(TrimmedFaceMesher, NeighbouringTrianglesTurnByNoMoreThanTheAngle) {
