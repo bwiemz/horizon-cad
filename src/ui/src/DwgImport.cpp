@@ -41,13 +41,13 @@ constexpr qint64 kMessagesTail = 64 * 1024;
 
 /// LibreDWG's error bits (Dwg_Error in its dwg.h) that end a reading, as
 /// dwg2dxf reports them: "READ ERROR 0x800".
-constexpr unsigned kClassesNotFound = 1U << 7;
-constexpr unsigned kSectionNotFound = 1U << 8;
-constexpr unsigned kPageNotFound = 1U << 9;
-constexpr unsigned kInternalError = 1U << 10;
-constexpr unsigned kInvalidDwg = 1U << 11;
-constexpr unsigned kIoError = 1U << 12;
-constexpr unsigned kOutOfMemory = 1U << 13;
+constexpr unsigned kClassesNotFound = 1U << 7U;
+constexpr unsigned kSectionNotFound = 1U << 8U;
+constexpr unsigned kPageNotFound = 1U << 9U;
+constexpr unsigned kInternalError = 1U << 10U;
+constexpr unsigned kInvalidDwg = 1U << 11U;
+constexpr unsigned kIoError = 1U << 12U;
+constexpr unsigned kOutOfMemory = 1U << 13U;
 
 std::mutex& converterMutex() {
     static std::mutex mutex;
