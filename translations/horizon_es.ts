@@ -2329,7 +2329,7 @@ Los detalles están en el registro:
 <context>
     <name>hz::ui::DwgImport</name>
     <message>
-        <location filename="../src/ui/src/DwgImport.cpp" line="+68"/>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+72"/>
         <source>there was not memory enough to read it</source>
         <translation type="unfinished">no había memoria suficiente para leerlo</translation>
     </message>
@@ -2379,7 +2379,7 @@ Los detalles están en el registro:
         <translation type="unfinished">no se pudo leer el archivo (compruebe sus permisos)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+19"/>
         <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
         <translation type="unfinished">no se pudo iniciar dwg2dxf de LibreDWG (%1): %2</translation>
     </message>
@@ -2402,7 +2402,7 @@ Los detalles están en el registro:
         <translation type="unfinished">LibreDWG se detuvo al leerlo: el archivo puede estar dañado o contener algo que LibreDWG todavía no sabe leer</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+16"/>
         <source>LibreDWG read it, but wrote nothing of it</source>
         <translation type="unfinished">LibreDWG lo leyó, pero no escribió nada de él</translation>
     </message>
@@ -2415,7 +2415,7 @@ Los detalles están en el registro:
 <context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+107"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">Unidad de longitud no indicada</translation>
     </message>
@@ -2462,22 +2462,25 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+12"/>
+        <location line="+155"/>
         <source>Importing %1...</source>
         <translation type="unfinished">Importando %1...</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="-142"/>
         <location line="+15"/>
+        <location line="+136"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-14"/>
+        <location line="-150"/>
+        <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">Importación cancelada</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="-136"/>
         <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
         <translation type="unfinished">&quot;%1&quot; no se importó: no se indicó en qué unidad están sus longitudes</translation>
     </message>
@@ -2485,12 +2488,12 @@ Los detalles están en el registro:
         <location line="+16"/>
         <location line="+25"/>
         <location line="+6"/>
-        <location line="+43"/>
+        <location line="+107"/>
         <source>Could not import</source>
         <translation type="unfinished">No se pudo importar</translation>
     </message>
     <message numerus="yes">
-        <location line="-54"/>
+        <location line="-118"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>Se importó %n sólido.</numerusform>
@@ -2545,8 +2548,18 @@ Los detalles están en el registro:
         <source>DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">Archivos DWG (*.dwg);;Todos los archivos (*)</translation>
     </message>
+    <message>
+        <location line="+34"/>
+        <source>An import is already running</source>
+        <translation type="unfinished">Ya hay una importación en curso</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>%1 was read, but the drawing it was for has been closed</source>
+        <translation type="unfinished">Se leyó %1, pero el dibujo al que iba destinado se ha cerrado</translation>
+    </message>
     <message numerus="yes">
-        <location line="+39"/>
+        <location line="+40"/>
         <source>Imported %n entities.</source>
         <translation type="unfinished">
             <numerusform>Se importó %n entidad.</numerusform>
@@ -2560,13 +2573,19 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+236"/>
+        <location line="+5"/>
+        <location line="+240"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">Exportar %1</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-283"/>
+        <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
+        <translation type="unfinished">Horizon CAD no escribe archivos DWG: dé al archivo un nombre que termine en %1.</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>

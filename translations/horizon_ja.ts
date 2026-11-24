@@ -2317,7 +2317,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DwgImport</name>
     <message>
-        <location filename="../src/ui/src/DwgImport.cpp" line="+68"/>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+72"/>
         <source>there was not memory enough to read it</source>
         <translation type="unfinished">読み込むためのメモリが足りませんでした</translation>
     </message>
@@ -2367,7 +2367,7 @@ Details are in the log:
         <translation type="unfinished">ファイルを読み込めませんでした (アクセス許可を確認してください)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+19"/>
         <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
         <translation type="unfinished">LibreDWG の dwg2dxf (%1) を起動できませんでした: %2</translation>
     </message>
@@ -2389,7 +2389,7 @@ Details are in the log:
         <translation type="unfinished">LibreDWG が読み込み中に停止しました。ファイルが破損しているか、LibreDWG がまだ読み込めない内容が含まれている可能性があります</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+16"/>
         <source>LibreDWG read it, but wrote nothing of it</source>
         <translation type="unfinished">LibreDWG は読み込みましたが、何も出力しませんでした</translation>
     </message>
@@ -2402,7 +2402,7 @@ Details are in the log:
 <context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+107"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">長さの単位が指定されていません</translation>
     </message>
@@ -2449,22 +2449,25 @@ Details are in the log:
     </message>
     <message>
         <location line="+12"/>
+        <location line="+155"/>
         <source>Importing %1...</source>
         <translation type="unfinished">%1 をインポートしています...</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="-142"/>
         <location line="+15"/>
+        <location line="+136"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-14"/>
+        <location line="-150"/>
+        <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">インポートをキャンセルしました</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="-136"/>
         <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
         <translation type="unfinished">&quot;%1&quot; はインポートされませんでした: 長さの単位が指定されませんでした</translation>
     </message>
@@ -2472,12 +2475,12 @@ Details are in the log:
         <location line="+16"/>
         <location line="+25"/>
         <location line="+6"/>
-        <location line="+43"/>
+        <location line="+107"/>
         <source>Could not import</source>
         <translation type="unfinished">インポートできませんでした</translation>
     </message>
     <message numerus="yes">
-        <location line="-54"/>
+        <location line="-118"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>%n 個のボディをインポートしました。</numerusform>
@@ -2529,8 +2532,18 @@ Details are in the log:
         <source>DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">DWG ファイル (*.dwg);;すべてのファイル (*)</translation>
     </message>
+    <message>
+        <location line="+34"/>
+        <source>An import is already running</source>
+        <translation type="unfinished">インポートはすでに実行中です</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>%1 was read, but the drawing it was for has been closed</source>
+        <translation type="unfinished">%1 を読み込みましたが、インポート先の図面は閉じられています</translation>
+    </message>
     <message numerus="yes">
-        <location line="+39"/>
+        <location line="+40"/>
         <source>Imported %n entities.</source>
         <translation type="unfinished">
             <numerusform>%n 個のエンティティをインポートしました。</numerusform>
@@ -2543,13 +2556,19 @@ Details are in the log:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+236"/>
+        <location line="+5"/>
+        <location line="+240"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">%1 のエクスポート</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-283"/>
+        <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
+        <translation type="unfinished">Horizon CAD は DWG ファイルを書き出しません。%1 で終わる名前を付けてください。</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>

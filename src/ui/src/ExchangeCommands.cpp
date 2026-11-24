@@ -47,6 +47,7 @@ ExchangeCommands::~ExchangeCommands() = default;
 
 void ExchangeCommands::cancelWork() {
     if (m_importTask) m_importTask->cancel();
+    if (m_drawingTask) m_drawingTask->cancel();
 }
 
 std::optional<ExchangeCommands::Progress> ExchangeCommands::progress() const {
@@ -282,42 +283,107 @@ void ExchangeCommands::onImportDwg() {
     importDrawing(fileName, tr("Import DWG"));
 }
 
+ExchangeCommands::DrawingLoad ExchangeCommands::loadDrawingFile(
+    const std::string& path, const std::atomic<bool>* cancelled) {
+    DrawingLoad load;
+    auto document = std::make_shared<doc::Document>();
+    if (DwgImport::loadDrawing(path, *document, &load.error, &load.report, cancelled)) {
+        load.document = std::move(document);
+    }
+    return load;
+}
+
 void ExchangeCommands::importDrawing(const QString& fileName, const QString& verb) {
+    // It goes into the drawing active now, whichever is active once it is
+    // read; and not into one closed meanwhile.
+    std::shared_ptr<doc::Document> target;
+    for (const auto& open : m_host.documents().documents()) {
+        if (open.get() == m_host.currentDocument()) target = open;
+    }
     const std::string path = fileName.toStdString();
-    doc::Document imported;
-    std::string error;
-    io::ImportReport report;
-    if (!DwgImport::loadDrawing(path, imported, &error, &report)) {
-        m_host.reportFileError(tr("Could not import"), path, error);
+    // A DWG is read by another program, which may take its time whatever
+    // the file's size: the window stays free, and Cancel stops it.
+    const bool onWorker =
+        target != nullptr && m_host.onWorker(DwgImport::isDwg(fileName) ||
+                                             QFileInfo(fileName).size() >= kWorkerImportBytes);
+    if (!onWorker) {
+        finishDrawingImport(fileName, verb, *m_host.currentDocument(),
+                            loadDrawingFile(path, nullptr));
         return;
     }
+    if (busy()) {
+        m_host.showStatus(tr("An import is already running"));
+        return;
+    }
+    m_drawingFile = fileName;
+    m_drawingVerb = verb;
+    m_drawingTarget = target;
+    m_drawingTask = std::make_unique<BackgroundTask<DrawingLoad>>(
+        [path](const std::atomic<bool>& cancelled) { return loadDrawingFile(path, &cancelled); });
+    m_drawingTask->start([this] {
+        QMetaObject::invokeMethod(this, &ExchangeCommands::onDrawingImportFinished,
+                                  Qt::QueuedConnection);
+    });
+    m_host.setPrompt(tr("Importing %1...").arg(QFileInfo(fileName).fileName()));
+    m_host.backgroundWorkChanged();
+}
+
+void ExchangeCommands::onDrawingImportFinished() {
+    if (!m_drawingTask || !m_drawingTask->finished()) return;
+    const std::unique_ptr<BackgroundTask<DrawingLoad>> task = std::move(m_drawingTask);
+    const std::shared_ptr<doc::Document> target = std::exchange(m_drawingTarget, {}).lock();
+    m_host.backgroundWorkChanged();
+    m_host.setPrompt(tr("Ready"));
+    if (task->cancelled()) {
+        m_host.showStatus(tr("Import cancelled"), 10000);
+        return;
+    }
+    DrawingLoad load = task->take();
+    if (!task->error().empty()) load.error = task->error();
+    const auto& open = m_host.documents().documents();
+    if (!target || std::find(open.begin(), open.end(), target) == open.end()) {
+        m_host.showStatus(tr("%1 was read, but the drawing it was for has been closed")
+                              .arg(QFileInfo(m_drawingFile).fileName()),
+                          10000);
+        return;
+    }
+    finishDrawingImport(m_drawingFile, m_drawingVerb, *target, std::move(load));
+}
+
+void ExchangeCommands::finishDrawingImport(const QString& fileName, const QString& verb,
+                                           doc::Document& target, DrawingLoad load) {
+    if (!load.document) {
+        m_host.reportFileError(tr("Could not import"), fileName.toStdString(), load.error);
+        return;
+    }
+    const doc::Document& imported = *load.document;
 
     // Its layers and block definitions (one of the same name already here is
     // kept) and its entities come in as one undoable step.
     auto composite = std::make_unique<doc::CompositeCommand>(verb.toStdString());
-    auto& layers = m_host.currentDocument()->layerManager();
+    auto& layers = target.layerManager();
     for (const auto& name : imported.layerManager().layerNames()) {
         if (!layers.getLayer(name)) {
             composite->addCommand(std::make_unique<doc::AddLayerCommand>(
                 layers, *imported.layerManager().getLayer(name)));
         }
     }
-    auto& target = m_host.currentDocument()->draftDocument();
+    auto& drawing = target.draftDocument();
     for (const auto& name : imported.draftDocument().blockTable().blockNames()) {
-        if (!target.blockTable().findBlock(name)) {
+        if (!drawing.blockTable().findBlock(name)) {
             composite->addCommand(std::make_unique<doc::AddBlockDefinitionCommand>(
-                target, imported.draftDocument().blockTable().findBlock(name)));
+                drawing, imported.draftDocument().blockTable().findBlock(name)));
         }
     }
     for (const auto& entity : imported.draftDocument().entities()) {
-        composite->addCommand(std::make_unique<doc::AddEntityCommand>(target, entity));
+        composite->addCommand(std::make_unique<doc::AddEntityCommand>(drawing, entity));
     }
     const auto count = static_cast<int>(imported.draftDocument().entities().size());
-    if (!composite->empty()) m_host.currentDocument()->undoStack().push(std::move(composite));
+    if (!composite->empty()) target.undoStack().push(std::move(composite));
     m_host.refreshPanels();
     m_host.viewport().update();
     m_host.setPrompt(tr("Imported %n entities.", "", count));
-    m_host.showImportReport(QFileInfo(fileName).fileName(), report);
+    m_host.showImportReport(QFileInfo(fileName).fileName(), load.report);
 }
 
 const topo::Solid* ExchangeCommands::solidToExport(const QString& format) {
@@ -334,6 +400,15 @@ QString ExchangeCommands::askExportPath(const QString& format, const QString& fi
     QString fileName = QFileDialog::getSaveFileName(m_host.dialogParent(),
                                                     tr("Export %1").arg(format), QString(), filter);
     if (!fileName.isEmpty() && QFileInfo(fileName).suffix().isEmpty()) fileName += suffix;
+    if (DwgImport::isDwg(fileName)) {
+        // Whatever it held, a file by a DWG's name would open nowhere, and
+        // it may be the DWG the drawing was read from.
+        QMessageBox::warning(m_host.dialogParent(), tr("Export %1").arg(format),
+                             tr("Horizon CAD does not write DWG files: give the file a name "
+                                "ending in %1.")
+                                 .arg(suffix));
+        return {};
+    }
     // An export is written over the file the document was read from in part
     // (a DXF, exported as one) only as a save is: when its user says so.
     if (!fileName.isEmpty() && !m_host.mayReplaceSource(fileName)) return {};

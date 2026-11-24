@@ -646,9 +646,51 @@ TEST(ImportExportTest, ImportingADwgAddsToTheDrawingInOneUndoableStep) {
         FilePicker picker(path);
         action(w, "import_dwg")->trigger();
     }
+    EXPECT_TRUE(w.backgroundWorkRunning()) << "read on a worker: the window stays free";
+    ASSERT_TRUE(waitFor([&] { return !w.backgroundWorkRunning(); }));
     EXPECT_EQ(doc.draftDocument().entities().size(), 2u);
     action(w, "action_undo")->trigger();
     EXPECT_EQ(doc.draftDocument().entities().size(), 1u) << "one step takes the import away";
+}
+
+TEST(ImportExportTest, ADwgImportGoesIntoTheDrawingItWasAskedFor) {
+    const ShippedConverter converter;
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = autocadLine(dir);
+
+    MainWindow w;
+    hz::doc::Document* asked = w.activeDocument();
+    {
+        FilePicker picker(path);
+        action(w, "import_dwg")->trigger();
+    }
+    // Another drawing made active before it is read: the import is shown
+    // only once the window gets back to its events.
+    action(w, "action_new")->trigger();
+    hz::doc::Document* other = w.activeDocument();
+    ASSERT_NE(other, asked);
+    ASSERT_TRUE(waitFor([&] { return !w.backgroundWorkRunning(); }));
+    EXPECT_EQ(asked->draftDocument().entities().size(), 1u);
+    EXPECT_TRUE(other->draftDocument().entities().empty());
+}
+
+TEST(ImportExportTest, NothingIsExportedUnderADwgsName) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    MainWindow w;
+    w.activeDocument()->draftDocument().addEntity(
+        std::make_shared<hz::draft::DraftLine>(Vec2(0, 0), Vec2(5, 0)));
+    const QString asDwg = dir.filePath(QStringLiteral("plan.dwg"));
+    {
+        FilePicker picker(asDwg);
+        DialogResponder refused(QMessageBox::Ok);
+        action(w, "export_dxf")->trigger();
+        EXPECT_TRUE(refused.seen());
+        EXPECT_TRUE(refused.text().contains(QStringLiteral("does not write DWG")))
+            << refused.text().toStdString();
+    }
+    EXPECT_FALSE(QFileInfo::exists(asDwg)) << "a DXF by a DWG's name would open nowhere";
 }
 
 #endif  // HZ_DWG2DXF

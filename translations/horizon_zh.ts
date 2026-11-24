@@ -2317,7 +2317,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DwgImport</name>
     <message>
-        <location filename="../src/ui/src/DwgImport.cpp" line="+68"/>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+72"/>
         <source>there was not memory enough to read it</source>
         <translation type="unfinished">内存不足，无法读取</translation>
     </message>
@@ -2367,7 +2367,7 @@ Details are in the log:
         <translation type="unfinished">无法读取该文件（请检查其权限）</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+19"/>
         <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
         <translation type="unfinished">无法启动 LibreDWG 的 dwg2dxf (%1)：%2</translation>
     </message>
@@ -2389,7 +2389,7 @@ Details are in the log:
         <translation type="unfinished">LibreDWG 在读取时停止：文件可能已损坏，或包含 LibreDWG 尚无法读取的内容</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+16"/>
         <source>LibreDWG read it, but wrote nothing of it</source>
         <translation type="unfinished">LibreDWG 已读取，但没有输出任何内容</translation>
     </message>
@@ -2402,7 +2402,7 @@ Details are in the log:
 <context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+107"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">未给出长度单位</translation>
     </message>
@@ -2449,22 +2449,25 @@ Details are in the log:
     </message>
     <message>
         <location line="+12"/>
+        <location line="+155"/>
         <source>Importing %1...</source>
         <translation type="unfinished">正在导入 %1...</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="-142"/>
         <location line="+15"/>
+        <location line="+136"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-14"/>
+        <location line="-150"/>
+        <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">已取消导入</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="-136"/>
         <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
         <translation type="unfinished">未导入 &quot;%1&quot;：未给出其长度所用的单位</translation>
     </message>
@@ -2472,12 +2475,12 @@ Details are in the log:
         <location line="+16"/>
         <location line="+25"/>
         <location line="+6"/>
-        <location line="+43"/>
+        <location line="+107"/>
         <source>Could not import</source>
         <translation type="unfinished">无法导入</translation>
     </message>
     <message numerus="yes">
-        <location line="-54"/>
+        <location line="-118"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>已导入 %n 个实体。</numerusform>
@@ -2529,8 +2532,18 @@ Details are in the log:
         <source>DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">DWG 文件 (*.dwg);;所有文件 (*)</translation>
     </message>
+    <message>
+        <location line="+34"/>
+        <source>An import is already running</source>
+        <translation type="unfinished">已有导入正在进行</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>%1 was read, but the drawing it was for has been closed</source>
+        <translation type="unfinished">已读取 %1，但目标工程图已关闭</translation>
+    </message>
     <message numerus="yes">
-        <location line="+39"/>
+        <location line="+40"/>
         <source>Imported %n entities.</source>
         <translation type="unfinished">
             <numerusform>已导入 %n 个图元。</numerusform>
@@ -2543,13 +2556,19 @@ Details are in the log:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+236"/>
+        <location line="+5"/>
+        <location line="+240"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">导出 %1</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-283"/>
+        <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
+        <translation type="unfinished">Horizon CAD 不写入 DWG 文件：请使用以 %1 结尾的文件名。</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>

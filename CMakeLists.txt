@@ -79,16 +79,18 @@ if(HZ_ENABLE_SCRIPTING)
     endif()
 endif()
 
-# LibreDWG's dwg2dxf, to ship beside the application: vcpkg's build of it
-# first, then one installed on the system (a distribution's libredwg).
+# LibreDWG's dwg2dxf, to ship beside the application: vcpkg's build of it,
+# and no other. One found on the system would be cached and kept after vcpkg
+# built its own, and is linked to a libredwg the package would not carry. A
+# distribution's LibreDWG is used without this option, from the PATH.
 set(HZ_DWG_ENABLED OFF)
 if(HZ_ENABLE_DWG)
-    find_program(HZ_DWG2DXF_PROGRAM dwg2dxf
-        HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/libredwg")
-    if(NOT HZ_DWG2DXF_PROGRAM)
-        message(FATAL_ERROR "HZ_ENABLE_DWG is ON, but LibreDWG's dwg2dxf was not found: "
-                            "build with vcpkg (its \"dwg\" feature builds it) or install "
-                            "LibreDWG's tools.")
+    set(HZ_DWG2DXF_PROGRAM
+        "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/libredwg/dwg2dxf${CMAKE_EXECUTABLE_SUFFIX}")
+    if(NOT EXISTS "${HZ_DWG2DXF_PROGRAM}")
+        message(FATAL_ERROR "HZ_ENABLE_DWG is ON, but vcpkg did not build LibreDWG's dwg2dxf "
+                            "(${HZ_DWG2DXF_PROGRAM}): configure with vcpkg's toolchain. Without "
+                            "the option, an installed LibreDWG's dwg2dxf on the PATH is used.")
     endif()
     set(HZ_DWG_ENABLED ON)
     message(STATUS "Horizon DWG: ENABLED (${HZ_DWG2DXF_PROGRAM})")

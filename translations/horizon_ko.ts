@@ -2317,7 +2317,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DwgImport</name>
     <message>
-        <location filename="../src/ui/src/DwgImport.cpp" line="+68"/>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+72"/>
         <source>there was not memory enough to read it</source>
         <translation type="unfinished">읽기에 메모리가 부족했습니다</translation>
     </message>
@@ -2367,7 +2367,7 @@ Details are in the log:
         <translation type="unfinished">파일을 읽을 수 없었습니다 (권한을 확인하십시오)</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+19"/>
         <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
         <translation type="unfinished">LibreDWG의 dwg2dxf (%1)를 시작할 수 없었습니다: %2</translation>
     </message>
@@ -2389,7 +2389,7 @@ Details are in the log:
         <translation type="unfinished">LibreDWG가 읽는 도중 멈췄습니다. 파일이 손상되었거나 LibreDWG가 아직 읽을 수 없는 내용이 들어 있을 수 있습니다</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+16"/>
         <source>LibreDWG read it, but wrote nothing of it</source>
         <translation type="unfinished">LibreDWG가 읽었지만 아무것도 출력하지 않았습니다</translation>
     </message>
@@ -2402,7 +2402,7 @@ Details are in the log:
 <context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+107"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">길이 단위가 주어지지 않음</translation>
     </message>
@@ -2449,22 +2449,25 @@ Details are in the log:
     </message>
     <message>
         <location line="+12"/>
+        <location line="+155"/>
         <source>Importing %1...</source>
         <translation type="unfinished">%1 가져오는 중...</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="-142"/>
         <location line="+15"/>
+        <location line="+136"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-14"/>
+        <location line="-150"/>
+        <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">가져오기가 취소되었습니다</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="-136"/>
         <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
         <translation type="unfinished">&quot;%1&quot;을(를) 가져오지 않았습니다: 길이의 단위가 주어지지 않았습니다</translation>
     </message>
@@ -2472,12 +2475,12 @@ Details are in the log:
         <location line="+16"/>
         <location line="+25"/>
         <location line="+6"/>
-        <location line="+43"/>
+        <location line="+107"/>
         <source>Could not import</source>
         <translation type="unfinished">가져올 수 없음</translation>
     </message>
     <message numerus="yes">
-        <location line="-54"/>
+        <location line="-118"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>바디 %n개를 가져왔습니다.</numerusform>
@@ -2529,8 +2532,18 @@ Details are in the log:
         <source>DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">DWG 파일 (*.dwg);;모든 파일 (*)</translation>
     </message>
+    <message>
+        <location line="+34"/>
+        <source>An import is already running</source>
+        <translation type="unfinished">가져오기가 이미 실행 중입니다</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>%1 was read, but the drawing it was for has been closed</source>
+        <translation type="unfinished">%1을(를) 읽었지만 가져올 도면이 닫혔습니다</translation>
+    </message>
     <message numerus="yes">
-        <location line="+39"/>
+        <location line="+40"/>
         <source>Imported %n entities.</source>
         <translation type="unfinished">
             <numerusform>개체 %n개를 가져왔습니다.</numerusform>
@@ -2543,13 +2556,19 @@ Details are in the log:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+236"/>
+        <location line="+5"/>
+        <location line="+240"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">%1 내보내기</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-283"/>
+        <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
+        <translation type="unfinished">Horizon CAD는 DWG 파일을 쓰지 않습니다. 파일 이름이 %1(으)로 끝나도록 하십시오.</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>

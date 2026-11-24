@@ -27,6 +27,10 @@ namespace {
 constexpr int kStartMs = 30000;
 /// How often a reading looks to see whether it has been cancelled.
 constexpr int kPollMs = 50;
+/// How much of what dwg2dxf writes to its standard error is read, from its
+/// end: its reason is there, and its warnings, one to an object, can run to
+/// megabytes.
+constexpr qint64 kMessagesTail = 64 * 1024;
 
 /// LibreDWG's error bits (Dwg_Error in its dwg.h) that end a reading, as
 /// dwg2dxf reports them: "READ ERROR 0x800".
@@ -134,6 +138,8 @@ bool DwgImport::load(const std::string& path, doc::Document& doc, std::string* e
     process.setProcessEnvironment(environment);
     process.setStandardInputFile(QProcess::nullDevice());
     process.setStandardOutputFile(QProcess::nullDevice());
+    const QString messages = work.filePath(QStringLiteral("messages.txt"));
+    process.setStandardErrorFile(messages);
     process.start();
     if (!process.waitForStarted(kStartMs)) {
         return fail(error,
@@ -167,7 +173,13 @@ bool DwgImport::load(const std::string& path, doc::Document& doc, std::string* e
                                "hold something LibreDWG cannot read yet"));
     }
     if (process.exitCode() != 0) {
-        return fail(error, whyNotRead(QString::fromLocal8Bit(process.readAllStandardError())));
+        QFile said(messages);
+        QByteArray tail;
+        if (said.open(QIODevice::ReadOnly)) {
+            said.seek(std::max<qint64>(0, said.size() - kMessagesTail));
+            tail = said.readAll();
+        }
+        return fail(error, whyNotRead(QString::fromLocal8Bit(tail)));
     }
     const QString written = work.filePath(output);
     if (QFileInfo(written).size() == 0) {
@@ -191,7 +203,8 @@ QString DwgImport::converter() {
     }
     const QString name = QStringLiteral("dwg2dxf");
     if (QCoreApplication::instance() != nullptr) {
-        const QString beside =
+        // Not const: returned, it is moved.
+        QString beside =
             QStandardPaths::findExecutable(name, {QCoreApplication::applicationDirPath()});
         if (!beside.isEmpty()) return beside;
     }

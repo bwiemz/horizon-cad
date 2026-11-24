@@ -42,7 +42,9 @@ GNU LibreDWG's `dwg2dxf`: it turns
 the file into DXF, which Horizon CAD reads as it reads any DXF. `dwg2dxf` is
 a program of its own: a file it cannot read, or that makes it crash or never
 finish (it is stopped after five minutes), fails to open, with why, and the
-rest of Horizon CAD carries on.
+rest of Horizon CAD carries on. It is read in the background, opened or
+imported: the window stays free, and **Cancel** in the status bar stops it.
+An import goes into the drawing that was active when you chose it.
 
 Horizon CAD looks for `dwg2dxf` beside itself (where a build with DWG
 support puts it) and then on the `PATH`, as an installed LibreDWG has it
