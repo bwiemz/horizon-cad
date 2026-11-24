@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -11,9 +12,10 @@ namespace hz::geo {
 
 struct Triangulation2D {
     /// The boundary points first: points[i], for every i below the total boundary count, is
-    /// the i-th input boundary point (the outer loop, then each hole, in input order). A
-    /// boundary point merged into an earlier one stays here but no triangle uses it. The
-    /// interior points that were kept follow, in input order.
+    /// the i-th input boundary point (the outer loop, then each hole, in input order), flushed
+    /// (see triangulateRegion). A boundary point merged into an earlier one stays here but no
+    /// triangle uses it. The interior points that were kept follow, in input order, and then
+    /// those RegionTriangulation::insert took, in the order it took them.
     std::vector<math::Vec2> points;
     /// Counter-clockwise triangles, indices into points.
     std::vector<std::array<std::uint32_t, 3>> triangles;
@@ -44,6 +46,14 @@ struct Triangulation2D {
 /// interior point within @p merge of another point, on a boundary segment, or not strictly
 /// inside the region is dropped. Decisions use the exact predicates of math/RobustPredicates.
 ///
+/// Every coordinate whose magnitude is nonzero and below 1e-60 is flushed to exactly 0 before
+/// any predicate sees it, and points holds the flushed value (Ruling 4): below that the
+/// predicates' exact arithmetic underflows and a sign can come out wrong even where the
+/// differences are in range (math/RobustPredicates.h). A change of 1e-60 is below any model
+/// tolerance; this is normalisation, not a fallback. The spread checks (Triangulation2D::problem)
+/// look at the points as given, so a region wholly below 1e-60 is reported as spread too little,
+/// not flushed to a point.
+///
 /// The region is the triangles an odd number of walls away from outside the convex hull (a
 /// flood fill over the triangulation that flips at each wall), so no floating-point
 /// classification is involved. A boundary segment is a wall unless the loops run along it an
@@ -56,5 +66,39 @@ struct Triangulation2D {
 Triangulation2D triangulateRegion(const std::vector<math::Vec2>& outer,
                                   const std::vector<std::vector<math::Vec2>>& holes,
                                   const std::vector<math::Vec2>& interior = {}, double merge = 0.0);
+
+/// A constrained Delaunay triangulation that takes more interior points after it is built:
+/// built as triangulateRegion builds it (which returns its result), then refined in place, as a
+/// mesher refines, without triangulating again.
+class RegionTriangulation {
+public:
+    /// As triangulateRegion(outer, holes, interior, merge).
+    RegionTriangulation(const std::vector<math::Vec2>& outer,
+                        const std::vector<std::vector<math::Vec2>>& holes,
+                        const std::vector<math::Vec2>& interior = {}, double merge = 0.0);
+    ~RegionTriangulation();
+    RegionTriangulation(RegionTriangulation&&) noexcept;
+    RegionTriangulation& operator=(RegionTriangulation&&) noexcept;
+    RegionTriangulation(const RegionTriangulation&) = delete;
+    RegionTriangulation& operator=(const RegionTriangulation&) = delete;
+
+    /// Adds a point strictly inside the region; false (and nothing changes) outside it, on a
+    /// boundary segment, or within merge of a point. Constraints and the region are kept.
+    ///
+    /// The point is flushed as triangulateRegion flushes, and refused as an interior point
+    /// would be dropped; and always while result().problem is not empty. A point on an edge
+    /// that is not a boundary segment splits the triangles on both sides. The triangles that
+    /// change are flipped until they are Delaunay again, never across a boundary segment, so the
+    /// result is the triangulation triangulateRegion would have made with the point among the
+    /// interior points, up to the choice among cocircular points and the triangles' order.
+    bool insert(const math::Vec2& point);
+    /// Ruling 10's contract (Triangulation2D), the points taken by insert appended in order.
+    /// insert rewrites triangles in place and appends new ones; it never removes one.
+    const Triangulation2D& result() const;
+
+private:
+    struct State;
+    std::unique_ptr<State> m_state;
+};
 
 }  // namespace hz::geo

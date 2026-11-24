@@ -1,16 +1,20 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <map>
 #include <random>
 #include <set>
 #include <utility>
+#include <vector>
 
 #include "../PortableRandom.h"
 #include "horizon/geometry/Triangulate2D.h"
 #include "horizon/math/RobustPredicates.h"
 
+using hz::geo::RegionTriangulation;
 using hz::geo::triangulateRegion;
 using hz::geo::Triangulation2D;
 using hz::math::Containment;
@@ -23,6 +27,15 @@ using Edge = std::pair<std::uint32_t, std::uint32_t>;
 
 Edge undirected(std::uint32_t a, std::uint32_t b) {
     return a < b ? Edge{a, b} : Edge{b, a};
+}
+
+/// A coordinate as the triangulation keeps it: a magnitude below 1e-60 is 0 (Ruling 4).
+double flushed(double c) {
+    return std::fabs(c) < 1e-60 ? 0.0 : c;
+}
+
+Vec2 flushed(const Vec2& p) {
+    return {flushed(p.x), flushed(p.y)};
 }
 
 double loopArea(const Loop& loop) {
@@ -47,16 +60,22 @@ bool insideRegion(const Loop& outer, const std::vector<Loop>& holes, const Vec2&
     return true;
 }
 
-/// The five properties of the brief, plus the index contract. Returns the result.
-Triangulation2D checkRegion(const Loop& outer, const std::vector<Loop>& holes,
-                            const Loop& interior = {}, double merge = 0.0) {
-    const Triangulation2D t = triangulateRegion(outer, holes, interior, merge);
+/// The five properties of the brief, plus the index contract, of @p t: the triangulation of the
+/// region with @p interior the points offered after the boundary (to the constructor, or to
+/// RegionTriangulation::insert).
+void checkTriangulation(const Triangulation2D& t, const Loop& outer, const std::vector<Loop>& holes,
+                        const Loop& interior, double merge) {
     EXPECT_TRUE(t.problem.empty()) << t.problem;
 
-    // Index contract: points[i] is the i-th boundary point.
-    std::vector<Vec2> boundary = outer;
+    // Index contract: points[i] is the i-th boundary point, as flushed.
+    std::vector<Vec2> boundary;
+    for (const Vec2& p : outer) {
+        boundary.push_back(flushed(p));
+    }
     for (const Loop& h : holes) {
-        boundary.insert(boundary.end(), h.begin(), h.end());
+        for (const Vec2& p : h) {
+            boundary.push_back(flushed(p));
+        }
     }
     EXPECT_GE(t.points.size(), boundary.size());
     for (std::size_t i = 0; i < boundary.size() && i < t.points.size(); ++i) {
@@ -153,7 +172,7 @@ Triangulation2D checkRegion(const Loop& outer, const std::vector<Loop>& holes,
         }
         bool found = false;
         for (std::size_t i = boundary.size(); i < t.points.size(); ++i) {
-            if (t.points[i].x == p.x && t.points[i].y == p.y &&
+            if (t.points[i].x == flushed(p.x) && t.points[i].y == flushed(p.y) &&
                 used.count(static_cast<std::uint32_t>(i)) == 1U) {
                 found = true;
             }
@@ -178,6 +197,13 @@ Triangulation2D checkRegion(const Loop& outer, const std::vector<Loop>& holes,
                 << "edge " << edge.first << "-" << edge.second;
         }
     }
+}
+
+/// checkTriangulation of triangulateRegion's result. Returns the result.
+Triangulation2D checkRegion(const Loop& outer, const std::vector<Loop>& holes,
+                            const Loop& interior = {}, double merge = 0.0) {
+    Triangulation2D t = triangulateRegion(outer, holes, interior, merge);
+    checkTriangulation(t, outer, holes, interior, merge);
     return t;
 }
 
@@ -570,4 +596,195 @@ TEST(Triangulate2D, TwentyThousandPointsOnTheUnitSquare) {
 TEST(Triangulate2D, PointsSpreadTooLittleAreSaidToBe) {
     const auto t = triangulateRegion({{0, 0}, {1e-62, 0}, {1e-62, 1e-62}, {0, 1e-62}}, {});
     EXPECT_NE(t.problem.find("spread too little"), std::string::npos) << t.problem;
+}
+
+TEST(Triangulate2D, TinyCoordinatesAreFlushedToZero) {
+    // The exactly cocircular rectangle whose incircle sign came out wrong (stage 2, Task 2's
+    // review): its differences are near 1, but its coordinates of 9e-90 and 7e-90 lie below
+    // incircle's floor, where the exact expansion's smallest terms underflow. Flushed to 0,
+    // they are exact and every sign is right.
+    const double x = 1.528379950790292;
+    const double y = 3.5558643899770326;
+    const double tinyX = 9.0470469239970971e-90;
+    const double tinyY = 7.0334986959029244e-90;
+    const Loop outer{{x, y}, {tinyX, y}, {tinyX, tinyY}, {x, tinyY}};
+    const Triangulation2D t =
+        checkRegion(outer, {}, {{0.4, 0.9}, {1.1, 2.6}, {0.3, 3.1}, {1.4, 0.2}, {0.76, 1.78}});
+    ASSERT_EQ(t.points.size(), 9U);
+    EXPECT_EQ(t.points[0].x, x);
+    EXPECT_EQ(t.points[1].x, 0.0);
+    EXPECT_EQ(t.points[2].x, 0.0);
+    EXPECT_EQ(t.points[2].y, 0.0);
+    EXPECT_EQ(t.points[3].y, 0.0);
+}
+
+TEST(Triangulate2D, OnlyCoordinatesBelowTheFloorAreFlushed) {
+    // Either sign, either coordinate, boundary and interior points alike; 1e-60 itself is kept.
+    const double below = std::nextafter(1e-60, 0.0);
+    const Loop outer{{-4, -4}, {-below, -4}, {4, -4}, {4, 1e-60}, {4, 4}, {-4, 4}};
+    const Loop interior{{2e-61, 2}, {-2, -below}, {1e-60, -1e-60}, {2, 2}};
+    const Triangulation2D t = checkRegion(outer, {}, interior);
+    ASSERT_EQ(t.points.size(), 10U);
+    EXPECT_EQ(t.points[1].x, 0.0);
+    EXPECT_EQ(t.points[3].y, 1e-60);
+    EXPECT_EQ(t.points[6].x, 0.0);
+    EXPECT_EQ(t.points[6].y, 2.0);
+    EXPECT_EQ(t.points[7].y, 0.0);
+    EXPECT_EQ(t.points[8].x, 1e-60);
+    EXPECT_EQ(t.points[8].y, -1e-60);
+    // A point given later is flushed alike.
+    RegionTriangulation r(outer, {}, interior);
+    ASSERT_TRUE(r.insert({-3e-61, -3}));
+    EXPECT_EQ(r.result().points.back().x, 0.0);
+    EXPECT_EQ(r.result().points.back().y, -3.0);
+}
+
+TEST(RegionTriangulation, InsertingKeepsTheContract) {
+    // 500 points offered one at a time to a re-entrant star round a clockwise hole, a square with
+    // a slit, and a square with a bridge to an inner loop: each is taken exactly when it lies
+    // strictly inside the region (at random, none falls on a segment or on another point), and
+    // the contract holds after every 50.
+    struct Shape {
+        Loop outer;
+        std::vector<Loop> holes;
+    };
+    std::vector<Shape> shapes;
+    {
+        std::mt19937 rng(99);
+        const hz::test::Uniform radius(4.0, 10.0);
+        Shape star;
+        for (int i = 0; i < 60; ++i) {
+            const double angle = 2.0 * 3.14159265358979323846 * i / 60.0;
+            const double r = radius(rng);
+            star.outer.emplace_back(r * std::cos(angle), r * std::sin(angle));
+        }
+        star.holes.emplace_back();
+        for (int i = 0; i < 12; ++i) {
+            const double angle = -2.0 * 3.14159265358979323846 * i / 12.0;
+            star.holes.back().emplace_back(2.0 * std::cos(angle), 2.0 * std::sin(angle));
+        }
+        shapes.push_back(star);
+    }
+    shapes.push_back({{{0, 0}, {10, 0}, {10, 10}, {5, 10}, {5, 0.5}, {5, 10}, {0, 10}}, {}});
+    // The bridge's inner loop runs clockwise, so that the winding number insideRegion takes and
+    // the triangulation's walls agree on it.
+    shapes.push_back({{{0, 0},
+                       {10, 0},
+                       {10, 10},
+                       {5, 10},
+                       {5, 6},
+                       {6, 6},
+                       {6, 4},
+                       {4, 4},
+                       {4, 6},
+                       {5, 6},
+                       {5, 10},
+                       {0, 10}},
+                      {}});
+    for (std::size_t s = 0; s < shapes.size(); ++s) {
+        const Shape& shape = shapes[s];
+        Vec2 lo = shape.outer.front();
+        Vec2 hi = lo;
+        for (const Vec2& p : shape.outer) {
+            lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)};
+            hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
+        }
+        std::mt19937 rng(static_cast<std::uint32_t>(20261124 + s));
+        const hz::test::Uniform ux(lo.x, hi.x);
+        const hz::test::Uniform uy(lo.y, hi.y);
+        Loop offered;
+        for (int i = 0; i < 20; ++i) {
+            const double x = ux(rng);
+            offered.emplace_back(x, uy(rng));
+        }
+        RegionTriangulation r(shape.outer, shape.holes, offered);
+        checkTriangulation(r.result(), shape.outer, shape.holes, offered, 0.0);
+        for (int i = 1; i <= 500; ++i) {
+            const double x = ux(rng);
+            const Vec2 p{x, uy(rng)};
+            const std::size_t before = r.result().points.size();
+            const bool inside = insideRegion(shape.outer, shape.holes, p);
+            EXPECT_EQ(r.insert(p), inside) << "shape " << s << " point " << p.x << "," << p.y;
+            EXPECT_EQ(r.result().points.size(), before + (inside ? 1U : 0U));
+            offered.push_back(p);
+            if (i % 50 == 0) {
+                checkTriangulation(r.result(), shape.outer, shape.holes, offered, 0.0);
+            }
+        }
+    }
+}
+
+TEST(RegionTriangulation, RefusesPointsOutsideOnASegmentOrNearAPoint) {
+    const Loop outer{{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    const Loop hole{{1, 1}, {1, 3}, {3, 3}, {3, 1}};
+    RegionTriangulation r(outer, {hole}, {{0.5, 3.5}}, 0.1);
+    const Triangulation2D before = r.result();
+    const double inf = std::numeric_limits<double>::infinity();
+    // Outside, far outside, in the hole, on the outer loop, on the hole, on a vertex, within
+    // merge of a vertex and of the interior point, and not finite.
+    const std::vector<Vec2> refused = {{5, 5},   {-1e300, 2}, {2, 2},       {2, 0},
+                                       {1, 2},   {4, 4},      {3.95, 3.95}, {0.55, 3.45},
+                                       {0.5, 0}, {inf, 1},    {1, -inf},    {std::nan(""), 1}};
+    for (const Vec2& p : refused) {
+        EXPECT_FALSE(r.insert(p)) << p.x << "," << p.y;
+    }
+    EXPECT_EQ(r.result().points.size(), before.points.size());
+    EXPECT_EQ(r.result().triangles, before.triangles);
+    EXPECT_TRUE(r.insert({0.5, 0.5}));
+    EXPECT_FALSE(r.insert({0.55, 0.5}));  // within merge of the point just taken
+    checkTriangulation(r.result(), outer, {hole}, {{0.5, 3.5}, {0.5, 0.5}}, 0.1);
+    // A region that could not be triangulated takes nothing.
+    RegionTriangulation crossed({{0, 0}, {4, 4}, {4, 0}, {0, 4}}, {});
+    EXPECT_FALSE(crossed.result().problem.empty());
+    EXPECT_FALSE(crossed.insert({3.5, 2}));
+}
+
+TEST(RegionTriangulation, PointsOnEdgesAndCocircularPointsKeepTheContract) {
+    // A point on the diagonal of a square splits both its triangles.
+    const Loop square{{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    RegionTriangulation one(square, {});
+    ASSERT_EQ(one.result().triangles.size(), 2U);
+    ASSERT_TRUE(one.insert({1, 1}));
+    ASSERT_EQ(one.result().triangles.size(), 4U);
+    for (const auto& tri : one.result().triangles) {
+        EXPECT_TRUE(tri[0] == 4U || tri[1] == 4U || tri[2] == 4U);
+    }
+    checkTriangulation(one.result(), square, {}, {{1, 1}}, 0.0);
+    // An 8 x 8 square: its lattice points, then the midpoints of the lattice's sides, many on an
+    // edge of the triangulation so far and all cocircular with others.
+    const Loop outer{{0, 0}, {8, 0}, {8, 8}, {0, 8}};
+    RegionTriangulation r(outer, {});
+    Loop offered;
+    for (int i = 1; i < 8; ++i) {
+        for (int j = 1; j < 8; ++j) {
+            offered.emplace_back(i, j);
+        }
+    }
+    for (int i = 1; i < 8; ++i) {
+        for (int j = 0; j < 8; ++j) {
+            offered.emplace_back(i, j + 0.5);
+            offered.emplace_back(j + 0.5, i);
+        }
+    }
+    for (const Vec2& p : offered) {
+        EXPECT_TRUE(r.insert(p)) << p.x << "," << p.y;
+    }
+    EXPECT_EQ(r.result().points.size(), 4U + offered.size());
+    checkTriangulation(r.result(), outer, {}, offered, 0.0);
+}
+
+TEST(RegionTriangulation, PointsBesideASlitsTipKeepItAnEdge) {
+    // Points go in on both sides of a slit's free end, where triangles whose circumcircles hold
+    // the point reach round the tip to the slit's other side: the slit stays an edge.
+    const Loop outer{{0, 0}, {10, 0}, {10, 10}, {5, 10}, {5, 0.5}, {5, 10}, {0, 10}};
+    Loop offered{{1, 1}, {2, 8}, {8, 9}};
+    RegionTriangulation r(outer, {}, offered);
+    for (int k = 0; k < 40; ++k) {
+        const double angle = 2.0 * 3.14159265358979323846 * k / 13.0 + 0.1;
+        const double radius = 0.05 + 0.02 * k;
+        const Vec2 p{5.0 + radius * std::cos(angle), 0.5 + radius * std::sin(angle)};
+        EXPECT_EQ(r.insert(p), insideRegion(outer, {}, p)) << p.x << "," << p.y;
+        offered.push_back(p);
+        checkTriangulation(r.result(), outer, {}, offered, 0.0);
+    }
 }

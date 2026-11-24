@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -28,6 +29,25 @@ constexpr double kWidest = 1e70;
 /// down to about 1e-70; the super-triangle's and the triangles' products need margin above it.
 constexpr double kNarrowest = 1e-60;
 
+/// The smallest nonzero coordinate magnitude kept (Ruling 4). Below it a predicate's sign can
+/// come out wrong even where the differences are in range (math/RobustPredicates.h: incircle's
+/// floor), so such a coordinate is flushed to exactly 0 before any predicate sees it.
+constexpr double kFloor = 1e-60;
+
+Vec2 flushed(const Vec2& p) {
+    const auto flush = [](double c) { return std::fabs(c) < kFloor ? 0.0 : c; };
+    return {flush(p.x), flush(p.y)};
+}
+
+std::vector<Vec2> flushed(const std::vector<Vec2>& ps) {
+    std::vector<Vec2> out;
+    out.reserve(ps.size());
+    for (const Vec2& p : ps) {
+        out.push_back(flushed(p));
+    }
+    return out;
+}
+
 std::uint64_t edgeKey(int a, int b) {
     const auto lo = static_cast<std::uint64_t>(std::min(a, b));
     const auto hi = static_cast<std::uint64_t>(std::max(a, b));
@@ -41,10 +61,12 @@ struct Tri {
     std::array<int, 3> v{};                     // counter-clockwise
     std::array<int, 3> n{kNone, kNone, kNone};  // n[i] is across the edge opposite v[i]
     bool alive = true;
+    bool inside = false;  // in the region, once it is filled
 };
 
 /// An incremental triangulation: Bowyer-Watson insertion, constraint recovery by flips, then
-/// Lawson flips. Vertex ids index m_pos; the last three are the super-triangle.
+/// Lawson flips; once the region is filled, more points by insertInside. Vertex ids index m_pos:
+/// the points it was built with, the super-triangle's three, then the points inserted.
 class Cdt {
 public:
     Cdt(std::vector<Vec2> positions, const Vec2& lo, const Vec2& hi) : m_pos(std::move(positions)) {
@@ -67,7 +89,7 @@ public:
     }
 
     void insert(int p) {
-        const int start = locate(p);
+        const int start = locate(pos(p));
         ++m_epoch;
         std::vector<int> cavity{start};
         m_stamp[static_cast<std::size_t>(start)] = m_epoch;
@@ -85,12 +107,95 @@ public:
                 }
             }
         }
-        struct Rim {
-            int a;
-            int b;
-            int outside;
-        };
         std::vector<Rim> rim;
+        rimOf(cavity, rim);
+        fill(cavity, rim, p);
+    }
+
+    /// Adds @p q where it lies strictly inside a triangle of the region, or on an edge between
+    /// two that is not constrained: splits the triangle (or both) and flips the edges across from
+    /// it that are not Delaunay, never a constrained one, so the triangulation stays constrained
+    /// Delaunay. The cavity of Bowyer-Watson could reach round a slit's free end to its far side;
+    /// flips cannot. The new vertex, with the triangles made or altered in @p changed; or kNone
+    /// with nothing changed where q lies outside the region, on a constraint or on a vertex.
+    int insertInside(const Vec2& q, std::vector<int>& changed) {
+        const int t = locate(q);
+        const Tri& found = tri(t);
+        if (!found.alive || !found.inside) {
+            return kNone;
+        }
+        std::vector<int> cavity{t};
+        for (int k = 0; k < 3; ++k) {
+            const int a = found.v[static_cast<std::size_t>((k + 1) % 3)];
+            const int b = found.v[static_cast<std::size_t>((k + 2) % 3)];
+            const int s = math::orient2d(pos(a), pos(b), q);
+            if (s < 0 || (s == 0 && (cavity.size() > 1 || isConstrained(a, b)))) {
+                return kNone;  // outside it, on a vertex, or on a constraint
+            }
+            const int across = found.n[static_cast<std::size_t>(k)];
+            if (s == 0) {
+                if (across == kNone || !tri(across).inside) {
+                    return kNone;
+                }
+                cavity.push_back(across);
+            }
+        }
+        const int p = static_cast<int>(m_pos.size());
+        m_pos.push_back(q);
+        m_vtri.push_back(kNone);
+        ++m_epoch;
+        for (const int ti : cavity) {
+            m_stamp[static_cast<std::size_t>(ti)] = m_epoch;
+        }
+        std::vector<Rim> rim;
+        rimOf(cavity, rim);
+        std::vector<int> stack = fill(cavity, rim, p);
+        for (const int id : stack) {
+            tri(id).inside = true;
+        }
+        changed = stack;
+        while (!stack.empty()) {
+            const int ti = stack.back();
+            stack.pop_back();
+            const Tri& cur = tri(ti);
+            const int k = indexOf(cur, p);
+            const int nb = cur.n[static_cast<std::size_t>(k)];
+            if (nb == kNone || isConstrained(cur.v[static_cast<std::size_t>((k + 1) % 3)],
+                                             cur.v[static_cast<std::size_t>((k + 2) % 3)])) {
+                continue;
+            }
+            const Tri& u = tri(nb);
+            const int w = u.v[static_cast<std::size_t>(opposite(u, ti))];
+            if (math::incircle(pos(cur.v[0]), pos(cur.v[1]), pos(cur.v[2]), pos(w)) > 0) {
+                flip(ti, k);  // both keep p, and both lie in the region
+                changed.push_back(nb);
+                stack.push_back(ti);
+                stack.push_back(nb);
+            }
+        }
+        return p;
+    }
+
+    /// The triangles of the region, once fillRegion has found them.
+    void markInside(const std::vector<int>& inside) {
+        for (const int t : inside) {
+            tri(t).inside = true;
+        }
+    }
+
+    /// The index in the points of vertex @p v, which is not the super-triangle's.
+    int pointOf(int v) const { return v < m_first_super ? v : v - 3; }
+    std::size_t triangleCount() const { return m_tris.size(); }
+
+private:
+    struct Rim {
+        int a;
+        int b;
+        int outside;
+    };
+
+    /// The edges of the stamped cavity whose far side is not in it.
+    void rimOf(const std::vector<int>& cavity, std::vector<Rim>& rim) const {
         for (const int ti : cavity) {
             const Tri& t = tri(ti);
             for (int k = 0; k < 3; ++k) {
@@ -101,6 +206,11 @@ public:
                 }
             }
         }
+    }
+
+    /// Replaces the cavity's triangles with one from each rim edge to @p p: the new triangles,
+    /// each (a, b, p) with its rim edge's outer neighbour across from p.
+    std::vector<int> fill(const std::vector<int>& cavity, const std::vector<Rim>& rim, int p) {
         for (const int ti : cavity) {
             tri(ti).alive = false;
             m_free.push_back(ti);
@@ -135,8 +245,10 @@ public:
             }
         }
         m_last = made.front();
+        return made;
     }
 
+public:
     /// Makes a-b an edge and marks it constrained. Blocked when it cannot be (the segment
     /// passes through another vertex or crosses another constraint), GaveUp when the flips did
     /// not finish.
@@ -246,8 +358,9 @@ private:
     Tri& tri(int i) { return m_tris[static_cast<std::size_t>(i)]; }
     const Tri& tri(int i) const { return m_tris[static_cast<std::size_t>(i)]; }
     int orient(int a, int b, int c) const { return math::orient2d(pos(a), pos(b), pos(c)); }
+    bool isSuper(int v) const { return v >= m_first_super && v < m_first_super + 3; }
     bool touchesSuper(const Tri& t) const {
-        return t.v[0] >= m_first_super || t.v[1] >= m_first_super || t.v[2] >= m_first_super;
+        return isSuper(t.v[0]) || isSuper(t.v[1]) || isSuper(t.v[2]);
     }
     static std::uint64_t key(int a, int b) { return edgeKey(a, b); }
     bool isConstrained(int a, int b) const { return m_constrained.count(key(a, b)) != 0; }
@@ -272,7 +385,7 @@ private:
     }
 
     /// A triangle containing p (on its boundary included), by walking from the last one.
-    int locate(int p) {
+    int locate(const Vec2& p) {
         int t = m_last;
         if (!tri(t).alive) {
             t = firstAlive();
@@ -284,8 +397,9 @@ private:
             for (int j = 0; j < 3 && !moved; ++j) {
                 const int k = static_cast<int>((step + static_cast<std::size_t>(j)) % 3);
                 const int nb = cur.n[static_cast<std::size_t>(k)];
-                if (nb != kNone && orient(cur.v[static_cast<std::size_t>((k + 1) % 3)],
-                                          cur.v[static_cast<std::size_t>((k + 2) % 3)], p) < 0) {
+                if (nb != kNone &&
+                    math::orient2d(pos(cur.v[static_cast<std::size_t>((k + 1) % 3)]),
+                                   pos(cur.v[static_cast<std::size_t>((k + 2) % 3)]), p) < 0) {
                     t = nb;
                     moved = true;
                 }
@@ -296,8 +410,9 @@ private:
         }
         for (std::size_t i = 0; i < m_tris.size(); ++i) {  // a walk that cycles: scan
             const Tri& cur = m_tris[i];
-            if (cur.alive && orient(cur.v[0], cur.v[1], p) >= 0 &&
-                orient(cur.v[1], cur.v[2], p) >= 0 && orient(cur.v[2], cur.v[0], p) >= 0) {
+            if (cur.alive && math::orient2d(pos(cur.v[0]), pos(cur.v[1]), p) >= 0 &&
+                math::orient2d(pos(cur.v[1]), pos(cur.v[2]), p) >= 0 &&
+                math::orient2d(pos(cur.v[2]), pos(cur.v[0]), p) >= 0) {
                 return static_cast<int>(i);
             }
         }
@@ -614,20 +729,88 @@ std::string partnerOf(const std::vector<Vec2>& pts, const std::vector<int>& rep,
     return {};
 }
 
+/// Why points spread over the box from @p lo to @p hi are beyond the exact predicates; empty
+/// when they are not.
+std::string spreadProblem(const Vec2& lo, const Vec2& hi) {
+    if (!(hi.x - lo.x <= kWidest) || !(hi.y - lo.y <= kWidest)) {
+        return "the points spread too far for exact predicates";
+    }
+    const double spread = std::max(hi.x - lo.x, hi.y - lo.y);
+    return spread > 0.0 && spread < kNarrowest ? "the points spread too little for exact predicates"
+                                               : "";
+}
+
+void extend(Vec2& lo, Vec2& hi, const Vec2& p) {
+    lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)};
+    hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
+}
+
 }  // namespace
 
-Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
-                                  const std::vector<std::vector<Vec2>>& holes,
-                                  const std::vector<Vec2>& interior, double merge) {
+struct RegionTriangulation::State {
     Triangulation2D result;
+    PointGrid grid{0.0};     // the points kept, for merge
+    std::optional<Cdt> cdt;  // once the points are in it
+    Vec2 lo;                 // the box of the points it was built from
+    Vec2 hi;
+    std::vector<int> slot;  // each triangle's index in result.triangles, or kNone
+
+    /// Writes triangle @p t of @p c (alive, in the region) into result.triangles.
+    void refresh(const Cdt& c, int t) {
+        slot.resize(c.triangleCount(), kNone);
+        const auto& v = c.triangle(t).v;
+        const std::array<std::uint32_t, 3> tri = {static_cast<std::uint32_t>(c.pointOf(v[0])),
+                                                  static_cast<std::uint32_t>(c.pointOf(v[1])),
+                                                  static_cast<std::uint32_t>(c.pointOf(v[2]))};
+        int& at = slot[static_cast<std::size_t>(t)];
+        if (at == kNone) {
+            at = static_cast<int>(result.triangles.size());
+            result.triangles.push_back(tri);
+        } else {
+            result.triangles[static_cast<std::size_t>(at)] = tri;
+        }
+    }
+};
+
+RegionTriangulation::RegionTriangulation(const std::vector<Vec2>& givenOuter,
+                                         const std::vector<std::vector<Vec2>>& givenHoles,
+                                         const std::vector<Vec2>& givenInterior, double merge)
+    : m_state(std::make_unique<State>()) {
+    Triangulation2D& result = m_state->result;
     const double tol = std::max(merge, 0.0);
     const auto finite = [](const std::vector<Vec2>& ps) {
         return std::all_of(ps.begin(), ps.end(),
                            [](const Vec2& q) { return std::isfinite(q.x) && std::isfinite(q.y); });
     };
-    if (!finite(outer) || !finite(interior) || !std::all_of(holes.begin(), holes.end(), finite)) {
+    if (!finite(givenOuter) || !finite(givenInterior) ||
+        !std::all_of(givenHoles.begin(), givenHoles.end(), finite)) {
         result.problem = "a point is not finite";
-        return result;
+        return;
+    }
+    // The spread as given, before flushing: a region wholly below the floor would flush to a
+    // point and be reported as one.
+    if (!givenOuter.empty()) {
+        Vec2 lo = givenOuter.front();
+        Vec2 hi = lo;
+        for (const Vec2& p : givenOuter) {
+            extend(lo, hi, p);
+        }
+        for (const auto& h : givenHoles) {
+            for (const Vec2& p : h) {
+                extend(lo, hi, p);
+            }
+        }
+        result.problem = spreadProblem(lo, hi);
+        if (!result.problem.empty()) {
+            return;
+        }
+    }
+    const std::vector<Vec2> outer = flushed(givenOuter);
+    const std::vector<Vec2> interior = flushed(givenInterior);
+    std::vector<std::vector<Vec2>> holes;
+    holes.reserve(givenHoles.size());
+    for (const auto& h : givenHoles) {
+        holes.push_back(flushed(h));
     }
 
     // Boundary points first, in input order; one that is within tol of an earlier one stands
@@ -636,7 +819,8 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
     for (const auto& h : holes) {
         loops.push_back(&h);
     }
-    PointGrid grid(tol);
+    m_state->grid = PointGrid(tol);
+    PointGrid& grid = m_state->grid;
     std::vector<int> rep;
     std::vector<std::size_t> loop_starts;  // the first boundary index of each loop
     for (const auto* loop : loops) {
@@ -681,7 +865,7 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
             if (result.problem.empty()) {
                 result.problem = "the outer loop has fewer than 3 distinct points";
             }
-            return result;
+            return;
         }
     }
 
@@ -710,21 +894,16 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
         inserted.push_back(index);
     }
 
-    Vec2 lo = result.points[static_cast<std::size_t>(inserted.front())];
-    Vec2 hi = lo;
+    Vec2& lo = m_state->lo;
+    Vec2& hi = m_state->hi;
+    lo = result.points[static_cast<std::size_t>(inserted.front())];
+    hi = lo;
     for (const int i : inserted) {
-        const Vec2& p = result.points[static_cast<std::size_t>(i)];
-        lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)};
-        hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
+        extend(lo, hi, result.points[static_cast<std::size_t>(i)]);
     }
-    if (!(hi.x - lo.x <= kWidest) || !(hi.y - lo.y <= kWidest)) {
-        result.problem = "the points spread too far for exact predicates";
-        return result;
-    }
-    const double spread = std::max(hi.x - lo.x, hi.y - lo.y);
-    if (spread > 0.0 && spread < kNarrowest) {
-        result.problem = "the points spread too little for exact predicates";
-        return result;
+    if (std::string why = spreadProblem(lo, hi); !why.empty()) {
+        result.problem = std::move(why);
+        return;
     }
     // In a biased randomized order (BRIO): rounds of doubling size drawn at random, each sorted
     // along a Z-order curve. As given, a loop's points arrive along a line and every later
@@ -766,7 +945,7 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
             return za < zb || (za == zb && a < b);
         });
     }
-    Cdt cdt(result.points, lo, hi);
+    Cdt& cdt = m_state->cdt.emplace(result.points, lo, hi);
     for (const int i : inserted) {
         cdt.insert(i);
     }
@@ -840,11 +1019,10 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
         result.problem = "parity of the region is ill-defined near the segment from " +
                          name(fill.conflict.first) + " to " + name(fill.conflict.second);
     }
+    cdt.markInside(fill.inside);
+    result.triangles.reserve(fill.inside.size());
     for (const int t : fill.inside) {
-        const auto& v = cdt.triangle(t).v;
-        result.triangles.push_back({static_cast<std::uint32_t>(v[0]),
-                                    static_cast<std::uint32_t>(v[1]),
-                                    static_cast<std::uint32_t>(v[2])});
+        m_state->refresh(cdt, t);
     }
 
     // Every boundary segment must be an edge of the result, as the header promises. One that no
@@ -870,7 +1048,44 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
             }
         }
     }
-    return result;
+}
+
+RegionTriangulation::~RegionTriangulation() = default;
+RegionTriangulation::RegionTriangulation(RegionTriangulation&&) noexcept = default;
+RegionTriangulation& RegionTriangulation::operator=(RegionTriangulation&&) noexcept = default;
+
+bool RegionTriangulation::insert(const Vec2& point) {
+    State& s = *m_state;
+    const Vec2 q = flushed(point);
+    // A point strictly inside the region lies strictly inside the box of its points; one that
+    // does not (or is not finite) meets no predicate.
+    if (!s.cdt || !s.result.problem.empty() ||
+        !(s.lo.x < q.x && q.x < s.hi.x && s.lo.y < q.y && q.y < s.hi.y) || s.grid.find(q) >= 0) {
+        return false;
+    }
+    // The cavity's triangles are all made again (fill frees them last and allocate takes the last
+    // freed first, and it makes two more than it frees), so none of the region's goes away.
+    Cdt& cdt = *s.cdt;
+    std::vector<int> changed;
+    if (cdt.insertInside(q, changed) == kNone) {
+        return false;
+    }
+    s.grid.add(q, static_cast<int>(s.result.points.size()));
+    s.result.points.push_back(q);
+    for (const int t : changed) {
+        s.refresh(cdt, t);
+    }
+    return true;
+}
+
+const Triangulation2D& RegionTriangulation::result() const {
+    return m_state->result;
+}
+
+Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
+                                  const std::vector<std::vector<Vec2>>& holes,
+                                  const std::vector<Vec2>& interior, double merge) {
+    return RegionTriangulation(outer, holes, interior, merge).result();
 }
 
 }  // namespace hz::geo
