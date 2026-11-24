@@ -700,6 +700,40 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
         lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)};
         hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
     }
+    // In a biased randomized order (BRIO): rounds of doubling size drawn at random, each sorted
+    // along a Z-order curve. As given, a loop's points arrive along a line and every later
+    // point's cavity sweeps the long thin triangles they leave; at random, each point's walk
+    // from the last crosses those triangles instead. Two rows of n points took O(n^2) either
+    // way; this bounds both. The shuffle is a fixed sequence, so a triangulation does not
+    // change from run to run.
+    std::uint64_t state = 0x9E3779B97F4A7C15ULL;
+    for (std::size_t i = inserted.size(); i > 1; --i) {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        std::swap(inserted[i - 1], inserted[static_cast<std::size_t>(state % i)]);
+    }
+    const auto zorder = [&](int index) {
+        const Vec2& p = result.points[static_cast<std::size_t>(index)];
+        const auto cell = [](double v, double from, double to) {
+            const double f = to > from ? (v - from) / (to - from) : 0.0;
+            return static_cast<std::uint32_t>(std::clamp(f, 0.0, 1.0) * 65535.0);
+        };
+        std::uint64_t code = 0;
+        const std::uint32_t cx = cell(p.x, lo.x, hi.x);
+        const std::uint32_t cy = cell(p.y, lo.y, hi.y);
+        for (int bit = 0; bit < 16; ++bit) {
+            code |= static_cast<std::uint64_t>((cx >> bit) & 1U) << (2 * bit);
+            code |= static_cast<std::uint64_t>((cy >> bit) & 1U) << (2 * bit + 1);
+        }
+        return code;
+    };
+    for (std::size_t from = 0, size = 1; from < inserted.size(); from += size, size *= 2) {
+        const auto first = inserted.begin() + static_cast<std::ptrdiff_t>(from);
+        const auto last =
+            inserted.begin() + static_cast<std::ptrdiff_t>(std::min(inserted.size(), from + size));
+        std::sort(first, last, [&](int a, int b) { return zorder(a) < zorder(b); });
+    }
     Cdt cdt(result.points, lo, hi);
     for (const int i : inserted) {
         cdt.insert(i);
