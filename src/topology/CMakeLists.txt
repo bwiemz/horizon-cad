@@ -4,6 +4,7 @@ add_library(hz_topology STATIC
     src/EulerOps.cpp
     src/Queries.cpp
     src/GeometryValidator.cpp
+    src/ExactValidator.cpp
 )
 
 target_include_directories(hz_topology
