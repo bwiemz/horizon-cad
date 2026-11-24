@@ -10,6 +10,7 @@ add_library(hz_geometry STATIC
     src/curves/NurbsCurve.cpp
     src/surfaces/NurbsSurface.cpp
     src/surfaces/SurfaceBuilder.cpp
+    src/surfaces/SurfaceRecognition.cpp
 )
 
 target_include_directories(hz_geometry
