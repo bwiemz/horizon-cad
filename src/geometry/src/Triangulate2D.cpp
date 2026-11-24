@@ -780,6 +780,30 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
                                     static_cast<std::uint32_t>(v[1]),
                                     static_cast<std::uint32_t>(v[2])});
     }
+
+    // Every boundary segment must be an edge of the result, as the header promises. One that no
+    // triangle has lies outside the region (a spike run along both ways) or bounds no area at
+    // all (a loop with none, or one run round twice).
+    if (result.problem.empty()) {
+        std::unordered_set<std::uint64_t> kept;
+        for (const auto& tri : result.triangles) {
+            for (std::size_t k = 0; k < 3; ++k) {
+                kept.insert(edgeKey(static_cast<int>(tri[k]), static_cast<int>(tri[(k + 1) % 3])));
+            }
+        }
+        for (std::size_t li = 0; li < loops.size() && result.problem.empty(); ++li) {
+            const std::size_t n = loops[li]->size();
+            for (std::size_t i = 0; i < n; ++i) {
+                const int a = rep[loop_starts[li] + i];
+                const int b = rep[loop_starts[li] + (i + 1) % n];
+                if (a != b && kept.count(edgeKey(a, b)) == 0) {
+                    result.problem =
+                        segmentName(li, i, n) + " is an edge of no triangle of the region";
+                    break;
+                }
+            }
+        }
+    }
     return result;
 }
 

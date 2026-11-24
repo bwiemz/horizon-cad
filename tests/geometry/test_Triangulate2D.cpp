@@ -500,6 +500,26 @@ TEST(Triangulate2D, DegenerateOuterLoopIsReported) {
     EXPECT_FALSE(triangulateRegion({}, {}).problem.empty());
 }
 
+TEST(Triangulate2D, AnOutwardSpikeIsReported) {
+    // The spike (4,2)-(6,2) is run along both ways, so it divides nothing, and it lies outside
+    // the square: no triangle has it as an edge.
+    const Loop outer{{0, 0}, {4, 0}, {4, 2}, {6, 2}, {4, 2}, {4, 4}, {0, 4}};
+    const Triangulation2D t = triangulateRegion(outer, {});
+    EXPECT_FALSE(t.problem.empty());
+}
+
+TEST(Triangulate2D, AZeroAreaOuterLoopIsReported) {
+    const Triangulation2D t = triangulateRegion({{0, 0}, {1, 0}, {2, 0}, {1, 0}}, {});
+    EXPECT_FALSE(t.problem.empty());
+}
+
+TEST(Triangulate2D, ALoopGivenTwiceInTheSameDirectionIsReported) {
+    // Every segment is run along twice, so none is a wall and nothing is inside.
+    const Loop twice{{0, 0}, {4, 0}, {4, 4}, {0, 4}, {0, 0}, {4, 0}, {4, 4}, {0, 4}};
+    const Triangulation2D t = triangulateRegion(twice, {});
+    EXPECT_FALSE(t.problem.empty());
+}
+
 TEST(Triangulate2D, TwentyThousandPointsOnTheUnitSquare) {
     const Loop outer{{0, 0}, {1, 0}, {1, 1}, {0, 1}};
     std::mt19937 rng(5);
