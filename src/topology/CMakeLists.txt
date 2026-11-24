@@ -5,6 +5,7 @@ add_library(hz_topology STATIC
     src/Queries.cpp
     src/GeometryValidator.cpp
     src/ExactValidator.cpp
+    src/ExactLoopGeometry.cpp
 )
 
 target_include_directories(hz_topology

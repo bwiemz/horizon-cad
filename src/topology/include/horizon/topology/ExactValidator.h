@@ -28,7 +28,9 @@ struct ExactIssue {
 };
 
 /// Every way @p solid's exact geometry disagrees with its topology; empty when it agrees.
-/// Each pcurve is sampled at 17 parameters (its two ends and 15 between). Closeness tests use
+/// The solid must be combinatorially valid (`Solid::isValid`): twins, next pointers and origins are
+/// followed without null checks. Each pcurve is sampled at 17 parameters (its two ends and 15
+/// between). Closeness tests use
 /// @p tolerance together with the edge's and vertices' own tolerances.
 std::vector<ExactIssue> validateExact(const Solid& solid, const math::ModelTolerance& tolerance);
 

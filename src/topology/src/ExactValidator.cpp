@@ -2,13 +2,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <string>
 
+#include "ExactLoopGeometry.h"
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/surfaces/Surface.h"
-#include "horizon/math/RobustPredicates.h"
 
 namespace hz::topo {
 
@@ -18,6 +19,13 @@ using math::Vec2;
 using math::Vec3;
 
 constexpr int kSamples = 17;  // a pcurve's two ends and 15 between
+
+/// A number for a detail string, with enough digits to read on parts of any size.
+std::string num(double x) {
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%.4g", x);
+    return buf;
+}
 
 struct Checker {
     const Solid& solid;
@@ -47,7 +55,7 @@ struct Checker {
                 const double d = (e.exactCurve->evaluate(end.t) - end.v->point).length();
                 if (!tol.coincident(d, e.tolerance, end.v->tolerance)) {
                     report(ExactIssueKind::VertexOffCurve, nullptr, &e,
-                           "curve end is " + std::to_string(d) + " from its vertex");
+                           "curve end is " + num(d) + " from its vertex");
                 }
             }
         }
@@ -71,8 +79,7 @@ struct Checker {
         if (!tol.within(da, std::max(e.tolerance, h.origin->tolerance)) ||
             !tol.within(db, std::max(e.tolerance, h.next->origin->tolerance))) {
             report(ExactIssueKind::PcurveOffVertex, h.face, &e,
-                   "pcurve ends are " + std::to_string(da) + " and " + std::to_string(db) +
-                       " from their vertices");
+                   "pcurve ends are " + num(da) + " and " + num(db) + " from their vertices");
         }
         if (!e.exactCurve) return;
         double worst = 0.0;
@@ -85,27 +92,34 @@ struct Checker {
             params.push_back(t);
             worst = std::max(worst, (e.exactCurve->evaluate(t) - p).length());
         }
+        // The ends are known: the vertices (checked above) sit at curveStart and curveEnd. Using
+        // them, not projections, keeps a closed curve's end samples from projecting to the other
+        // end of its range.
+        const bool forward = &h == e.halfEdge;
+        params.front() = forward ? e.curveStart : e.curveEnd;
+        params.back() = forward ? e.curveEnd : e.curveStart;
         if (!tol.within(worst, e.tolerance)) {
             report(ExactIssueKind::PcurveOffCurve, h.face, &e,
-                   "pcurve strays " + std::to_string(worst) + " from the edge's curve");
-        } else if (!advancesWithCurve(e, h, params)) {
+                   "pcurve strays " + num(worst) + " from the edge's curve");
+        } else if (!advancesWithCurve(e, forward, params)) {
             report(ExactIssueKind::PcurveOffCurve, h.face, &e,
-                   "pcurve runs against the edge's curve");
+                   "pcurve runs against, or winds differently round, the edge's curve");
         }
     }
 
-    /// True when the projected parameters advance in the half-edge's direction along the curve:
-    /// forward (curveStart to curveEnd) for the edge's own half-edge, backward for its twin. Only
-    /// the order is compared, not the values. On a periodic curve each step is taken modulo the
-    /// period, so a closed edge may wrap once; a step is slack by the model tolerance in
-    /// parameter units (tolerance over the curve's speed).
-    bool advancesWithCurve(const Edge& e, const HalfEdge& h,
-                           const std::vector<double>& params) const {
-        const double dir =
-            ((e.curveEnd >= e.curveStart) ? 1.0 : -1.0) * (&h == e.halfEdge ? 1.0 : -1.0);
+    /// True when the projected parameters advance in the half-edge's direction along the curve
+    /// (curveStart to curveEnd for the edge's own half-edge, backward for its twin) and cover it
+    /// exactly once: the steps sum to |curveEnd - curveStart|. Only order and extent are
+    /// compared, not the values, as a pcurve and its curve need not share parameters. On a
+    /// periodic curve each step is taken modulo the period. Each step is slack by the model
+    /// tolerance in parameter units (tolerance over the curve's speed).
+    bool advancesWithCurve(const Edge& e, bool forward, const std::vector<double>& params) const {
+        const double dir = ((e.curveEnd >= e.curveStart) ? 1.0 : -1.0) * (forward ? 1.0 : -1.0);
         const geo::Interval range = e.exactCurve->range();
         const double period = range.max - range.min;
         const bool wraps = e.exactCurve->periodic() && std::isfinite(period) && period > 0.0;
+        double sum = 0.0;
+        double slackSum = 0.0;
         for (size_t i = 0; i + 1 < params.size(); ++i) {
             double step = (params[i + 1] - params[i]) * dir;
             if (wraps) {
@@ -116,37 +130,48 @@ struct Checker {
             const double speed = e.exactCurve->derivatives(params[i]).d1.length();
             const double slack = speed > 0.0 ? tol.effective(e.tolerance) / speed : 0.0;
             if (step < -slack) return false;
+            sum += step;
+            slackSum += slack;
         }
-        return true;
+        return std::fabs(sum - std::fabs(e.curveEnd - e.curveStart)) <= slackSum;
     }
+
+    // ---- faces and loops ----
 
     void checkFace(const Face& f) {
         if (!f.exactSurface) {
             report(ExactIssueKind::MissingGeometry, &f, nullptr, "face has no exact surface");
             return;
         }
-        checkLoop(f, f.outerLoop, true);
-        for (const Wire* w : f.innerLoops) checkLoop(f, w, false);
-        checkLoopRelations(f);
+        std::vector<LoopInfo> loops;
+        loops.push_back(checkLoop(f, f.outerLoop, true));
+        for (const Wire* w : f.innerLoops) loops.push_back(checkLoop(f, w, false));
+        checkLoopRelations(f, loops);
     }
 
-    // ---- loops ----
-
-    struct LoopData {
+    struct LoopInfo {
         const Wire* wire = nullptr;
-        bool outer = false;
         bool usable = false;  // closed, joined and fully carrying pcurves
-        std::vector<Vec2> poly;
+        detail::LoopPolygon poly;
     };
-    std::vector<LoopData> loops;  // the loops of the face being checked
 
-    /// How far apart two (u, v) points may be and still be the same point of the surface: the
-    /// effective model tolerance (plus the vertex's own) turned into parameter units by the
-    /// surface's derivative magnitudes at the point. Where a derivative vanishes (a pole) every
-    /// value of that parameter is the same point, so any difference is accepted.
-    bool sameUv(const geo::Surface& s, const Vec2& a, const Vec2& b, double extra) const {
+    /// A parametric tolerance on @p s at a point: the model tolerance over the larger of the
+    /// surface's derivative magnitudes there, so it is a distance on the surface whichever way
+    /// the point is displaced.
+    detail::UvTolerance uvTolerance(const geo::Surface& s) const {
+        return [&s, this](const Vec2& p) {
+            const auto d = s.derivatives(p.x, p.y);
+            const double speed = std::max(d.du.length(), d.dv.length());
+            return speed > 0.0 ? tol.linear / speed : std::numeric_limits<double>::infinity();
+        };
+    }
+
+    /// True when two (u, v) points are the same point of the surface within @p allowance
+    /// (a distance): each parameter difference, taken modulo the period on a periodic axis,
+    /// times the surface's derivative magnitude along it. Where that derivative vanishes (a
+    /// pole) every value of the parameter is the same point.
+    static bool sameUv(const geo::Surface& s, const Vec2& a, const Vec2& b, double allowance) {
         const auto d = s.derivatives(a.x, a.y);
-        const double eff = tol.effective(extra);
         const auto close = [&](double x, double y, double speed, bool periodic, geo::Interval r) {
             double diff = std::fabs(x - y);
             if (periodic) {
@@ -154,20 +179,18 @@ struct Checker {
                 diff = std::fmod(diff, period);
                 diff = std::min(diff, period - diff);
             }
-            return speed <= 0.0 || diff * speed <= eff;
+            return speed <= 0.0 || diff * speed <= allowance;
         };
         return close(a.x, b.x, d.du.length(), s.periodicU(), s.uRange()) &&
                close(a.y, b.y, d.dv.length(), s.periodicV(), s.vRange());
     }
 
-    void checkLoop(const Face& f, const Wire* w, bool outer) {
-        LoopData data;
-        data.wire = w;
-        data.outer = outer;
+    LoopInfo checkLoop(const Face& f, const Wire* w, bool outer) {
+        LoopInfo info;
+        info.wire = w;
         if (!w || !w->halfEdge) {
             report(ExactIssueKind::LoopNotClosed, &f, nullptr, "face has no loop");
-            loops.push_back(std::move(data));
-            return;
+            return info;
         }
         std::vector<const HalfEdge*> ring;
         const size_t limit = 2 * solid.edges().size() + 1;
@@ -184,91 +207,61 @@ struct Checker {
         if (!closed) {
             report(ExactIssueKind::LoopNotClosed, &f, w->halfEdge->edge,
                    "the half-edge cycle does not return to its start");
-            loops.push_back(std::move(data));
-            return;
+            return info;
         }
-        bool carrying = true;
-        for (const HalfEdge* h : ring) carrying = carrying && h->pcurve;
-        if (!carrying) {  // already reported as MissingGeometry
-            loops.push_back(std::move(data));
-            return;
+        for (const HalfEdge* h : ring) {
+            if (!h->pcurve) return info;  // already reported as MissingGeometry
         }
         const geo::Surface& s = *f.exactSurface;
         bool joined = true;
         for (const HalfEdge* h : ring) {
-            const Vec2 end = sample(*h, kSamples - 1);
-            const Vec2 next = sample(*h->next, 0);
-            if (!sameUv(s, end, next, h->next->origin->tolerance)) {
+            // Two ends each within their allowance of the vertex may be twice that apart.
+            const double allowance =
+                tol.effective(std::max(h->edge->tolerance, h->next->origin->tolerance)) +
+                tol.effective(std::max(h->next->edge->tolerance, h->next->origin->tolerance));
+            if (!sameUv(s, sample(*h, kSamples - 1), sample(*h->next, 0), allowance)) {
                 joined = false;
                 report(ExactIssueKind::LoopNotClosed, &f, h->edge,
                        "pcurve does not join the next one in (u, v)");
             }
         }
-        if (!joined) {
-            loops.push_back(std::move(data));
-            return;
+        if (!joined) return info;
+        // The loop as chords of its pcurves' own (u, v) values, unwrapped so that it is
+        // continuous: a periodic surface's seam must not collapse the rectangle, and a loop
+        // written inside [0, 2 pi) must not break where it crosses the seam.
+        const auto period = [](bool periodic, geo::Interval r) {
+            const double p = r.max - r.min;
+            return periodic && std::isfinite(p) ? p : 0.0;
+        };
+        if (!detail::unwrapLoop(ring, kSamples, period(s.periodicU(), s.uRange()),
+                                period(s.periodicV(), s.vRange()), info.poly)) {
+            report(ExactIssueKind::LoopNotClosed, &f, w->halfEdge->edge,
+                   "loop closes only after winding round the surface");
+            return info;
         }
-        // The loop as a polygon of its pcurves' own (u, v) values, unwrapped: a periodic
-        // surface's seam must not collapse the rectangle.
-        for (const HalfEdge* h : ring) {
-            for (int i = 0; i + 1 < kSamples; ++i) data.poly.push_back(sample(*h, i));
-        }
-        data.usable = true;
-        double twice = 0.0;
-        for (size_t i = 0; i < data.poly.size(); ++i) {
-            const Vec2& p = data.poly[i];
-            const Vec2& q = data.poly[(i + 1) % data.poly.size()];
-            twice += p.x * q.y - q.x * p.y;
-        }
+        info.usable = true;
+        const double area = detail::signedArea(info.poly);
         // Outer loops run counter-clockwise unless the face is reversed; inner loops the
         // other way.
         const bool wantPositive = outer != f.reversed;
-        if ((twice > 0.0) != wantPositive) {
+        if ((area > 0.0) != wantPositive) {
             report(ExactIssueKind::LoopWrongOrientation, &f, w->halfEdge->edge,
-                   "loop has signed area " + std::to_string(twice / 2.0) + " in (u, v)");
+                   "loop has signed area " + num(area) + " in (u, v)");
         }
-        if (selfIntersects(data.poly)) {
+        if (detail::selfIntersects(info.poly, uvTolerance(s))) {
             report(ExactIssueKind::LoopSelfIntersects, &f, w->halfEdge->edge,
                    "loop crosses itself");
         }
-        loops.push_back(std::move(data));
+        return info;
     }
 
-    static bool properlyCross(const Vec2& a, const Vec2& b, const Vec2& c, const Vec2& d) {
-        return math::orient2d(a, b, c) * math::orient2d(a, b, d) < 0 &&
-               math::orient2d(c, d, a) * math::orient2d(c, d, b) < 0;
-    }
-
-    static bool selfIntersects(const std::vector<Vec2>& poly) {
-        const size_t n = poly.size();
-        for (size_t i = 0; i < n; ++i) {
-            for (size_t j = i + 2; j < n; ++j) {
-                if (i == 0 && j == n - 1) continue;  // adjacent across the closing segment
-                if (properlyCross(poly[i], poly[(i + 1) % n], poly[j], poly[(j + 1) % n])) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    static bool loopsCross(const std::vector<Vec2>& p, const std::vector<Vec2>& q) {
-        for (size_t i = 0; i < p.size(); ++i) {
-            for (size_t j = 0; j < q.size(); ++j) {
-                if (properlyCross(p[i], p[(i + 1) % p.size()], q[j], q[(j + 1) % q.size()])) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    void checkLoopRelations(const Face& f) {
+    void checkLoopRelations(const Face& f, const std::vector<LoopInfo>& loops) {
+        const auto uvTol = uvTolerance(*f.exactSurface);
         for (size_t i = 0; i < loops.size(); ++i) {
             if (!loops[i].usable) continue;
             for (size_t j = i + 1; j < loops.size(); ++j) {
                 if (!loops[j].usable) continue;
-                if (loopsCross(loops[i].poly, loops[j].poly)) {
+                if (detail::loopsCross(loops[i].poly, loops[j].poly, uvTol)) {
                     report(ExactIssueKind::LoopsCross, &f, loops[j].wire->halfEdge->edge,
                            "two loops of the face cross");
                 }
@@ -276,10 +269,12 @@ struct Checker {
         }
         if (loops.empty() || !loops[0].usable) return;
         for (size_t j = 1; j < loops.size(); ++j) {
-            if (!loops[j].usable || loopsCross(loops[0].poly, loops[j].poly)) continue;
-            const bool outside =
-                std::any_of(loops[j].poly.begin(), loops[j].poly.end(), [&](const Vec2& p) {
-                    return math::classifyPoint(loops[0].poly, p) == math::Containment::Outside;
+            if (!loops[j].usable || detail::loopsCross(loops[0].poly, loops[j].poly, uvTol)) {
+                continue;
+            }
+            const bool outside = std::any_of(
+                loops[j].poly.begin(), loops[j].poly.end(), [&](const detail::LoopSegment& seg) {
+                    return detail::clearlyOutside(loops[0].poly, seg.a);
                 });
             if (outside) {
                 report(ExactIssueKind::HoleOutsideOuterLoop, &f, loops[j].wire->halfEdge->edge,
@@ -292,16 +287,15 @@ struct Checker {
 }  // namespace
 
 std::vector<ExactIssue> validateExact(const Solid& solid, const math::ModelTolerance& tolerance) {
-    Checker c{solid, tolerance, {}, {}};
+    Checker c{solid, tolerance, {}};
     for (const Edge& e : solid.edges()) {
         if (e.alive && e.halfEdge && e.halfEdge->twin) c.checkEdge(e);
     }
     for (const Face& f : solid.faces()) {
-        if (!f.alive) continue;
-        c.loops.clear();
-        c.checkFace(f);
+        if (f.alive) c.checkFace(f);
     }
-    return std::move(c.issues);
+    std::vector<ExactIssue> out = std::move(c.issues);
+    return out;
 }
 
 }  // namespace hz::topo
