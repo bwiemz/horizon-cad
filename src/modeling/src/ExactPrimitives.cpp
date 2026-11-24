@@ -101,25 +101,18 @@ void setLinePcurve(HalfEdge* he, const Vec2& from, const Vec2& to) {
     setPcurve(he, std::make_shared<geo::Line2D>(from, to), 0.0, 1.0);
 }
 
-Vec2 planeUV(const geo::Frame& f, const Vec3& p) {
-    const Vec3 d = p - f.origin;
-    return {d.dot(f.x), d.dot(f.y)};
-}
-
 /// The pieces of the block that a hole through it needs.
 struct Block {
     Builder builder;
     Face* bottom = nullptr;
     Face* top = nullptr;
-    geo::Frame bottomFrame;
-    geo::Frame topFrame;
 };
 
 /// Builds the six planar faces of the block. Every frame has z along the face's outward normal,
 /// so no face is reversed, and each outer loop runs counter-clockwise seen from outside, which
 /// is counter-clockwise in the face's (u, v).
 Block buildBlock(Solid& solid, const Vec3& min, const Vec3& max) {
-    Block b{Builder(solid), nullptr, nullptr, {}, {}};
+    Block b{Builder(solid), nullptr, nullptr};
     Builder& bd = b.builder;
 
     const std::array<Vec3, 8> pts = {{{min.x, min.y, min.z},
@@ -149,7 +142,8 @@ Block buildBlock(Solid& solid, const Vec3& min, const Vec3& max) {
     for (const Side& s : sides) {
         const geo::Frame frame =
             geo::Frame::fromAxis(pts[static_cast<size_t>(s.corners[0])], s.normal, {1.0, 0.0, 0.0});
-        Face* f = bd.face("box", s.role, std::make_shared<geo::Plane>(frame));
+        const auto plane = std::make_shared<geo::Plane>(frame);
+        Face* f = bd.face("box", s.role, plane);
         std::vector<HalfEdge*> hes;
         hes.reserve(4);
         for (size_t i = 0; i < 4; ++i) {
@@ -159,7 +153,7 @@ Block buildBlock(Solid& solid, const Vec3& min, const Vec3& max) {
         for (size_t i = 0; i < 4; ++i) {
             const Vec3& a = hes[i]->origin->point;
             const Vec3& c = hes[i]->next->origin->point;
-            setLinePcurve(hes[i], planeUV(frame, a), planeUV(frame, c));
+            setLinePcurve(hes[i], plane->invert(a), plane->invert(c));
             const auto twin = open.find({hes[i]->next->origin, hes[i]->origin});
             if (twin == open.end()) {
                 open[{hes[i]->origin, hes[i]->next->origin}] = hes[i];
@@ -173,10 +167,8 @@ Block buildBlock(Solid& solid, const Vec3& min, const Vec3& max) {
         }
         if (std::string(s.role) == "bottom") {
             b.bottom = f;
-            b.bottomFrame = frame;
         } else if (std::string(s.role) == "top") {
             b.top = f;
-            b.topFrame = frame;
         }
     }
     return b;
@@ -284,11 +276,11 @@ std::unique_ptr<Solid> makePlateWithHole(const Vec3& min, const Vec3& max, const
     bd.loop(block.bottom, {capBottom}, false);
     setPcurve(capTop,
               std::make_shared<geo::Circle2D>(
-                  planeUV(block.topFrame, vt->point - base.x * holeRadius), holeRadius),
+                  block.top->exactSurface->invert(vt->point - base.x * holeRadius), holeRadius),
               math::kTwoPi, 0.0);
     setPcurve(capBottom,
               std::make_shared<geo::Circle2D>(
-                  planeUV(block.bottomFrame, vb->point - base.x * holeRadius), holeRadius),
+                  block.bottom->exactSurface->invert(vb->point - base.x * holeRadius), holeRadius),
               math::kTwoPi, 0.0);
 
     // Both rim curves run counter-clockwise about z, as the wall's u does.

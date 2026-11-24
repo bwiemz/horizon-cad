@@ -6,23 +6,15 @@
 #include <limits>
 #include <vector>
 
+#include "../AngleWrap.h"
+#include "horizon/math/Constants.h"
+
 namespace hz::geo {
 
 namespace {
-constexpr double kTwoPi = 6.283185307179586476925286766559;
+using detail::wrapAngle;
+using math::kTwoPi;
 constexpr double kInf = std::numeric_limits<double>::infinity();
-
-/// An angle within one turn of [0, 2 pi) normalised into it; a tiny negative angle that rounds
-/// up to 2 pi gives 0.
-double wrapAngle(double a) {
-    if (a < 0.0) {
-        a += kTwoPi;
-    }
-    if (a >= kTwoPi) {
-        a -= kTwoPi;
-    }
-    return a >= kTwoPi ? 0.0 : a;
-}
 }  // namespace
 
 // ---- Line ----

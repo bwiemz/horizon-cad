@@ -4,24 +4,16 @@
 #include <cmath>
 #include <limits>
 
+#include "../AngleWrap.h"
+#include "horizon/math/Constants.h"
+
 namespace hz::geo {
 
 namespace {
-constexpr double kTwoPi = 6.283185307179586476925286766559;
+using detail::wrapAngle;
+using math::kHalfPi;
+using math::kTwoPi;
 constexpr double kInf = std::numeric_limits<double>::infinity();
-constexpr double kHalfPi = 1.5707963267948966192313216916398;
-
-/// An angle within one turn of [0, 2 pi) normalised into it; a tiny negative angle that rounds
-/// up to 2 pi gives 0.
-double wrapAngle(double a) {
-    if (a < 0.0) {
-        a += kTwoPi;
-    }
-    if (a >= kTwoPi) {
-        a -= kTwoPi;  // an angle past a full turn, e.g. longitude + pi
-    }
-    return a >= kTwoPi ? 0.0 : a;
-}
 
 /// The unit radial direction cos u x + sin u y and its u derivative.
 math::Vec3 radial(const Frame& f, double u) {
