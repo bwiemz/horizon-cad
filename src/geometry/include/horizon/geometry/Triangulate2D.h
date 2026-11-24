@@ -46,8 +46,9 @@ struct Triangulation2D {
 /// interior point within @p merge of another point, on a boundary segment, or not strictly
 /// inside the region is dropped. Decisions use the exact predicates of math/RobustPredicates.
 ///
-/// Every coordinate whose magnitude is nonzero and below 1e-60 is flushed to exactly 0 before
-/// any predicate sees it, and points holds the flushed value (Ruling 4): below that the
+/// Every coordinate whose magnitude is nonzero and below 1e-60 is flushed to exactly +0 before
+/// any predicate sees it, and points holds the flushed value (Ruling 4; a zero, -0.0 included,
+/// is kept as given): below that the
 /// predicates' exact arithmetic underflows and a sign can come out wrong even where the
 /// differences are in range (math/RobustPredicates.h). A change of 1e-60 is below any model
 /// tolerance; this is normalisation, not a fallback. The spread checks (Triangulation2D::problem)
@@ -69,7 +70,8 @@ Triangulation2D triangulateRegion(const std::vector<math::Vec2>& outer,
 
 /// A constrained Delaunay triangulation that takes more interior points after it is built:
 /// built as triangulateRegion builds it (which returns its result), then refined in place, as a
-/// mesher refines, without triangulating again.
+/// mesher refines, without triangulating again. A RegionTriangulation that has been moved from
+/// may only be destroyed or assigned to; insert and result must not be called on it.
 class RegionTriangulation {
 public:
     /// As triangulateRegion(outer, holes, interior, merge).
@@ -97,6 +99,10 @@ public:
     const Triangulation2D& result() const;
 
 private:
+    friend Triangulation2D triangulateRegion(const std::vector<math::Vec2>& outer,
+                                             const std::vector<std::vector<math::Vec2>>& holes,
+                                             const std::vector<math::Vec2>& interior, double merge);
+
     struct State;
     std::unique_ptr<State> m_state;
 };

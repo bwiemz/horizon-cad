@@ -31,11 +31,12 @@ constexpr double kNarrowest = 1e-60;
 
 /// The smallest nonzero coordinate magnitude kept (Ruling 4). Below it a predicate's sign can
 /// come out wrong even where the differences are in range (math/RobustPredicates.h: incircle's
-/// floor), so such a coordinate is flushed to exactly 0 before any predicate sees it.
+/// floor), so such a coordinate is flushed to exactly 0 before any predicate sees it. A zero is
+/// left as it is, -0.0 included, so points that needed no flush are kept bit for bit.
 constexpr double kFloor = 1e-60;
 
 Vec2 flushed(const Vec2& p) {
-    const auto flush = [](double c) { return std::fabs(c) < kFloor ? 0.0 : c; };
+    const auto flush = [](double c) { return c != 0.0 && std::fabs(c) < kFloor ? 0.0 : c; };
     return {flush(p.x), flush(p.y)};
 }
 
@@ -1085,7 +1086,8 @@ const Triangulation2D& RegionTriangulation::result() const {
 Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
                                   const std::vector<std::vector<Vec2>>& holes,
                                   const std::vector<Vec2>& interior, double merge) {
-    return RegionTriangulation(outer, holes, interior, merge).result();
+    RegionTriangulation region(outer, holes, interior, merge);
+    return std::move(region.m_state->result);
 }
 
 }  // namespace hz::geo

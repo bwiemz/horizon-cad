@@ -29,9 +29,9 @@ Edge undirected(std::uint32_t a, std::uint32_t b) {
     return a < b ? Edge{a, b} : Edge{b, a};
 }
 
-/// A coordinate as the triangulation keeps it: a magnitude below 1e-60 is 0 (Ruling 4).
+/// A coordinate as the triangulation keeps it: a nonzero magnitude below 1e-60 is +0 (Ruling 4).
 double flushed(double c) {
-    return std::fabs(c) < 1e-60 ? 0.0 : c;
+    return c != 0.0 && std::fabs(c) < 1e-60 ? 0.0 : c;
 }
 
 Vec2 flushed(const Vec2& p) {
@@ -619,13 +619,16 @@ TEST(Triangulate2D, TinyCoordinatesAreFlushedToZero) {
 }
 
 TEST(Triangulate2D, OnlyCoordinatesBelowTheFloorAreFlushed) {
-    // Either sign, either coordinate, boundary and interior points alike; 1e-60 itself is kept.
+    // Either sign, either coordinate, boundary and interior points alike; 1e-60 itself is kept,
+    // and so is a zero's sign.
     const double below = std::nextafter(1e-60, 0.0);
     const Loop outer{{-4, -4}, {-below, -4}, {4, -4}, {4, 1e-60}, {4, 4}, {-4, 4}};
-    const Loop interior{{2e-61, 2}, {-2, -below}, {1e-60, -1e-60}, {2, 2}};
+    const Loop interior{{2e-61, 2}, {-2, -below}, {1e-60, -1e-60}, {2, 2}, {-0.0, 1}};
     const Triangulation2D t = checkRegion(outer, {}, interior);
-    ASSERT_EQ(t.points.size(), 10U);
+    ASSERT_EQ(t.points.size(), 11U);
     EXPECT_EQ(t.points[1].x, 0.0);
+    EXPECT_FALSE(std::signbit(t.points[1].x));  // flushed to +0
+    EXPECT_TRUE(std::signbit(t.points[10].x));  // -0.0, as given
     EXPECT_EQ(t.points[3].y, 1e-60);
     EXPECT_EQ(t.points[6].x, 0.0);
     EXPECT_EQ(t.points[6].y, 2.0);
