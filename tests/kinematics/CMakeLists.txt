@@ -12,4 +12,4 @@ target_link_libraries(hz_kinematics_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_kinematics_tests)
+gtest_discover_tests(hz_kinematics_tests DISCOVERY_TIMEOUT 120)

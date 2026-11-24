@@ -26,4 +26,4 @@ target_link_libraries(hz_interop_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_interop_tests PROPERTIES LABELS interop)
+gtest_discover_tests(hz_interop_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS interop)

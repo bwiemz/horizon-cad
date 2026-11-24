@@ -14,4 +14,4 @@ target_link_libraries(hz_topology_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_topology_tests)
+gtest_discover_tests(hz_topology_tests DISCOVERY_TIMEOUT 120)

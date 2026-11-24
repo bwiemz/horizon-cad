@@ -20,4 +20,4 @@ target_link_libraries(hz_drafting_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_drafting_tests)
+gtest_discover_tests(hz_drafting_tests DISCOVERY_TIMEOUT 120)

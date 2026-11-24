@@ -16,4 +16,4 @@ target_link_libraries(hz_geometry_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_geometry_tests)
+gtest_discover_tests(hz_geometry_tests DISCOVERY_TIMEOUT 120)

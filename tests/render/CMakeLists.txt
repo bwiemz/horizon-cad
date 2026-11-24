@@ -22,4 +22,4 @@ target_link_libraries(hz_render_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_render_tests)
+gtest_discover_tests(hz_render_tests DISCOVERY_TIMEOUT 120)

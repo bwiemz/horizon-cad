@@ -57,4 +57,4 @@ target_link_libraries(hz_modeling_tests
 target_include_directories(hz_modeling_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/modeling/src)
 
 include(GoogleTest)
-gtest_discover_tests(hz_modeling_tests)
+gtest_discover_tests(hz_modeling_tests DISCOVERY_TIMEOUT 120)
