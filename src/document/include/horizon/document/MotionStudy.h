@@ -25,7 +25,7 @@ class DocumentManager;
 /// without moving the components (see AssemblyDocument::setPose to show it).
 struct MotionStudy {
     /// The driving mate, by id: a Distance mate (a length) or an Angle mate
-    /// (radians).
+    /// (radians, from 0 to pi: the angle between its faces is unsigned).
     uint64_t mate = 0;
     double from = 0.0;
     double to = 0.0;

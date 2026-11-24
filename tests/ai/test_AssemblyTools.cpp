@@ -455,4 +455,31 @@ TEST_F(AssemblyToolsTest, AMotionStudySaysWhereItGoesAndWhereItClashes) {
     EXPECT_NE(
         fails("study_motion", {{"mate", 1}, {"from", 0}, {"to", 1}}).find("distance or an angle"),
         std::string::npos);
+    EXPECT_NE(fails("study_motion", {{"mate", mate}, {"from", 0}, {"to", 1}, {"steps", 500}})
+                  .find("steps"),
+              std::string::npos)
+        << "each step a solve on the assistant's turn: 180 at most";
+}
+
+TEST_F(AssemblyToolsTest, AMotionStudyTurnsAnAngleWithinWhatItMeasures) {
+    const auto low = insert("plate.hzpart");
+    const auto high = insert("plate.hzpart", {{"position", {0, 0, 50}}});
+    ok("add_mate", {{"type", "fixed"}, {"a", {{"component", low}}}});
+    ok("add_mate", {{"type", "coincident"},
+                    {"a", {{"component", low}, {"geometry", "top"}}},
+                    {"b", {{"component", high}, {"geometry", "bottom"}}}});
+    const json made = ok("add_mate", {{"type", "angle"},
+                                      {"a", {{"component", low}, {"geometry", "front"}}},
+                                      {"b", {{"component", high}, {"geometry", "front"}}},
+                                      {"angle", 0}});
+    const auto mate = made["mate"]["id"].get<std::uint64_t>();
+    const json motion =
+        ok("study_motion",
+           {{"mate", mate}, {"from", 0}, {"to", 90}, {"steps", 3}, {"check_collisions", false}});
+    EXPECT_EQ(motion["unit"], "degrees");
+    EXPECT_TRUE(motion["complete"].get<bool>());
+    EXPECT_EQ(motion["reached"], 90.0);
+    EXPECT_FALSE(motion.contains("clashes")) << "not looked for";
+    EXPECT_NE(fails("study_motion", {{"mate", mate}, {"from", 0}, {"to", 270}}).find("0 to 180"),
+              std::string::npos);
 }

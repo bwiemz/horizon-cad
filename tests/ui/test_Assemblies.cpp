@@ -43,6 +43,7 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/ModelCommands.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
@@ -1584,6 +1585,35 @@ TEST(AssembliesTest, AMotionStudyEndsWithAnEditOrAnotherTab) {
     trigger(w, "action_new");
     EXPECT_TRUE(waitUntil([&w] { return w.findChild<hz::ui::MotionPlayer*>() == nullptr; }, 5000));
     EXPECT_TRUE(assembly.pose().empty());
+}
+
+// The study runs on a worker: an edit made meanwhile makes its positions
+// those of an assembly that is no more, and they are not shown.
+TEST(AssembliesTest, AMotionStudyOfAnAssemblyEditedMeanwhileIsDropped) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    const std::string top = savePart(block, hz::doc::PrimitiveFeature::makeBox(10, 10, 10), "top");
+    MainWindow w;
+    auto& assembly = newAssembly(w);
+    makeSlide(w, assembly, block, top, 5.0);
+    {
+        FormFiller range(QStringLiteral("Motion Study Range"),
+                         FormAnswers()
+                             .number(QStringLiteral("from"), 5.0)
+                             .number(QStringLiteral("to"), 25.0)
+                             .number(QStringLiteral("steps"), 4));
+        trigger(w, "action_motion_study");
+        ASSERT_TRUE(range.seen());
+    }
+    // An edit before its result is shown (here, one that changes nothing).
+    w.activeDocument()->undoStack().push(std::make_unique<hz::doc::AssemblyEditCommand>(
+        assembly, assembly.snapshot(), assembly.snapshot(), "Nothing"));
+    ASSERT_TRUE(waitUntil([&w] { return !w.backgroundWorkRunning(); }, 20000));
+    QCoreApplication::processEvents();
+    EXPECT_EQ(w.findChild<hz::ui::MotionPlayer*>(), nullptr);
+    EXPECT_TRUE(assembly.pose().empty());
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("study it again")))
+        << w.statusBar()->currentMessage().toStdString();
 }
 
 TEST(AssembliesTest, AMotionStudyNeedsAMateThatDrives) {

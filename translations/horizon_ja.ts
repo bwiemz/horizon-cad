@@ -961,12 +961,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+10"/>
-        <location line="+154"/>
+        <location line="+167"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-152"/>
+        <location line="-165"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">干渉チェックをキャンセルしました</translation>
     </message>
@@ -1018,7 +1018,7 @@ Details are in the log:
         <translation type="unfinished">干渉</translation>
     </message>
     <message>
-        <location line="+250"/>
+        <location line="+267"/>
         <source>Add Mate is only available in an assembly document</source>
         <translation type="unfinished">「合致の追加」はアセンブリ ドキュメントでのみ使用できます</translation>
     </message>
@@ -1128,13 +1128,13 @@ Details are in the log:
         <translation type="unfinished">%1: %2 (#%3)</translation>
     </message>
     <message>
-        <location line="-492"/>
-        <location line="+495"/>
+        <location line="-509"/>
+        <location line="+512"/>
         <source>%1: %2 and %3 (#%4)</source>
         <translation type="unfinished">%1: %2 と %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-530"/>
+        <location line="-547"/>
         <source>Motion Study</source>
         <translation type="unfinished">モーション スタディ</translation>
     </message>
@@ -1164,19 +1164,19 @@ Details are in the log:
         <translation type="unfinished">モーション スタディの範囲</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+11"/>
         <location line="+3"/>
         <source>From:</source>
         <translation type="unfinished">基準:</translation>
     </message>
     <message>
         <location line="-2"/>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>To:</source>
         <translation type="unfinished">終了:</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Steps:</source>
         <translation type="unfinished">ステップ数:</translation>
     </message>
@@ -1201,7 +1201,7 @@ Details are in the log:
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+27"/>
         <source>Studying the motion...</source>
         <translation type="unfinished">モーションを検討中...</translation>
     </message>
@@ -1236,6 +1236,11 @@ Details are in the log:
         <translation type="unfinished">モーション スタディのアセンブリは表示されていません</translation>
     </message>
     <message>
+        <location line="+5"/>
+        <source>The assembly changed while its motion was studied: study it again</source>
+        <translation type="unfinished">モーションの検討中にアセンブリが変更されました。もう一度実行してください</translation>
+    </message>
+    <message>
         <location line="+10"/>
         <source>The mates do not hold at %1: the motion cannot start</source>
         <translation type="unfinished">%1 では合致が成り立ちません。モーションを開始できません</translation>
@@ -1266,7 +1271,7 @@ Details are in the log:
         <translation type="unfinished">部品の衝突はありません</translation>
     </message>
     <message>
-        <location line="+58"/>
+        <location line="+57"/>
         <source>Keep Motion Position</source>
         <translation type="unfinished">モーションの位置を保持</translation>
     </message>

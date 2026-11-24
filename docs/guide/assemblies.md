@@ -58,8 +58,8 @@ while an exploded view is shown.
 **Assembly ▸ Motion Study...** moves a mechanism through its range: a hinge
 turning, a slide sliding, a linkage working. Choose the mate that drives it,
 a Distance or an Angle mate (a hinge is a Concentric and a Coincident mate,
-and an Angle mate between two of its faces turns it), the values to drive it
-from and to, how many steps, and whether to check each position for
+and an Angle mate between two of its faces turns it, from 0 to 180 degrees:
+the angle between two faces), the values to drive it from and to, how many steps, and whether to check each position for
 collisions.
 
 Every other mate is solved at each step, from where the last one left the

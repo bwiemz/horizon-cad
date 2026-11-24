@@ -647,20 +647,23 @@ ToolResult studyMotion(const AssemblyContext& c, const json& in) {
     }
     const bool angular = mate.type == doc::MateType::Angle;
     const double unit = angular ? kDegree : 1.0;
-    // A turn of ten revolutions, or a kilometre: past either is a garbled
-    // number, not a mechanism.
-    const double reach = angular ? 3600.0 : kMaxMagnitude;
     const double from = number(in, "from");
     const double to = number(in, "to");
-    if (std::abs(from) > reach || std::abs(to) > reach) {
-        throw ArgError(angular ? "from and to are angles within 3600 degrees"
-                               : "from and to are lengths within 1 km");
+    // An angle mate measures the angle between its faces, unsigned: 0 to
+    // 180 degrees. A length past a kilometre is a garbled number.
+    if (angular && (from < 0.0 || from > 180.0 || to < 0.0 || to > 180.0)) {
+        throw ArgError("an angle mate measures from 0 to 180 degrees: from and to are within them");
+    }
+    if (!angular && (std::abs(from) > kMaxMagnitude || std::abs(to) > kMaxMagnitude)) {
+        throw ArgError("from and to are lengths within 1 km");
     }
     doc::MotionStudy study;
     study.mate = mate.id;
     study.from = from * unit;
     study.to = to * unit;
-    study.steps = static_cast<int>(integer(in, "steps", 1, doc::MotionStudy::kMaxSteps, 24));
+    // Each step a solve and a check for collisions, on the assistant's turn.
+    constexpr long long kMostSteps = 180;
+    study.steps = static_cast<int>(integer(in, "steps", 1, kMostSteps, 24));
     study.checkInterference = boolean(in, "check_collisions", true);
 
     std::string why;
@@ -1206,9 +1209,9 @@ void registerAssemblyTools(ToolRegistry& registry, doc::AssemblyDocument& assemb
          "mates bind, and which parts clash over which values. Nothing is moved; to leave it at a "
          "value, edit_mate.",
          object({{"mate", integerSchema("the distance or angle mate to drive")},
-                 {"from", numberSchema("mm, or degrees for an angle mate")},
-                 {"to", numberSchema("mm, or degrees")},
-                 {"steps", integerSchema("positions after the first (default 24, at most 720)")},
+                 {"from", numberSchema("mm, or degrees (0 to 180) for an angle mate")},
+                 {"to", numberSchema("mm, or degrees (0 to 180)")},
+                 {"steps", integerSchema("positions after the first (default 24, at most 180)")},
                  {"check_collisions",
                   booleanSchema("check each position for parts sharing material (default true)")}},
                 {"mate", "from", "to"})},

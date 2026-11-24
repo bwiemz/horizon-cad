@@ -961,12 +961,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+10"/>
-        <location line="+154"/>
+        <location line="+167"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-152"/>
+        <location line="-165"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">已取消干涉检查</translation>
     </message>
@@ -1018,7 +1018,7 @@ Details are in the log:
         <translation type="unfinished">干涉</translation>
     </message>
     <message>
-        <location line="+250"/>
+        <location line="+267"/>
         <source>Add Mate is only available in an assembly document</source>
         <translation type="unfinished">添加配合仅在装配体文档中可用</translation>
     </message>
@@ -1128,13 +1128,13 @@ Details are in the log:
         <translation type="unfinished">%1: %2 (#%3)</translation>
     </message>
     <message>
-        <location line="-492"/>
-        <location line="+495"/>
+        <location line="-509"/>
+        <location line="+512"/>
         <source>%1: %2 and %3 (#%4)</source>
         <translation type="unfinished">%1: %2 和 %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-530"/>
+        <location line="-547"/>
         <source>Motion Study</source>
         <translation type="unfinished">运动算例</translation>
     </message>
@@ -1164,19 +1164,19 @@ Details are in the log:
         <translation type="unfinished">运动算例范围</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+11"/>
         <location line="+3"/>
         <source>From:</source>
         <translation type="unfinished">参考:</translation>
     </message>
     <message>
         <location line="-2"/>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>To:</source>
         <translation type="unfinished">到：</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Steps:</source>
         <translation type="unfinished">步数：</translation>
     </message>
@@ -1201,7 +1201,7 @@ Details are in the log:
         <translation type="unfinished">%1：%2</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+27"/>
         <source>Studying the motion...</source>
         <translation type="unfinished">正在研究运动...</translation>
     </message>
@@ -1236,6 +1236,11 @@ Details are in the log:
         <translation type="unfinished">运动算例的装配体已不是当前显示的装配体</translation>
     </message>
     <message>
+        <location line="+5"/>
+        <source>The assembly changed while its motion was studied: study it again</source>
+        <translation type="unfinished">研究运动期间装配体已更改：请重新研究</translation>
+    </message>
+    <message>
         <location line="+10"/>
         <source>The mates do not hold at %1: the motion cannot start</source>
         <translation type="unfinished">在 %1 处配合无法成立：运动无法开始</translation>
@@ -1266,7 +1271,7 @@ Details are in the log:
         <translation type="unfinished">没有零件碰撞</translation>
     </message>
     <message>
-        <location line="+58"/>
+        <location line="+57"/>
         <source>Keep Motion Position</source>
         <translation type="unfinished">保留运动位置</translation>
     </message>

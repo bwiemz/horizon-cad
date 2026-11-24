@@ -961,12 +961,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+10"/>
-        <location line="+154"/>
+        <location line="+167"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-152"/>
+        <location line="-165"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">간섭 검사가 취소되었습니다</translation>
     </message>
@@ -1018,7 +1018,7 @@ Details are in the log:
         <translation type="unfinished">간섭</translation>
     </message>
     <message>
-        <location line="+250"/>
+        <location line="+267"/>
         <source>Add Mate is only available in an assembly document</source>
         <translation type="unfinished">메이트 추가는 어셈블리 문서에서만 사용할 수 있습니다</translation>
     </message>
@@ -1128,13 +1128,13 @@ Details are in the log:
         <translation type="unfinished">%1: %2 (#%3)</translation>
     </message>
     <message>
-        <location line="-492"/>
-        <location line="+495"/>
+        <location line="-509"/>
+        <location line="+512"/>
         <source>%1: %2 and %3 (#%4)</source>
         <translation type="unfinished">%1: %2 및 %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-530"/>
+        <location line="-547"/>
         <source>Motion Study</source>
         <translation type="unfinished">모션 스터디</translation>
     </message>
@@ -1164,19 +1164,19 @@ Details are in the log:
         <translation type="unfinished">모션 스터디 범위</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+11"/>
         <location line="+3"/>
         <source>From:</source>
         <translation type="unfinished">기준:</translation>
     </message>
     <message>
         <location line="-2"/>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>To:</source>
         <translation type="unfinished">끝:</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Steps:</source>
         <translation type="unfinished">단계:</translation>
     </message>
@@ -1201,7 +1201,7 @@ Details are in the log:
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+27"/>
         <source>Studying the motion...</source>
         <translation type="unfinished">모션 분석 중...</translation>
     </message>
@@ -1236,6 +1236,11 @@ Details are in the log:
         <translation type="unfinished">모션 스터디의 어셈블리가 더 이상 표시되지 않습니다</translation>
     </message>
     <message>
+        <location line="+5"/>
+        <source>The assembly changed while its motion was studied: study it again</source>
+        <translation type="unfinished">모션을 분석하는 동안 어셈블리가 변경되었습니다. 다시 분석하십시오</translation>
+    </message>
+    <message>
         <location line="+10"/>
         <source>The mates do not hold at %1: the motion cannot start</source>
         <translation type="unfinished">%1에서 메이트가 유지되지 않습니다. 모션을 시작할 수 없습니다</translation>
@@ -1266,7 +1271,7 @@ Details are in the log:
         <translation type="unfinished">충돌하는 부품이 없습니다</translation>
     </message>
     <message>
-        <location line="+58"/>
+        <location line="+57"/>
         <source>Keep Motion Position</source>
         <translation type="unfinished">모션 위치 유지</translation>
     </message>

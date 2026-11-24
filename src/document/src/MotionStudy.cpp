@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <numbers>
 #include <utility>
 
 #include "horizon/document/DocumentManager.h"
@@ -104,6 +105,17 @@ MotionResult runMotion(const MotionInput& input, const MotionStudy& study,
     out.unchecked = input.unchecked;
     if (!std::isfinite(study.from) || !std::isfinite(study.to)) {
         out.why = "its range is not a pair of numbers";
+        return out;
+    }
+    // An Angle mate measures the angle between its faces' normals, from 0
+    // to 180 degrees, unsigned: past either end it can never be held, which
+    // would read as the mechanism binding.
+    constexpr double kSlack = 1e-9;
+    const auto outside = [](double angle) {
+        return angle < -kSlack || angle > std::numbers::pi + kSlack;
+    };
+    if (input.driverType == MateType::Angle && (outside(study.from) || outside(study.to))) {
+        out.why = "an angle mate measures from 0 to 180 degrees";
         return out;
     }
     const int steps = std::clamp(study.steps, 1, MotionStudy::kMaxSteps);

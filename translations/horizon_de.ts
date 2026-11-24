@@ -967,12 +967,12 @@ Details stehen im Protokoll:
     </message>
     <message>
         <location line="+10"/>
-        <location line="+154"/>
+        <location line="+167"/>
         <source>Ready</source>
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-152"/>
+        <location line="-165"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">Kollisionsprüfung abgebrochen</translation>
     </message>
@@ -1025,7 +1025,7 @@ Details stehen im Protokoll:
         <translation type="unfinished">Kollision</translation>
     </message>
     <message>
-        <location line="+250"/>
+        <location line="+267"/>
         <source>Add Mate is only available in an assembly document</source>
         <translation type="unfinished">Verknüpfung hinzufügen ist nur in einem Baugruppendokument verfügbar</translation>
     </message>
@@ -1135,13 +1135,13 @@ Details stehen im Protokoll:
         <translation type="unfinished">%1: %2 (#%3)</translation>
     </message>
     <message>
-        <location line="-492"/>
-        <location line="+495"/>
+        <location line="-509"/>
+        <location line="+512"/>
         <source>%1: %2 and %3 (#%4)</source>
         <translation type="unfinished">%1: %2 und %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-530"/>
+        <location line="-547"/>
         <source>Motion Study</source>
         <translation type="unfinished">Bewegungsstudie</translation>
     </message>
@@ -1171,19 +1171,19 @@ Details stehen im Protokoll:
         <translation type="unfinished">Bereich der Bewegungsstudie</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+11"/>
         <location line="+3"/>
         <source>From:</source>
         <translation type="unfinished">Von:</translation>
     </message>
     <message>
         <location line="-2"/>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>To:</source>
         <translation type="unfinished">Bis:</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Steps:</source>
         <translation type="unfinished">Schritte:</translation>
     </message>
@@ -1208,7 +1208,7 @@ Details stehen im Protokoll:
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+27"/>
         <source>Studying the motion...</source>
         <translation type="unfinished">Bewegung wird untersucht...</translation>
     </message>
@@ -1243,6 +1243,11 @@ Details stehen im Protokoll:
         <translation type="unfinished">Die Baugruppe der Bewegungsstudie wird nicht mehr angezeigt</translation>
     </message>
     <message>
+        <location line="+5"/>
+        <source>The assembly changed while its motion was studied: study it again</source>
+        <translation type="unfinished">Die Baugruppe hat sich während der Bewegungsstudie geändert: Untersuchen Sie sie erneut</translation>
+    </message>
+    <message>
         <location line="+10"/>
         <source>The mates do not hold at %1: the motion cannot start</source>
         <translation type="unfinished">Die Verknüpfungen halten bei %1 nicht: Die Bewegung kann nicht beginnen</translation>
@@ -1273,7 +1278,7 @@ Details stehen im Protokoll:
         <translation type="unfinished">keine Teile kollidieren</translation>
     </message>
     <message>
-        <location line="+58"/>
+        <location line="+57"/>
         <source>Keep Motion Position</source>
         <translation type="unfinished">Bewegungsposition behalten</translation>
     </message>

@@ -714,15 +714,21 @@ void AssemblyWorkbench::onMotionStudy() {
     FeatureForm form(m_host.dialogParent(), tr("Motion Study Range"), assembly()->lengthUnit());
     QuantitySpinBox* from = nullptr;
     QuantitySpinBox* to = nullptr;
-    constexpr double kTurns = 3600.0;
+    // An Angle mate measures 0 to 180 degrees (unsigned); a limited mate is
+    // offered its limits, the range it moves in.
     constexpr double kReach = 1e6;
     if (angle) {
         const double now = mate.value * 180.0 / std::numbers::pi;
-        from = form.angle(QStringLiteral("from"), tr("From:"), now, -kTurns, kTurns);
-        to = form.angle(QStringLiteral("to"), tr("To:"), now + 90.0, -kTurns, kTurns);
+        const double low = mate.minimum ? *mate.minimum * 180.0 / std::numbers::pi : now;
+        const double high =
+            mate.maximum ? *mate.maximum * 180.0 / std::numbers::pi : std::min(now + 90.0, 180.0);
+        from = form.angle(QStringLiteral("from"), tr("From:"), low, 0.0, 180.0);
+        to = form.angle(QStringLiteral("to"), tr("To:"), high, 0.0, 180.0);
     } else {
-        from = form.length(QStringLiteral("from"), tr("From:"), mate.value, -kReach, kReach);
-        to = form.length(QStringLiteral("to"), tr("To:"), mate.value + 50.0, -kReach, kReach);
+        from = form.length(QStringLiteral("from"), tr("From:"), mate.minimum.value_or(mate.value),
+                           -kReach, kReach);
+        to = form.length(QStringLiteral("to"), tr("To:"), mate.maximum.value_or(mate.value + 50.0),
+                         -kReach, kReach);
     }
     QSpinBox* steps =
         form.count(QStringLiteral("steps"), tr("Steps:"), 24, 1, doc::MotionStudy::kMaxSteps);
@@ -747,6 +753,13 @@ void AssemblyWorkbench::onMotionStudy() {
     m_motionAssembly = m_host.currentAssembly();
     m_motionStudy = study;
     m_motionAngle = angle;
+    // Its positions are of the assembly as it is now: an edit from here on,
+    // while it runs or while it plays, ends it.
+    m_motionDocument.reset();
+    for (const auto& open : m_host.documents().documents()) {
+        if (open.get() == m_host.currentDocument()) m_motionDocument = open;
+    }
+    m_motionRevision = m_host.currentDocument()->undoStack().revision();
     auto prepared = std::make_shared<const doc::MotionInput>(std::move(*input));
     // A mechanism's every step is a solve, and maybe a check for collisions:
     // a worker's, unless the window does everything itself.
@@ -809,6 +822,11 @@ void AssemblyWorkbench::showMotion(doc::MotionResult result) {
         m_host.showStatus(tr("The motion study's assembly is no longer the one shown"));
         return;
     }
+    const auto document = m_motionDocument.lock();
+    if (!document || document->undoStack().revision() != m_motionRevision) {
+        m_host.showStatus(tr("The assembly changed while its motion was studied: study it again"));
+        return;
+    }
     const auto valueText = [this, &studied](double value) {
         return m_motionAngle ? Preferences::current().formatAngle(value)
                              : Preferences::current().formatLength(value, studied->lengthUnit());
@@ -853,11 +871,7 @@ void AssemblyWorkbench::showMotion(doc::MotionResult result) {
                                 std::move(keep));
     m_motion->setAttribute(Qt::WA_DeleteOnClose);
 
-    // Its positions are of the assembly as it is now: an edit ends it.
-    for (const auto& open : m_host.documents().documents()) {
-        if (open.get() == m_host.currentDocument()) m_motionDocument = open;
-    }
-    m_motionRevision = m_host.currentDocument()->undoStack().revision();
+    // An edit while it plays ends it (watched from when it was asked for).
     if (m_motionWatch == nullptr) {
         m_motionWatch = new QTimer(this);
         m_motionWatch->setInterval(100);
@@ -884,6 +898,9 @@ void AssemblyWorkbench::keepMotionPosition(const doc::MotionFrame& frame) {
         if (at != frame.placements.end()) comp.transform = at->second;
     }
     // The driver held where it is kept, or the next solve would put it back.
+    // A limited one is not held at a value: kept within its limits, the
+    // position stays; kept outside them, the next solve brings it back to
+    // the nearest, as a drag past them does.
     if (doc::Mate* driver = studied->mate(m_motionStudy.mate)) {
         if (!driver->minimum && !driver->maximum) driver->value = frame.value;
     }

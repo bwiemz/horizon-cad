@@ -967,12 +967,12 @@ Les détails figurent dans le journal :
     </message>
     <message>
         <location line="+10"/>
-        <location line="+154"/>
+        <location line="+167"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-152"/>
+        <location line="-165"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">Vérification des interférences annulée</translation>
     </message>
@@ -1025,7 +1025,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Interférence</translation>
     </message>
     <message>
-        <location line="+250"/>
+        <location line="+267"/>
         <source>Add Mate is only available in an assembly document</source>
         <translation type="unfinished">Ajouter une contrainte d&apos;assemblage n&apos;est disponible que dans un document d&apos;assemblage</translation>
     </message>
@@ -1135,13 +1135,13 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : %2 (#%3)</translation>
     </message>
     <message>
-        <location line="-492"/>
-        <location line="+495"/>
+        <location line="-509"/>
+        <location line="+512"/>
         <source>%1: %2 and %3 (#%4)</source>
         <translation type="unfinished">%1 : %2 et %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-530"/>
+        <location line="-547"/>
         <source>Motion Study</source>
         <translation type="unfinished">Étude de mouvement</translation>
     </message>
@@ -1171,19 +1171,19 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Plage de l&apos;étude de mouvement</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+11"/>
         <location line="+3"/>
         <source>From:</source>
         <translation type="unfinished">À partir de :</translation>
     </message>
     <message>
         <location line="-2"/>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>To:</source>
         <translation type="unfinished">À :</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Steps:</source>
         <translation type="unfinished">Pas :</translation>
     </message>
@@ -1208,7 +1208,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : %2</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+27"/>
         <source>Studying the motion...</source>
         <translation type="unfinished">Étude du mouvement...</translation>
     </message>
@@ -1243,6 +1243,11 @@ Les détails figurent dans le journal :
         <translation type="unfinished">L&apos;assemblage de l&apos;étude de mouvement n&apos;est plus celui affiché</translation>
     </message>
     <message>
+        <location line="+5"/>
+        <source>The assembly changed while its motion was studied: study it again</source>
+        <translation type="unfinished">L&apos;assemblage a changé pendant l&apos;étude de son mouvement : étudiez-le à nouveau</translation>
+    </message>
+    <message>
         <location line="+10"/>
         <source>The mates do not hold at %1: the motion cannot start</source>
         <translation type="unfinished">Les contraintes ne tiennent pas à %1 : le mouvement ne peut pas commencer</translation>
@@ -1273,7 +1278,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">aucune pièce n&apos;entre en collision</translation>
     </message>
     <message>
-        <location line="+58"/>
+        <location line="+57"/>
         <source>Keep Motion Position</source>
         <translation type="unfinished">Garder la position du mouvement</translation>
     </message>

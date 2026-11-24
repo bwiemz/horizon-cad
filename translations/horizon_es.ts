@@ -967,12 +967,12 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+10"/>
-        <location line="+154"/>
+        <location line="+167"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-152"/>
+        <location line="-165"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">Comprobación de interferencias cancelada</translation>
     </message>
@@ -1025,7 +1025,7 @@ Los detalles están en el registro:
         <translation type="unfinished">Interferencia</translation>
     </message>
     <message>
-        <location line="+250"/>
+        <location line="+267"/>
         <source>Add Mate is only available in an assembly document</source>
         <translation type="unfinished">Añadir relación de posición solo está disponible en un documento de ensamblaje</translation>
     </message>
@@ -1135,13 +1135,13 @@ Los detalles están en el registro:
         <translation type="unfinished">%1: %2 (#%3)</translation>
     </message>
     <message>
-        <location line="-492"/>
-        <location line="+495"/>
+        <location line="-509"/>
+        <location line="+512"/>
         <source>%1: %2 and %3 (#%4)</source>
         <translation type="unfinished">%1: %2 y %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-530"/>
+        <location line="-547"/>
         <source>Motion Study</source>
         <translation type="unfinished">Estudio de movimiento</translation>
     </message>
@@ -1171,19 +1171,19 @@ Los detalles están en el registro:
         <translation type="unfinished">Rango del estudio de movimiento</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+11"/>
         <location line="+3"/>
         <source>From:</source>
         <translation type="unfinished">Desde:</translation>
     </message>
     <message>
         <location line="-2"/>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>To:</source>
         <translation type="unfinished">Hasta:</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>Steps:</source>
         <translation type="unfinished">Pasos:</translation>
     </message>
@@ -1208,7 +1208,7 @@ Los detalles están en el registro:
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="+20"/>
+        <location line="+27"/>
         <source>Studying the motion...</source>
         <translation type="unfinished">Estudiando el movimiento...</translation>
     </message>
@@ -1243,6 +1243,11 @@ Los detalles están en el registro:
         <translation type="unfinished">El ensamblaje del estudio de movimiento ya no es el que se muestra</translation>
     </message>
     <message>
+        <location line="+5"/>
+        <source>The assembly changed while its motion was studied: study it again</source>
+        <translation type="unfinished">El ensamblaje cambió mientras se estudiaba su movimiento: vuelva a estudiarlo</translation>
+    </message>
+    <message>
         <location line="+10"/>
         <source>The mates do not hold at %1: the motion cannot start</source>
         <translation type="unfinished">Las relaciones no se cumplen en %1: el movimiento no puede empezar</translation>
@@ -1273,7 +1278,7 @@ Los detalles están en el registro:
         <translation type="unfinished">ninguna pieza choca</translation>
     </message>
     <message>
-        <location line="+58"/>
+        <location line="+57"/>
         <source>Keep Motion Position</source>
         <translation type="unfinished">Conservar posición del movimiento</translation>
     </message>

@@ -217,6 +217,22 @@ TEST(MotionStudyTest, AHingeTurnsThroughItsAngle) {
     }
 }
 
+// An Angle mate measures the angle between its faces unsigned, 0 to 180
+// degrees: a sweep past either end could never be held, and would read as
+// the mechanism binding there.
+TEST(MotionStudyTest, AnAngleIsDrivenWithinWhatTheMateMeasures) {
+    Mechanism m;
+    m.mate(MateType::Coincident, m.top(), m.bottom());
+    const uint64_t hinge = m.mate(MateType::Angle, m.side(), m.side(), 0.0);
+    for (const double to : {1.5 * std::numbers::pi, -0.5}) {
+        const MotionResult motion = m.run(hinge, 0.0, to, 6, /*clashes=*/false);
+        EXPECT_TRUE(motion.frames.empty()) << to;
+        EXPECT_FALSE(motion.bound.has_value()) << "refused, not bound";
+        EXPECT_EQ(motion.why, "an angle mate measures from 0 to 180 degrees");
+    }
+    EXPECT_TRUE(m.run(hinge, 0.0, std::numbers::pi, 6, false).complete) << "all the way round";
+}
+
 TEST(MotionStudyTest, OnlyADistanceOrAnAngleMateDrives) {
     Mechanism m;
     const uint64_t rest = m.mate(MateType::Coincident, m.top(), m.bottom());
