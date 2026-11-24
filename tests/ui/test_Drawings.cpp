@@ -1207,3 +1207,138 @@ TEST(DrawingsTest, AHoleIsCalledOutWithItsSizeAndCount) {
     ASSERT_TRUE(waitUntil(
         [&] { return dimensionTexts(*sheet).filter(QStringLiteral("CBORE")).isEmpty(); }, 5000));
 }
+
+namespace {
+
+QStringList toleranceTexts(const hz::doc::Document& sheet) {
+    QStringList texts;
+    for (const auto& entity : sheet.draftDocument().entities()) {
+        if (entity->layer() != "Tolerances") continue;
+        if (const auto* t = dynamic_cast<const hz::draft::DraftText*>(entity.get())) {
+            texts << QString::fromStdString(t->text());
+        }
+    }
+    return texts;
+}
+
+}  // namespace
+
+TEST(DrawingsTest, AHolesPositionIsTolerancedToADatum) {
+    QTemporaryDir dir;
+    const QString plate = dir.filePath(QStringLiteral("plate.hzpart"));
+    saveHoledPlate(plate);
+    const hz::model::Drawing layout = layoutOf(plate);
+    // In the top view: a point on the first hole's counterbore rim, and the
+    // middle of the plate's longest side.
+    std::optional<hz::math::Vec2> onRim;
+    std::optional<hz::math::Vec2> onSide;
+    double longest = 0.0;
+    for (const auto& view : layout.views) {
+        if (view.kind != hz::model::StandardView::Top) continue;
+        for (const auto& e : view.edges) {
+            if (e.visibility != hz::model::ProjectedEdge::Visibility::Visible) continue;
+            const std::string name = hz::model::logicalEdge(e.sourceEdge.tag());
+            const auto at = view.toSheet({(e.a.x + e.b.x) / 2.0, (e.a.y + e.b.y) / 2.0});
+            if (name.find("hole") == std::string::npos) {
+                const double length = std::hypot(e.b.x - e.a.x, e.b.y - e.a.y);
+                if (length > longest) {
+                    longest = length;
+                    onSide = at;
+                }
+            } else if (!onRim && name.find("/bore") != std::string::npos &&
+                       name.find('|') != std::string::npos &&
+                       name.find("Floor") == std::string::npos &&
+                       name.find("pattern") == std::string::npos) {
+                onRim = at;
+            }
+        }
+    }
+    ASSERT_TRUE(onRim.has_value());
+    ASSERT_TRUE(onSide.has_value());
+
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, plate);
+    ASSERT_NE(sheet, nullptr);
+    const std::size_t steps = sheet->undoStack().undoCount();
+    ToolDriver drive(w);
+    const auto positionForm = [] {
+        return FormAnswers()
+            .choose("characteristic", "Position")
+            .number("tolerance", 0.2)
+            .chooseContaining("zone", "cylinder")
+            .chooseContaining("condition", "MMC")
+            .choose("primary", "A");
+    };
+
+    // A position refers to a datum: with none on the sheet, said at once.
+    {
+        FormFiller form(
+            QStringLiteral("Add Geometric Tolerance"),
+            FormAnswers().choose("characteristic", "Position").number("tolerance", 0.2));
+        trigger(w, "action_add_tolerance");
+        ASSERT_TRUE(form.seen());
+    }
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("needs a datum")))
+        << w.statusBar()->currentMessage().toStdString();
+    EXPECT_EQ(sheet->undoStack().undoCount(), steps);
+
+    // Datum A, the letter offered, on the plate's side.
+    {
+        FormFiller form(QStringLiteral("Add Datum Feature"), FormAnswers());
+        trigger(w, "action_add_datum");
+        ASSERT_TRUE(form.seen());
+    }
+    drive.click(*onSide);
+    ASSERT_TRUE(
+        waitUntil([&] { return toleranceTexts(*sheet).contains(QStringLiteral("A")); }, 5000))
+        << w.statusBar()->currentMessage().toStdString();
+    drive.key(Qt::Key_Escape);
+    EXPECT_EQ(sheet->undoStack().undoCount(), steps + 1);
+
+    // The hole's position, at MMC, to A: under the hole's size, in a frame.
+    {
+        FormFiller form(QStringLiteral("Add Geometric Tolerance"), positionForm());
+        trigger(w, "action_add_tolerance");
+        ASSERT_TRUE(form.seen());
+    }
+    drive.click(*onRim);
+    const QString zone = QStringLiteral("⌀") + QStringLiteral("0.2");
+    const auto framed = [&] { return toleranceTexts(*sheet).contains(zone); };
+    ASSERT_TRUE(waitUntil(framed, 5000)) << w.statusBar()->currentMessage().toStdString() << " / "
+                                         << toleranceTexts(*sheet).join(", ").toStdString();
+    EXPECT_TRUE(toleranceTexts(*sheet).contains(QStringLiteral("M")));
+    EXPECT_EQ(toleranceTexts(*sheet).count(QStringLiteral("A")), 2) << "the datum and the frame's";
+    EXPECT_EQ(sheet->undoStack().undoCount(), steps + 2);
+
+    // The same frame again on the same hole: said, nothing added.
+    drive.click(*onRim);
+    ASSERT_TRUE(waitUntil(
+        [&] { return w.statusBar()->currentMessage().contains(QStringLiteral("already")); }, 5000));
+    EXPECT_EQ(sheet->undoStack().undoCount(), steps + 2);
+    drive.key(Qt::Key_Escape);
+
+    trigger(w, "action_undo");
+    EXPECT_FALSE(framed());
+    trigger(w, "action_redo");
+    EXPECT_TRUE(framed());
+
+    // Its datum removed: said, as the frame still refers to it.
+    trigger(w, "action_remove_drawing_dimension");
+    drive.click(*onSide);
+    ASSERT_TRUE(
+        waitUntil([&] { return toleranceTexts(*sheet).count(QStringLiteral("A")) == 1; }, 5000));
+    EXPECT_TRUE(w.statusBar()->currentMessage().contains(QStringLiteral("datum A")))
+        << w.statusBar()->currentMessage().toStdString();
+    drive.key(Qt::Key_Escape);
+    trigger(w, "action_undo");
+    EXPECT_EQ(toleranceTexts(*sheet).count(QStringLiteral("A")), 2);
+
+    // Laid out again at another scale, the views keep their frames and datums.
+    {
+        FormFiller form(QStringLiteral("Drawing Scale"), FormAnswers().choose("scale", "1:1"));
+        trigger(w, "action_drawing_scale");
+        ASSERT_TRUE(form.seen());
+    }
+    EXPECT_TRUE(framed()) << toleranceTexts(*sheet).join(", ").toStdString();
+    EXPECT_EQ(toleranceTexts(*sheet).count(QStringLiteral("A")), 2);
+}

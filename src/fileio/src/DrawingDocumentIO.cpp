@@ -28,10 +28,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
-/// The newest format this version reads. A sheet is written as 3 unless it
-/// has what only 4 holds (hole callouts): one without them still opens in a
-/// version that reads up to 3.
-constexpr int kVersion = 4;
+/// The newest format this version reads. A sheet is written as the oldest
+/// format that holds all it has: 5 with geometric tolerances or datums, 4
+/// with hole callouts, else 3, so it still opens in a version that reads
+/// that far.
+constexpr int kVersion = 5;
+constexpr int kVersionWithCallouts = 4;
 constexpr int kVersionWithoutCallouts = 3;
 constexpr double kHatchSpacing = 3.0;  ///< sheet millimetres between a section's hatch lines
 
@@ -173,10 +175,13 @@ bool DrawingDocumentIO::save(const std::string& path, const DrawingDocumentSpec&
 std::string DrawingDocumentIO::serialise(const std::string& path, const DrawingDocumentSpec& spec) {
     json root;
     root["format"] = "hzdwg";
+    const bool gdt = std::any_of(spec.views.begin(), spec.views.end(), [](const auto& v) {
+        return !v.tolerances.empty() || !v.datums.empty();
+    });
     const bool callouts =
         std::any_of(spec.views.begin(), spec.views.end(),
                     [](const DrawingViewSpec& v) { return !v.holeCallouts.empty(); });
-    root["version"] = callouts ? kVersion : kVersionWithoutCallouts;
+    root["version"] = gdt ? kVersion : callouts ? kVersionWithCallouts : kVersionWithoutCallouts;
 
     // The part beside or below the drawing is written relative to it, so a
     // folder of both can move.
@@ -235,6 +240,25 @@ std::string DrawingDocumentIO::serialise(const std::string& path, const DrawingD
                          {"centreLines", v.showCentreLines},
                          {"dimensions", dimensionsJson(v.dimensions)}});
         if (!v.holeCallouts.empty()) views.back()["holeCallouts"] = v.holeCallouts;
+        if (!v.tolerances.empty()) {
+            json frames = json::array();
+            for (const DrawingToleranceSpec& t : v.tolerances) {
+                frames.push_back({{"edge", t.edge},
+                                  {"characteristic", model::Gdt::key(t.frame.characteristic)},
+                                  {"tolerance", t.frame.tolerance},
+                                  {"diameter", t.frame.diameterZone},
+                                  {"condition", model::Gdt::conditionKey(t.frame.modifier)},
+                                  {"datums", t.frame.datumRefs}});
+            }
+            views.back()["tolerances"] = std::move(frames);
+        }
+        if (!v.datums.empty()) {
+            json datums = json::array();
+            for (const DrawingDatumSpec& d : v.datums) {
+                datums.push_back({{"edge", d.edge}, {"label", d.label}});
+            }
+            views.back()["datums"] = std::move(datums);
+        }
     }
     root["views"] = views;
     if (spec.annotations) {
@@ -344,6 +368,7 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                         std::to_string(kMaxViews) + " are read");
         }
         if (views != root.end() && views->is_array()) {
+            std::set<std::string> datumLabels;  // one datum a letter, on the whole sheet
             std::size_t viewIndex = 0;
             for (const auto& v : *views) {
                 const std::string entry = "view " + std::to_string(++viewIndex);
@@ -418,12 +443,11 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                     view.showCentreLines = flag(v, "centreLines", true);
                     // Each is measured again from the part when the sheet is
                     // drawn: as many as a view has room for, no more.
-                    constexpr std::size_t kMaxDimensions = 256;
                     const auto dims = v.find("dimensions");
                     if (dims != v.end() && dims->is_array()) {
-                        if (dims->size() > kMaxDimensions) {
+                        if (dims->size() > kMaxPerView) {
                             return fail(at + " has " + std::to_string(dims->size()) +
-                                        " dimensions; at most " + std::to_string(kMaxDimensions) +
+                                        " dimensions; at most " + std::to_string(kMaxPerView) +
                                         " are read");
                         }
                         std::size_t dimensionIndex = 0;
@@ -449,10 +473,10 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                     // Version 4: the holes called out, each by an edge of it.
                     const auto callouts = v.find("holeCallouts");
                     if (callouts != v.end() && callouts->is_array()) {
-                        if (callouts->size() > kMaxDimensions) {
+                        if (callouts->size() > kMaxPerView) {
                             return fail(at + " has " + std::to_string(callouts->size()) +
-                                        " hole callouts; at most " +
-                                        std::to_string(kMaxDimensions) + " are read");
+                                        " hole callouts; at most " + std::to_string(kMaxPerView) +
+                                        " are read");
                         }
                         std::size_t calloutIndex = 0;
                         for (const auto& c : *callouts) {
@@ -464,6 +488,99 @@ bool DrawingDocumentIO::readSpec(const std::string& path, DrawingDocumentSpec& o
                                 continue;
                             }
                             view.holeCallouts.push_back(c.get<std::string>());
+                        }
+                    }
+                    // Version 5: geometric tolerances and datum feature
+                    // symbols. One the standard does not allow is left out.
+                    const auto frames = v.find("tolerances");
+                    if (frames != v.end() && frames->is_array()) {
+                        if (frames->size() > kMaxPerView) {
+                            return fail(at + " has " + std::to_string(frames->size()) +
+                                        " tolerances; at most " + std::to_string(kMaxPerView) +
+                                        " are read");
+                        }
+                        std::size_t frameIndex = 0;
+                        for (const auto& f : *frames) {
+                            const std::string what =
+                                entry + ", tolerance " + std::to_string(++frameIndex) + ": ";
+                            if (!f.is_object()) {
+                                spec.leftOut.push_back(what + "it is not a tolerance");
+                                continue;
+                            }
+                            DrawingToleranceSpec tolerance;
+                            tolerance.edge = text(f, "edge");
+                            const auto characteristic =
+                                model::Gdt::characteristicNamed(text(f, "characteristic"));
+                            const auto condition =
+                                model::Gdt::conditionNamed(text(f, "condition", "none"));
+                            const auto datums = f.find("datums");
+                            const bool letters =
+                                datums == f.end() ||
+                                (datums->is_array() && datums->size() <= 3 &&
+                                 std::all_of(datums->begin(), datums->end(),
+                                             [](const json& d) { return d.is_string(); }));
+                            if (tolerance.edge.empty()) {
+                                spec.leftOut.push_back(what + "it names no edge");
+                                continue;
+                            }
+                            if (!characteristic) {
+                                spec.leftOut.push_back(what +
+                                                       "not a characteristic this version reads");
+                                continue;
+                            }
+                            if (!condition) {
+                                spec.leftOut.push_back(
+                                    what + "not a material condition this version reads");
+                                continue;
+                            }
+                            if (!letters) {
+                                spec.leftOut.push_back(what + "its datums are not datum letters");
+                                continue;
+                            }
+                            tolerance.frame.characteristic = *characteristic;
+                            tolerance.frame.tolerance = number(f, "tolerance", 0.0);
+                            tolerance.frame.modifier = *condition;
+                            tolerance.frame.diameterZone = flag(f, "diameter", false);
+                            if (datums != f.end()) {
+                                for (const auto& d : *datums) {
+                                    tolerance.frame.datumRefs.push_back(d.get<std::string>());
+                                }
+                            }
+                            const std::string why = model::Gdt::check(tolerance.frame);
+                            if (!why.empty()) {
+                                spec.leftOut.push_back(what + why);
+                                continue;
+                            }
+                            view.tolerances.push_back(std::move(tolerance));
+                        }
+                    }
+                    const auto datums = v.find("datums");
+                    if (datums != v.end() && datums->is_array()) {
+                        if (datums->size() > kMaxPerView) {
+                            return fail(at + " has " + std::to_string(datums->size()) +
+                                        " datums; at most " + std::to_string(kMaxPerView) +
+                                        " are read");
+                        }
+                        std::size_t datumIndex = 0;
+                        for (const auto& d : *datums) {
+                            const std::string what =
+                                entry + ", datum " + std::to_string(++datumIndex) + ": ";
+                            DrawingDatumSpec datum;
+                            if (d.is_object()) {
+                                datum.edge = text(d, "edge");
+                                datum.label = text(d, "label");
+                            }
+                            if (!d.is_object() || datum.edge.empty()) {
+                                spec.leftOut.push_back(what + "it names no edge");
+                            } else if (!model::Gdt::usableDatumLabel(datum.label)) {
+                                spec.leftOut.push_back(
+                                    what + "its letter is not one or two capitals (not I, O, Q)");
+                            } else if (!datumLabels.insert(datum.label).second) {
+                                spec.leftOut.push_back(what + "datum " + datum.label +
+                                                       " is on the sheet already");
+                            } else {
+                                view.datums.push_back(std::move(datum));
+                            }
                         }
                     }
                 }
@@ -717,6 +834,48 @@ model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingD
             note.sinkDiameter = hole->sinkDiameter;
             note.sinkAngleDegrees = hole->sinkAngleDegrees;
             view.holeCallouts.push_back(std::move(note));
+        }
+        // Each frame and datum on the edge it names, wherever the view shows
+        // it now: one the view no longer shows is said. One on a hole the
+        // view calls out goes on the callout's edge, to hang under it.
+        const auto shown = [&view, holes](const std::string& edge) -> const model::ProjectedEdge* {
+            std::string named = model::withoutPiece(model::logicalEdge(edge));
+            const HoleNote* hole = holes != nullptr ? holeOfEdge(*holes, named) : nullptr;
+            if (hole != nullptr) {
+                for (const model::HoleCallout& c : view.holeCallouts) {
+                    if (holeOfEdge(*holes, c.edge) == hole) named = c.edge;
+                }
+            }
+            for (const model::ProjectedEdge& e : view.edges) {
+                if (model::withoutPiece(model::logicalEdge(e.sourceEdge.tag())) == named) {
+                    return &e;
+                }
+            }
+            return nullptr;
+        };
+        for (const DrawingToleranceSpec& t : v.tolerances) {
+            const model::ProjectedEdge* edge = shown(t.edge);
+            if (edge == nullptr) {
+                if (lost != nullptr) {
+                    lost->push_back("view " + std::to_string(drawing.views.size() + 1) +
+                                    ": a tolerance frame");
+                }
+                continue;
+            }
+            model::FeatureControlFrame frame = t.frame;
+            frame.feature = edge->sourceEdge;
+            view.tolerances.push_back(std::move(frame));
+        }
+        for (const DrawingDatumSpec& d : v.datums) {
+            const model::ProjectedEdge* edge = shown(d.edge);
+            if (edge == nullptr) {
+                if (lost != nullptr) {
+                    lost->push_back("view " + std::to_string(drawing.views.size() + 1) +
+                                    ": datum " + d.label);
+                }
+                continue;
+            }
+            view.datums.push_back({d.label, edge->sourceEdge});
         }
         drawing.views.push_back(std::move(view));
     }

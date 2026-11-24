@@ -14,6 +14,7 @@
 #include "horizon/drafting/DraftText.h"
 #include "horizon/fileio/DrawingDocumentIO.h"
 #include "horizon/fileio/DrawingExport.h"
+#include "horizon/fileio/GeometricToleranceRenderer.h"
 #include "horizon/modeling/DrawingView.h"
 #include "horizon/modeling/Naming.h"
 
@@ -174,4 +175,58 @@ TEST(HoleCalloutsTest, AnEdgeIsTheHoleThatNamesIt) {
     EXPECT_EQ(DrawingDocumentIO::holeOfEdge(holes, "edge:primitive_1/top|xhole_1/wall"), nullptr);
     EXPECT_EQ(DrawingDocumentIO::holeOfEdge(holes, "edge:primitive_1/top|primitive_1/front"),
               nullptr);
+}
+
+// A frame on any edge of a hole the view calls out hangs under its callout:
+// a hole's position is given under its size.
+TEST(HoleCalloutsTest, AHolesFrameHangsUnderItsCallout) {
+    Plate plate;
+    const std::string rim = plate.rim();
+    std::string wall;  // another edge of the same hole: its wall's far rim
+    for (const auto& e : plate.part.solid()->edges()) {
+        const std::string name = hz::model::withoutPiece(hz::model::logicalEdge(e.topoId.tag()));
+        if (name.rfind("edge:" + plate.hole + "/wall|", 0) == 0) wall = name;
+    }
+    ASSERT_FALSE(wall.empty());
+    ASSERT_NE(wall, rim);
+    std::size_t top = 99;
+    DrawingDocumentSpec spec = plate.sheet(&top);
+    spec.views[top].holeCallouts.push_back(rim);
+    hz::io::DrawingToleranceSpec frame;
+    frame.edge = wall;
+    frame.frame.characteristic = hz::model::GeometricCharacteristic::Position;
+    frame.frame.tolerance = 0.2;
+    frame.frame.diameterZone = true;
+    frame.frame.datumRefs = {"A"};
+    spec.views[top].tolerances.push_back(frame);
+
+    const auto holes = DrawingDocumentIO::holesOf(plate.part);
+    std::vector<std::string> lost;
+    const auto drawing = DrawingDocumentIO::build(*plate.part.solid(), spec, &lost, &holes);
+    EXPECT_TRUE(lost.empty()) << ::testing::PrintToString(lost);
+    ASSERT_EQ(drawing.views[top].tolerances.size(), 1u);
+    EXPECT_EQ(hz::model::withoutPiece(
+                  hz::model::logicalEdge(drawing.views[top].tolerances[0].feature.tag())),
+              rim);
+
+    Document sheet;
+    hz::io::DrawingExport::populate(sheet, drawing);
+    const hz::draft::DraftText* size = nullptr;
+    const hz::draft::DraftText* tolerance = nullptr;
+    for (const auto& entity : sheet.draftDocument().entities()) {
+        const auto* t = dynamic_cast<const hz::draft::DraftText*>(entity.get());
+        if (t == nullptr) continue;
+        if (t->text().rfind("3\xC3\x97", 0) == 0) size = t;
+        if (t->text() ==
+                "\xE2\x8C\x80"
+                "0.2" &&
+            entity->layer() == "Tolerances")
+            tolerance = t;
+    }
+    ASSERT_NE(size, nullptr);
+    ASSERT_NE(tolerance, nullptr);
+    // In the frame's second cell, its first cell under the callout's text.
+    constexpr double kCell = hz::io::GeometricToleranceRenderer::kFrameHeight;
+    EXPECT_NEAR(tolerance->position().x, size->position().x + kCell + 1.0, 1e-9);
+    EXPECT_LT(tolerance->position().y, size->position().y);
 }

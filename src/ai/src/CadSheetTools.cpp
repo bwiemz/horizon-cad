@@ -11,6 +11,7 @@
 
 #include "CadToolsCommon.h"
 #include "horizon/ai/CadTools.h"
+#include "horizon/modeling/GeometricTolerance.h"
 
 namespace hz::ai {
 
@@ -166,6 +167,51 @@ ToolResult holeCallout(const SheetToolHooks& hooks, const json& in) {
                  {{"changed", "hole called out in view " + std::to_string(change.view)}});
 }
 
+/// The characteristics' names, as the tools take them.
+std::vector<std::string> characteristics() {
+    using model::GeometricCharacteristic;
+    std::vector<std::string> keys;
+    for (int c = 0; c <= static_cast<int>(GeometricCharacteristic::Profile); ++c) {
+        keys.push_back(model::Gdt::key(static_cast<GeometricCharacteristic>(c)));
+    }
+    return keys;
+}
+
+ToolResult tolerance(const SheetToolHooks& hooks, const json& in) {
+    SheetChange change;
+    change.kind = SheetChange::Kind::Tolerance;
+    change.view = viewOf(in);
+    change.edge = text(in, "edge");
+    if (change.edge.empty()) throw ArgError("\"edge\" is required (list_view_edges names them)");
+    change.characteristic = choice(in, "characteristic", characteristics());
+    change.tolerance = number(in, "tolerance");
+    change.diameterZone = boolean(in, "diameter_zone", false);
+    change.condition = choice(in, "material_condition", {"none", "mmc", "lmc"}, "none");
+    // None is a list too: a form tolerance refers to no datum.
+    if (has(in, "datums") && !(in["datums"].is_array() && in["datums"].empty())) {
+        change.datums = detail::strings(in, "datums");
+    }
+    return apply(hooks, change,
+                 {{"changed", change.characteristic + " frame on " + change.edge + " in view " +
+                                  std::to_string(change.view)}});
+}
+
+ToolResult datum(const SheetToolHooks& hooks, const json& in) {
+    SheetChange change;
+    change.kind = SheetChange::Kind::Datum;
+    change.view = viewOf(in);
+    change.edge = text(in, "edge");
+    if (change.edge.empty()) throw ArgError("\"edge\" is required (list_view_edges names them)");
+    change.label = text(in, "label", "");
+    const SheetChanged changed = hooks.change(change);
+    if (!changed.error.empty()) return ToolResult::error(changed.error);
+    json done = {{"changed", "datum " + changed.label + " on " + change.edge + " in view " +
+                                 std::to_string(change.view)},
+                 {"label", changed.label}};
+    if (!changed.note.empty()) done["warning"] = changed.note;
+    return ToolResult::ok(done, changed.step);
+}
+
 }  // namespace
 
 void registerSheetTools(ToolRegistry& registry, SheetToolHooks hooks) {
@@ -267,8 +313,41 @@ void registerSheetTools(ToolRegistry& registry, SheetToolHooks hooks) {
                  {"edge", detail::stringSchema("an edge of the hole, from list_view_edges")}},
                 {"view", "edge"})},
         ToolAccess::Modify, &holeCallout);
+    add({"add_geometric_tolerance",
+         "Put a GD&T feature control frame (ASME Y14.5, ISO 1101) on an edge in a view: its "
+         "characteristic, its tolerance in mm, a cylindrical zone (⌀, for an axis or a "
+         "hole's position), MMC or LMC, and up to three datums in order (primary, secondary, "
+         "tertiary), each one add_datum put on the sheet first. Flatness, straightness, "
+         "circularity and cylindricity refer to no datum; orientation, position, runout, "
+         "concentricity and symmetry need one. A hole's frame hangs under its callout. "
+         "Name the edge as list_view_edges does. One undo step.",
+         object({{"view", viewSchema},
+                 {"edge", detail::stringSchema("the edge's name from list_view_edges")},
+                 {"characteristic", detail::enumSchema(characteristics(), "what is toleranced")},
+                 {"tolerance", detail::numberSchema("the zone's size, in mm")},
+                 {"diameter_zone",
+                  detail::booleanSchema("a cylindrical zone: ⌀ before the tolerance")},
+                 {"material_condition",
+                  detail::enumSchema({"none", "mmc", "lmc"},
+                                     "the zone at maximum or least material condition; "
+                                     "none: regardless of feature size")},
+                 {"datums", detail::arraySchema(detail::stringSchema("a datum's letter"),
+                                                "the datums referred to, primary first")}},
+                {"view", "edge", "characteristic", "tolerance"})},
+        ToolAccess::Modify, &tolerance);
+    add({"add_datum",
+         "Make an edge in a view a datum feature: a triangle on it and its letter boxed, for "
+         "add_geometric_tolerance frames to refer to. Letters are A, B, C... (never I, O or "
+         "Q), each once on the sheet; leave \"label\" out for the next free one. One undo "
+         "step.",
+         object({{"view", viewSchema},
+                 {"edge", detail::stringSchema("the edge's name from list_view_edges")},
+                 {"label", detail::stringSchema("the datum's letter, e.g. \"A\"")}},
+                {"view", "edge"})},
+        ToolAccess::Modify, &datum);
     add({"remove_dimension",
-         "Remove the dimensions of an edge in a view, and its hole's callout. One undo step.",
+         "Remove what is on an edge in a view: its dimensions, its hole's callout, its "
+         "tolerance frames and its datum. One undo step.",
          object({{"view", viewSchema},
                  {"edge", detail::stringSchema("the edge's name, as get_sheet_info lists it")}},
                 {"view", "edge"})},

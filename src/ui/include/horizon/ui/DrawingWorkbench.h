@@ -65,6 +65,13 @@ public:
     /// A hole's edge clicked: the hole called out ("3× ⌀6.6 THRU"), its size
     /// as its feature says, and how many of it the part has.
     void onAddHoleCallout();
+    /// A frame asked for in a form (its characteristic, tolerance, zone,
+    /// material condition and datums), then edges clicked, each toleranced
+    /// with it.
+    void onAddTolerance();
+    /// A datum letter asked for, then edges clicked, each made the datum of
+    /// it: the first the letter asked for, the next the letter after it.
+    void onAddDatum();
 
     // --- For the window ---
     /// Whether @p document is a sheet this workbench draws.
@@ -132,10 +139,21 @@ public:
     /// a part's sheet: an assembly's holes are its parts'.
     bool addHoleCallout(doc::Document& document, std::size_t view, const std::string& edge,
                         std::string* error);
+    /// @p frame, a geometric tolerance, on the model edge named @p edge in
+    /// view @p view: one the standard allows (model::Gdt::check), referring
+    /// to datums the sheet has. Its feature is the edge.
+    bool addTolerance(doc::Document& document, std::size_t view, const std::string& edge,
+                      const model::FeatureControlFrame& frame, std::string* error);
+    /// The model edge named @p edge in view @p view made datum @p label: a
+    /// letter no other datum on the sheet has; empty, the first free one,
+    /// said in @p given.
+    bool addDatum(doc::Document& document, std::size_t view, const std::string& edge,
+                  const std::string& label, std::string* error, std::string* given = nullptr);
     /// The dimensions of the edge named @p edge in view @p view removed, and
-    /// its hole's callout.
+    /// its hole's callout, and its frames and datum (or its hole's). A
+    /// frame still referring to a datum removed is said in @p note.
     bool removeEdgeDimensions(doc::Document& document, std::size_t view, const std::string& edge,
-                              std::string* error);
+                              std::string* error, std::string* note = nullptr);
 
 private:
     friend class SheetEditCommand;
@@ -227,6 +245,8 @@ private:
     void addDimension(const std::weak_ptr<doc::Document>& document, const PickedEdge& picked);
     void removeDimensions(const std::weak_ptr<doc::Document>& document, const PickedEdge& picked);
     void addHoleCalloutAt(const std::weak_ptr<doc::Document>& document, const PickedEdge& picked);
+    void addToleranceAt(const std::weak_ptr<doc::Document>& document, const PickedEdge& picked);
+    void addDatumAt(const std::weak_ptr<doc::Document>& document, const PickedEdge& picked);
     /// A detail of view @p source of the sheet showing @p document, clicked
     /// at @p centre with @p radius on the sheet: its scale and label asked.
     void addDetail(const std::weak_ptr<doc::Document>& document, int source,
@@ -253,6 +273,10 @@ private:
                 const Carried& carried, double sign);
 
     WorkbenchHost& m_host;
+    /// The frame Add Geometric Tolerance puts on each edge clicked, and the
+    /// letter Add Datum Feature makes the next one clicked.
+    model::FeatureControlFrame m_frame;
+    std::string m_datum;
     /// Each sheet where it was made: a form holds one while it is open, and
     /// the list may lose a closed sheet meanwhile (refreshDrawingsOf).
     std::vector<std::unique_ptr<Sheet>> m_sheets;

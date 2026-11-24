@@ -35,6 +35,24 @@ work, not "post-1.0".
   points and no control points, as AutoCAD keeps a spline drawn through
   points and as LibreDWG writes it, came in as nothing; it now comes in as
   the uniform cubic through those points, reported as approximated.
+- **GD&T on drawings.** **Drawing ▸ Add Datum Feature...** makes an edge's
+  face a datum (a triangle on the edge, its letter boxed), and **Drawing ▸ Add
+  Geometric Tolerance...** puts a feature control frame on edges: any of the
+  twelve characteristics, its tolerance, a cylindrical (⌀) zone, MMC or LMC,
+  and up to three datums, drawn as the standards draw it (a row of boxes, the
+  symbol drawn in lines so it prints and exports whatever the fonts). What
+  ASME Y14.5 does not allow is refused with why (a form tolerance with a
+  datum, a position without one, MMC on flatness, a datum letter I, O or Q,
+  one the sheet does not have). A hole's frame hangs under its callout. Each
+  follows its edge as the part changes, is one undo step, and goes with
+  Remove Dimension. The AI assistant has `add_datum` and
+  `add_geometric_tolerance`. A sheet with them is drawing format 5; without,
+  the format it was.
+- **Hole callouts read left to right and clear the part.** A callout's lines
+  were centred on the end of its leader, across it, and a short leader left
+  them over the part on a small view; they now start at the leader's
+  shoulder, above the view.
+
 - **Hole callouts on drawings.** **Drawing ▸ Add Hole Callout**, then a
   click on a hole made with **Hole**, calls it out as a shop drawing does: its
   size and depth as the Hole feature says them ("⌀6.6 THRU", "⌀5 × 10 DEEP"),

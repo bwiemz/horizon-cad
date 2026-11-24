@@ -180,3 +180,64 @@ TEST_F(SheetToolsTest, AHoleIsCalledOutByAnEdgeOfIt) {
     EXPECT_NE(refused("add_hole_callout", {{"view", 1}, {"edge", ""}}).find("an edge of the hole"),
               std::string::npos);
 }
+
+TEST_F(SheetToolsTest, AFrameIsAskedForAsTheStandardNamesIt) {
+    EXPECT_EQ(tools.access("add_geometric_tolerance"), hz::ai::ToolAccess::Modify);
+    made("add_geometric_tolerance", {{"view", 2},
+                                     {"edge", "edge:hole_1/wall|primitive_1/top"},
+                                     {"characteristic", "position"},
+                                     {"tolerance", 0.2},
+                                     {"diameter_zone", true},
+                                     {"material_condition", "mmc"},
+                                     {"datums", {"A", "B", "C"}}});
+    ASSERT_EQ(asked.size(), 1u);
+    const SheetChange& frame = asked[0];
+    EXPECT_EQ(frame.kind, SheetChange::Kind::Tolerance);
+    EXPECT_EQ(frame.view, 2);
+    EXPECT_EQ(frame.characteristic, "position");
+    EXPECT_DOUBLE_EQ(frame.tolerance, 0.2);
+    EXPECT_TRUE(frame.diameterZone);
+    EXPECT_EQ(frame.condition, "mmc");
+    EXPECT_EQ(frame.datums, (std::vector<std::string>{"A", "B", "C"}));
+
+    // A form tolerance with no datums, and its condition left out.
+    made("add_geometric_tolerance", {{"view", 0},
+                                     {"edge", "e1"},
+                                     {"characteristic", "flatness"},
+                                     {"tolerance", 0.05},
+                                     {"datums", json::array()}});
+    ASSERT_EQ(asked.size(), 2u);
+    EXPECT_TRUE(asked[1].datums.empty());
+    EXPECT_EQ(asked[1].condition, "none");
+    EXPECT_FALSE(asked[1].diameterZone);
+
+    // What is not a characteristic, or not a condition, is refused before
+    // the sheet hears of it.
+    refused("add_geometric_tolerance",
+            {{"view", 0}, {"edge", "e1"}, {"characteristic", "wobble"}, {"tolerance", 0.05}});
+    refused("add_geometric_tolerance", {{"view", 0},
+                                        {"edge", "e1"},
+                                        {"characteristic", "position"},
+                                        {"tolerance", 0.05},
+                                        {"material_condition", "rfs"},
+                                        {"datums", {"A"}}});
+    refused("add_geometric_tolerance",
+            {{"view", 0}, {"edge", "e1"}, {"characteristic", "flatness"}});
+    EXPECT_EQ(asked.size(), 2u);
+}
+
+TEST_F(SheetToolsTest, ADatumIsGivenTheLetterTheSheetChose) {
+    EXPECT_EQ(tools.access("add_datum"), hz::ai::ToolAccess::Modify);
+    answer.label = "B";
+    const json done = made("add_datum", {{"view", 0}, {"edge", "e1"}});
+    ASSERT_EQ(asked.size(), 1u);
+    EXPECT_EQ(asked[0].kind, SheetChange::Kind::Datum);
+    EXPECT_EQ(asked[0].label, "");
+    EXPECT_EQ(done.value("label", ""), "B");
+    made("add_datum", {{"view", 0}, {"edge", "e1"}, {"label", "C"}});
+    EXPECT_EQ(asked[1].label, "C");
+
+    answer.error = "the sheet has datum C already";
+    EXPECT_NE(refused("add_datum", {{"view", 0}, {"edge", "e1"}, {"label", "C"}}).find("already"),
+              std::string::npos);
+}
