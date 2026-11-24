@@ -1,6 +1,7 @@
 add_library(hz_modeling STATIC
     src/PrimitiveFactory.cpp
     src/ExactPrimitives.cpp
+    src/TrimmedFaceMesher.cpp
     src/ProfileValidator.cpp
     src/Extrude.cpp
     src/Revolve.cpp

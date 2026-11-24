@@ -10,6 +10,7 @@
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/surfaces/Surface.h"
+#include "horizon/topology/LoopUnwrap.h"
 
 namespace hz::topo {
 
@@ -18,7 +19,7 @@ namespace {
 using math::Vec2;
 using math::Vec3;
 
-constexpr int kSamples = 17;  // a pcurve's two ends and 15 between
+constexpr int kSamples = kLoopSamples;  // a pcurve's two ends and 15 between
 
 /// A number for a detail string, with enough digits to read on parts of any size.
 std::string num(double x) {
@@ -152,7 +153,7 @@ struct Checker {
     struct LoopInfo {
         const Wire* wire = nullptr;
         bool usable = false;  // closed, joined and fully carrying pcurves
-        detail::LoopPolygon poly;
+        LoopPolygon poly;
     };
 
     /// A parametric tolerance on @p s at a point: the model tolerance over the larger of the
@@ -185,12 +186,6 @@ struct Checker {
                close(a.y, b.y, d.dv.length(), s.periodicV(), s.vRange());
     }
 
-    /// The period of a periodic parameter, 0 for one that is not.
-    static double periodOf(bool periodic, geo::Interval r) {
-        const double p = r.max - r.min;
-        return periodic && std::isfinite(p) ? p : 0.0;
-    }
-
     LoopInfo checkLoop(const Face& f, const Wire* w, bool outer) {
         LoopInfo info;
         info.wire = w;
@@ -199,18 +194,7 @@ struct Checker {
             return info;
         }
         std::vector<const HalfEdge*> ring;
-        const size_t limit = 2 * solid.edges().size() + 1;
-        const HalfEdge* he = w->halfEdge;
-        bool closed = false;
-        while (he && he->face == &f && ring.size() <= limit) {
-            ring.push_back(he);
-            he = he->next;
-            if (he == w->halfEdge) {
-                closed = true;
-                break;
-            }
-        }
-        if (!closed) {
+        if (!loopHalfEdges(f, *w, 2 * solid.edges().size() + 1, ring)) {
             report(ExactIssueKind::LoopNotClosed, &f, w->halfEdge->edge,
                    "the half-edge cycle does not return to its start");
             return info;
@@ -222,10 +206,7 @@ struct Checker {
         bool joined = true;
         std::vector<double> allowances;
         for (const HalfEdge* h : ring) {
-            // Two ends each within their allowance of the vertex may be twice that apart.
-            const double allowance =
-                tol.effective(std::max(h->edge->tolerance, h->next->origin->tolerance)) +
-                tol.effective(std::max(h->next->edge->tolerance, h->next->origin->tolerance));
+            const double allowance = joinAllowance(*h, tol);
             allowances.push_back(allowance);
             if (!sameUv(s, sample(*h, kSamples - 1), sample(*h->next, 0), allowance)) {
                 joined = false;
@@ -237,8 +218,7 @@ struct Checker {
         // The loop as chords of its pcurves' own (u, v) values, unwrapped so that it is
         // continuous: a periodic surface's seam must not collapse the rectangle, and a loop
         // written inside [0, 2 pi) must not break where it crosses the seam.
-        if (!detail::unwrapLoop(ring, kSamples, s, periodOf(s.periodicU(), s.uRange()),
-                                periodOf(s.periodicV(), s.vRange()), allowances, info.poly)) {
+        if (!unwrapLoop(ring, kSamples, s, uPeriod(s), vPeriod(s), allowances, info.poly)) {
             report(ExactIssueKind::LoopNotClosed, &f, w->halfEdge->edge,
                    "loop closes only after winding round the surface");
             return info;
@@ -271,9 +251,7 @@ struct Checker {
         if (ref == loops.end()) return;
         for (auto j = loops.begin(); j != loops.end(); ++j) {
             if (!j->usable || j == ref) continue;
-            detail::alignToReference(j->poly, ref->poly,
-                                     periodOf(surface.periodicU(), surface.uRange()),
-                                     periodOf(surface.periodicV(), surface.vRange()));
+            alignLoop(j->poly, ref->poly, uPeriod(surface), vPeriod(surface));
         }
         for (size_t i = 0; i < loops.size(); ++i) {
             if (!loops[i].usable) continue;
@@ -285,11 +263,10 @@ struct Checker {
                            "two loops of the face cross");
                 }
                 if (i != 0 || crossing) continue;
-                const bool outside =
-                    std::any_of(loops[j].poly.begin(), loops[j].poly.end(),
-                                [&](const detail::LoopSegment& seg) {
-                                    return detail::clearlyOutside(loops[0].poly, seg.a);
-                                });
+                const bool outside = std::any_of(
+                    loops[j].poly.begin(), loops[j].poly.end(), [&](const LoopSegment& seg) {
+                        return detail::clearlyOutside(loops[0].poly, seg.a);
+                    });
                 if (outside) {
                     report(ExactIssueKind::HoleOutsideOuterLoop, &f, loops[j].wire->halfEdge->edge,
                            "inner loop lies outside the outer loop");

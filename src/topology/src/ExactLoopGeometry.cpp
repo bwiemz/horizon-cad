@@ -1,8 +1,7 @@
 #include "ExactLoopGeometry.h"
 
 #include <algorithm>
-#include <cmath>
-#include <limits>
+#include <vector>
 
 #include "horizon/math/RobustPredicates.h"
 
@@ -13,11 +12,6 @@ namespace {
 using math::Vec2;
 
 constexpr int kMaxRefinement = 30;
-
-Vec2 sampleAt(const HalfEdge& h, int i, int samples) {
-    const double t = h.pcurveStart + (h.pcurveEnd - h.pcurveStart) * i / (samples - 1);
-    return h.pcurve->evaluate(t);
-}
 
 /// How far the curve strays from the chord at the chord's parameter midpoint.
 double sag(const LoopSegment& s) {
@@ -71,53 +65,6 @@ double distanceToSegment(const Vec2& p, const Vec2& a, const Vec2& b) {
 
 }  // namespace
 
-bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo::Surface& surface,
-                double periodU, double periodV, const std::vector<double>& joinAllowance,
-                LoopPolygon& out) {
-    out.clear();
-    Vec2 prevEnd;
-    for (size_t k = 0; k < ring.size(); ++k) {
-        const HalfEdge* h = ring[k];
-        Vec2 shift;
-        const Vec2 start = sampleAt(*h, 0, samples);
-        if (!out.empty()) {
-            // A raw jump that is already the same point within the join's allowance (a pole or
-            // apex, where a derivative vanishes) is a move along the singular side, not a wrap;
-            // the same quantity the join check tests. Which way round it runs is decided by the
-            // next pcurve's own window; that is a stage 3 question (pole topology).
-            const double allowance = joinAllowance[k - 1];
-            const auto d = surface.derivatives(prevEnd.x, prevEnd.y);
-            const double dx = prevEnd.x - start.x;
-            const double dy = prevEnd.y - start.y;
-            if (periodU > 0.0 && std::fabs(dx) * d.du.length() > allowance) {
-                shift.x = std::round(dx / periodU) * periodU;
-            }
-            if (periodV > 0.0 && std::fabs(dy) * d.dv.length() > allowance) {
-                shift.y = std::round(dy / periodV) * periodV;
-            }
-        }
-        Vec2 a = start + shift;
-        for (int i = 1; i < samples; ++i) {
-            const double t0 =
-                h->pcurveStart + (h->pcurveEnd - h->pcurveStart) * (i - 1) / (samples - 1);
-            const double t1 = h->pcurveStart + (h->pcurveEnd - h->pcurveStart) * i / (samples - 1);
-            const Vec2 b = h->pcurve->evaluate(t1) + shift;
-            out.push_back({h->pcurve.get(), t0, t1, shift, a, b});
-            a = b;
-        }
-        prevEnd = a;
-    }
-    if (out.empty()) return true;
-    const Vec2 gap = out.front().a - prevEnd;
-    const auto d = surface.derivatives(prevEnd.x, prevEnd.y);
-    const double allowance = joinAllowance[ring.size() - 1];
-    const bool windsU = periodU > 0.0 && std::fabs(gap.x) * d.du.length() > allowance &&
-                        std::round(gap.x / periodU) != 0.0;
-    const bool windsV = periodV > 0.0 && std::fabs(gap.y) * d.dv.length() > allowance &&
-                        std::round(gap.y / periodV) != 0.0;
-    return !windsU && !windsV;
-}
-
 double signedArea(const LoopPolygon& loop) {
     if (loop.empty()) return 0.0;
     // About the first point: far from the origin the products would lose their precision.
@@ -133,29 +80,6 @@ double signedArea(const LoopPolygon& loop) {
         twice += q.x * r.y - r.x * q.y;
     }
     return twice / 2.0;
-}
-
-void alignToReference(LoopPolygon& loop, const LoopPolygon& reference, double periodU,
-                      double periodV) {
-    if (loop.empty() || reference.empty()) return;
-    const auto middle = [](const LoopPolygon& l) {
-        Vec2 lo = l.front().a;
-        Vec2 hi = lo;
-        for (const auto& s : l) {
-            lo = {std::min(lo.x, s.a.x), std::min(lo.y, s.a.y)};
-            hi = {std::max(hi.x, s.a.x), std::max(hi.y, s.a.y)};
-        }
-        return (lo + hi) * 0.5;
-    };
-    const Vec2 gap = middle(reference) - middle(loop);
-    Vec2 delta;
-    if (periodU > 0.0) delta.x = std::round(gap.x / periodU) * periodU;
-    if (periodV > 0.0) delta.y = std::round(gap.y / periodV) * periodV;
-    for (auto& s : loop) {
-        s.shift = s.shift + delta;
-        s.a = s.a + delta;
-        s.b = s.b + delta;
-    }
 }
 
 bool selfIntersects(const LoopPolygon& loop, const UvTolerance& tolerance) {
