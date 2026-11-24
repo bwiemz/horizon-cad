@@ -418,3 +418,41 @@ TEST_F(AssemblyToolsTest, ADistanceMateHoldsAGapAndIsEdited) {
     backing.undoStack().undo();
     EXPECT_EQ(assembly.mates().size(), 2u);
 }
+
+// A distance mate driven through a range: the plate above slides down into
+// the one below, and the tool says where they clash, moving nothing.
+TEST_F(AssemblyToolsTest, AMotionStudySaysWhereItGoesAndWhereItClashes) {
+    const auto low = insert("plate.hzpart");
+    const auto high = insert("plate.hzpart", {{"position", {0, 0, 50}}});
+    ok("add_mate", {{"type", "fixed"}, {"a", {{"component", low}}}});
+    const json made = ok("add_mate", {{"type", "distance"},
+                                      {"a", {{"component", low}, {"geometry", "top"}}},
+                                      {"b", {{"component", high}, {"geometry", "bottom"}}},
+                                      {"distance", 10}});
+    const auto mate = made["mate"]["id"].get<std::uint64_t>();
+    const double placed = component(high)["bounding_box"]["min"][2].get<double>();
+    const std::size_t before = steps();
+
+    const json motion =
+        ok("study_motion", {{"mate", mate}, {"from", 10}, {"to", -4}, {"steps", 7}});
+    EXPECT_EQ(motion["unit"], "mm");
+    EXPECT_EQ(motion["positions"], 8);
+    EXPECT_TRUE(motion["complete"].get<bool>());
+    EXPECT_EQ(motion["reached"], -4.0);
+    EXPECT_FALSE(motion["clear"].get<bool>());
+    ASSERT_EQ(motion["clashes"].size(), 1u);
+    const json& clash = motion["clashes"][0];
+    EXPECT_EQ(clash["from"], -2.0) << "resting on it at 0 is touching; 2 into it is a clash";
+    EXPECT_EQ(clash["to"], -4.0);
+    // 40 x 40 by 4 deep, less the 10 mm hole through both: measured on its
+    // facets, which take a little less than the round hole (0.1%).
+    const double shared = 40.0 * 40.0 * 4.0 - 3.14159265358979 * 5.0 * 5.0 * 4.0;
+    EXPECT_NEAR(clash["most_shared_volume_mm3"].get<double>(), shared, shared * 1e-3);
+
+    EXPECT_EQ(steps(), before) << "a study is no edit";
+    EXPECT_DOUBLE_EQ(component(high)["bounding_box"]["min"][2].get<double>(), placed);
+
+    EXPECT_NE(
+        fails("study_motion", {{"mate", 1}, {"from", 0}, {"to", 1}}).find("distance or an angle"),
+        std::string::npos);
+}

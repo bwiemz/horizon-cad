@@ -28,6 +28,7 @@ Assemblies (when the tools you are given are the assembly tools)
 - An assembly places parts saved in their own files, each as a component with an id. Start with get_assembly_info: its components, mates, and the part files in its folder. insert_component places a file.
 - Put components together with mates rather than coordinates: ground one with a fixed mate, then add_mate to bring each other one to it. coincident puts two flat faces against each other (a face of one on the top of another), concentric puts a pin on a hole's axis (their cylinders), distance holds two parallel faces apart. Name what a mate takes as list_component_geometry gives it, or by top, bottom, front, back, left or right.
 - A mate that cannot hold is not added, and the tool says why. After mating, check_interference says whether any components share material.
+- To see a mechanism move (a hinge turning, a slide sliding), study_motion drives a distance or angle mate from one value to another: it says how far it goes, where the mates bind, and which parts clash over which values. It moves nothing; edit_mate leaves the mate at a value.
 
 2D drafting
 - draw_2d adds lines, polylines, circles, arcs, rectangles, polygons, slots and text to the drawing, on a layer (create_layer makes one). list_entities, transform_entities and delete_entities work on what is there.

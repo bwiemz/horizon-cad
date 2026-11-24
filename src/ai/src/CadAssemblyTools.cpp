@@ -26,6 +26,7 @@
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/ModelCommands.h"
+#include "horizon/document/MotionStudy.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Mat4.h"
@@ -638,6 +639,86 @@ ToolResult checkInterference(const AssemblyContext& c, const json& /*in*/) {
     return ToolResult::ok(out);
 }
 
+ToolResult studyMotion(const AssemblyContext& c, const json& in) {
+    const doc::Mate& mate = mateOf(c, in, "mate");
+    if (mate.type != doc::MateType::Distance && mate.type != doc::MateType::Angle) {
+        throw ArgError("a motion is driven by a distance or an angle mate; mate " +
+                       std::to_string(mate.id) + " is a " + mateNames().at(mate.type) + " mate");
+    }
+    const bool angular = mate.type == doc::MateType::Angle;
+    const double unit = angular ? kDegree : 1.0;
+    // A turn of ten revolutions, or a kilometre: past either is a garbled
+    // number, not a mechanism.
+    const double reach = angular ? 3600.0 : kMaxMagnitude;
+    const double from = number(in, "from");
+    const double to = number(in, "to");
+    if (std::abs(from) > reach || std::abs(to) > reach) {
+        throw ArgError(angular ? "from and to are angles within 3600 degrees"
+                               : "from and to are lengths within 1 km");
+    }
+    doc::MotionStudy study;
+    study.mate = mate.id;
+    study.from = from * unit;
+    study.to = to * unit;
+    study.steps = static_cast<int>(integer(in, "steps", 1, doc::MotionStudy::kMaxSteps, 24));
+    study.checkInterference = boolean(in, "check_collisions", true);
+
+    std::string why;
+    const auto input = doc::prepareMotion(c.assembly, c.documents, mate.id, &why);
+    if (!input) return ToolResult::error("The motion cannot be studied: " + why);
+    const doc::MotionResult motion = doc::runMotion(*input, study);
+
+    const auto label = [&c](uint64_t id) {
+        const auto* comp = c.assembly.component(id);
+        return comp != nullptr ? labelOf(*comp) : std::to_string(id);
+    };
+    json out = {{"unit", angular ? "degrees" : "mm"},
+                {"positions", motion.frames.size()},
+                {"complete", motion.complete}};
+    if (!motion.frames.empty()) out["reached"] = round6(motion.frames.back().value / unit);
+    if (motion.bound) {
+        out["binds_at"] = round6(*motion.bound / unit);
+        out["note"] = motion.frames.empty()
+                          ? "The mates cannot hold the mate at its first value: it does not start."
+                          : "The mates cannot reach binds_at: the mechanism stops at reached.";
+    }
+    if (study.checkInterference) {
+        // Each pair that clashes, over the values it clashes at, and the
+        // most material it shares there.
+        struct Span {
+            double first = 0.0;
+            double last = 0.0;
+            double most = 0.0;
+        };
+        std::map<std::pair<uint64_t, uint64_t>, Span> spans;
+        for (const auto& frame : motion.frames) {
+            for (const auto& clash : frame.clashes) {
+                const auto key = std::minmax(clash.componentA, clash.componentB);
+                const auto [at, added] =
+                    spans.try_emplace(key, Span{frame.value, frame.value, 0.0});
+                at->second.last = frame.value;
+                if (clash.volumeResolved) at->second.most = std::max(at->second.most, clash.volume);
+            }
+        }
+        json clashes = json::array();
+        for (const auto& [pair, span] : spans) {
+            clashes.push_back({{"a", label(pair.first)},
+                               {"b", label(pair.second)},
+                               {"from", round6(span.first / unit)},
+                               {"to", round6(span.last / unit)},
+                               {"most_shared_volume_mm3", round6(span.most)}});
+        }
+        out["clashes"] = clashes;
+        out["clear"] = clashes.empty();
+        if (!motion.unchecked.empty()) {
+            json unchecked = json::array();
+            for (const uint64_t id : motion.unchecked) unchecked.push_back(label(id));
+            out["not_checked"] = unchecked;
+        }
+    }
+    return ToolResult::ok(out);
+}
+
 ToolResult billOfMaterials(const AssemblyContext& c, const json& in) {
     const std::string kind =
         choice(in, "kind", {"top_level", "indented", "parts_only"}, std::string("top_level"));
@@ -1119,6 +1200,19 @@ void registerAssemblyTools(ToolRegistry& registry, doc::AssemblyDocument& assemb
          "after mating.",
          object(json::object())},
         ToolAccess::Read, &checkInterference);
+    add({"study_motion",
+         "Drive a distance or angle mate from one value to another in steps, the other mates "
+         "solved at each, as a motor or a slide drives a mechanism: how far it goes, where the "
+         "mates bind, and which parts clash over which values. Nothing is moved; to leave it at a "
+         "value, edit_mate.",
+         object({{"mate", integerSchema("the distance or angle mate to drive")},
+                 {"from", numberSchema("mm, or degrees for an angle mate")},
+                 {"to", numberSchema("mm, or degrees")},
+                 {"steps", integerSchema("positions after the first (default 24, at most 720)")},
+                 {"check_collisions",
+                  booleanSchema("check each position for parts sharing material (default true)")}},
+                {"mate", "from", "to"})},
+        ToolAccess::Read, &studyMotion);
     add({"get_bill_of_materials",
          "The assembly's parts and how many of each (suppressed components left out).",
          object({{"kind", enumSchema({"top_level", "indented", "parts_only"},

@@ -40,8 +40,11 @@ namespace {
 class Mechanism {
 public:
     Mechanism() {
-        static int made = 0;
-        m_dir = fs::temp_directory_path() / ("hz_motion_" + std::to_string(++made));
+        // A folder of its own: CTest runs each test in a process of its own,
+        // side by side, and a count would start again in each.
+        const auto* test = ::testing::UnitTest::GetInstance()->current_test_info();
+        m_dir = fs::temp_directory_path() /
+                (std::string("hz_motion_") + (test != nullptr ? test->name() : "study"));
         fs::create_directories(m_dir);
         const std::string part = (m_dir / "plate.hzpart").string();
         {

@@ -53,6 +53,28 @@ by a distance, as a step of a named exploded view. Each use adds a step.
 are); **Remove Exploded View...** deletes one. Components cannot be dragged
 while an exploded view is shown.
 
+## Motion
+
+**Assembly ▸ Motion Study...** moves a mechanism through its range: a hinge
+turning, a slide sliding, a linkage working. Choose the mate that drives it,
+a Distance or an Angle mate (a hinge is a Concentric and a Coincident mate,
+and an Angle mate between two of its faces turns it), the values to drive it
+from and to, how many steps, and whether to check each position for
+collisions.
+
+Every other mate is solved at each step, from where the last one left the
+components, so the mechanism moves on as it would by hand. The status bar
+says what it came to: through its whole range, or where the mates bind and
+it stops, and where parts first clash.
+
+The positions are played in the **Motion Study** window, beside the main one,
+so you can turn the view while it moves: drag the slider, or **Play**. Each
+says the driving mate's value and which parts clash there. Nothing is moved
+until you choose **Keep This Position**, which leaves the components there,
+and the driving mate at its value, as one undo step. Editing the assembly,
+dragging a component or showing another tab closes the window and draws the
+components where they are.
+
 ## Patterns and mirrors
 
 **Pattern Components...** repeats components in a line or around an axis;
