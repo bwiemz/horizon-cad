@@ -1,5 +1,6 @@
 add_executable(hz_modeling_tests
     test_PrimitiveFactory.cpp
+    test_ExactPrimitives.cpp
     test_ProfileValidator.cpp
     test_ProfileRegions.cpp
     test_Extrude.cpp
