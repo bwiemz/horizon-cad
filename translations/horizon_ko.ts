@@ -26,7 +26,7 @@
         <translation type="unfinished">각도:</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+67"/>
+        <location filename="../src/ui/src/DrawingWorkbench.cpp" line="+68"/>
         <source>Section %1-%1</source>
         <translation type="unfinished">단면 %1-%1</translation>
     </message>
@@ -1942,8 +1942,8 @@ Details are in the log:
         <translation type="unfinished">%1: 도면을 다시 그릴 수 없습니다: %2</translation>
     </message>
     <message>
-        <location line="+103"/>
-        <location line="+296"/>
+        <location line="+138"/>
+        <location line="+470"/>
         <source>Title Block</source>
         <translation type="unfinished">표제란</translation>
     </message>
@@ -2008,38 +2008,96 @@ Details are in the log:
         <translation type="unfinished">세로</translation>
     </message>
     <message>
-        <location line="-311"/>
+        <location line="-485"/>
         <location line="+18"/>
-        <location line="+118"/>
-        <location line="+92"/>
-        <location line="+319"/>
+        <location line="+125"/>
+        <location line="+128"/>
+        <location line="+120"/>
+        <location line="+333"/>
+        <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="-212"/>
+        <location line="-558"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">이 용지에는 모든 뷰를 배치할 공간이 없습니다: 공간이 없는 뷰는 용지 옆에 배치됩니다</translation>
     </message>
     <message>
-        <location line="-323"/>
-        <location line="+329"/>
+        <location line="-497"/>
+        <location line="+503"/>
         <source>Drawing Scale</source>
         <translation type="unfinished">도면 축척</translation>
     </message>
     <message>
-        <location line="-132"/>
-        <location line="+613"/>
+        <location line="-389"/>
+        <location line="+170"/>
+        <location line="+52"/>
+        <location line="+54"/>
+        <source>%1: that view holds %2 of them, as many as a view keeps</source>
+        <translation type="unfinished">%1: 그 뷰에는 이미 %2개가 있으며, 뷰가 담을 수 있는 최대입니다</translation>
+    </message>
+    <message>
+        <location line="-156"/>
+        <source>%1: frames still refer to datum %2, which the sheet no longer has</source>
+        <translation type="unfinished">%1: 공차 기입 틀이 아직 데이텀 %2을(를) 참조하지만 시트에 더 이상 없습니다</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+757"/>
+        <source>Add Geometric Tolerance</source>
+        <translation type="unfinished">기하 공차 추가</translation>
+    </message>
+    <message>
+        <location line="-735"/>
+        <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
+        <translation type="unfinished">%1: 시트에 데이텀 %2이(가) 없습니다. 먼저 데이텀 형체 추가로 모서리에 지정하십시오</translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>%1: that edge is datum %2 itself; a frame on it refers to other datums</source>
+        <translation type="unfinished">%1: 그 모서리 자체가 데이텀 %2입니다. 그 위의 공차 기입 틀은 다른 데이텀을 참조합니다</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>%1: that edge has that frame already</source>
+        <translation type="unfinished">%1: 그 모서리에는 이미 그 공차 기입 틀이 있습니다</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <location line="+768"/>
+        <source>Add Datum Feature</source>
+        <translation type="unfinished">데이텀 형체 추가</translation>
+    </message>
+    <message>
+        <location line="-748"/>
+        <location line="+760"/>
+        <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
+        <translation type="unfinished">%1: &quot;%2&quot;은(는) 데이텀 문자가 아닙니다. 대문자 한두 개이며 I, O, Q는 쓸 수 없습니다</translation>
+    </message>
+    <message>
+        <location line="-753"/>
+        <source>%1: the sheet has datum %2 already</source>
+        <translation type="unfinished">%1: 시트에 이미 데이텀 %2이(가) 있습니다</translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>%1: that edge is datum %2 already</source>
+        <translation type="unfinished">%1: 그 모서리는 이미 데이텀 %2입니다</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <location line="+627"/>
         <source>Hole Callout</source>
         <translation type="unfinished">구멍 주석</translation>
     </message>
     <message>
-        <location line="-592"/>
+        <location line="-605"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: 그 모서리는 구멍(구멍 피처)의 것이 아닙니다</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+19"/>
         <source>%1: that hole is called out already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: 그 구멍에는 이미 주석이 있습니다. 치수 제거로 제거할 수 있습니다</translation>
     </message>
@@ -2050,17 +2108,17 @@ Details are in the log:
     </message>
     <message>
         <location line="+7"/>
-        <location line="+289"/>
+        <location line="+292"/>
         <source>Scale:</source>
         <translation type="unfinished">축척:</translation>
     </message>
     <message>
-        <location line="-276"/>
+        <location line="-279"/>
         <source>At this scale not every view has room on the sheet: those without are beside it</source>
         <translation type="unfinished">이 축척에서는 시트에 모든 뷰를 배치할 공간이 없습니다: 공간이 없는 뷰는 시트 옆에 배치됩니다</translation>
     </message>
     <message>
-        <location line="+124"/>
+        <location line="+127"/>
         <source>%1: placed where there was room; Move View moves it</source>
         <translation type="unfinished">%1: 공간이 있는 곳에 배치했습니다. 뷰 이동으로 옮길 수 있습니다</translation>
     </message>
@@ -2173,8 +2231,8 @@ Details are in the log:
         <translation type="unfinished">%1: 원 안에 뷰의 요소가 없습니다</translation>
     </message>
     <message>
-        <location line="-621"/>
-        <location line="+642"/>
+        <location line="-798"/>
+        <location line="+819"/>
         <source>Move View</source>
         <translation type="unfinished">뷰 이동</translation>
     </message>
@@ -2194,30 +2252,30 @@ Details are in the log:
         <translation type="unfinished">뷰가 있는 도면 위가 아닙니다</translation>
     </message>
     <message>
-        <location line="-650"/>
-        <location line="+693"/>
+        <location line="-827"/>
+        <location line="+870"/>
         <source>Remove View</source>
         <translation type="unfinished">뷰 제거</translation>
     </message>
     <message>
-        <location line="-677"/>
-        <location line="+682"/>
+        <location line="-854"/>
+        <location line="+859"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: 시트에는 뷰가 하나 이상 있어야 합니다</translation>
     </message>
     <message>
         <location line="+8"/>
-        <location line="+130"/>
+        <location line="+234"/>
         <source>View:</source>
         <translation type="unfinished">뷰:</translation>
     </message>
     <message>
-        <location line="-801"/>
+        <location line="-1082"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: 이 뷰에서 파생된 뷰도 함께 제거되었습니다 (%2)</translation>
     </message>
     <message>
-        <location line="+714"/>
+        <location line="+891"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">뷰의 모서리를 클릭하십시오 (완료하면 Esc)</translation>
     </message>
@@ -2232,20 +2290,20 @@ Details are in the log:
         <translation type="unfinished">해당 위치에 모서리가 없습니다</translation>
     </message>
     <message>
-        <location line="-694"/>
-        <location line="+709"/>
+        <location line="-871"/>
+        <location line="+886"/>
         <source>Add Dimension</source>
         <translation type="unfinished">치수 추가</translation>
     </message>
     <message>
-        <location line="-630"/>
-        <location line="+652"/>
+        <location line="-799"/>
+        <location line="+925"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">치수 제거</translation>
     </message>
     <message>
-        <location line="-728"/>
+        <location line="-1002"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: 이 모서리에는 이미 치수가 있습니다. 치수 제거로 제거할 수 있습니다</translation>
     </message>
@@ -2260,20 +2318,150 @@ Details are in the log:
         <translation type="unfinished">%1: 이 모서리에는 표시할 길이가 없습니다</translation>
     </message>
     <message>
-        <location line="+16"/>
-        <location line="+11"/>
-        <location line="+654"/>
+        <location line="+17"/>
+        <location line="+28"/>
+        <location line="+910"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: 이 모서리에는 치수가 없습니다</translation>
     </message>
     <message>
-        <location line="-755"/>
-        <location line="+763"/>
+        <location line="-1036"/>
+        <location line="+1044"/>
         <source>View Properties</source>
         <translation type="unfinished">뷰 속성</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="-124"/>
+        <source>Position</source>
+        <translation type="unfinished">위치도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Flatness</source>
+        <translation type="unfinished">평면도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Straightness</source>
+        <translation type="unfinished">진직도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Circularity</source>
+        <translation type="unfinished">진원도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Cylindricity</source>
+        <translation type="unfinished">원통도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Perpendicularity</source>
+        <translation type="unfinished">직각도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Parallelism</source>
+        <translation type="unfinished">평행도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Angularity</source>
+        <translation type="unfinished">경사도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Profile of a surface</source>
+        <translation type="unfinished">면의 윤곽도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Circular runout</source>
+        <translation type="unfinished">원주 흔들림</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Concentricity</source>
+        <translation type="unfinished">동심도</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Symmetry</source>
+        <translation type="unfinished">대칭도</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>None</source>
+        <translation type="unfinished">없음</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Characteristic:</source>
+        <translation type="unfinished">특성:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Tolerance:</source>
+        <translation type="unfinished">공차:</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Zone:</source>
+        <translation type="unfinished">공차역:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Between two lines or planes</source>
+        <translation type="unfinished">두 직선 또는 두 평면 사이</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>A cylinder (⌀)</source>
+        <translation type="unfinished">원통 (⌀)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Material condition:</source>
+        <translation type="unfinished">실체 조건:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Regardless of feature size</source>
+        <translation type="unfinished">크기 무관 (RFS)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Maximum (MMC)</source>
+        <translation type="unfinished">최대 실체 (MMC)</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Least (LMC)</source>
+        <translation type="unfinished">최소 실체 (LMC)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Primary datum:</source>
+        <translation type="unfinished">1차 데이텀:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Secondary datum:</source>
+        <translation type="unfinished">2차 데이텀:</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Tertiary datum:</source>
+        <translation type="unfinished">3차 데이텀:</translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>Datum letter:</source>
+        <translation type="unfinished">데이텀 문자:</translation>
+    </message>
+    <message>
+        <location line="+69"/>
         <source>Shown</source>
         <translation type="unfinished">표시</translation>
     </message>
@@ -2303,8 +2491,8 @@ Details are in the log:
         <translation type="unfinished">부품에서 업데이트</translation>
     </message>
     <message>
-        <location line="-624"/>
-        <location line="+633"/>
+        <location line="-731"/>
+        <location line="+740"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">도면을 다시 그릴 수 없습니다: %1</translation>
     </message>
@@ -3115,7 +3303,7 @@ begin building your part.</source>
         <translation type="unfinished">%1 닫기</translation>
     </message>
     <message>
-        <location line="+891"/>
+        <location line="+895"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3334,15 +3522,15 @@ begin building your part.</source>
         <translation type="unfinished">뚫을 면</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-841"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-845"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1216"/>
+        <location line="+1220"/>
         <source>Drawing 1</source>
         <translation type="unfinished">도면 1</translation>
     </message>
     <message>
-        <location line="-1162"/>
+        <location line="-1166"/>
         <source>Command Palette…</source>
         <translation type="unfinished">명령 팔레트…</translation>
     </message>
@@ -3855,6 +4043,16 @@ begin building your part.</source>
         <location line="+2"/>
         <source>Add &amp;Hole Callout</source>
         <translation type="unfinished">구멍 주석 추가(&amp;H)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add &amp;Geometric Tolerance...</source>
+        <translation type="unfinished">기하 공차 추가(&amp;G)...</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Add Datum &amp;Feature...</source>
+        <translation type="unfinished">데이텀 형체 추가(&amp;F)...</translation>
     </message>
     <message>
         <location line="+4"/>
