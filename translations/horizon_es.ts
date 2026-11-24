@@ -2659,9 +2659,95 @@ Los detalles están en el registro:
     </message>
 </context>
 <context>
+    <name>hz::ui::DwgImport</name>
+    <message>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+72"/>
+        <source>there was not memory enough to read it</source>
+        <translation type="unfinished">no había memoria suficiente para leerlo</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>LibreDWG could not read the file</source>
+        <translation type="unfinished">LibreDWG no pudo leer el archivo</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>it is not a DWG file, or not one LibreDWG can read</source>
+        <translation type="unfinished">no es un archivo DWG, o no uno que LibreDWG pueda leer</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>parts of it are missing: it may be damaged, or cut short</source>
+        <translation type="unfinished">le faltan partes: puede estar dañado o incompleto</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>LibreDWG met something in it that it cannot read yet</source>
+        <translation type="unfinished">LibreDWG encontró en él algo que todavía no sabe leer</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>LibreDWG could not read it</source>
+        <translation type="unfinished">LibreDWG no pudo leerlo</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>LibreDWG could not read it (%1)</source>
+        <translation type="unfinished">LibreDWG no pudo leerlo (%1)</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Horizon CAD reads DWG files with LibreDWG&apos;s dwg2dxf, which this computer does not have: install LibreDWG, or save the drawing as DXF in the program that made it</source>
+        <translation type="unfinished">Horizon CAD lee los archivos DWG con dwg2dxf de LibreDWG, que este equipo no tiene: instale LibreDWG o guarde el dibujo como DXF en el programa que lo creó</translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>there is no temporary folder to read it in (%1)</source>
+        <translation type="unfinished">no hay una carpeta temporal en la que leerlo (%1)</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>the file could not be read (check its permissions)</source>
+        <translation type="unfinished">no se pudo leer el archivo (compruebe sus permisos)</translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
+        <translation type="unfinished">no se pudo iniciar dwg2dxf de LibreDWG (%1): %2</translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>the reading was cancelled</source>
+        <translation type="unfinished">se canceló la lectura</translation>
+    </message>
+    <message numerus="yes">
+        <location line="+3"/>
+        <source>LibreDWG had not read it after %n second(s), and was stopped</source>
+        <translation type="unfinished">
+            <numerusform>LibreDWG no lo había leído tras %n segundo y se detuvo</numerusform>
+            <numerusform>LibreDWG no lo había leído tras %n segundos y se detuvo</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>LibreDWG stopped while reading it: the file may be damaged, or hold something LibreDWG cannot read yet</source>
+        <translation type="unfinished">LibreDWG se detuvo al leerlo: el archivo puede estar dañado o contener algo que LibreDWG todavía no sabe leer</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>LibreDWG read it, but wrote nothing of it</source>
+        <translation type="unfinished">LibreDWG lo leyó, pero no escribió nada de él</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>LibreDWG read it, but what it made of it could not be read: %1</source>
+        <translation type="unfinished">LibreDWG lo leyó, pero no se pudo leer lo que produjo: %1</translation>
+    </message>
+</context>
+<context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+106"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">Unidad de longitud no indicada</translation>
     </message>
@@ -2708,22 +2794,25 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+12"/>
+        <location line="+155"/>
         <source>Importing %1...</source>
         <translation type="unfinished">Importando %1...</translation>
     </message>
     <message>
-        <location line="+13"/>
+        <location line="-142"/>
         <location line="+15"/>
+        <location line="+136"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-14"/>
+        <location line="-150"/>
+        <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">Importación cancelada</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="-136"/>
         <source>&quot;%1&quot; was not imported: which unit its lengths are in was not given</source>
         <translation type="unfinished">&quot;%1&quot; no se importó: no se indicó en qué unidad están sus longitudes</translation>
     </message>
@@ -2731,12 +2820,12 @@ Los detalles están en el registro:
         <location line="+16"/>
         <location line="+25"/>
         <location line="+6"/>
-        <location line="+28"/>
+        <location line="+107"/>
         <source>Could not import</source>
         <translation type="unfinished">No se pudo importar</translation>
     </message>
     <message numerus="yes">
-        <location line="-39"/>
+        <location line="-118"/>
         <source>Imported %n bodies.</source>
         <translation type="unfinished">
             <numerusform>Se importó %n sólido.</numerusform>
@@ -2766,17 +2855,43 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+4"/>
-        <location line="+13"/>
+        <location line="+2"/>
         <source>Import DXF</source>
         <translation type="unfinished">Importar DXF</translation>
     </message>
     <message>
-        <location line="-13"/>
+        <location line="-2"/>
         <source>DXF Files (*.dxf);;All Files (*)</source>
         <translation type="unfinished">Archivos DXF (*.dxf);;Todos los archivos (*)</translation>
     </message>
+    <message>
+        <location line="+7"/>
+        <source>A DWG is imported into a drawing or part, not an assembly</source>
+        <translation type="unfinished">Un DWG se importa en un dibujo o una pieza, no en un ensamblaje</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <location line="+2"/>
+        <source>Import DWG</source>
+        <translation type="unfinished">Importar DWG</translation>
+    </message>
+    <message>
+        <location line="-2"/>
+        <source>DWG Files (*.dwg);;All Files (*)</source>
+        <translation type="unfinished">Archivos DWG (*.dwg);;Todos los archivos (*)</translation>
+    </message>
+    <message>
+        <location line="+34"/>
+        <source>An import is already running</source>
+        <translation type="unfinished">Ya hay una importación en curso</translation>
+    </message>
+    <message>
+        <location line="+30"/>
+        <source>%1 was read, but the drawing it was for has been closed</source>
+        <translation type="unfinished">Se leyó %1, pero el dibujo al que iba destinado se ha cerrado</translation>
+    </message>
     <message numerus="yes">
-        <location line="+35"/>
+        <location line="+40"/>
         <source>Imported %n entities.</source>
         <translation type="unfinished">
             <numerusform>Se importó %n entidad.</numerusform>
@@ -2790,13 +2905,19 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+236"/>
+        <location line="+5"/>
+        <location line="+240"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">Exportar %1</translation>
     </message>
     <message>
-        <location line="-267"/>
+        <location line="-283"/>
+        <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
+        <translation type="unfinished">Horizon CAD no escribe archivos DWG: dé al archivo un nombre que termine en %1.</translation>
+    </message>
+    <message>
+        <location line="+16"/>
         <location line="+3"/>
         <location line="+22"/>
         <source>STEP</source>
@@ -3427,12 +3548,12 @@ empezar a construir su pieza.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+457"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+458"/>
         <source>&amp;File</source>
         <translation>&amp;Archivo</translation>
     </message>
     <message>
-        <location line="+81"/>
+        <location line="+84"/>
         <source>&amp;Edit</source>
         <translation>&amp;Editar</translation>
     </message>
@@ -3442,7 +3563,7 @@ empezar a construir su pieza.</translation>
         <translation>&amp;Ver</translation>
     </message>
     <message>
-        <location line="-144"/>
+        <location line="-147"/>
         <source>&amp;New Drawing</source>
         <translation>&amp;Nuevo dibujo</translation>
     </message>
@@ -3468,7 +3589,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Cerrar %1</translation>
     </message>
     <message>
-        <location line="+897"/>
+        <location line="+900"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3687,15 +3808,15 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">En la cara</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-847"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-850"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1225"/>
+        <location line="+1228"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dibujo 1</translation>
     </message>
     <message>
-        <location line="-1171"/>
+        <location line="-1174"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Paleta de comandos…</translation>
     </message>
@@ -3753,6 +3874,11 @@ empezar a construir su pieza.</translation>
         <location line="+4"/>
         <source>&amp;DXF into This Drawing...</source>
         <translation type="unfinished">&amp;DXF en este dibujo...</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>D&amp;WG into This Drawing...</source>
+        <translation type="unfinished">D&amp;WG en este dibujo...</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -4735,7 +4861,6 @@ empezar a construir su pieza.</translation>
     <message>
         <location line="+3"/>
         <location line="+9"/>
-        <location line="+0"/>
         <location line="+13"/>
         <location line="+66"/>
         <source>Modify</source>
@@ -4855,8 +4980,13 @@ empezar a construir su pieza.</translation>
         <source>Flat Pattern</source>
         <translation type="unfinished">Desarrollo plano</translation>
     </message>
+    <message>
+        <location line="+1040"/>
+        <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
+        <translation type="unfinished">Todos los archivos compatibles (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Dibujos de Horizon CAD (*.hcad);;Piezas de Horizon (*.hzpart);;Ensamblajes de Horizon (*.hzasm);;Hojas de dibujo de Horizon (*.hzdwg);;Archivos DXF (*.dxf);;Archivos DWG (*.dwg);;Todos los archivos (*)</translation>
+    </message>
     <message numerus="yes">
-        <location line="+1436"/>
+        <location line="+408"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>Archivo guardado; %n capa con un nombre que DXF admite.</numerusform>
@@ -4864,7 +4994,12 @@ empezar a construir su pieza.</translation>
         </translation>
     </message>
     <message>
-        <location line="+435"/>
+        <location line="+62"/>
+        <source>Horizon CAD reads DWG files but does not write them. Save the drawing as DXF (.dxf), which AutoCAD opens, or as a Horizon CAD drawing (.hcad).</source>
+        <translation type="unfinished">Horizon CAD lee archivos DWG pero no los escribe. Guarde el dibujo como DXF (.dxf), que AutoCAD abre, o como dibujo de Horizon CAD (.hcad).</translation>
+    </message>
+    <message>
+        <location line="+383"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">No hay nada seleccionado para hacer zoom: Ajustar todo (F) lo muestra todo</translation>
     </message>
@@ -4915,7 +5050,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
-        <location line="-2623"/>
+        <location line="-2645"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -5141,8 +5276,8 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1055"/>
-        <location line="+488"/>
+        <location line="+1063"/>
+        <location line="+502"/>
         <location line="+936"/>
         <location line="+601"/>
         <location line="+13"/>
@@ -5150,7 +5285,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-3163"/>
+        <location line="-3185"/>
         <source>Cancel</source>
         <translation type="unfinished">Cancelar</translation>
     </message>
@@ -5171,12 +5306,12 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2811"/>
+        <location line="+2833"/>
         <source>None</source>
         <translation type="unfinished">Ninguno</translation>
     </message>
     <message>
-        <location line="-2805"/>
+        <location line="-2827"/>
         <source>%1 selected</source>
         <translation>%1 seleccionado(s)</translation>
     </message>
@@ -5480,15 +5615,10 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Abrir archivo</translation>
     </message>
     <message>
-        <location line="+1"/>
-        <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;All Files (*)</source>
-        <translation type="unfinished">Todos los archivos compatibles (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf);;Dibujos de Horizon CAD (*.hcad);;Piezas de Horizon (*.hzpart);;Ensamblajes de Horizon (*.hzasm);;Hojas de dibujo de Horizon (*.hzdwg);;Archivos DXF (*.dxf);;Todos los archivos (*)</translation>
-    </message>
-    <message>
-        <location line="+40"/>
+        <location line="+41"/>
         <location line="+38"/>
         <location line="+13"/>
-        <location line="+82"/>
+        <location line="+90"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -5497,19 +5627,19 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">No se pudo abrir</translation>
     </message>
     <message>
-        <location line="-233"/>
+        <location line="-241"/>
         <source>Assembly</source>
         <translation type="unfinished">Ensamblaje</translation>
     </message>
     <message>
         <location line="+22"/>
-        <location line="+103"/>
+        <location line="+111"/>
         <source>Drawing</source>
         <translation type="unfinished">Dibujo</translation>
     </message>
     <message>
-        <location line="-89"/>
-        <location line="+89"/>
+        <location line="-97"/>
+        <location line="+97"/>
         <source>Document</source>
         <translation type="unfinished">Documento</translation>
     </message>
@@ -5585,7 +5715,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+12"/>
+        <location line="+16"/>
         <location line="+44"/>
         <source>Could not save</source>
         <translation type="unfinished">No se pudo guardar</translation>
@@ -5640,17 +5770,18 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Dibujos de Horizon CAD (*.hcad);;Piezas de Horizon (*.hzpart);;Archivos DXF (*.dxf);;Todos los archivos (*)</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+10"/>
+        <location line="+10"/>
         <source>Save File</source>
         <translation type="unfinished">Guardar archivo</translation>
     </message>
     <message>
-        <location line="+0"/>
+        <location line="-10"/>
         <source>Save As a New File</source>
         <translation type="unfinished">Guardar como un archivo nuevo</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+58"/>
         <source>Replace the File It Was Read From?</source>
         <translation type="unfinished">¿Reemplazar el archivo del que se leyó?</translation>
     </message>
@@ -6287,7 +6418,7 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">Reconstrucción cancelada: el modelo está como antes del último cambio.</translation>
     </message>
     <message>
-        <location line="-3179"/>
+        <location line="-3201"/>
         <source>0 selected</source>
         <translation>0 seleccionado</translation>
     </message>

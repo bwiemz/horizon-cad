@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QMainWindow>
 #include <QPointer>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -350,14 +351,18 @@ private:
     void updateBusyIndicator();
 
     /// A drawing or part file read into a document of its own, on a worker
-    /// when the file is large (openOnWorker).
+    /// when the file is large (openOnWorker). A DWG's reading stops when
+    /// @p cancelled is set.
     struct FileOpen {
         std::shared_ptr<doc::Document> document;  ///< null when it could not be read
         io::ImportReport report;
         std::string error;
     };
-    static FileOpen readFile(const std::string& path, bool drawing);
+    static FileOpen readFile(const std::string& path, bool drawing,
+                             const std::atomic<bool>* cancelled = nullptr);
     bool openOnWorker(const QString& fileName) const;
+    /// Whether @p fileName is read as a drawing: a DXF or a DWG file.
+    static bool isDrawingFile(const QString& fileName);
     /// Read @p fileName on a worker; its tab is added when it is read.
     bool startOpen(const QString& fileName, bool drawing);
     void onOpenFinished();

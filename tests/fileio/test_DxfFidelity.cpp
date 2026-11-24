@@ -963,6 +963,65 @@ TEST(DxfFidelityTest, ASplineThatIsNotAUniformCubicIsReported) {
     EXPECT_TRUE(samePoints(polys[0]->points(), {{0, 0}, {1, 2}, {3, 2}, {4, 0}}));
 }
 
+// Whether the curve the drawing shows for @p spline passes through @p point.
+bool runsThrough(const hz::draft::DraftSpline& spline, const Vec2& point) {
+    const auto drawn = spline.evaluate();
+    return std::any_of(drawn.begin(), drawn.end(),
+                       [&point](const Vec2& p) { return (p - point).length() < 1e-9; });
+}
+
+// AutoCAD keeps a spline drawn through points by those points alone, and
+// LibreDWG writes it so, with no control points: it came in as nothing.
+TEST(DxfFidelityTest, ASplineGivenByThePointsItRunsThroughRunsThroughThem) {
+    Loaded in(
+        dxf("0\nSPLINE\n8\n0\n70\n8\n71\n3\n72\n0\n73\n0\n74\n4\n"
+            "11\n0\n21\n0\n31\n0\n11\n10\n21\n5\n31\n0\n11\n20\n21\n-5\n31\n0\n"
+            "11\n30\n21\n0\n31\n0\n"));
+    ASSERT_TRUE(in.ok) << in.error;
+    const auto splines = in.all<hz::draft::DraftSpline>();
+    ASSERT_EQ(splines.size(), 1u);
+    EXPECT_FALSE(splines[0]->closed());
+    for (const Vec2 fit : {Vec2(0, 0), Vec2(10, 5), Vec2(20, -5), Vec2(30, 0)}) {
+        EXPECT_TRUE(runsThrough(*splines[0], fit)) << fit.x << ", " << fit.y;
+    }
+    const auto drawn = splines[0]->evaluate();
+    EXPECT_TRUE(near(drawn.front(), Vec2(0, 0))) << "it starts at the first";
+    EXPECT_TRUE(near(drawn.back(), Vec2(30, 0))) << "and ends at the last";
+    EXPECT_TRUE(
+        contains(in.report.approximated, "1 SPLINE entity: given by the points it runs through"));
+}
+
+TEST(DxfFidelityTest, AClosedSplineGivenByItsPointsGoesRoundThem) {
+    // Its first point given again at its end, as AutoCAD writes one.
+    Loaded in(
+        dxf("0\nSPLINE\n8\n0\n70\n11\n71\n3\n72\n0\n73\n0\n74\n5\n"
+            "11\n0\n21\n0\n31\n0\n11\n10\n21\n0\n31\n0\n11\n10\n21\n10\n31\n0\n"
+            "11\n0\n21\n10\n31\n0\n11\n0\n21\n0\n31\n0\n"));
+    ASSERT_TRUE(in.ok) << in.error;
+    const auto splines = in.all<hz::draft::DraftSpline>();
+    ASSERT_EQ(splines.size(), 1u);
+    EXPECT_TRUE(splines[0]->closed());
+    EXPECT_EQ(splines[0]->controlPointCount(), 4u) << "one to a point, the repeated one gone";
+    for (const Vec2 fit : {Vec2(0, 0), Vec2(10, 0), Vec2(10, 10), Vec2(0, 10)}) {
+        EXPECT_TRUE(runsThrough(*splines[0], fit)) << fit.x << ", " << fit.y;
+    }
+}
+
+TEST(DxfFidelityTest, ASplineThroughTwoPointsIsStraight) {
+    Loaded in(
+        dxf("0\nSPLINE\n8\n0\n70\n8\n71\n3\n72\n0\n73\n0\n74\n2\n"
+            "11\n0\n21\n0\n31\n0\n11\n10\n21\n4\n31\n0\n"));
+    ASSERT_TRUE(in.ok) << in.error;
+    const auto splines = in.all<hz::draft::DraftSpline>();
+    ASSERT_EQ(splines.size(), 1u);
+    const auto drawn = splines[0]->evaluate();
+    EXPECT_TRUE(near(drawn.front(), Vec2(0, 0)));
+    EXPECT_TRUE(near(drawn.back(), Vec2(10, 4)));
+    for (const Vec2& p : drawn) {
+        EXPECT_NEAR(p.x * 4.0 - p.y * 10.0, 0.0, 1e-9) << "on the line between them";
+    }
+}
+
 // A bulge of 1e200, squared, is infinite: the arc it made had a centre of NaN,
 // which nothing can draw or pick. Such a segment comes in straight.
 TEST(DxfFidelityTest, ABulgeTooLargeForAnArcIsAStraightSegment) {

@@ -60,6 +60,11 @@ test it, install Python 3 and pybind11 and configure with
 `-DHZ_ENABLE_SCRIPTING=ON` (CI does, in the build and AddressSanitizer
 jobs).
 
+Opening DWG files needs GNU LibreDWG's `dwg2dxf`. Configure with
+`-DHZ_ENABLE_DWG=ON` and vcpkg builds it (about two minutes the first time),
+places it beside the executable, and the DWG tests run against it (CI does,
+in the build jobs). Without it those tests check only the failure messages.
+
 ---
 
 ## How to Add an Entity Type

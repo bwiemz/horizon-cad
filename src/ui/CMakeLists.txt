@@ -70,6 +70,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/AssemblyWorkbench.h
     include/horizon/ui/DraftingCommands.h
     include/horizon/ui/DrawingWorkbench.h
+    include/horizon/ui/DwgImport.h
     include/horizon/ui/ExchangeCommands.h
     include/horizon/ui/ModelPicks.h
     include/horizon/ui/PartCommands.h
@@ -180,6 +181,7 @@ add_library(hz_ui STATIC
     src/MotionPlayer.cpp
     src/DraftingCommands.cpp
     src/DrawingWorkbench.cpp
+    src/DwgImport.cpp
     src/ExchangeCommands.cpp
     src/ModelPicks.cpp
     src/PartCommands.cpp
