@@ -178,17 +178,34 @@ double EllipseCurve::closestParameter(const math::Vec3& point) const {
     // Starts: the circle's estimate (exact for a point on the ellipse) and every sample that
     // is a local minimum of the distance. A point inside the evolute has two feet, and one
     // on an axis has them mirrored; a single start can settle on the vertex between them.
-    constexpr int kSamples = 64;
+    constexpr size_t kSamples = 64;
     std::vector<double> starts = {std::atan2(py / minor_, px / major_)};
-    std::array<double, kSamples> d;
-    for (int i = 0; i < kSamples; ++i) {
-        d[static_cast<size_t>(i)] = dist2(kTwoPi * i / kSamples);
+    // Just inside an evolute cusp the vertex is a stationary maximum that Newton cannot leave
+    // and the sample spacing can hide the two feet beside it. For a point on an axis the feet
+    // are at cos t = a px / (a^2 - b^2) (major axis) and sin t = b py / (b^2 - a^2) (minor
+    // axis); start from those, and their mirror images, whenever they exist.
+    const double e2 = major_ * major_ - minor_ * minor_;
+    if (e2 > 0.0) {
+        const double cx = major_ * px / e2;
+        const double sy = -minor_ * py / e2;
+        if (std::abs(cx) < 1.0) {
+            starts.push_back(std::acos(cx));
+            starts.push_back(-std::acos(cx));
+        }
+        if (std::abs(sy) < 1.0) {
+            starts.push_back(std::asin(sy));
+            starts.push_back(kTwoPi / 2.0 - std::asin(sy));
+        }
     }
-    for (int i = 0; i < kSamples; ++i) {
-        const double prev = d[static_cast<size_t>((i + kSamples - 1) % kSamples)];
-        const double next = d[static_cast<size_t>((i + 1) % kSamples)];
-        if (d[static_cast<size_t>(i)] <= prev && d[static_cast<size_t>(i)] <= next) {
-            starts.push_back(kTwoPi * i / kSamples);
+    std::array<double, kSamples> d{};
+    for (size_t i = 0; i < kSamples; ++i) {
+        d[i] = dist2(kTwoPi * static_cast<double>(i) / kSamples);
+    }
+    for (size_t i = 0; i < kSamples; ++i) {
+        const double prev = d[(i + kSamples - 1) % kSamples];
+        const double next = d[(i + 1) % kSamples];
+        if (d[i] <= prev && d[i] <= next) {
+            starts.push_back(kTwoPi * static_cast<double>(i) / kSamples);
         }
     }
     double result = 0.0;

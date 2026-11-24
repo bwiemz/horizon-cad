@@ -241,3 +241,46 @@ TEST(Curve3, EllipseClosestMatchesBruteForce) {
         EXPECT_LE(got, best * (1.0 + 1e-9) + 1e-12) << i << " a=" << a << " b=" << b;
     }
 }
+
+namespace {
+/// The returned parameter's in-plane distance to @p p is the brute-force minimum.
+void expectEllipseFoot(const EllipseCurve& e, const math::Vec3& p, const char* what) {
+    const double t = e.closestParameter(p);
+    EXPECT_GE(t, 0.0) << what;
+    EXPECT_LT(t, kTwoPi) << what;
+    double best = 1e300;
+    const int n = 200000;
+    for (int k = 0; k < n; ++k) {
+        best = std::min(best, (e.evaluate(kTwoPi * k / n) - p).length());
+    }
+    EXPECT_LE((e.evaluate(t) - p).length(), best * (1.0 + 1e-9) + 1e-12) << what;
+}
+}  // namespace
+
+TEST(Curve3, EllipseClosestJustInsideTheEvoluteCusp) {
+    // On the major axis just inside the cusp x = (a^2 - b^2) / a, the vertex is a stationary
+    // maximum and the two feet lie close beside it.
+    for (double ratio : {0.5, 0.1, 0.01}) {
+        const double a = 2.0;
+        const double b = a * ratio;
+        const EllipseCurve e(Frame{}, a, b);
+        for (int k : {1, 2, 5, 10, 30, 100}) {
+            const double ox = (a * a - b * b) / a * (1.0 - k * 1e-3);
+            expectEllipseFoot(e, {ox, 0.0, 0.0}, "major axis");
+            expectEllipseFoot(e, {-ox, 0.0, 0.0}, "major axis, negative side");
+        }
+    }
+    expectEllipseFoot(EllipseCurve(Frame{}, 2.0, 1.0), {1.4988, 0.0, 0.0}, "a=2 b=1");
+    expectEllipseFoot(EllipseCurve(Frame{}, 2.0, 0.2), {1.9796, 0.0, 0.0}, "a=2 b=0.2");
+}
+
+TEST(Curve3, EllipseClosestOnTheMinorAxis) {
+    for (double ratio : {0.9, 0.5, 0.1}) {
+        const double a = 2.0;
+        const double b = a * ratio;
+        const EllipseCurve e(Frame{}, a, b);
+        for (double oy : {-1.5, -0.7, -0.1, 0.1, 0.7, 1.5, 1.9}) {
+            expectEllipseFoot(e, {0.0, oy * b, 0.0}, "minor axis");
+        }
+    }
+}

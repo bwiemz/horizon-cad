@@ -62,7 +62,7 @@ public:
     CurveDerivatives derivatives(double t) const override;
     Interval range() const override;
     bool periodic() const override;
-    /// The foot of the perpendicular from @p point; a point on the ellipse's centre has
+    /// The foot of the perpendicular from @p point; a point at the ellipse's centre has
     /// arbitrary feet, and gets 0.
     double closestParameter(const math::Vec3& point) const override;
     std::unique_ptr<Curve3> transformed(const math::Mat4& m) const override;
