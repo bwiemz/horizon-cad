@@ -21,6 +21,11 @@ struct Pcurve {
     double end = 0.0;
     /// The largest distance measured between S(curve(s)) and the curve C.
     double deviation = 0.0;
+    /// How far the curve itself stands off the surface: the largest distance measured from a
+    /// point of it to the surface (for a closed form, its deviation; on the general path, its
+    /// samples' gaps). No pcurve can come nearer the curve than this; a problem whose stand-off
+    /// is above the tolerance is the curve's, not the fit's. Infinite when nothing was built.
+    double standOff = 0.0;
     /// Empty when the pcurve lies within the tolerance; otherwise says why it does not.
     std::string problem;
 };

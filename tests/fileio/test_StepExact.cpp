@@ -177,12 +177,11 @@ struct Data {
     }
 };
 
-/// A block from (0, 0, 0) to (4, 4, 4) with a ball of radius 1 cut out of its middle: its outer
-/// shell six planes, its void a sphere whose one face is bounded by a seam from pole to pole and
-/// back, as OpenCASCADE writes one, the shell facing out of the void and turned round by its
-/// ORIENTED_CLOSED_SHELL, as the standard has every void.
-std::string blockWithABall() {
-    Data d;
+/// The closed shell of a block from (0, 0, 0) to (4, 4, 4) into @p d: six PLANE faces, each loop
+/// counter-clockwise seen from outside. With @p frontFacingIn, the front face's (y = 0) plane
+/// faces into the block while its face still says same_sense .T., as Horizon's own writer wrote
+/// faces whichever way their surfaces were turned. Its CLOSED_SHELL's id.
+int blockShell(Data& d, bool frontFacingIn = false) {
     const Vec3 corner[8] = {{0, 0, 0}, {4, 0, 0}, {4, 4, 0}, {0, 4, 0},
                             {0, 0, 4}, {4, 0, 4}, {4, 4, 4}, {0, 4, 4}};
     int points[8];
@@ -220,7 +219,7 @@ std::string blockWithABall() {
     faces.push_back(d.face({{e5, true}, {e6, true}, {e7, true}, {e8, true}},
                            plane({0, 0, 4}, {0, 0, 1}, {1, 0, 0})));
     faces.push_back(d.face({{e1, true}, {e10, true}, {e5, false}, {e9, false}},
-                           plane({0, 0, 0}, {0, -1, 0}, {1, 0, 0})));
+                           plane({0, 0, 0}, {0, frontFacingIn ? 1.0 : -1.0, 0}, {1, 0, 0})));
     faces.push_back(d.face({{e3, true}, {e12, true}, {e7, false}, {e11, false}},
                            plane({0, 4, 0}, {0, 1, 0}, {-1, 0, 0})));
     faces.push_back(d.face({{e9, true}, {e8, false}, {e12, false}, {e4, true}},
@@ -229,7 +228,22 @@ std::string blockWithABall() {
                            plane({4, 0, 0}, {1, 0, 0}, {0, 1, 0})));
     std::string list;
     for (int f : faces) list += (list.empty() ? "" : ",") + Data::ref(f);
-    const int outer = d.add("CLOSED_SHELL('',(" + list + "))");
+    return d.add("CLOSED_SHELL('',(" + list + "))");
+}
+
+/// blockShell()'s block alone, as one solid.
+std::string block(bool frontFacingIn) {
+    Data d;
+    d.add("MANIFOLD_SOLID_BREP('block'," + Data::ref(blockShell(d, frontFacingIn)) + ")");
+    return hz::step_text::stepFile(d.text);
+}
+
+/// The block with a ball of radius 1 cut out of its middle: its void a sphere whose one face is
+/// bounded by a seam from pole to pole and back, as OpenCASCADE writes one, the shell facing out
+/// of the void and turned round by its ORIENTED_CLOSED_SHELL, as the standard has every void.
+std::string blockWithABall() {
+    Data d;
+    const int outer = blockShell(d);
 
     // The ball: a meridian from its south pole to its north, on its +x side.
     const Vec3 centre{2, 2, 2};
@@ -528,5 +542,45 @@ TEST(StepExact, ASolidThatCannotBeMadeExactIsLeftOutWithWhy) {
     ASSERT_EQ(report.skipped.size(), 1u);
     const std::string& why = report.skipped.front();
     EXPECT_EQ(why.rfind("solid 1: ", 0), 0u) << why;
-    EXPECT_GT(why.size(), std::string("solid 1: ").size()) << "and says why";
+    EXPECT_NE(why.find("beyond the limit"), std::string::npos) << "and says why: " << why;
+}
+
+// Ruling 9: the file's uncertainty is a floor, not a ceiling. Rims 5e-5 off their cylinder, in a
+// file that says 1e-5, still come in: each edge's tolerance grows to cover its gap, as an
+// OpenCASCADE reader's per-edge tolerances do, up to a thousandth of the solid's size; the
+// solid is clean, and the report says how exact it is.
+TEST(StepExact, EdgesBeyondTheFileUncertaintyGrowAndAreReported) {
+    const std::string text =
+        withEntities(replaced(externalStyleCylinder(), "#20 = CYLINDRICAL_SURFACE('',#19,1.);",
+                              "#20 = CYLINDRICAL_SURFACE('',#19,1.00005);"),
+                     millimetresWithin("1.E-5"));
+    ImportReport report;
+    const auto solids = StepFormat::fromString(text, &report);
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    EXPECT_TRUE(report.skipped.empty()) << report.skipped.front();
+    EXPECT_GE(largestEdgeTolerance(*solids[0]), 5e-5);
+    expectExactEdges(*solids[0]);
+    EXPECT_EQ(firstIssue(*solids[0]), "");
+    EXPECT_TRUE(anySays(report.converted, "solid 1: exact to ")) << report.converted.size();
+    std::string problem;
+    hz::model::BoundaryMesh::extractFacePolygons(*solids[0], 1e-3, &problem);
+    EXPECT_EQ(problem, "");
+}
+
+// Ruling 11: a face's sense comes from its loops. A block whose front face's plane faces into it,
+// its face saying same_sense .T. regardless (as Horizon's own writer wrote faces), comes in with
+// that face reversed and every face's normal pointing out of the block.
+TEST(StepExact, AFaceWhoseSurfaceFacesInIsTurnedByItsLoops) {
+    const auto solids = StepFormat::fromString(block(true), nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    const Vec3 centre{2, 2, 2};
+    int turned = 0;
+    for (const topo::Face* f : exactFaces(*solids[0])) {
+        const Vec3 p = f->outerLoop->halfEdge->origin->point;
+        const Vec3 middle = (p + f->outerLoop->halfEdge->next->next->origin->point) * 0.5;
+        EXPECT_GT(outward(*f, middle).dot(middle - centre), 0.0) << "out of the block";
+        if (f->reversed) ++turned;
+    }
+    EXPECT_EQ(turned, 1) << "the front face alone";
+    EXPECT_EQ(firstIssue(*solids[0]), "");
 }

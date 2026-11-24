@@ -1873,18 +1873,34 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                 }
                 if (ftype == "imported") {
                     // Written by this program, in millimetres; one written
-                    // before it named its unit is too.
-                    StepReadOptions inMillimetres;
-                    inMillimetres.unknownLengthUnit = math::LengthUnit::Millimetre;
+                    // before it named its unit is too. A body saved before the
+                    // reader read faces exactly may hold no exact form (a band
+                    // with no seam, an edge off its face): it is kept as it was
+                    // read then, and said so, for an old part still opens.
+                    StepReadOptions embedded;
+                    embedded.unknownLengthUnit = math::LengthUnit::Millimetre;
+                    embedded.keepWhenNotExact = true;
+                    ImportReport bodyReport;
                     auto solids = StepFormat::fromString(fObj.at("step").get<std::string>(),
-                                                         nullptr, nullptr, inMillimetres);
+                                                         &bodyReport, nullptr, embedded);
                     if (solids.empty()) {
                         throw std::invalid_argument("its body could not be read: " +
                                                     StepFormat::lastError());
                     }
+                    const std::string source = fObj.value("source", "");
+                    if (report != nullptr) {
+                        // "solid 1: not exact (…); kept as it was", said of the body.
+                        for (const std::string& line : bodyReport.converted) {
+                            const auto colon = line.find(": not exact (");
+                            if (line.rfind("solid ", 0) != 0 || colon == std::string::npos) {
+                                continue;
+                            }
+                            report->converted.push_back("imported body \"" + source + "\"" +
+                                                        line.substr(colon));
+                        }
+                    }
                     auto feat = std::make_unique<doc::ImportedBodyFeature>(
-                        std::shared_ptr<const topo::Solid>(std::move(solids.front())),
-                        fObj.value("source", ""));
+                        std::shared_ptr<const topo::Solid>(std::move(solids.front())), source);
                     feat->restoreFeatureID(persistedId);
                     addLoaded(std::move(feat));
                     continue;

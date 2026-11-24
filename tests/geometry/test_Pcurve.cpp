@@ -653,3 +653,35 @@ TEST(Pcurve, ALineAlongAPatchsEdgeFollowsIt) {
         expectFollows(patch, edge, t0, t1, pc, 1e-7);
     }
 }
+
+// A curve that stands off its surface says how far it stands off, apart from how well any fit
+// follows it: no pcurve comes nearer than that, so a caller that may allow the gap (an imported
+// edge, its tolerance grown to cover it) fits again beyond it rather than chasing it. A closed
+// form the same: a rim 1e-3 off its cylinder.
+TEST(Pcurve, ACurveStandingOffItsSurfaceSaysHowFar) {
+    const NurbsSurface s = makePatch();
+    const double tol = 1e-6;
+    std::vector<math::Vec3> pts = imageControlPoints(s);
+    for (math::Vec3& p : pts) p.z += 10.0 * tol;
+    const NurbsCurve c = bezier(pts);
+    const Pcurve off = pcurveOn(s, c, 0.0, 1.0, tol);
+    EXPECT_FALSE(off.problem.empty());
+    EXPECT_GT(off.standOff, 5.0 * tol);
+    EXPECT_LE(off.standOff, 10.0 * tol * (1.0 + 1e-9));
+    EXPECT_LE(off.standOff, off.deviation);
+    const Pcurve beyond = pcurveOn(s, c, 0.0, 1.0, 2.0 * off.standOff + tol);
+    EXPECT_TRUE(beyond.problem.empty()) << beyond.problem;
+    EXPECT_GE(beyond.deviation, off.standOff * (1.0 - 1e-9));
+    EXPECT_LE(beyond.deviation, 2.0 * off.standOff + tol);
+
+    const Cylinder cyl(tilted(), 2.0);
+    const CircleCurve rim(Frame::fromAxis(tilted().origin + tilted().z * 1.5, tilted().z), 2.001);
+    const Pcurve rimOff = pcurveOn(cyl, rim, 0.0, kTwoPi, tol);
+    EXPECT_FALSE(rimOff.problem.empty());
+    EXPECT_NEAR(rimOff.standOff, 1e-3, 1e-9);
+    const Pcurve rimBeyond = pcurveOn(cyl, rim, 0.0, kTwoPi, 2.0 * rimOff.standOff + tol);
+    EXPECT_TRUE(rimBeyond.problem.empty()) << rimBeyond.problem;
+    EXPECT_NE(as<Line2D>(rimBeyond), nullptr) << "a parallel still, its closed form";
+    EXPECT_NEAR(rimBeyond.deviation, 1e-3, 1e-9);
+    EXPECT_NEAR(rimBeyond.standOff, 1e-3, 1e-9);
+}

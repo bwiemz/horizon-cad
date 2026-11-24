@@ -3907,19 +3907,29 @@ void faceAsLoopsRun(topo::Face& face, const math::ModelTolerance& tolerance, std
     face.reversed = *area < 0.0;
 }
 
+/// How many layouts layOutSeams tries for one face, at most. A well-formed face has a seam along
+/// each periodic direction at most (a torus's two), each of two sides, each tried at 4 shifts:
+/// 16 tries; only a malformed face (many seams, none that orients it) reaches the cap.
+constexpr int kSeamTries = 16;
+
 /// Lays the seams of @p face out so that each of its loops runs the way the face needs in
 /// (u, v): counter-clockwise for its outer loop, unless the face is reversed. A seam's two
 /// sides lie on one line of the surface; where the loop joins them only at poles (a sphere's
 /// meridian from pole to pole and back, as OpenCASCADE writes a ball), the unwrapping cannot
 /// tell them a period apart, and one side is moved the period that runs the loop the right way.
-/// Elsewhere the unwrapping shifts whole periods itself, and the layout is left as it is.
-void layOutSeams(topo::Face& face, const math::ModelTolerance& tolerance, std::size_t limit) {
+/// Elsewhere the unwrapping shifts whole periods itself, and the layout is left as it is. Only
+/// half-edges whose twin bounds the same face are tried, at most kSeamTries layouts for the face
+/// (each an unwrap of its loop): past that, or once @p cancelled is set, it stops and says why;
+/// otherwise empty.
+std::string layOutSeams(topo::Face& face, const math::ModelTolerance& tolerance, std::size_t limit,
+                        const std::atomic<bool>* cancelled) {
     const geo::Surface& s = *face.exactSurface;
     const double pu = topo::uPeriod(s);
     const double pv = topo::vPeriod(s);
-    if (pu == 0.0 && pv == 0.0) return;
+    if (pu == 0.0 && pv == 0.0) return {};
     std::vector<topo::Wire*> loops{face.outerLoop};
     loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+    int tries = 0;
     for (topo::Wire* wire : loops) {
         if (wire == nullptr) continue;
         const std::vector<topo::HalfEdge*> ring = ringOf(*wire, limit);
@@ -3940,6 +3950,15 @@ void layOutSeams(topo::Face& face, const math::ModelTolerance& tolerance, std::s
             const std::shared_ptr<const geo::Curve2D> original = h->pcurve;
             for (const math::Vec2& shift : shifts) {
                 if (shift.x == 0.0 && shift.y == 0.0) continue;
+                if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
+                    h->pcurve = original;
+                    return kCancelled;
+                }
+                if (tries == kSeamTries) {
+                    h->pcurve = original;
+                    return "seam layout gave up after " + std::to_string(kSeamTries) + " tries";
+                }
+                ++tries;
                 h->pcurve = std::make_shared<ShiftedCurve2D>(original, shift);
                 laid = runsRight();
                 if (laid) break;
@@ -3947,6 +3966,7 @@ void layOutSeams(topo::Face& face, const math::ModelTolerance& tolerance, std::s
             if (!laid) h->pcurve = original;
         }
     }
+    return {};
 }
 
 /// What making a solid's exact form came to: why it could not be made, or how exact it is.
@@ -3956,24 +3976,53 @@ struct ExactRead {
     double largestEdgeTolerance = 0.0;
 };
 
+/// A length for a report, to three figures.
+std::string threeFigures(double x) {
+    std::ostringstream out;
+    out << std::setprecision(3) << x;
+    return out.str();
+}
+
 /// Finishes the exact form of @p solid, as read (each face's exact surface, each edge's exact
 /// curve over its range): builds each half-edge's pcurve with geo::pcurveOn, grows each edge's
 /// and vertex's tolerance to cover how far the file has it stray, and checks the whole with
-/// topo::validateExact. How far an edge may stray is the file's @p uncertainty (mm; 0 where it
-/// gives none), never finer than the model resolution of the solid's size nor coarser than a
-/// thousandth of that size; beyond it, the solid is not exact, and the problem says why.
+/// topo::validateExact at the solid's model resolution.
+///
+/// The base tolerance, each pcurve's fit target, is the file's @p uncertainty (mm; 0 where it
+/// gives none), never finer than the model resolution of the solid's size. It is a floor, not a
+/// ceiling: as an OpenCASCADE reader's per-entity tolerances do, each edge's tolerance (and each
+/// vertex's) grows to cover what is measured, its vertices' gaps, its pcurves' deviations and a
+/// curve's own stand-off from its surface (fitted to the base beyond it, never chased), up to
+/// the limit of a thousandth of the solid's size. Past the limit the solid is not exact, and the
+/// problem says so; so it does for a problem the validator finds, or a pcurve that cannot be
+/// built.
 ExactRead finishExact(topo::Solid& solid, double uncertainty, const std::atomic<bool>* cancelled) {
     ExactRead read;
     const double extent = topo::exactExtent(solid);
     const math::ModelTolerance resolution = math::ModelTolerance::forExtent(extent);
     read.resolution = resolution.linear;
-    double allowed = resolution.linear;
+    const double limit = std::max(resolution.linear, 1e-3 * extent);
+    double base = resolution.linear;
     if (std::isfinite(uncertainty) && uncertainty > 0.0) {
-        allowed =
-            std::clamp(uncertainty, resolution.linear, std::max(resolution.linear, 1e-3 * extent));
+        base = std::clamp(uncertainty, resolution.linear, limit);
     }
-    const auto grow = [&](double& tolerance, double by) {
-        if (by > resolution.linear && by <= allowed) tolerance = std::max(tolerance, by);
+    const auto stop = [&] {
+        if (cancelled == nullptr || !cancelled->load(std::memory_order_relaxed)) return false;
+        read.problem = kCancelled;
+        return true;
+    };
+    // Grows @p tolerance to cover @p by; past the limit, the first such says why: "<what> <by>
+    // <from>, beyond the limit of …".
+    const auto grow = [&](double& tolerance, double by, const char* what, const char* from,
+                          const topo::Face* f, const topo::Edge* e) {
+        if (!(by > resolution.linear)) return;
+        if (by <= limit) {
+            tolerance = std::max(tolerance, by);
+        } else if (read.problem.empty()) {
+            read.problem = std::string(what) + " " + threeFigures(by) + " " + from +
+                           ", beyond the limit of " + threeFigures(limit) +
+                           " (a thousandth of the solid's size)" + whereIn(f, e);
+        }
     };
 
     // Each edge's curve ends at its vertices, as near as the file has them.
@@ -3985,19 +4034,17 @@ ExactRead finishExact(topo::Solid& solid, double uncertainty, const std::atomic<
         const double at[2] = {e.curveStart, e.curveEnd};
         for (int k = 0; k < 2; ++k) {
             const double gap = (e.exactCurve->evaluate(at[k]) - ends[k]->point).length();
-            grow(e.tolerance, gap);
-            grow(ends[k]->tolerance, gap);
+            grow(e.tolerance, gap, "its curve ends", "from its vertex", nullptr, &e);
+            grow(ends[k]->tolerance, gap, "its curve ends", "from its vertex", nullptr, &e);
         }
     }
+    if (!read.problem.empty()) return read;
 
     // Each half-edge's course on its face, built (a file's PCURVEs are not read): from its
     // origin's parameter on its edge's curve to its next's.
-    const std::size_t limit = 2 * solid.edges().size() + 1;
+    const std::size_t limitHalfEdges = 2 * solid.edges().size() + 1;
     for (auto& f : solid.faces()) {
-        if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
-            read.problem = kCancelled;
-            return read;
-        }
+        if (stop()) return read;
         if (!f.alive) continue;
         if (!f.exactSurface) {
             read.problem = "a face has no exact surface" + whereIn(&f, nullptr);
@@ -4007,8 +4054,9 @@ ExactRead finishExact(topo::Solid& solid, double uncertainty, const std::atomic<
         loops.insert(loops.end(), f.innerLoops.begin(), f.innerLoops.end());
         for (topo::Wire* wire : loops) {
             const std::vector<topo::HalfEdge*> ring =
-                wire != nullptr ? ringOf(*wire, limit) : std::vector<topo::HalfEdge*>{};
+                wire != nullptr ? ringOf(*wire, limitHalfEdges) : std::vector<topo::HalfEdge*>{};
             for (topo::HalfEdge* h : ring) {
+                if (stop()) return read;
                 topo::Edge& e = *h->edge;
                 if (!e.exactCurve) {
                     read.problem = "an edge has no exact curve" + whereIn(&f, &e);
@@ -4021,33 +4069,56 @@ ExactRead finishExact(topo::Solid& solid, double uncertainty, const std::atomic<
                     h->pcurveEnd = h->twin->pcurveStart;
                 } else {
                     const bool forward = h == e.halfEdge;
-                    geo::Pcurve pc = geo::pcurveOn(*f.exactSurface, *e.exactCurve,
-                                                   forward ? e.curveStart : e.curveEnd,
-                                                   forward ? e.curveEnd : e.curveStart, allowed);
+                    const double t0 = forward ? e.curveStart : e.curveEnd;
+                    const double t1 = forward ? e.curveEnd : e.curveStart;
+                    geo::Pcurve pc = geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1, base);
+                    if (!pc.problem.empty() && pc.curve != nullptr && pc.standOff > base &&
+                        pc.standOff <= limit) {
+                        // The curve stands off its surface: no pcurve comes nearer, so it is fitted
+                        // to the base beyond its gap (twice the gap measured, which may peak
+                        // between the samples that measured it) and the edge's tolerance covers
+                        // what is measured.
+                        pc = geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1,
+                                           std::min(limit, 2.0 * pc.standOff + base));
+                    }
                     if (!pc.problem.empty() || pc.curve == nullptr) {
-                        read.problem = pc.problem + whereIn(&f, &e);
+                        read.problem = std::isfinite(pc.standOff) && pc.standOff > limit
+                                           ? "its curve stands " + threeFigures(pc.standOff) +
+                                                 " off its face's surface, beyond the limit of " +
+                                                 threeFigures(limit) +
+                                                 " (a thousandth of the solid's size)"
+                                           : pc.problem;
+                        read.problem += whereIn(&f, &e);
                         return read;
                     }
                     h->pcurve = std::move(pc.curve);
                     h->pcurveStart = pc.start;
                     h->pcurveEnd = pc.end;
-                    grow(e.tolerance, pc.deviation);
+                    grow(e.tolerance, pc.deviation, "its pcurve strays", "from its curve", &f, &e);
                 }
                 // Its ends, on the surface, at its vertices.
                 const math::Vec2 a = h->pcurve->evaluate(h->pcurveStart);
                 const math::Vec2 b = h->pcurve->evaluate(h->pcurveEnd);
-                grow(e.tolerance, (f.exactSurface->evaluate(a.x, a.y) - h->origin->point).length());
+                grow(e.tolerance, (f.exactSurface->evaluate(a.x, a.y) - h->origin->point).length(),
+                     "its pcurve ends", "from its vertex", &f, &e);
                 grow(e.tolerance,
-                     (f.exactSurface->evaluate(b.x, b.y) - h->next->origin->point).length());
+                     (f.exactSurface->evaluate(b.x, b.y) - h->next->origin->point).length(),
+                     "its pcurve ends", "from its vertex", &f, &e);
+                if (!read.problem.empty()) return read;
             }
         }
     }
     for (auto& f : solid.faces()) {
+        if (stop()) return read;
         if (!f.alive || !f.exactSurface) continue;
-        faceAsLoopsRun(f, resolution, limit);
-        layOutSeams(f, resolution, limit);
+        faceAsLoopsRun(f, resolution, limitHalfEdges);
+        if (std::string why = layOutSeams(f, resolution, limitHalfEdges, cancelled); !why.empty()) {
+            read.problem = why == kCancelled ? why : why + whereIn(&f, nullptr);
+            return read;
+        }
     }
 
+    if (stop()) return read;
     const auto issues = topo::validateExact(solid, resolution);
     if (!issues.empty()) {
         read.problem = issues.front().detail + whereIn(issues.front().face, issues.front().edge);
@@ -4059,6 +4130,33 @@ ExactRead finishExact(topo::Solid& solid, double uncertainty, const std::atomic<
     return read;
 }
 
+/// @p solid without its exact form, as master reads it: every exact field cleared, so nothing
+/// half-exact survives a solid kept though its exact form failed part way.
+void clearExact(topo::Solid& solid) {
+    for (auto& v : solid.vertices()) v.tolerance = 0.0;
+    for (auto& e : solid.edges()) {
+        e.exactCurve = nullptr;
+        e.curveStart = 0.0;
+        e.curveEnd = 0.0;
+        e.tolerance = 0.0;
+    }
+    const std::size_t limit = 2 * solid.edges().size() + 1;
+    for (auto& f : solid.faces()) {
+        f.exactSurface = nullptr;
+        f.reversed = false;
+        std::vector<topo::Wire*> loops{f.outerLoop};
+        loops.insert(loops.end(), f.innerLoops.begin(), f.innerLoops.end());
+        for (topo::Wire* wire : loops) {
+            if (wire == nullptr) continue;
+            for (topo::HalfEdge* h : ringOf(*wire, limit)) {
+                h->pcurve = nullptr;
+                h->pcurveStart = 0.0;
+                h->pcurveEnd = 0.0;
+            }
+        }
+    }
+}
+
 /// A file's solid groups, each built once, in millimetres: null where one
 /// could not be. What fell short, for a report.
 struct BuiltSolids {
@@ -4068,6 +4166,8 @@ struct BuiltSolids {
     std::map<std::string, int> conversions;
     /// The solids exact only to their file's tolerance, each with how far its edges stray.
     std::vector<std::string> exactTo;
+    /// The solids kept without their exact form (StepReadOptions::keepWhenNotExact), with why.
+    std::vector<std::string> keptAsItWas;
     std::string firstError;
     /// A solid's length unit is not named, or cannot be read, and none was
     /// chosen: nothing more is built, and the file is not read.
@@ -4132,33 +4232,34 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
 
         // Its exact form, or nothing (decision 1b): a solid whose faces or edges cannot be read
         // exactly, or whose exact form does not hold together, is left out, with why. Nothing
-        // faceted comes in in its place.
+        // faceted comes in in its place. (STEP embedded in a native part file is kept as it was
+        // read before, without its exact form: old parts still open.)
         const std::string solidN = "solid " + std::to_string(index + 1);
-        const auto leaveOut = [&](const std::string& why) {
-            if (built.firstError.empty()) {
-                built.firstError = "solid #" + std::to_string(group.msbs.front()) +
-                                   " could not be made exact: " + why;
-            }
-            built.failures.push_back(solidN + ": " + why);
-        };
-        if (!builder.exactProblem().empty()) {
-            leaveOut(builder.exactProblem());
-            continue;
-        }
+        std::string notExact = builder.exactProblem();
 
         // Into millimetres.
         if (mm != 1.0) solid = model::Pattern::transformed(*solid, math::Mat4::scale(mm));
-        const ExactRead exact = finishExact(*solid, uncertainty, cancelled);
-        if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) return built;
-        if (!exact.problem.empty()) {
-            leaveOut(exact.problem);
-            continue;
+        if (notExact.empty()) {
+            const ExactRead exact = finishExact(*solid, uncertainty, cancelled);
+            if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) return built;
+            notExact = exact.problem;
+            if (notExact.empty() && exact.largestEdgeTolerance > exact.resolution) {
+                built.exactTo.push_back(solidN + ": exact to " +
+                                        threeFigures(exact.largestEdgeTolerance) +
+                                        " mm, as the file gives its edges");
+            }
         }
-        if (exact.largestEdgeTolerance > exact.resolution) {
-            std::ostringstream within;
-            within << std::setprecision(3) << exact.largestEdgeTolerance;
-            built.exactTo.push_back(solidN + ": exact to " + within.str() +
-                                    " mm, as the file gives its edges");
+        if (!notExact.empty()) {
+            if (!options.keepWhenNotExact) {
+                if (built.firstError.empty()) {
+                    built.firstError = "solid #" + std::to_string(group.msbs.front()) +
+                                       " could not be made exact: " + notExact;
+                }
+                built.failures.push_back(solidN + ": " + notExact);
+                continue;
+            }
+            clearExact(*solid);
+            built.keptAsItWas.push_back(solidN + ": not exact (" + notExact + "); kept as it was");
         }
         if (chosen) {
             ++built.conversions["read in " + unit +
@@ -4170,8 +4271,9 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
                                 " into millimetres"];
         }
         // Its curved faces go in as facets (ImportedBodyFeature): say where
-        // that falls short.
-        if (reporting) {
+        // that falls short. (A body read again from a native file was said
+        // so of when it was imported.)
+        if (reporting && !options.keepWhenNotExact) {
             const auto faceted = model::facetCurved(*solid);
             if (!faceted.solid) {
                 built.approximated.push_back(
@@ -4202,6 +4304,7 @@ void reportRead(const BuiltSolids& built, const ProductStructure& structure, Imp
             (count == 1 ? std::string("1 solid ") : std::to_string(count) + " solids ") + what);
     }
     for (const auto& line : built.exactTo) report->converted.push_back(line);
+    for (const auto& line : built.keptAsItWas) report->converted.push_back(line);
 }
 
 /// @p solid's names moved from solid @p from's to solid @p to's: a second

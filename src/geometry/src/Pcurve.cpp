@@ -593,6 +593,7 @@ std::string describe(double deviation, double tolerance, size_t samples, bool of
 Pcurve failed(const std::string& why) {
     Pcurve pc;
     pc.deviation = std::numeric_limits<double>::infinity();
+    pc.standOff = std::numeric_limits<double>::infinity();
     pc.problem = why;
     return pc;
 }
@@ -691,6 +692,7 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
         out.start = 0.0;
         out.end = 1.0;
         out.deviation = baseGap;
+        out.standOff = baseGap;
         if (baseGap > tolerance) out.problem = describe(baseGap, tolerance, 1, true);
         return out;
     }
@@ -737,6 +739,7 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
     out.start = fit.curve->tMin();
     out.end = fit.curve->tMax();
     out.deviation = std::max({m.fitDeviation, m.maxGap, baseGap});
+    out.standOff = std::max(m.maxGap, baseGap);
     if (out.deviation > tolerance) {
         out.problem = describe(out.deviation, tolerance, samples.size(), m.maxGap > tolerance);
     }
@@ -761,6 +764,7 @@ Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t
             pc.start = form->start;
             pc.end = form->end;
             pc.deviation = dev;
+            pc.standOff = dev;
             return pc;
         }
     }
