@@ -5,9 +5,11 @@
 #include <set>
 
 #include "horizon/geometry/Frame.h"
+#include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Circle2D.h"
 #include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/curves/Line2D.h"
+#include "horizon/geometry/curves/Nurbs2D.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/math/ModelTolerance.h"
 #include "horizon/modeling/ExactPrimitives.h"
@@ -152,4 +154,64 @@ TEST(ExactValidator, AHoleMovedOutsideThePlateIsOutsideItsOuterLoop) {
         if (f.topoId.tag() == "hole/wall") f.exactSurface = f.exactSurface->transformed(move);
     }
     expectKinds(*plate, ExactIssueKind::HoleOutsideOuterLoop);
+}
+
+TEST(ExactValidator, ARimCurveRunningTheWrongWayIsOffItsPcurves) {
+    // The bug class a left-handed cylinder once had: same points, same start, opposite direction.
+    // Only the order of the pcurve along the curve is wrong; ends and positions all agree.
+    auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    bool done = false;
+    for (auto& e : cyl->edges()) {
+        if (!dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get())) continue;
+        std::swap(e.curveStart, e.curveEnd);
+        done = true;
+        break;
+    }
+    ASSERT_TRUE(done);
+    expectKinds(*cyl, ExactIssueKind::PcurveOffCurve);
+}
+
+TEST(ExactValidator, ABulgingPcurveMakesALoopCrossItself) {
+    auto block = model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
+    topo::Face& f = block->faces()[0];
+    topo::HalfEdge* h = f.outerLoop->halfEdge;
+    const math::Vec2 a = h->pcurve->evaluate(h->pcurveStart);
+    const math::Vec2 b = h->pcurve->evaluate(h->pcurveEnd);
+    math::Vec2 centroid{0, 0};
+    int n = 0;
+    for (const topo::HalfEdge* g = h; n == 0 || g != h; g = g->next, ++n) {
+        centroid = centroid + g->pcurve->evaluate(g->pcurveStart);
+    }
+    centroid = centroid * (1.0 / n);
+    const math::Vec2 mid = (a + b) * 0.5;
+    const math::Vec2 far =
+        mid + (centroid - mid) * 2.4;  // just beyond the opposite side (a larger bulge flips the
+                                       // loop's area, adding LoopWrongOrientation)
+    h->pcurve = std::make_shared<geo::Nurbs2D>(std::vector<math::Vec2>{a, far, b},
+                                               std::vector<double>{1, 1, 1},
+                                               std::vector<double>{0, 0, 0.5, 1, 1}, 1);
+    h->pcurveStart = h->pcurve->tMin();
+    h->pcurveEnd = h->pcurve->tMax();
+    // Its ends and the joins are unchanged; it only leaves the edge's 3D line.
+    expectKinds(*block, ExactIssueKind::LoopSelfIntersects, {ExactIssueKind::PcurveOffCurve});
+}
+
+TEST(ExactValidator, AHoleLoopCrossingTheOuterLoopIsLoopsCross) {
+    auto plate = model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {20, 20}, 5.0);
+    bool done = false;
+    for (auto& f : plate->faces()) {
+        if (f.innerLoops.empty() || done) continue;
+        topo::HalfEdge* h = f.innerLoops[0]->halfEdge;
+        const auto* c = dynamic_cast<const geo::Circle2D*>(h->pcurve.get());
+        ASSERT_NE(c, nullptr);
+        // A larger circle through the same start point (c.x + r, c.y), same parameter range.
+        const double big = 30.0;
+        h->pcurve = std::make_shared<geo::Circle2D>(
+            math::Vec2{c->center().x + c->radius() - big, c->center().y}, big);
+        done = true;
+    }
+    ASSERT_TRUE(done);
+    // The crossing is reported instead of HoleOutsideOuterLoop (only non-crossing loops are
+    // classified); the larger circle also leaves the edge's 3D circle.
+    expectKinds(*plate, ExactIssueKind::LoopsCross, {ExactIssueKind::PcurveOffCurve});
 }

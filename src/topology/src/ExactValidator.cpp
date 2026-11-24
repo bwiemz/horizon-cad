@@ -76,17 +76,48 @@ struct Checker {
         }
         if (!e.exactCurve) return;
         double worst = 0.0;
+        std::vector<double> params;
         for (int i = 0; i < kSamples; ++i) {
             const Vec2 uv = sample(h, i);
             const Vec3 p = s.evaluate(uv.x, uv.y);
             // The pcurve and the curve need not share parameters: measure to the nearest point.
             const double t = e.exactCurve->closestParameter(p);
+            params.push_back(t);
             worst = std::max(worst, (e.exactCurve->evaluate(t) - p).length());
         }
         if (!tol.within(worst, e.tolerance)) {
             report(ExactIssueKind::PcurveOffCurve, h.face, &e,
                    "pcurve strays " + std::to_string(worst) + " from the edge's curve");
+        } else if (!advancesWithCurve(e, h, params)) {
+            report(ExactIssueKind::PcurveOffCurve, h.face, &e,
+                   "pcurve runs against the edge's curve");
         }
+    }
+
+    /// True when the projected parameters advance in the half-edge's direction along the curve:
+    /// forward (curveStart to curveEnd) for the edge's own half-edge, backward for its twin. Only
+    /// the order is compared, not the values. On a periodic curve each step is taken modulo the
+    /// period, so a closed edge may wrap once; a step is slack by the model tolerance in
+    /// parameter units (tolerance over the curve's speed).
+    bool advancesWithCurve(const Edge& e, const HalfEdge& h,
+                           const std::vector<double>& params) const {
+        const double dir =
+            ((e.curveEnd >= e.curveStart) ? 1.0 : -1.0) * (&h == e.halfEdge ? 1.0 : -1.0);
+        const geo::Interval range = e.exactCurve->range();
+        const double period = range.max - range.min;
+        const bool wraps = e.exactCurve->periodic() && std::isfinite(period) && period > 0.0;
+        for (size_t i = 0; i + 1 < params.size(); ++i) {
+            double step = (params[i + 1] - params[i]) * dir;
+            if (wraps) {
+                step = std::fmod(step, period);
+                if (step > 0.5 * period) step -= period;
+                if (step < -0.5 * period) step += period;
+            }
+            const double speed = e.exactCurve->derivatives(params[i]).d1.length();
+            const double slack = speed > 0.0 ? tol.effective(e.tolerance) / speed : 0.0;
+            if (step < -slack) return false;
+        }
+        return true;
     }
 
     void checkFace(const Face& f) {
