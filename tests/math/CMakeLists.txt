@@ -13,6 +13,7 @@ add_executable(hz_math_tests
     test_Quantity.cpp
     test_CharConv.cpp
     test_ModelTolerance.cpp
+    test_RobustPredicates.cpp
 )
 
 target_link_libraries(hz_math_tests
