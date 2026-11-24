@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -1396,5 +1397,31 @@ TEST(TrimmedFaceMesher, AFrustumIsMeshedWithFewTriangles) {
         const double volume =
             math::kPi * height * (bottom * bottom + bottom * top + top * top) / 3.0;
         EXPECT_NEAR(s.volume, volume, totalArea(s) * options.chordTolerance) << widening;
+    }
+}
+
+TEST(TrimmedFaceMesher, AGridTooFineForDoublesSaysSoPromptly) {
+    // A unit square on a surface with a bump inside, its straight sides flat and exactly on its
+    // axes, so they sample at any tolerance. At the smallest tolerances the grid's step is 0 or
+    // astronomically small and its counts infinite or past any integer: the face says it needs
+    // more triangles than the cap, promptly, before any count is cast or stored.
+    const std::array<double, 5> around = {0.3, 0.4, 0.5, 0.6, 0.7};
+    const auto face =
+        makeOpenFace(featuredSquare(1.0, around, around, 0.1, 0.0), {{{line({0, 0}, {1, 0})},
+                                                                      {line({1, 0}, {1, 1})},
+                                                                      {line({1, 1}, {0, 1})},
+                                                                      {line({0, 1}, {0, 0})}}});
+    for (const double tol : {std::numeric_limits<double>::denorm_min(), 1e-300}) {
+        MeshOptions options;
+        options.chordTolerance = tol;
+        const auto start = std::chrono::steady_clock::now();
+        const auto meshes = TrimmedFaceMesher::meshSolid(*face, options);
+        const std::chrono::duration<double, std::milli> took =
+            std::chrono::steady_clock::now() - start;
+        ASSERT_EQ(meshes.size(), 1u);
+        EXPECT_EQ(meshes[0].problem, "the face's grid alone needs more triangles than the cap")
+            << tol;
+        EXPECT_TRUE(meshes[0].triangles.empty());
+        EXPECT_LT(took.count(), 1000.0) << tol;
     }
 }

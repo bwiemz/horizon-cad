@@ -437,8 +437,10 @@ Spacing EdgeSampler::spacingOf(const geo::Surface& s, const Vec2& lo, const Vec2
                std::isfinite(sp.dv)) {
         const double nv = std::ceil((hi.y - lo.y) / sp.dv);
         const double stepV = (hi.y - lo.y) / nv;
-        // As many rows as the grid makes; one that is past the cap fails there.
-        if (nv - 1.0 <= static_cast<double>(opt_.maxTrianglesPerFace)) {
+        // As many rows as the grid makes, checked before the cast: none for a box with no height,
+        // and none past the cap (gridPoints fails there, saying so), a count that is not finite
+        // included.
+        if (nv > 1.0 && nv - 1.0 <= 0.5 * static_cast<double>(opt_.maxTrianglesPerFace)) {
             const auto rows = static_cast<std::size_t>(nv) - 1;
             double widest = sp.du;
             sp.rowSteps.reserve(rows);

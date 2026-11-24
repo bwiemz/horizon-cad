@@ -154,7 +154,14 @@ private:
                            std::vector<Vec2>& out) const {
         const double nu = std::ceil((hi.x - lo.x) / sp.du);
         const double nv = std::ceil((hi.y - lo.y) / sp.dv);
+        // Checked before any count is cast or stored: a box that is not a number, and a step of 0
+        // (a tolerance too fine for doubles) or a huge count, fail here and say why.
+        if (std::isnan(nu) || std::isnan(nv)) return "the face's grid spacing is not a number";
         if (!(nu > 1.0) || !(nv > 1.0)) return {};
+        const double cap = 0.5 * static_cast<double>(opt_.maxTrianglesPerFace);
+        if (!(nu - 1.0 <= cap) || !((sp.staggered ? nv : nv - 1.0) <= cap)) {
+            return "the face's grid alone needs more triangles than the cap";
+        }
         const double stepV = (hi.y - lo.y) / nv;
         // Row j is at v = lo.y + stepV (j + rowFirst); its point i at u = lo.x + step (i + first),
         // for i below count.
@@ -177,9 +184,7 @@ private:
                             static_cast<std::size_t>(shifted ? n : n - 1.0)});
             points += static_cast<double>(rows.back().count);
         }
-        if (!(points <= 0.5 * static_cast<double>(opt_.maxTrianglesPerFace))) {
-            return "the face's grid alone needs more triangles than the cap";
-        }
+        if (!(points <= cap)) return "the face's grid alone needs more triangles than the cap";
         const auto pointAt = [&](std::size_t i, std::size_t j) {
             const Row& r = rows[j];
             return Vec2{(lo.x + r.step * (static_cast<double>(i) + r.first)) * sp.su,
@@ -193,14 +198,17 @@ private:
             keep[j].assign(rows[j].count, true);
             widest = std::max(widest, keepAway * std::min(rows[j].step * sp.su, stepV * sp.sv));
         }
-        // The grid indices whose lines lie within [x0, x1] (in w) or a line beyond, clamped.
+        // The grid indices whose lines lie within [x0, x1] (in w) or a line beyond, clamped,
+        // before any cast: ends that are NaN or infinite (a loop that is not finite) included.
         const auto lines = [](double x0, double x1, double from, double step, std::size_t count) {
-            const double first = std::max(0.0, std::floor((x0 - from) / step) - 2.0);
-            const double last =
-                std::min(static_cast<double>(count) - 1.0, std::ceil((x1 - from) / step));
-            return std::pair<std::size_t, std::size_t>{
-                static_cast<std::size_t>(first),
-                last >= first ? static_cast<std::size_t>(last) + 1 : 0};
+            const double floorAt = std::floor((x0 - from) / step) - 2.0;
+            const double ceilAt = std::ceil((x1 - from) / step);
+            const double first = floorAt >= 0.0 ? floorAt : 0.0;
+            const double top = static_cast<double>(count) - 1.0;
+            const double last = ceilAt <= top ? ceilAt : top;
+            if (!(first <= last)) return std::pair<std::size_t, std::size_t>{0, 0};
+            return std::pair<std::size_t, std::size_t>{static_cast<std::size_t>(first),
+                                                       static_cast<std::size_t>(last) + 1};
         };
         for (const auto& loop : loopsW) {
             for (std::size_t k = 0; k < loop.size(); ++k) {
