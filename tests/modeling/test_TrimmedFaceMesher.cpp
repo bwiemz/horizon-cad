@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <map>
 #include <memory>
@@ -876,6 +877,15 @@ TEST(TrimmedFaceMesher, PcurveRangesFarFromZeroStillMesh) {
             std::_Exit(3);
         }
     });
+    // Ends the watchdog on any way out of the test, a throw included.
+    struct Joiner {
+        std::atomic<bool>& flag;
+        std::thread& thread;
+        ~Joiner() {
+            flag = true;
+            thread.join();
+        }
+    } joiner{done, watchdog};
     const geo::Frame frame = geo::Frame::fromAxis({1, 2, 3}, {0.3, 1, 0.2});
     const double expected = 1.5 * math::kPi * 5.0 * 10.0;
     for (const double offset : {1e14, -1e14, 1e16}) {
@@ -894,8 +904,6 @@ TEST(TrimmedFaceMesher, PcurveRangesFarFromZeroStillMesh) {
         }
         EXPECT_NEAR(area, expected, 0.02 * expected) << offset;
     }
-    done = true;
-    watchdog.join();
 }
 
 TEST(TrimmedFaceMesher, NeighbouringTrianglesTurnByNoMoreThanTheAngle) {

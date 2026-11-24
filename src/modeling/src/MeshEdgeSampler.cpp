@@ -65,7 +65,7 @@ std::vector<double> pcurveParameters(const HalfEdge& h, const geo::Surface& s,
     std::vector<double> out(pts.size(), h.pcurveStart);
     out.back() = s1;
     const double span = s1 - h.pcurveStart;
-    if (span == 0.0) return out;
+    if (span == 0.0 || !std::isfinite(span)) return out;
     // The march visits start + span * (k / total) for whole k, not a running sum: a step under
     // half an ulp of a far-offset parameter (1e16 and a few segments) would add nothing. Nor
     // is a step worth less than a few ulps (the grid would repeat one parameter for many k), so
