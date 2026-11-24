@@ -10,6 +10,9 @@
 namespace hz::geo {
 class NurbsCurve;
 class NurbsSurface;
+class Surface;
+class Curve3;
+class Curve2D;
 }  // namespace hz::geo
 
 namespace hz::topo {
@@ -30,6 +33,9 @@ struct Vertex {
     /// False once an Euler kill has taken it: it stays in the solid's
     /// storage, so pointers into it stay good, but counts for nothing.
     bool alive = true;
+    /// How far the vertex may stray from the geometry that meets at it; 0 means the model's
+    /// resolution.
+    double tolerance = 0.0;
 };
 
 /// A directed edge bounding one face.  The twin half-edge bounds the adjacent face.
@@ -44,6 +50,11 @@ struct HalfEdge {
     /// False once an Euler kill has taken it: it stays in the solid's
     /// storage, so pointers into it stay good, but counts for nothing.
     bool alive = true;
+    /// This half-edge's course in its face's (u, v) space, from `origin` at `pcurveStart` to
+    /// `next->origin` at `pcurveEnd`. Null where the face has no exact surface.
+    std::shared_ptr<const geo::Curve2D> pcurve;
+    double pcurveStart = 0.0;
+    double pcurveEnd = 0.0;
 };
 
 /// A topological edge shared by two half-edges (one in each direction).
@@ -65,6 +76,15 @@ struct Edge {
     /// can recover the design intent a facet discards.  Null when the edge is
     /// its own exact geometry.
     std::shared_ptr<geo::NurbsCurve> analyticCurve;
+
+    /// The edge's exact curve: from `halfEdge->origin` at `curveStart` to
+    /// `halfEdge->twin->origin` at `curveEnd` (`curveEnd < curveStart` runs it backwards; a
+    /// closed curve spans one full period). Null where the edge has none.
+    std::shared_ptr<const geo::Curve3> exactCurve;
+    double curveStart = 0.0;
+    double curveEnd = 0.0;
+    /// How far the edge may stray from its curve; 0 means the model's resolution.
+    double tolerance = 0.0;
 };
 
 /// A closed loop of half-edges forming a face boundary.
@@ -99,6 +119,11 @@ struct Face {
     /// "I am part of a cylinder of radius r about this axis", which is what
     /// assembly mates and radial dimensions need from one pick.
     std::shared_ptr<geo::NurbsSurface> analyticSurface;
+
+    /// The face's exact surface, or null. The outward normal is `du x dv` of it, negated when
+    /// `reversed`.
+    std::shared_ptr<const geo::Surface> exactSurface;
+    bool reversed = false;
 };
 
 /// A connected set of faces forming a closed (or open) skin.

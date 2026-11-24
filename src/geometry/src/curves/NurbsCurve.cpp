@@ -545,6 +545,39 @@ NurbsCurve NurbsCurve::elevateDegree() const {
 }
 
 // ---------------------------------------------------------------------------
+// Curve3 interface
+// ---------------------------------------------------------------------------
+
+CurveKind NurbsCurve::kind() const {
+    return CurveKind::Nurbs;
+}
+
+CurveDerivatives NurbsCurve::derivatives(double t) const {
+    return {evaluate(t), derivative(t, 1), derivative(t, 2)};
+}
+
+Interval NurbsCurve::range() const {
+    return {tMin(), tMax()};
+}
+
+bool NurbsCurve::periodic() const {
+    return false;
+}
+
+double NurbsCurve::closestParameter(const math::Vec3& point) const {
+    return closestPoint(point);
+}
+
+std::unique_ptr<Curve3> NurbsCurve::transformed(const math::Mat4& m) const {
+    std::vector<math::Vec3> pts;
+    pts.reserve(m_controlPoints.size());
+    for (const math::Vec3& p : m_controlPoints) {
+        pts.push_back(m.transformPoint(p));
+    }
+    return std::make_unique<NurbsCurve>(std::move(pts), m_weights, m_knots, m_degree);
+}
+
+// ---------------------------------------------------------------------------
 // closestPoint — Newton iteration on f(t) = (C(t) - P) · C'(t)
 // ---------------------------------------------------------------------------
 

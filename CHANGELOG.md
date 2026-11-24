@@ -19,6 +19,13 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Exact kernel, stage 1.** The foundations of an in-house exact B-rep kernel,
+  with nothing in the application reading them yet: typed analytic and NURBS
+  surfaces and curves, pcurves, one tolerance model, exact predicates, an exact
+  validator, Pattern copies that keep exact geometry, constrained Delaunay
+  triangulation and watertight meshing of trimmed faces. Design:
+  [the exact kernel spec](docs/superpowers/specs/2026-11-24-exact-kernel-design.md).
+
 - **Motion studies.** **Assembly ▸ Motion Study...** drives a Distance or
   Angle mate from one value to another in steps, every other mate solved at
   each from where the last left the components, so a hinge turns, a slide

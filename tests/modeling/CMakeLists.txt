@@ -1,5 +1,9 @@
 add_executable(hz_modeling_tests
     test_PrimitiveFactory.cpp
+    test_ExactPrimitives.cpp
+    test_ExactValidator.cpp
+    test_TrimmedFaceMesher.cpp
+    test_ExactReadPoint.cpp
     test_ProfileValidator.cpp
     test_ProfileRegions.cpp
     test_Extrude.cpp
@@ -48,6 +52,9 @@ target_link_libraries(hz_modeling_tests
         GTest::gtest
         GTest::gtest_main
 )
+
+# The mesher's internal edge sampler, for a test of the tolerance it lays loops out with.
+target_include_directories(hz_modeling_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/modeling/src)
 
 include(GoogleTest)
 gtest_discover_tests(hz_modeling_tests)

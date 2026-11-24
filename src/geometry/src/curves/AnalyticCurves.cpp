@@ -1,0 +1,222 @@
+#include "horizon/geometry/curves/AnalyticCurves.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <limits>
+#include <vector>
+
+#include "../AngleWrap.h"
+#include "horizon/math/Constants.h"
+
+namespace hz::geo {
+
+namespace {
+using detail::wrapAngle;
+using math::kTwoPi;
+constexpr double kInf = std::numeric_limits<double>::infinity();
+}  // namespace
+
+// ---- Line ----
+
+// Not normalized(): that returns the zero vector for lengths below 1e-7, and a tiny part's
+// directions (or a direction scaled down with its part) are that short.
+LineCurve::LineCurve(const math::Vec3& origin, const math::Vec3& direction, double scale)
+    : origin_(origin), direction_(direction / direction.length()), scale_(scale) {}
+
+CurveKind LineCurve::kind() const {
+    return CurveKind::Line;
+}
+
+math::Vec3 LineCurve::evaluate(double t) const {
+    return origin_ + direction_ * (t * scale_);
+}
+
+CurveDerivatives LineCurve::derivatives(double t) const {
+    CurveDerivatives d;
+    d.point = evaluate(t);
+    d.d1 = direction_ * scale_;
+    return d;  // the second derivative is zero
+}
+
+Interval LineCurve::range() const {
+    return {-kInf, kInf};
+}
+
+bool LineCurve::periodic() const {
+    return false;
+}
+
+double LineCurve::closestParameter(const math::Vec3& point) const {
+    return (point - origin_).dot(direction_) / scale_;
+}
+
+std::unique_ptr<Curve3> LineCurve::transformed(const math::Mat4& m) const {
+    const math::Vec3 d = m.transformDirection(direction_);
+    return std::make_unique<LineCurve>(m.transformPoint(origin_), d, scale_ * d.length());
+}
+
+// ---- Circle ----
+
+CircleCurve::CircleCurve(const Frame& frame, double radius) : frame_(frame), radius_(radius) {}
+
+CurveKind CircleCurve::kind() const {
+    return CurveKind::Circle;
+}
+
+math::Vec3 CircleCurve::evaluate(double t) const {
+    return frame_.origin + (frame_.x * std::cos(t) + frame_.y * std::sin(t)) * radius_;
+}
+
+CurveDerivatives CircleCurve::derivatives(double t) const {
+    CurveDerivatives d;
+    d.point = evaluate(t);
+    d.d1 = (frame_.y * std::cos(t) - frame_.x * std::sin(t)) * radius_;
+    d.d2 = (frame_.x * std::cos(t) + frame_.y * std::sin(t)) * -radius_;
+    return d;
+}
+
+Interval CircleCurve::range() const {
+    return {0.0, kTwoPi};
+}
+
+bool CircleCurve::periodic() const {
+    return true;
+}
+
+double CircleCurve::closestParameter(const math::Vec3& point) const {
+    const math::Vec3 p = point - frame_.origin;
+    const double px = p.dot(frame_.x);
+    const double py = p.dot(frame_.y);
+    if (px == 0.0 && py == 0.0) {
+        return 0.0;
+    }
+    return wrapAngle(std::atan2(py, px));
+}
+
+std::unique_ptr<Curve3> CircleCurve::transformed(const math::Mat4& m) const {
+    return std::make_unique<CircleCurve>(frame_.transformed(m), radius_ * Frame::scaleOf(m));
+}
+
+// ---- Ellipse ----
+
+EllipseCurve::EllipseCurve(const Frame& frame, double majorRadius, double minorRadius)
+    : frame_(frame), major_(majorRadius), minor_(minorRadius) {}
+
+CurveKind EllipseCurve::kind() const {
+    return CurveKind::Ellipse;
+}
+
+math::Vec3 EllipseCurve::evaluate(double t) const {
+    return frame_.origin + frame_.x * (major_ * std::cos(t)) + frame_.y * (minor_ * std::sin(t));
+}
+
+CurveDerivatives EllipseCurve::derivatives(double t) const {
+    CurveDerivatives d;
+    d.point = evaluate(t);
+    d.d1 = frame_.y * (minor_ * std::cos(t)) - frame_.x * (major_ * std::sin(t));
+    d.d2 = (frame_.x * (major_ * std::cos(t)) + frame_.y * (minor_ * std::sin(t))) * -1.0;
+    return d;
+}
+
+Interval EllipseCurve::range() const {
+    return {0.0, kTwoPi};
+}
+
+bool EllipseCurve::periodic() const {
+    return true;
+}
+
+double EllipseCurve::closestParameter(const math::Vec3& point) const {
+    const math::Vec3 p = point - frame_.origin;
+    const double px = p.dot(frame_.x);
+    const double py = p.dot(frame_.y);
+    if (px == 0.0 && py == 0.0) {
+        return 0.0;
+    }
+    // In-plane squared distance (the out-of-plane part is the same for every t) as a function
+    // of the eccentric angle: g(t) = (a cos t - px)^2 + (b sin t - py)^2.
+    const auto dist2 = [&](double t) {
+        const double dx = major_ * std::cos(t) - px;
+        const double dy = minor_ * std::sin(t) - py;
+        return dx * dx + dy * dy;
+    };
+    // Newton on f(t) = (C - P) . C', from a start; the step is halved while it does not
+    // reduce the distance, so it cannot run off near the ends of the axes.
+    const auto refine = [&](double t) {
+        for (int iter = 0; iter < 60; ++iter) {
+            const double c = std::cos(t);
+            const double s = std::sin(t);
+            const double dx = major_ * c - px;
+            const double dy = minor_ * s - py;
+            const double f = -dx * major_ * s + dy * minor_ * c;
+            // f' = (a^2 - b^2)(s^2 - c^2) + a px c + b py s.
+            double df = (major_ * major_ - minor_ * minor_) * (s * s - c * c) + major_ * px * c +
+                        minor_ * py * s;
+            if (df <= 0.0) {
+                // Near a local maximum Newton would climb it; descend the distance instead.
+                df = major_ * major_ + minor_ * minor_;
+            }
+            double step = f / df;
+            const double base = dist2(t);
+            while (std::abs(step) > 1e-300 && dist2(t - step) > base) {
+                step *= 0.5;
+            }
+            t -= step;
+            if (std::abs(step) < 1e-15) {
+                break;
+            }
+        }
+        return t;
+    };
+    // Starts: the circle's estimate (exact for a point on the ellipse) and every sample that
+    // is a local minimum of the distance. A point inside the evolute has two feet, and one
+    // on an axis has them mirrored; a single start can settle on the vertex between them.
+    constexpr size_t kSamples = 64;
+    std::vector<double> starts = {std::atan2(py / minor_, px / major_)};
+    // Just inside an evolute cusp the vertex is a stationary maximum that Newton cannot leave
+    // and the sample spacing can hide the two feet beside it. For a point on an axis the feet
+    // are at cos t = a px / (a^2 - b^2) (major axis) and sin t = b py / (b^2 - a^2) (minor
+    // axis); start from those, and their mirror images, whenever they exist.
+    const double e2 = major_ * major_ - minor_ * minor_;
+    if (e2 > 0.0) {
+        const double cx = major_ * px / e2;
+        const double sy = -minor_ * py / e2;
+        if (std::abs(cx) < 1.0) {
+            starts.push_back(std::acos(cx));
+            starts.push_back(-std::acos(cx));
+        }
+        if (std::abs(sy) < 1.0) {
+            starts.push_back(std::asin(sy));
+            starts.push_back(kTwoPi / 2.0 - std::asin(sy));
+        }
+    }
+    std::array<double, kSamples> d{};
+    for (size_t i = 0; i < kSamples; ++i) {
+        d[i] = dist2(kTwoPi * static_cast<double>(i) / kSamples);
+    }
+    for (size_t i = 0; i < kSamples; ++i) {
+        const double prev = d[(i + kSamples - 1) % kSamples];
+        const double next = d[(i + 1) % kSamples];
+        if (d[i] <= prev && d[i] <= next) {
+            starts.push_back(kTwoPi * static_cast<double>(i) / kSamples);
+        }
+    }
+    double result = 0.0;
+    double resultDist = kInf;
+    for (double start : starts) {
+        const double t = refine(start);
+        if (dist2(t) < resultDist) {
+            resultDist = dist2(t);
+            result = t;
+        }
+    }
+    return wrapAngle(std::fmod(result, kTwoPi));
+}
+
+std::unique_ptr<Curve3> EllipseCurve::transformed(const math::Mat4& m) const {
+    const double k = Frame::scaleOf(m);
+    return std::make_unique<EllipseCurve>(frame_.transformed(m), major_ * k, minor_ * k);
+}
+
+}  // namespace hz::geo

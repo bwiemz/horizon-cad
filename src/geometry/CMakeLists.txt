@@ -1,12 +1,19 @@
 add_library(hz_geometry STATIC
+    src/Frame.cpp
+    src/surfaces/Surface.cpp
+    src/surfaces/AnalyticSurfaces.cpp
     src/curves/Curve2D.cpp
     src/curves/Line2D.cpp
     src/curves/Circle2D.cpp
     src/curves/Arc2D.cpp
     src/curves/Line3D.cpp
     src/curves/NurbsCurve.cpp
+    src/curves/AnalyticCurves.cpp
+    src/curves/Nurbs2D.cpp
     src/surfaces/NurbsSurface.cpp
     src/surfaces/SurfaceBuilder.cpp
+    src/surfaces/SurfaceRecognition.cpp
+    src/Triangulate2D.cpp
 )
 
 target_include_directories(hz_geometry

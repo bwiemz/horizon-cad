@@ -11,7 +11,12 @@ add_library(hz_math STATIC
     src/Units.cpp
     src/Quantity.cpp
     src/CharConv.cpp
+    src/RobustPredicates.cpp
 )
+
+# The exact predicates rely on error-free transformations; a fused a*b+c would break them.
+set_source_files_properties(src/RobustPredicates.cpp PROPERTIES COMPILE_OPTIONS
+    "$<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-ffp-contract=off>")
 
 target_include_directories(hz_math
     PUBLIC

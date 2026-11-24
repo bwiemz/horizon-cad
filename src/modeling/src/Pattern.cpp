@@ -48,6 +48,28 @@ std::shared_ptr<geo::NurbsSurface> transformSurface(const geo::NurbsSurface& s, 
                                                s.degreeU(), s.degreeV());
 }
 
+/// The uniform scale of @p xform when its upper-left 3x3 block M is a similarity (MtM = s^2 I,
+/// reflection allowed), else 0. This is a property of a matrix, not a model distance, so it is
+/// checked against a relative bound: every entry of MtM - s^2 I within 1e-9 of s^2.
+double similarityScale(const Mat4& xform) {
+    double mtm[3][3];
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            mtm[i][j] = 0.0;
+            for (int k = 0; k < 3; ++k) mtm[i][j] += xform.m[k][i] * xform.m[k][j];
+        }
+    }
+    const double s2 = (mtm[0][0] + mtm[1][1] + mtm[2][2]) / 3.0;
+    if (!(s2 > 0.0) || !std::isfinite(s2)) return 0.0;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            const double want = i == j ? s2 : 0.0;
+            if (std::abs(mtm[i][j] - want) > 1e-9 * s2) return 0.0;
+        }
+    }
+    return std::sqrt(s2);
+}
+
 TopologyID instanceId(const TopologyID& original, int instanceIndex) {
     if (instanceIndex == 0) return original;  // seed keeps identity
     if (!original.isValid()) return original;
@@ -101,6 +123,12 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         auto moved = transformSurface(surface, xform);
         return flip ? std::make_shared<geo::NurbsSurface>(moved->reversedU()) : moved;
     };
+    // Exact geometry rides along only through a similarity (Ruling 9); any other matrix leaves
+    // the copy's exact fields empty. A shared exact surface or curve is moved once.
+    const double scale = similarityScale(xform);
+    const bool carryExact = scale > 0.0;
+    std::unordered_map<const geo::Surface*, std::shared_ptr<const geo::Surface>> exactSurfaces;
+    std::unordered_map<const geo::Curve3*, std::shared_ptr<const geo::Curve3>> exactCurves;
     std::unordered_map<const void*, Vertex*> vmap;
     std::unordered_map<const void*, HalfEdge*> hmap;
     std::unordered_map<const void*, Edge*> emap;
@@ -170,6 +198,7 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         Vertex* nv = dst.allocVertex();
         nv->point = xform.transformPoint(v.point);
         nv->topoId = instanceId(v.topoId, instanceIndex);
+        if (carryExact) nv->tolerance = v.tolerance * scale;
         vmap[&v] = nv;
     }
 
@@ -180,6 +209,14 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         ne->topoId = instanceId(e.topoId, instanceIndex);
         if (e.curve) ne->curve = transformCurve(*e.curve, xform);
         if (e.analyticCurve) ne->analyticCurve = idealCurve(e.analyticCurve);
+        if (carryExact && e.exactCurve) {
+            auto& moved = exactCurves[e.exactCurve.get()];
+            if (!moved) moved = e.exactCurve->transformed(xform);
+            ne->exactCurve = moved;
+            ne->curveStart = e.curveStart;
+            ne->curveEnd = e.curveEnd;
+        }
+        if (carryExact) ne->tolerance = e.tolerance * scale;
         emap[&e] = ne;
     }
 
@@ -199,6 +236,13 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         // Each instance of a faceted boss must still resolve to its own
         // cylinder, so the ideal is carried and moved with the facets.
         if (f->analyticSurface) nf->analyticSurface = idealSurface(f->analyticSurface);
+        if (carryExact && f->exactSurface) {
+            auto& moved = exactSurfaces[f->exactSurface.get()];
+            if (!moved) moved = f->exactSurface->transformed(xform);
+            nf->exactSurface = moved;
+            // The loops are reversed with `flip`, so their sense in (u, v) flips with it.
+            nf->reversed = f->reversed != flip;
+        }
         fmap[f] = nf;
     }
 
@@ -226,6 +270,12 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         nh->prev = mapped(hmap, flip ? h->next : h->prev);
         nh->edge = mapped(emap, h->edge);
         nh->face = mapped(fmap, h->face);
+        if (carryExact && h->pcurve) {
+            // The pcurve keeps its (u, v) values; a half-edge turned round runs it backwards.
+            nh->pcurve = h->pcurve;
+            nh->pcurveStart = flip ? h->pcurveEnd : h->pcurveStart;
+            nh->pcurveEnd = flip ? h->pcurveStart : h->pcurveEnd;
+        }
     }
     for (const auto& e : src.edges()) {
         Edge* ne = mapped(emap, &e);
@@ -233,6 +283,10 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         const HalfEdge* along = e.halfEdge;
         if (flip && along != nullptr && along->twin != nullptr) along = along->twin;
         ne->halfEdge = mapped(hmap, along);
+        // Taking the old twin keeps the edge's origin, so its curve keeps its direction; only
+        // an edge with no twin to take runs the other way.
+        if (flip && e.halfEdge != nullptr && e.halfEdge->twin == nullptr)
+            std::swap(ne->curveStart, ne->curveEnd);
     }
     for (const Wire* w : wires) {
         wmap[w]->halfEdge = mapped(hmap, w->halfEdge);

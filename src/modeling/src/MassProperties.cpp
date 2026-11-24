@@ -2,11 +2,14 @@
 
 #include <array>
 #include <cmath>
+#include <stdexcept>
+#include <unordered_set>
 #include <vector>
 
 #include "MassIntegrals.h"
 #include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/Faceting.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/HalfEdge.h"
 
 namespace hz::model {
@@ -32,7 +35,26 @@ using Triangle = std::array<Vec3, 3>;
 // hole's area into the surface area instead of out of it.
 std::vector<Triangle> boundaryTriangles(const topo::Solid& solid) {
     std::vector<Triangle> tris;
+    // A face with an exact surface is read where every consumer reads faces: as the mesh
+    // BoundaryMesh gives, wound outward. One that cannot be meshed leaves no volume to measure
+    // (the props are invalid), never a hole in a volume that reads as smaller.
+    std::unordered_set<const topo::Face*> exactFaces;
+    if (topo::hasExactFaces(solid)) {
+        try {
+            for (const auto& poly : BoundaryMesh::extractFacePolygons(solid)) {
+                if (poly.exactSurface) {
+                    tris.push_back({poly.points[0], poly.points[1], poly.points[2]});
+                }
+            }
+        } catch (const std::runtime_error&) {
+            return {};
+        }
+        for (const auto& face : solid.faces()) {
+            if (face.alive && face.exactSurface) exactFaces.insert(&face);
+        }
+    }
     for (const auto& face : solid.faces()) {
+        if (exactFaces.count(&face) != 0) continue;
         const topo::Wire* w = face.outerLoop;
         if (!w || !w->halfEdge) continue;
 
@@ -182,7 +204,7 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
     // A solid as read, bounded by curves, is measured in facets: the corners
     // of its loops alone (two on a cylinder's side) enclose nothing like it.
     // Where it cannot be cut into facets, its corners are all there is.
-    if (describedByCurves(solid)) {
+    if (!topo::hasExactFaces(solid) && describedByCurves(solid)) {
         const auto faceted = facetCurved(solid);
         if (faceted.solid) return detail::measureLoops(*faceted.solid, material);
     }

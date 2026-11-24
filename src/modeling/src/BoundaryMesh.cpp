@@ -4,9 +4,14 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/modeling/TrimmedFaceMesher.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
@@ -474,10 +479,54 @@ double BoundaryMesh::signedVolume(const std::vector<BoundaryPolygon>& polygons) 
 }
 
 std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid& solid) {
+    double chordTolerance = 0.0;
+    if (topo::hasExactFaces(solid)) {
+        // 1e-4 of the part's size, the size its model tolerance comes from.
+        const double size = topo::exactExtent(solid);
+        chordTolerance = size > 0.0 ? 1e-4 * size : 1e-4;
+    }
+    return extractFacePolygons(solid, chordTolerance);
+}
+
+std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid& solid,
+                                                               double chordTolerance,
+                                                               std::string* problem) {
+    if (problem != nullptr) problem->clear();
     std::vector<BoundaryPolygon> polygons;
     polygons.reserve(solid.faceCount());
 
+    // The exact faces, meshed in one pass (they share their edges' points): by face.
+    std::unordered_map<const topo::Face*, FaceMesh> meshes;
+    std::string firstProblem;
+    if (topo::hasExactFaces(solid)) {
+        MeshOptions options;
+        options.chordTolerance = chordTolerance;
+        for (auto& mesh : TrimmedFaceMesher::meshSolid(solid, options)) {
+            if (mesh.face == nullptr || !mesh.face->exactSurface) continue;
+            if (!mesh.problem.empty() && firstProblem.empty()) {
+                firstProblem = mesh.face->topoId.tag() + ": " + mesh.problem;
+            }
+            meshes.emplace(mesh.face, std::move(mesh));
+        }
+    }
+    if (!firstProblem.empty()) {
+        if (problem == nullptr) throw std::runtime_error(firstProblem);
+        *problem = firstProblem;
+    }
+
+    bool anyFaceted = false;
     for (const auto& face : solid.faces()) {
+        if (const auto it = meshes.find(&face); it != meshes.end()) {
+            const FaceMesh& mesh = it->second;
+            for (const auto& tri : mesh.triangles) {
+                BoundaryPolygon poly;
+                poly.points = {mesh.points[tri[0]], mesh.points[tri[1]], mesh.points[tri[2]]};
+                poly.topoId = face.topoId;
+                poly.exactSurface = face.exactSurface;
+                polygons.push_back(std::move(poly));
+            }
+            continue;
+        }
         auto verts = topo::faceVertices(&face);
         if (verts.size() < 3) continue;
 
@@ -498,11 +547,15 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
         poly.surface = face.surface;
         poly.analyticSurface = face.analyticSurface;
         polygons.push_back(std::move(poly));
+        anyFaceted = true;
     }
 
     // Manifold twin-linking makes all loops consistently wound up to one
     // global inward/outward sign (see MassProperties) — normalize to outward.
-    if (signedVolume(polygons) < 0.0) {
+    // A mesh of an exact face is wound outward already and is never flipped;
+    // a solid mixing the two keeps its loops as they are (they are wound
+    // outward as exact solids are: material to the left of each half-edge).
+    if (meshes.empty() && anyFaceted && signedVolume(polygons) < 0.0) {
         for (auto& poly : polygons) {
             std::reverse(poly.points.begin(), poly.points.end());
             std::reverse(poly.outer.begin(), poly.outer.end());
