@@ -1,8 +1,10 @@
 #include "horizon/geometry/curves/AnalyticCurves.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 namespace hz::geo {
 
@@ -154,10 +156,12 @@ double EllipseCurve::closestParameter(const math::Vec3& point) const {
             const double dx = major_ * c - px;
             const double dy = minor_ * s - py;
             const double f = -dx * major_ * s + dy * minor_ * c;
-            const double df = (major_ * major_ - minor_ * minor_) * (s * s - c * c) +
-                              dx * -major_ * c - dy * minor_ * s;
-            if (df == 0.0) {
-                break;
+            // f' = (a^2 - b^2)(s^2 - c^2) + a px c + b py s.
+            double df = (major_ * major_ - minor_ * minor_) * (s * s - c * c) + major_ * px * c +
+                        minor_ * py * s;
+            if (df <= 0.0) {
+                // Near a local maximum Newton would climb it; descend the distance instead.
+                df = major_ * major_ + minor_ * minor_;
             }
             double step = f / df;
             const double base = dist2(t);
@@ -171,15 +175,20 @@ double EllipseCurve::closestParameter(const math::Vec3& point) const {
         }
         return t;
     };
-    // The circle's estimate (exact for a point on the ellipse), and the best of a few
-    // uniform samples, in case the estimate is far from the true foot.
-    double starts[2] = {std::atan2(py / minor_, px / major_), 0.0};
-    double best = kInf;
-    for (int i = 0; i < 32; ++i) {
-        const double t = kTwoPi * i / 32.0;
-        if (dist2(t) < best) {
-            best = dist2(t);
-            starts[1] = t;
+    // Starts: the circle's estimate (exact for a point on the ellipse) and every sample that
+    // is a local minimum of the distance. A point inside the evolute has two feet, and one
+    // on an axis has them mirrored; a single start can settle on the vertex between them.
+    constexpr int kSamples = 64;
+    std::vector<double> starts = {std::atan2(py / minor_, px / major_)};
+    std::array<double, kSamples> d;
+    for (int i = 0; i < kSamples; ++i) {
+        d[static_cast<size_t>(i)] = dist2(kTwoPi * i / kSamples);
+    }
+    for (int i = 0; i < kSamples; ++i) {
+        const double prev = d[static_cast<size_t>((i + kSamples - 1) % kSamples)];
+        const double next = d[static_cast<size_t>((i + 1) % kSamples)];
+        if (d[static_cast<size_t>(i)] <= prev && d[static_cast<size_t>(i)] <= next) {
+            starts.push_back(kTwoPi * i / kSamples);
         }
     }
     double result = 0.0;

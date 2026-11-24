@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <random>
 #include <vector>
 
+#include "../PortableRandom.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/curves/Nurbs2D.h"
@@ -208,4 +210,34 @@ TEST(Nurbs2D, ClosedWhenEndsCoincide) {
     const Nurbs2D tri({{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}, {0.0, 0.0}}, {1.0, 1.0, 1.0, 1.0},
                       {0.0, 0.0, 1.0, 2.0, 3.0, 3.0}, 1);
     EXPECT_TRUE(tri.isClosed());
+}
+
+TEST(Curve3, EllipseClosestMatchesBruteForce) {
+    std::mt19937 rng(20261124);
+    const hz::test::Uniform radius(1.0, 5.0), ratio(0.1, 1.0), unit(-1.0, 1.0);
+    for (int i = 0; i < 400; ++i) {
+        const double a = radius(rng);
+        const double b = a * ratio(rng);
+        const EllipseCurve e(tiltedFrame(), a, b);
+        // Inside, outside, near the axes: the offsets run to 1.5 a; every fourth is on an axis.
+        double ox = 1.5 * a * unit(rng);
+        double oy = 1.5 * a * unit(rng);
+        if (i % 4 == 0) {
+            oy *= 1e-6;
+        } else if (i % 4 == 1) {
+            ox *= 1e-6;
+        }
+        const Frame f = tiltedFrame();
+        const math::Vec3 p = f.origin + f.x * ox + f.y * oy + f.z * (0.3 * unit(rng));
+        const double t = e.closestParameter(p);
+        EXPECT_GE(t, 0.0);
+        EXPECT_LT(t, kTwoPi);
+        double best = 1e300;
+        const int n = 20000;
+        for (int k = 0; k < n; ++k) {
+            best = std::min(best, (e.evaluate(kTwoPi * k / n) - p).length());
+        }
+        const double got = (e.evaluate(t) - p).length();
+        EXPECT_LE(got, best * (1.0 + 1e-9) + 1e-12) << i << " a=" << a << " b=" << b;
+    }
 }

@@ -52,7 +52,7 @@ private:
 };
 
 /// An ellipse C(t) = origin + a cos t x + b sin t y, t in [0, 2 pi), periodic. t is the
-/// eccentric angle, not the polar one.
+/// eccentric angle, not the polar one. Both radii must be positive.
 class EllipseCurve : public Curve3 {
 public:
     EllipseCurve(const Frame& frame, double majorRadius, double minorRadius);
@@ -62,6 +62,8 @@ public:
     CurveDerivatives derivatives(double t) const override;
     Interval range() const override;
     bool periodic() const override;
+    /// The foot of the perpendicular from @p point; a point on the ellipse's centre has
+    /// arbitrary feet, and gets 0.
     double closestParameter(const math::Vec3& point) const override;
     std::unique_ptr<Curve3> transformed(const math::Mat4& m) const override;
 
