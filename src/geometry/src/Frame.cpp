@@ -10,7 +10,8 @@ Frame Frame::fromAxis(const math::Vec3& origin, const math::Vec3& axis, const ma
     Frame f;
     f.origin = origin;
     assert(axis.length() > 0.0 && "Frame::fromAxis needs a non-zero axis");
-    f.z = axis.normalized();
+    // Not normalized(): that returns the zero vector for lengths below 1e-7.
+    f.z = axis / axis.length();
     math::Vec3 x = xHint - f.z * xHint.dot(f.z);
     if (x.length() <= 1e-9 * xHint.length() || xHint.length() == 0.0) {
         // The hint is (nearly) parallel to the axis: take the world axis least aligned with it.
