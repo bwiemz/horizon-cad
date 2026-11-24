@@ -48,14 +48,14 @@ int refIncircle(const int64_t* a, const int64_t* b, const int64_t* c, const int6
                cl * (adx * bdy - bdx * ady));
 }
 
-#endif  // HZ_HAVE_INT128
-
 Vec2 v2(const int64_t* p) {
     return {static_cast<double>(p[0]), static_cast<double>(p[1])};
 }
 Vec3 v3(const int64_t* p) {
     return {static_cast<double>(p[0]), static_cast<double>(p[1]), static_cast<double>(p[2])};
 }
+
+#endif  // HZ_HAVE_INT128
 
 }  // namespace
 
@@ -196,6 +196,10 @@ TEST(RobustPredicates, IncircleMatchesExactReferenceOnCocircularLatticePoints) {
     EXPECT_GT(zeros, 100);
 }
 
+#else
+TEST(RobustPredicates, ExactIntegerReferencesNeedInt128) {
+    GTEST_SKIP() << "no 128-bit integers on this compiler; the randomized reference tests are off";
+}
 #endif  // HZ_HAVE_INT128
 
 TEST(RobustPredicates, UlpPerturbationsOfDegenerateFloatConfigurations) {
@@ -206,6 +210,37 @@ TEST(RobustPredicates, UlpPerturbationsOfDegenerateFloatConfigurations) {
     EXPECT_EQ(incircle(a, b, c, d), 0);
     EXPECT_EQ(incircle(a, b, c, Vec2(std::nextafter(1.0, 2.0), 1.0)), -1);
     EXPECT_EQ(incircle(a, b, c, Vec2(std::nextafter(1.0, 0.0), 1.0)), 1);
-    EXPECT_EQ(orient3d({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0.3, 0.7, std::ldexp(1.0, -1074)}), -1);
-    EXPECT_EQ(orient3d({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0.3, 0.7, -std::ldexp(1.0, -1000)}), 1);
+    // Offsets of 2^-1000 stay well inside the supported range (see the header): every product
+    // in the filter and in the exact path is representable, so the sign is exact.
+    EXPECT_EQ(orient3d({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0.3, 0.7, -std::ldexp(1.0, -100)}), 1);
+    EXPECT_EQ(orient3d({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0.3, 0.7, std::ldexp(1.0, -100)}), -1);
+}
+
+TEST(RobustPredicates, Orient3dUlpWalkAroundASlantedPlane) {
+    // All points satisfy z = x / 2 exactly (halving is exact), so d is coplanar with a, b, c;
+    // moving d.z by i ulps puts it above (-1) or below (+1) the plane, by construction. The
+    // moves are far under the filter's error bound, so the exact path decides every i != 0.
+    const Vec3 a(0.1, 0.7, 0.05), b(0.9, 0.3, 0.45), c(0.2, 0.95, 0.1);  // counter-clockwise
+    const double dx = 0.37, dy = 0.61, dz = 0.5 * dx;
+    EXPECT_EQ(orient3d(a, b, c, {dx, dy, dz}), 0);
+    double up = dz, down = dz;
+    for (int i = 1; i <= 64; ++i) {
+        up = std::nextafter(up, 1.0);
+        down = std::nextafter(down, -1.0);
+        EXPECT_EQ(orient3d(a, b, c, {dx, dy, up}), -1) << i;
+        EXPECT_EQ(orient3d(a, b, c, {dx, dy, down}), 1) << i;
+    }
+}
+
+TEST(RobustPredicates, Orient2dUlpWalkAlongASlantedLine) {
+    // a, b, c lie exactly on y = x / 2; p walks off the line by i ulps in y.
+    const Vec2 a(0.1, 0.05), b(0.3, 0.15), c(0.9, 0.45);
+    EXPECT_EQ(orient2d(a, b, c), 0);
+    double up = c.y, down = c.y;
+    for (int i = 1; i <= 64; ++i) {
+        up = std::nextafter(up, 1.0);
+        down = std::nextafter(down, -1.0);
+        EXPECT_EQ(orient2d(a, b, Vec2(c.x, up)), 1) << i;
+        EXPECT_EQ(orient2d(a, b, Vec2(c.x, down)), -1) << i;
+    }
 }

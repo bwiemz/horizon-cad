@@ -5,6 +5,12 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
 
+// Range of validity: the results are exact for finite inputs as long as no intermediate product
+// underflows or overflows -- in practice, coordinates (and coordinate differences) that are
+// either zero or between about 1e-140 and 1e+100 in magnitude, which covers any CAD model.
+// Outside that range a tiny determinant may be reported as 0 (the error terms of the exact
+// arithmetic are lost to underflow); nothing crashes.
+
 namespace hz::math {
 
 /// +1 when c is left of the line a->b (counter-clockwise), -1 right, 0 on it -- exactly.
