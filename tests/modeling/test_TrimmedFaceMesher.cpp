@@ -1070,8 +1070,11 @@ TEST(TrimmedFaceMesher, ASliverFaceHasNoInvertedTriangles) {
 }
 
 TEST(TrimmedFaceMesher, TinyAndHugePartsMeshAlike) {
+    // Scales by powers of two (about 1e-3 and 1e4) scale every input exactly, so each decision
+    // is taken alike and the counts must be equal; at 1e-3 a decision near a threshold could
+    // flip with a platform's libm.
     std::vector<std::map<std::string, std::size_t>> counts;
-    for (const double scale : {1.0, 1e-3, 1e4}) {
+    for (const double scale : {1.0, std::ldexp(1.0, -10), std::ldexp(1.0, 13)}) {
         const auto block = model::exact::makeBlock(Vec3{-1, 2, 3} * scale, Vec3{1, 5, 7} * scale);
         const auto cyl = model::exact::makeCylinder(
             geo::Frame::fromAxis(Vec3{1, 2, 3} * scale, {1, 1, 1}), 5.0 * scale, 10.0 * scale);
