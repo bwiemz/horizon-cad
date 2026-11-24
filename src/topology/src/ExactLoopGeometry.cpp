@@ -72,22 +72,28 @@ double distanceToSegment(const Vec2& p, const Vec2& a, const Vec2& b) {
 }  // namespace
 
 bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo::Surface& surface,
-                double periodU, double periodV, LoopPolygon& out) {
+                double periodU, double periodV, const std::vector<double>& joinAllowance,
+                LoopPolygon& out) {
     out.clear();
     Vec2 prevEnd;
-    for (const HalfEdge* h : ring) {
+    for (size_t k = 0; k < ring.size(); ++k) {
+        const HalfEdge* h = ring[k];
         Vec2 shift;
         const Vec2 start = sampleAt(*h, 0, samples);
         if (!out.empty()) {
-            // Where a derivative vanishes the join is a move along a pole or apex, not a wrap.
-            const auto d = surface.derivatives(start.x, start.y);
-            const double du = d.du.length();
-            const double dv = d.dv.length();
-            if (periodU > 0.0 && du > 1e-9 * dv) {
-                shift.x = std::round((prevEnd.x - start.x) / periodU) * periodU;
+            // A raw jump that is already the same point within the join's allowance (a pole or
+            // apex, where a derivative vanishes) is a move along the singular side, not a wrap;
+            // the same quantity the join check tests. Which way round it runs is decided by the
+            // next pcurve's own window; that is a stage 3 question (pole topology).
+            const double allowance = joinAllowance[k - 1];
+            const auto d = surface.derivatives(prevEnd.x, prevEnd.y);
+            const double dx = prevEnd.x - start.x;
+            const double dy = prevEnd.y - start.y;
+            if (periodU > 0.0 && std::fabs(dx) * d.du.length() > allowance) {
+                shift.x = std::round(dx / periodU) * periodU;
             }
-            if (periodV > 0.0 && dv > 1e-9 * du) {
-                shift.y = std::round((prevEnd.y - start.y) / periodV) * periodV;
+            if (periodV > 0.0 && std::fabs(dy) * d.dv.length() > allowance) {
+                shift.y = std::round(dy / periodV) * periodV;
             }
         }
         Vec2 a = start + shift;
@@ -103,11 +109,12 @@ bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo
     }
     if (out.empty()) return true;
     const Vec2 gap = out.front().a - prevEnd;
-    const auto d = surface.derivatives(out.front().a.x, out.front().a.y);
-    const bool windsU =
-        periodU > 0.0 && d.du.length() > 1e-9 * d.dv.length() && std::round(gap.x / periodU) != 0.0;
-    const bool windsV =
-        periodV > 0.0 && d.dv.length() > 1e-9 * d.du.length() && std::round(gap.y / periodV) != 0.0;
+    const auto d = surface.derivatives(prevEnd.x, prevEnd.y);
+    const double allowance = joinAllowance[ring.size() - 1];
+    const bool windsU = periodU > 0.0 && std::fabs(gap.x) * d.du.length() > allowance &&
+                        std::round(gap.x / periodU) != 0.0;
+    const bool windsV = periodV > 0.0 && std::fabs(gap.y) * d.dv.length() > allowance &&
+                        std::round(gap.y / periodV) != 0.0;
     return !windsU && !windsV;
 }
 

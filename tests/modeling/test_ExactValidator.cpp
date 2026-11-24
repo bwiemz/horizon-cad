@@ -461,53 +461,94 @@ TEST(ExactValidator, AnAnnulusWhoseInnerCircleReallyCrossesTheOuterIsLoopsCross)
     expectKinds(overlapping.solid, ExactIssueKind::LoopsCross);
 }
 
-TEST(ExactValidator, ASphereLuneWhoseMeridiansMeetAtThePolesIsClean) {
-    const geo::Frame frame = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
-    constexpr double r = 1.0;
+namespace {
+
+/// A lune of the unit-scaled sphere of radius r (u in [0, pi]) whose two meridians meet at the
+/// poles; each meridian's pcurve stops @p shortBy (a distance on the sphere) before a pole,
+/// while the vertices sit exactly at the poles.
+struct SphereLune {
     topo::Solid solid;
-    topo::Face* f = solid.allocFace();
-    auto sphere = std::make_shared<geo::Sphere>(frame, r);
-    f->exactSurface = sphere;
-    topo::Wire* w = solid.allocWire();
-    f->outerLoop = w;
-    const double half = 0.5 * math::kPi;
-    topo::Vertex* south = solid.allocVertex();
-    topo::Vertex* north = solid.allocVertex();
-    south->point = {0, 0, -r};
-    north->point = {0, 0, r};
-    // Counter-clockwise in (u, v): up the meridian u = pi, along the north pole, down u = 0.
-    topo::HalfEdge* he[2] = {solid.allocHalfEdge(), solid.allocHalfEdge()};
-    for (int i = 0; i < 2; ++i) {
-        const double u = i == 0 ? math::kPi : 0.0;
-        const double from = i == 0 ? -half : half;
-        const double to = -from;
-        topo::HalfEdge* tw = solid.allocHalfEdge();
-        topo::Edge* e = solid.allocEdge();
-        he[i]->origin = i == 0 ? south : north;
-        tw->origin = i == 0 ? north : south;
-        he[i]->next = he[1 - i];
-        he[i]->prev = he[1 - i];
-        he[i]->face = f;
-        he[i]->twin = tw;
-        tw->twin = he[i];
-        he[i]->edge = tw->edge = e;
-        e->halfEdge = he[i];
-        he[i]->pcurve = std::make_shared<geo::Line2D>(math::Vec2{u, from}, math::Vec2{u, to});
-        he[i]->pcurveStart = 0.0;
-        he[i]->pcurveEnd = 1.0;
-        // The meridian as a great circle: v is the angle from the equator toward z.
-        geo::Frame mf;
-        mf.x = {std::cos(u), std::sin(u), 0};
-        mf.y = {0, 0, 1};
-        mf.z = mf.x.cross(mf.y);
-        e->exactCurve = std::make_shared<geo::CircleCurve>(mf, r);
-        e->curveStart = from;
-        e->curveEnd = to;
+    SphereLune(double r, double shortBy) {
+        const geo::Frame frame = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
+        topo::Face* f = solid.allocFace();
+        f->exactSurface = std::make_shared<geo::Sphere>(frame, r);
+        topo::Wire* w = solid.allocWire();
+        f->outerLoop = w;
+        const double half = 0.5 * math::kPi;
+        const double pcHalf = half - shortBy / r;
+        topo::Vertex* south = solid.allocVertex();
+        topo::Vertex* north = solid.allocVertex();
+        south->point = {0, 0, -r};
+        north->point = {0, 0, r};
+        // Counter-clockwise in (u, v): up the meridian u = pi, along the north pole, down u = 0.
+        topo::HalfEdge* he[2] = {solid.allocHalfEdge(), solid.allocHalfEdge()};
+        for (int i = 0; i < 2; ++i) {
+            const double u = i == 0 ? math::kPi : 0.0;
+            const double sign = i == 0 ? 1.0 : -1.0;
+            topo::HalfEdge* tw = solid.allocHalfEdge();
+            topo::Edge* e = solid.allocEdge();
+            he[i]->origin = i == 0 ? south : north;
+            tw->origin = i == 0 ? north : south;
+            he[i]->next = he[1 - i];
+            he[i]->prev = he[1 - i];
+            he[i]->face = f;
+            he[i]->twin = tw;
+            tw->twin = he[i];
+            he[i]->edge = tw->edge = e;
+            e->halfEdge = he[i];
+            he[i]->pcurve = std::make_shared<geo::Line2D>(math::Vec2{u, -sign * pcHalf},
+                                                          math::Vec2{u, sign * pcHalf});
+            he[i]->pcurveStart = 0.0;
+            he[i]->pcurveEnd = 1.0;
+            // The meridian as a great circle: v is the angle from the equator toward z.
+            geo::Frame mf;
+            mf.x = {std::cos(u), std::sin(u), 0};
+            mf.y = {0, 0, 1};
+            mf.z = mf.x.cross(mf.y);
+            e->exactCurve = std::make_shared<geo::CircleCurve>(mf, r);
+            e->curveStart = -sign * half;
+            e->curveEnd = sign * half;
+        }
+        south->halfEdge = he[0];
+        north->halfEdge = he[1];
+        w->halfEdge = he[0];
     }
-    south->halfEdge = he[0];
-    north->halfEdge = he[1];
-    w->halfEdge = he[0];
-    EXPECT_TRUE(topo::validateExact(solid, kTol).empty());
+};
+
+}  // namespace
+
+TEST(ExactValidator, ASphereLuneWhoseMeridiansMeetAtThePolesIsClean) {
+    SphereLune lune(1.0, 0.0);
+    EXPECT_TRUE(topo::validateExact(lune.solid, kTol).empty());
+}
+
+TEST(ExactValidator, ALuneWhosePcurvesStopShortOfThePolesWithinToleranceIsClean) {
+    for (const double r : {1.0, 1000.0}) {
+        const auto tol = math::ModelTolerance::forExtent(2.0 * r);
+        SphereLune lune(r, 0.3 * tol.linear);
+        EXPECT_TRUE(topo::validateExact(lune.solid, tol).empty()) << r;
+    }
+}
+
+TEST(ExactValidator, TwoCrossingHolesAreFoundBesideABrokenOuterLoop) {
+    const geo::Frame frame = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
+    HalfCylinderFace base(2.5 * math::kPi);
+    topo::Solid& solid = base.solid;
+    topo::Face* f = &solid.faces()[0];
+    // Break the outer loop: its second pcurve no longer meets its neighbours.
+    f->outerLoop->halfEdge->next->pcurve = std::make_shared<geo::Line2D>(
+        math::Vec2{3.0 * math::kPi, 0}, math::Vec2{3.0 * math::kPi, kHeight});
+    const math::Vec2 none[4] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}};
+    for (const double d : {0.0, 0.13}) {  // the second hole is shifted both ways
+        const double u = 2.0 * math::kPi + d;
+        const double v = 1.0 + 1.7 * d;
+        const math::Vec2 hole[4] = {{u + 0.2, v}, {u - 0.2, v}, {u - 0.2, v + 1}, {u + 0.2, v + 1}};
+        addQuadLoop(solid, f, frame, hole, none, false);
+    }
+    // The outer loop's own faults come with it; the holes' crossing must still be reported.
+    expectKinds(solid, ExactIssueKind::LoopsCross,
+                {ExactIssueKind::LoopNotClosed, ExactIssueKind::PcurveOffCurve,
+                 ExactIssueKind::PcurveOffVertex});
 }
 
 namespace {

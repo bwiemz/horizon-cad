@@ -220,11 +220,13 @@ struct Checker {
         }
         const geo::Surface& s = *f.exactSurface;
         bool joined = true;
+        std::vector<double> allowances;
         for (const HalfEdge* h : ring) {
             // Two ends each within their allowance of the vertex may be twice that apart.
             const double allowance =
                 tol.effective(std::max(h->edge->tolerance, h->next->origin->tolerance)) +
                 tol.effective(std::max(h->next->edge->tolerance, h->next->origin->tolerance));
+            allowances.push_back(allowance);
             if (!sameUv(s, sample(*h, kSamples - 1), sample(*h->next, 0), allowance)) {
                 joined = false;
                 report(ExactIssueKind::LoopNotClosed, &f, h->edge,
@@ -236,7 +238,7 @@ struct Checker {
         // continuous: a periodic surface's seam must not collapse the rectangle, and a loop
         // written inside [0, 2 pi) must not break where it crosses the seam.
         if (!detail::unwrapLoop(ring, kSamples, s, periodOf(s.periodicU(), s.uRange()),
-                                periodOf(s.periodicV(), s.vRange()), info.poly)) {
+                                periodOf(s.periodicV(), s.vRange()), allowances, info.poly)) {
             report(ExactIssueKind::LoopNotClosed, &f, w->halfEdge->edge,
                    "loop closes only after winding round the surface");
             return info;
@@ -260,12 +262,16 @@ struct Checker {
     void checkLoopRelations(const Face& f, std::vector<LoopInfo>& loops) {
         const geo::Surface& surface = *f.exactSurface;
         const auto uvTol = uvTolerance(surface);
-        if (loops.empty() || !loops[0].usable) return;
-        // Each loop was unwrapped from its own first pcurve, so an inner loop may sit a period
-        // away from the outer one: bring them into one window before comparing.
-        for (size_t j = 1; j < loops.size(); ++j) {
-            if (!loops[j].usable) continue;
-            detail::alignToReference(loops[j].poly, loops[0].poly,
+        // Each loop was unwrapped from its own first pcurve, so a loop may sit a period away
+        // from the others: bring them into the window of the first usable one (the outer loop
+        // when it is) before comparing, so that a broken outer loop hides nothing between
+        // the rest.
+        const auto ref =
+            std::find_if(loops.begin(), loops.end(), [](const LoopInfo& l) { return l.usable; });
+        if (ref == loops.end()) return;
+        for (auto j = loops.begin(); j != loops.end(); ++j) {
+            if (!j->usable || j == ref) continue;
+            detail::alignToReference(j->poly, ref->poly,
                                      periodOf(surface.periodicU(), surface.uRange()),
                                      periodOf(surface.periodicV(), surface.vRange()));
         }
