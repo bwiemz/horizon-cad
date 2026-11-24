@@ -537,6 +537,21 @@ TEST(Triangulate2D, APointThatIsNotFiniteIsReported) {
     }
 }
 
+TEST(Triangulate2D, PointsSpreadBeyondWhatThePredicatesHoldAreReported) {
+    // From -1e308 to 1e308: the extent itself overflows, and so would the predicates' products.
+    const Triangulation2D t =
+        triangulateRegion({{-1e308, -1e308}, {1e308, -1e308}, {1e308, 1e308}, {-1e308, 1e308}}, {});
+    EXPECT_NE(t.problem.find("too far"), std::string::npos) << t.problem;
+    EXPECT_TRUE(t.triangles.empty());
+    // Far out but close together, and wide but within the predicates' reach, are fine.
+    const double far = 1e30;
+    const Triangulation2D u = triangulateRegion(
+        {{far, far}, {far + 4e20, far}, {far + 4e20, far + 4e20}, {far, far + 4e20}}, {});
+    EXPECT_TRUE(u.problem.empty()) << u.problem;
+    EXPECT_EQ(u.triangles.size(), 2u);
+    checkRegion({{-1e60, -1e60}, {1e60, -1e60}, {1e60, 1e60}, {-1e60, 1e60}}, {});
+}
+
 TEST(Triangulate2D, TwentyThousandPointsOnTheUnitSquare) {
     const Loop outer{{0, 0}, {1, 0}, {1, 1}, {0, 1}};
     std::mt19937 rng(5);

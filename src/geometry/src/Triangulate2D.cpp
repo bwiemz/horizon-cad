@@ -19,6 +19,11 @@ using math::Vec2;
 
 constexpr int kNone = -1;
 
+/// The widest a set of points may spread. The super-triangle reaches 3e4 extents out, and the
+/// incircle predicate multiplies four coordinate differences together: beyond about 1e72 that
+/// product passes the largest double and the exact predicates are no longer exact.
+constexpr double kWidest = 1e70;
+
 std::uint64_t edgeKey(int a, int b) {
     const auto lo = static_cast<std::uint64_t>(std::min(a, b));
     const auto hi = static_cast<std::uint64_t>(std::max(a, b));
@@ -708,6 +713,10 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
         lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)};
         hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
     }
+    if (!(hi.x - lo.x <= kWidest) || !(hi.y - lo.y <= kWidest)) {
+        result.problem = "the points spread too far for exact predicates";
+        return result;
+    }
     // In a biased randomized order (BRIO): rounds of doubling size drawn at random, each sorted
     // along a Z-order curve. As given, a loop's points arrive along a line and every later
     // point's cavity sweeps the long thin triangles they leave; at random, each point's walk
@@ -725,7 +734,8 @@ Triangulation2D triangulateRegion(const std::vector<Vec2>& outer,
     std::vector<std::uint64_t> zorder(result.points.size(), 0);
     const auto cell = [](double v, double from, double to) {
         const double f = to > from ? (v - from) / (to - from) : 0.0;
-        return static_cast<std::uint32_t>(std::clamp(f, 0.0, 1.0) * 65535.0);
+        return std::isfinite(f) ? static_cast<std::uint32_t>(std::clamp(f, 0.0, 1.0) * 65535.0)
+                                : 0U;
     };
     for (const int index : inserted) {
         const Vec2& p = result.points[static_cast<std::size_t>(index)];

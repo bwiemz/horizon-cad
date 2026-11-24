@@ -27,7 +27,9 @@ struct Triangulation2D {
     /// outside labelling is consistent. Otherwise it names the first fault (a segment by loop
     /// and input index, a point where loops touch, a misplaced hole, or where the labelling
     /// disagrees) and why. The triangles are then best effort: callers treat a non-empty
-    /// problem as failure. An input point that is not finite gives that problem and nothing else.
+    /// problem as failure. An input point that is not finite gives that problem and nothing
+    /// else; points spread more than 1e70 apart (beyond what the exact predicates hold) give it
+    /// and no triangles.
     std::string problem;
 };
 
