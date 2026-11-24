@@ -48,7 +48,7 @@ if(TARGET horizon)
 endif()
 
 include(GoogleTest)
-gtest_discover_tests(hz_ui_tests)
+gtest_discover_tests(hz_ui_tests DISCOVERY_TIMEOUT 120)
 
 # MainWindow tests need a QApplication, and so a platform plugin. They use Qt's
 # offscreen platform so they run headless on every CI runner.
@@ -141,7 +141,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
     endif()
     # Labelled, so a job can leave them out: the ThreadSanitizer job does,
     # since Qt is not instrumented and its own threads look raced.
-    gtest_discover_tests(hz_ui_window_tests PROPERTIES LABELS window)
+    gtest_discover_tests(hz_ui_window_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS window)
 else()
     message(STATUS "Horizon MainWindow tests: SKIPPED (Qt offscreen platform plugin not found)")
 endif()

@@ -14,4 +14,4 @@ target_link_libraries(hz_pdm_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_pdm_tests)
+gtest_discover_tests(hz_pdm_tests DISCOVERY_TIMEOUT 120)

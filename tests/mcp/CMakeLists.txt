@@ -11,7 +11,7 @@ target_link_libraries(hz_mcp_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_mcp_tests)
+gtest_discover_tests(hz_mcp_tests DISCOVERY_TIMEOUT 120)
 
 # The executable itself, over standard input and output.
 add_test(NAME HorizonMcpEndToEnd

@@ -12,4 +12,4 @@ target_link_libraries(hz_cam_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_cam_tests)
+gtest_discover_tests(hz_cam_tests DISCOVERY_TIMEOUT 120)

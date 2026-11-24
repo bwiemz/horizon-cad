@@ -30,4 +30,4 @@ target_link_libraries(hz_ai_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_ai_tests)
+gtest_discover_tests(hz_ai_tests DISCOVERY_TIMEOUT 120)

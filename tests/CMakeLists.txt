@@ -1,3 +1,8 @@
+# Every gtest_discover_tests() here gives DISCOVERY_TIMEOUT 120. Discovery runs
+# each test binary as it is built, to list its tests; CMake's default of 5 s is
+# too short for an AddressSanitizer binary on a busy runner, and when it runs
+# out the build fails (master's ASan job stopped on hz_ai_tests so, though no
+# test had failed). A new test directory does the same.
 add_subdirectory(math)
 add_subdirectory(geometry)
 add_subdirectory(constraint)

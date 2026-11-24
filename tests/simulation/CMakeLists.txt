@@ -18,4 +18,4 @@ target_link_libraries(hz_simulation_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_simulation_tests)
+gtest_discover_tests(hz_simulation_tests DISCOVERY_TIMEOUT 120)
