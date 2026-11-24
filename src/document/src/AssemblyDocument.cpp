@@ -481,6 +481,7 @@ bool AssemblyDocument::setShownView(uint64_t id) {
 }
 
 math::Mat4 AssemblyDocument::displayTransform(const ComponentInstance& comp) const {
+    if (const auto posed = m_pose.find(comp.id); posed != m_pose.end()) return posed->second;
     const ExplodedView* view = explodedView(m_shownView);
     if (view == nullptr) return comp.transform;
     math::Vec3 moved;
@@ -585,6 +586,7 @@ void AssemblyDocument::clear() {
     m_patterns.clear();
     m_nextPatternId = 1;
     m_shownView = 0;
+    m_pose.clear();
     m_dirty = false;
     m_filePath.clear();
     m_leftOut.clear();

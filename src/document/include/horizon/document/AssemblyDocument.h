@@ -3,9 +3,11 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/geometry/MeshData.h"
@@ -273,9 +275,18 @@ public:
     /// Show view @p id (0: none, the components where they are). Returns
     /// false for an id that is no view.
     bool setShownView(uint64_t id);
-    /// Where @p comp is drawn: its placement, moved by each step of the
-    /// shown view it is in.
+    /// Where @p comp is drawn: where the pose puts it, when one is shown;
+    /// else its placement, moved by each step of the shown view it is in.
     math::Mat4 displayTransform(const ComponentInstance& comp) const;
+
+    // --- A pose (motion studies) ---
+    /// Draw the components in @p placements (by id) where they say, in place
+    /// of their own placements and any exploded view: a motion study's
+    /// position, shown. Not an edit, not saved, and not a placement: the
+    /// mates, the interference check and every export take the components
+    /// where they are. Empty shows them where they are again.
+    void setPose(std::map<uint64_t, math::Mat4> placements) { m_pose = std::move(placements); }
+    const std::map<uint64_t, math::Mat4>& pose() const { return m_pose; }
 
     /// Remove all components and mates and reset bookkeeping.
     void clear();
@@ -370,6 +381,7 @@ private:
     uint64_t m_nextPatternId = 1;
     uint64_t m_nextViewId = 1;
     uint64_t m_shownView = 0;
+    std::map<uint64_t, math::Mat4> m_pose;  ///< a motion study's position, shown
     bool m_dirty = false;
     std::string m_filePath;
     std::vector<std::string> m_leftOut;

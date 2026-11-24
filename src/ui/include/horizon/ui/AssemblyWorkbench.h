@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <cstddef>
 #include <cstdint>
@@ -13,17 +14,20 @@
 
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/AssemblyMates.h"
+#include "horizon/document/MotionStudy.h"
 #include "horizon/fileio/AssemblyStepExport.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/ComponentDragger.h"
 
 class QComboBox;
+class QTimer;
 
 namespace hz::ui {
 
 class AssemblyTreePanel;
 class FeatureForm;
+class MotionPlayer;
 class WorkbenchHost;
 
 /// The assembly commands (Phase 146): placing components, mates,
@@ -66,6 +70,18 @@ public:
     void onEditMate();
     void onRemoveMate();
     void onCheckInterference();
+
+    // --- Motion ---
+    /// Drive a Distance or Angle mate through a range, the mates solved at
+    /// each step, on a worker; then play its positions (MotionPlayer), each
+    /// checked for collisions when asked.
+    void onMotionStudy();
+    /// Stop showing a motion study: its player closed, the components drawn
+    /// where they are. Done when the tab changes, a drag starts or the
+    /// assembly is edited, since its positions are of the assembly as it was.
+    void closeMotion();
+    /// The motion study's player, while one is open.
+    MotionPlayer* motionPlayer() const;
 
     // --- Exploded views (Phase 161) ---
     /// Move the components checked (those chosen in the view, at first)
@@ -138,8 +154,8 @@ public:
     void endDrag() override;
     void cancelDrag() override;
 
-    /// An interference check is running on a worker.
-    bool busy() const { return m_interferenceTask != nullptr; }
+    /// An interference check, or a motion study, is running on a worker.
+    bool busy() const { return m_interferenceTask != nullptr || m_motionTask != nullptr; }
     /// Stop it; it reports "cancelled" when it ends.
     void cancelWork();
 
@@ -152,6 +168,7 @@ public:
 
 private slots:
     void onInterferenceFinished();
+    void onMotionFinished();
 
 private:
     /// The active tab's assembly, or null.
@@ -194,6 +211,16 @@ private:
     void showInterference(const doc::AssemblyDocument& assembly,
                           const doc::InterferenceReport& report);
 
+    /// Play @p result's positions, of the assembly studied.
+    void showMotion(doc::MotionResult result);
+    /// What position @p index of @p motion is: the driving mate's value, and
+    /// what clashes there.
+    QString describePosition(const doc::AssemblyDocument& assembly, const doc::MotionResult& motion,
+                             std::size_t index) const;
+    /// Leave the components where @p frame has them, and the driving mate at
+    /// its value, as one undo step.
+    void keepMotionPosition(const doc::MotionFrame& frame);
+
     /// Each component's node in the view placed where the component is now,
     /// without building the scene again.
     void showPlacements(const doc::AssemblyDocument& assembly);
@@ -221,6 +248,16 @@ private:
     AssemblyTreePanel& m_tree;
     std::unique_ptr<BackgroundTask<doc::InterferenceReport>> m_interferenceTask;
     std::shared_ptr<doc::AssemblyDocument> m_interferenceAssembly;  ///< kept alive for it
+
+    std::unique_ptr<BackgroundTask<doc::MotionResult>> m_motionTask;
+    std::shared_ptr<doc::AssemblyDocument> m_motionAssembly;  ///< the one studied
+    doc::MotionStudy m_motionStudy;
+    bool m_motionAngle = false;  ///< driven by an Angle mate
+    QPointer<MotionPlayer> m_motion;
+    /// Closes the player once the assembly is edited: its undo stack moves.
+    QTimer* m_motionWatch = nullptr;
+    std::weak_ptr<doc::Document> m_motionDocument;  ///< the assembly's tab's
+    std::uint64_t m_motionRevision = 0;
 };
 
 }  // namespace hz::ui

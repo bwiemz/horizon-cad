@@ -153,6 +153,14 @@ void AssemblyMates::place(const std::map<uint64_t, math::Mat4>& transforms) {
     }
 }
 
+void AssemblyMates::drive(std::size_t index, double value) {
+    if (index >= m_mates.size()) return;
+    model::SolverMate& mate = m_mates[index];
+    mate.value = value;
+    mate.minimum.reset();
+    mate.maximum.reset();
+}
+
 MatePlacement placeByMates(AssemblyDocument& assembly, DocumentManager& documents) {
     MatePlacement out;
     if (assembly.mates().empty()) {

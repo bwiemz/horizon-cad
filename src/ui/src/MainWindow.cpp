@@ -746,6 +746,8 @@ void MainWindow::createMenus() {
     assemblyMenu->addSeparator();
     sketchAction(assemblyMenu, tr("Check &Interference"), "action_check_interference",
                  [this] { m_assemblies->onCheckInterference(); });
+    sketchAction(assemblyMenu, tr("Motion St&udy..."), "action_motion_study",
+                 [this] { m_assemblies->onMotionStudy(); });
     assemblyMenu->addSeparator();
     sketchAction(assemblyMenu, tr("E&xplode Components..."), "action_explode_components",
                  [this] { m_assemblies->onExplodeComponents(); });
@@ -1365,6 +1367,9 @@ void MainWindow::activateTabDocument() {
     if (m_viewport->activeTool()) {
         m_viewport->activeTool()->cancel();
     }
+
+    // A motion study's positions are of the assembly it studied.
+    if (m_assemblies) m_assemblies->closeMotion();
 
     m_document = tab->document;
     m_assembly = tab->assembly;

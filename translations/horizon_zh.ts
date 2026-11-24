@@ -778,7 +778,7 @@ Details are in the log:
 <context>
     <name>hz::ui::AssemblyWorkbench</name>
     <message>
-        <location filename="../src/ui/src/AssemblyWorkbench.cpp" line="+90"/>
+        <location filename="../src/ui/src/AssemblyWorkbench.cpp" line="+94"/>
         <source>plane facing %1</source>
         <translation type="unfinished">朝向 %1 的平面</translation>
     </message>
@@ -853,7 +853,7 @@ Details are in the log:
         <translation type="unfinished">固定</translation>
     </message>
     <message>
-        <location line="+92"/>
+        <location line="+97"/>
         <source>Insert Component is only available in an assembly document</source>
         <translation type="unfinished">插入零部件仅在装配体文档中可用</translation>
     </message>
@@ -905,7 +905,7 @@ Details are in the log:
         <translation type="unfinished">配合求解失败：%1</translation>
     </message>
     <message>
-        <location line="+70"/>
+        <location line="+71"/>
         <source>%1 is placed by its pattern: drag its seed</source>
         <translation type="unfinished">%1 由其阵列定位：请拖动其源零部件</translation>
     </message>
@@ -961,11 +961,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+10"/>
+        <location line="+167"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="-165"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">已取消干涉检查</translation>
     </message>
@@ -1017,7 +1018,7 @@ Details are in the log:
         <translation type="unfinished">干涉</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+267"/>
         <source>Add Mate is only available in an assembly document</source>
         <translation type="unfinished">添加配合仅在装配体文档中可用</translation>
     </message>
@@ -1059,50 +1060,50 @@ Details are in the log:
     </message>
     <message>
         <location line="+8"/>
-        <location line="+293"/>
-        <location line="+461"/>
+        <location line="+294"/>
+        <location line="+462"/>
         <source>Distance:</source>
         <translation type="unfinished">距离:</translation>
     </message>
     <message>
-        <location line="-750"/>
+        <location line="-752"/>
         <location line="+185"/>
-        <location line="+565"/>
+        <location line="+567"/>
         <source>Angle:</source>
         <translation type="unfinished">角度:</translation>
     </message>
     <message>
-        <location line="-746"/>
-        <location line="+749"/>
+        <location line="-748"/>
+        <location line="+751"/>
         <source>At the value</source>
         <translation type="unfinished">等于该值</translation>
     </message>
     <message>
-        <location line="-749"/>
-        <location line="+749"/>
+        <location line="-751"/>
+        <location line="+751"/>
         <source>Between limits</source>
         <translation type="unfinished">介于上下限之间</translation>
     </message>
     <message>
-        <location line="-748"/>
-        <location line="+747"/>
+        <location line="-750"/>
+        <location line="+749"/>
         <source>Held:</source>
         <translation type="unfinished">约束方式:</translation>
     </message>
     <message>
-        <location line="-736"/>
-        <location line="+740"/>
+        <location line="-738"/>
+        <location line="+742"/>
         <source>At least:</source>
         <translation type="unfinished">最小值:</translation>
     </message>
     <message>
-        <location line="-739"/>
-        <location line="+741"/>
+        <location line="-741"/>
+        <location line="+743"/>
         <source>At most:</source>
         <translation type="unfinished">最大值:</translation>
     </message>
     <message>
-        <location line="-740"/>
+        <location line="-742"/>
         <source>At least (angle):</source>
         <translation type="unfinished">最小角度:</translation>
     </message>
@@ -1127,12 +1128,155 @@ Details are in the log:
         <translation type="unfinished">%1: %2 (#%3)</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="-509"/>
+        <location line="+512"/>
         <source>%1: %2 and %3 (#%4)</source>
         <translation type="unfinished">%1: %2 和 %3 (#%4)</translation>
     </message>
     <message>
+        <location line="-547"/>
+        <source>Motion Study</source>
+        <translation type="unfinished">运动算例</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Motion Study is only available in an assembly document</source>
+        <translation type="unfinished">运动算例仅在装配体中可用</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>A motion study is already running</source>
+        <translation type="unfinished">已有运动算例正在运行</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>A motion is driven by a Distance or Angle mate: add one first (Assembly &gt; Add Mate)</source>
+        <translation type="unfinished">运动由距离或角度配合驱动：请先添加一个（装配体 &gt; 添加配合）</translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Drive:</source>
+        <translation type="unfinished">驱动：</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Motion Study Range</source>
+        <translation type="unfinished">运动算例范围</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+3"/>
+        <source>From:</source>
+        <translation type="unfinished">参考:</translation>
+    </message>
+    <message>
+        <location line="-2"/>
+        <location line="+4"/>
+        <source>To:</source>
+        <translation type="unfinished">到：</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Steps:</source>
+        <translation type="unfinished">步数：</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Collisions:</source>
+        <translation type="unfinished">碰撞：</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Check each position</source>
+        <translation type="unfinished">检查每个位置</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Do not check</source>
+        <translation type="unfinished">不检查</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>%1: %2</source>
+        <translation type="unfinished">%1：%2</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>Studying the motion...</source>
+        <translation type="unfinished">正在研究运动...</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Motion study cancelled</source>
+        <translation type="unfinished">运动算例已取消</translation>
+    </message>
+    <message>
         <location line="+5"/>
+        <source>The motion study failed: %1</source>
+        <translation type="unfinished">运动算例失败：%1</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Position %1 of %2: %3</source>
+        <translation type="unfinished">位置 %1/%2：%3</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>%1 and %2</source>
+        <translation type="unfinished">%1 和 %2</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Clash: %1</source>
+        <translation type="unfinished">碰撞：%1</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>The motion study&apos;s assembly is no longer the one shown</source>
+        <translation type="unfinished">运动算例的装配体已不是当前显示的装配体</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>The assembly changed while its motion was studied: study it again</source>
+        <translation type="unfinished">研究运动期间装配体已更改：请重新研究</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>The mates do not hold at %1: the motion cannot start</source>
+        <translation type="unfinished">在 %1 处配合无法成立：运动无法开始</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The motion could not start: %1</source>
+        <translation type="unfinished">运动无法开始：%1</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>It moves through its range</source>
+        <translation type="unfinished">可在整个范围内运动</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>It stops at %1: the mates bind there</source>
+        <translation type="unfinished">在 %1 处停止：配合在此卡住</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>parts clash from %1</source>
+        <translation type="unfinished">从 %1 起零件发生碰撞</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>no parts clash</source>
+        <translation type="unfinished">没有零件碰撞</translation>
+    </message>
+    <message>
+        <location line="+57"/>
+        <source>Keep Motion Position</source>
+        <translation type="unfinished">保留运动位置</translation>
+    </message>
+    <message>
+        <location line="+309"/>
         <source>Mate:</source>
         <translation type="unfinished">配合:</translation>
     </message>
@@ -1144,14 +1288,14 @@ Details are in the log:
     <message>
         <location line="+2"/>
         <location line="+28"/>
-        <location line="+63"/>
-        <location line="+299"/>
+        <location line="+64"/>
+        <location line="+300"/>
         <location line="+79"/>
         <source>%1 works on an assembly&apos;s components</source>
         <translation type="unfinished">%1 用于装配体的零部件</translation>
     </message>
     <message>
-        <location line="-463"/>
+        <location line="-465"/>
         <source>Move X:</source>
         <translation type="unfinished">X 向移动:</translation>
     </message>
@@ -1201,7 +1345,7 @@ Details are in the log:
         <translation type="unfinished">%1：该零部件受固定配合约束；删除该配合后才能旋转</translation>
     </message>
     <message>
-        <location line="+48"/>
+        <location line="+49"/>
         <source>Explode Components</source>
         <translation type="unfinished">爆炸零部件</translation>
     </message>
@@ -1212,12 +1356,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+6"/>
-        <location line="+127"/>
+        <location line="+128"/>
         <source>Exploded view:</source>
         <translation type="unfinished">爆炸视图:</translation>
     </message>
     <message>
-        <location line="-125"/>
+        <location line="-126"/>
         <source>New view&apos;s name:</source>
         <translation type="unfinished">新视图名称:</translation>
     </message>
@@ -1228,13 +1372,13 @@ Details are in the log:
     </message>
     <message>
         <location line="+16"/>
-        <location line="+165"/>
+        <location line="+166"/>
         <location line="+200"/>
         <source>Components:</source>
         <translation type="unfinished">零部件:</translation>
     </message>
     <message>
-        <location line="-356"/>
+        <location line="-357"/>
         <source>Along:</source>
         <translation type="unfinished">沿:</translation>
     </message>
@@ -1259,7 +1403,7 @@ Details are in the log:
         <translation type="unfinished">%1：第 %2 步，共 %3 步</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+10"/>
         <source>Show Exploded View</source>
         <translation type="unfinished">显示爆炸视图</translation>
     </message>
@@ -3423,7 +3567,7 @@ begin building your part.</source>
         <translation type="unfinished">关闭 %1</translation>
     </message>
     <message>
-        <location line="+898"/>
+        <location line="+900"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3642,15 +3786,15 @@ begin building your part.</source>
         <translation type="unfinished">放置面</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-848"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-850"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1223"/>
+        <location line="+1228"/>
         <source>Drawing 1</source>
         <translation type="unfinished">工程图 1</translation>
     </message>
     <message>
-        <location line="-1169"/>
+        <location line="-1174"/>
         <source>Command Palette…</source>
         <translation type="unfinished">命令面板…</translation>
     </message>
@@ -4063,6 +4207,11 @@ begin building your part.</source>
         <location line="+3"/>
         <source>Check &amp;Interference</source>
         <translation type="unfinished">干涉检查(&amp;I)</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Motion St&amp;udy...</source>
+        <translation type="unfinished">运动算例(&amp;U)...</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -4690,7 +4839,6 @@ begin building your part.</source>
     <message>
         <location line="+3"/>
         <location line="+9"/>
-        <location line="+0"/>
         <location line="+13"/>
         <location line="+66"/>
         <source>Modify</source>
@@ -4811,7 +4959,7 @@ begin building your part.</source>
         <translation type="unfinished">展开图</translation>
     </message>
     <message>
-        <location line="+1037"/>
+        <location line="+1040"/>
         <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">所有支持的文件 (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD 工程图 (*.hcad);;Horizon 零件 (*.hzpart);;Horizon 装配体 (*.hzasm);;Horizon 工程图图纸 (*.hzdwg);;DXF 文件 (*.dxf);;DWG 文件 (*.dwg);;所有文件 (*)</translation>
     </message>
@@ -4877,7 +5025,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 未估计其误差：只测量了一次，未细分。</translation>
     </message>
     <message>
-        <location line="-2642"/>
+        <location line="-2645"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -5103,7 +5251,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1060"/>
+        <location line="+1063"/>
         <location line="+502"/>
         <location line="+936"/>
         <location line="+601"/>
@@ -5112,7 +5260,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-3182"/>
+        <location line="-3185"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -5133,17 +5281,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2830"/>
+        <location line="+2833"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-2824"/>
+        <location line="-2827"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
     <message>
-        <location line="+374"/>
+        <location line="+377"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (已恢复)</translation>
     </message>
@@ -6240,7 +6388,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
     </message>
     <message>
-        <location line="-3198"/>
+        <location line="-3201"/>
         <source>0 selected</source>
         <translation>已选择 0 个</translation>
     </message>
@@ -6254,6 +6402,45 @@ Ideal (on the curved surfaces the facets approximate):
         <location line="+202"/>
         <source>1 selected</source>
         <translation>已选择 1 个</translation>
+    </message>
+</context>
+<context>
+    <name>hz::ui::MotionPlayer</name>
+    <message>
+        <location filename="../src/ui/src/MotionPlayer.cpp" line="+33"/>
+        <source>Motion Study</source>
+        <translation type="unfinished">运动算例</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Position</source>
+        <translation type="unfinished">位置度</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <location line="+65"/>
+        <source>&amp;Play</source>
+        <translation type="unfinished">播放(&amp;P)</translation>
+    </message>
+    <message>
+        <location line="-63"/>
+        <source>&amp;Keep This Position</source>
+        <translation type="unfinished">保留此位置(&amp;K)</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Leave the components where this position has them, as one undo step</source>
+        <translation type="unfinished">将零部件保留在此位置（一步撤销）</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&amp;Close</source>
+        <translation type="unfinished">关闭(&amp;C)</translation>
+    </message>
+    <message>
+        <location line="+64"/>
+        <source>&amp;Pause</source>
+        <translation type="unfinished">暂停(&amp;P)</translation>
     </message>
 </context>
 <context>

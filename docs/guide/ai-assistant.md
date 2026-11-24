@@ -107,8 +107,10 @@ In an assembly:
   perpendicular and tangent, between faces, edges and datums it names, or
   the faces you select. Each is solved as it is added; one the others cannot
   hold is not added, and it says why.
-- **Checking it**: which components interfere, and by how much, and the bill
-  of materials.
+- **Checking it**: which components interfere, and by how much, the bill of
+  materials, and a motion study: a distance or angle mate driven through a
+  range, saying how far the mechanism goes, where it binds and which parts
+  clash where, without moving anything.
 
 Each of these is one undo step, as the Assembly menu's commands are.
 

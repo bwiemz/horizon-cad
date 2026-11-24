@@ -19,6 +19,16 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Motion studies.** **Assembly ▸ Motion Study...** drives a Distance or
+  Angle mate from one value to another in steps, every other mate solved at
+  each from where the last left the components, so a hinge turns, a slide
+  slides and a linkage works as it would by hand. It says where the mates
+  bind and the mechanism stops, and which parts clash where; its positions
+  play in a window beside the main one (a slider, Play), shown without
+  moving anything, until Keep This Position places the components there and
+  holds the mate at its value, as one undo step. The AI assistant's
+  `study_motion` answers the same in words. Design:
+  `docs/superpowers/specs/2026-11-23-assembly-motion-design.md`.
 - **DWG files open.** **File ▸ Open** opens AutoCAD's own format as a
   drawing, and **File ▸ Import ▸ DWG into This Drawing** adds one to the
   drawing open, as DXF does: GNU LibreDWG's `dwg2dxf` turns it into DXF,

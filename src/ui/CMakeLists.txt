@@ -77,6 +77,7 @@ add_library(hz_ui STATIC
     include/horizon/ui/PickTool.h
     include/horizon/ui/WorkbenchHost.h
     include/horizon/ui/FeatureForm.h
+    include/horizon/ui/MotionPlayer.h
     include/horizon/ui/QuantitySpinBox.h
     include/horizon/ui/VariablesDialog.h
     include/horizon/ui/ConfigurationsDialog.h
@@ -177,6 +178,7 @@ add_library(hz_ui STATIC
     src/FeatureTreePanel.cpp
     src/AssemblyTreePanel.cpp
     src/AssemblyWorkbench.cpp
+    src/MotionPlayer.cpp
     src/DraftingCommands.cpp
     src/DrawingWorkbench.cpp
     src/DwgImport.cpp

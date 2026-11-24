@@ -784,7 +784,7 @@ Les détails figurent dans le journal :
 <context>
     <name>hz::ui::AssemblyWorkbench</name>
     <message>
-        <location filename="../src/ui/src/AssemblyWorkbench.cpp" line="+90"/>
+        <location filename="../src/ui/src/AssemblyWorkbench.cpp" line="+94"/>
         <source>plane facing %1</source>
         <translation type="unfinished">plan de normale %1</translation>
     </message>
@@ -859,7 +859,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Fixe</translation>
     </message>
     <message>
-        <location line="+92"/>
+        <location line="+97"/>
         <source>Insert Component is only available in an assembly document</source>
         <translation type="unfinished">Insérer un composant n&apos;est disponible que dans un document d&apos;assemblage</translation>
     </message>
@@ -911,7 +911,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Échec de la résolution des contraintes d&apos;assemblage : %1</translation>
     </message>
     <message>
-        <location line="+70"/>
+        <location line="+71"/>
         <source>%1 is placed by its pattern: drag its seed</source>
         <translation type="unfinished">%1 est placé par sa répétition : faites glisser son composant source</translation>
     </message>
@@ -967,11 +967,12 @@ Les détails figurent dans le journal :
     </message>
     <message>
         <location line="+10"/>
+        <location line="+167"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="-165"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">Vérification des interférences annulée</translation>
     </message>
@@ -1024,7 +1025,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">Interférence</translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+267"/>
         <source>Add Mate is only available in an assembly document</source>
         <translation type="unfinished">Ajouter une contrainte d&apos;assemblage n&apos;est disponible que dans un document d&apos;assemblage</translation>
     </message>
@@ -1066,50 +1067,50 @@ Les détails figurent dans le journal :
     </message>
     <message>
         <location line="+8"/>
-        <location line="+293"/>
-        <location line="+461"/>
+        <location line="+294"/>
+        <location line="+462"/>
         <source>Distance:</source>
         <translation type="unfinished">Distance :</translation>
     </message>
     <message>
-        <location line="-750"/>
+        <location line="-752"/>
         <location line="+185"/>
-        <location line="+565"/>
+        <location line="+567"/>
         <source>Angle:</source>
         <translation type="unfinished">Angle :</translation>
     </message>
     <message>
-        <location line="-746"/>
-        <location line="+749"/>
+        <location line="-748"/>
+        <location line="+751"/>
         <source>At the value</source>
         <translation type="unfinished">À la valeur</translation>
     </message>
     <message>
-        <location line="-749"/>
-        <location line="+749"/>
+        <location line="-751"/>
+        <location line="+751"/>
         <source>Between limits</source>
         <translation type="unfinished">Entre des limites</translation>
     </message>
     <message>
-        <location line="-748"/>
-        <location line="+747"/>
+        <location line="-750"/>
+        <location line="+749"/>
         <source>Held:</source>
         <translation type="unfinished">Maintien :</translation>
     </message>
     <message>
-        <location line="-736"/>
-        <location line="+740"/>
+        <location line="-738"/>
+        <location line="+742"/>
         <source>At least:</source>
         <translation type="unfinished">Au moins :</translation>
     </message>
     <message>
-        <location line="-739"/>
-        <location line="+741"/>
+        <location line="-741"/>
+        <location line="+743"/>
         <source>At most:</source>
         <translation type="unfinished">Au plus :</translation>
     </message>
     <message>
-        <location line="-740"/>
+        <location line="-742"/>
         <source>At least (angle):</source>
         <translation type="unfinished">Au moins (angle) :</translation>
     </message>
@@ -1134,12 +1135,155 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : %2 (#%3)</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="-509"/>
+        <location line="+512"/>
         <source>%1: %2 and %3 (#%4)</source>
         <translation type="unfinished">%1 : %2 et %3 (#%4)</translation>
     </message>
     <message>
+        <location line="-547"/>
+        <source>Motion Study</source>
+        <translation type="unfinished">Étude de mouvement</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Motion Study is only available in an assembly document</source>
+        <translation type="unfinished">L&apos;étude de mouvement n&apos;est disponible que dans un assemblage</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>A motion study is already running</source>
+        <translation type="unfinished">Une étude de mouvement est déjà en cours</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>A motion is driven by a Distance or Angle mate: add one first (Assembly &gt; Add Mate)</source>
+        <translation type="unfinished">Un mouvement est entraîné par une contrainte de distance ou d&apos;angle : ajoutez-en une d&apos;abord (Assemblage &gt; Ajouter une contrainte)</translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>Drive:</source>
+        <translation type="unfinished">Entraîner :</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>Motion Study Range</source>
+        <translation type="unfinished">Plage de l&apos;étude de mouvement</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <location line="+3"/>
+        <source>From:</source>
+        <translation type="unfinished">À partir de :</translation>
+    </message>
+    <message>
+        <location line="-2"/>
+        <location line="+4"/>
+        <source>To:</source>
+        <translation type="unfinished">À :</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Steps:</source>
+        <translation type="unfinished">Pas :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Collisions:</source>
+        <translation type="unfinished">Collisions :</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Check each position</source>
+        <translation type="unfinished">Vérifier chaque position</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Do not check</source>
+        <translation type="unfinished">Ne pas vérifier</translation>
+    </message>
+    <message>
+        <location line="+14"/>
+        <source>%1: %2</source>
+        <translation type="unfinished">%1 : %2</translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>Studying the motion...</source>
+        <translation type="unfinished">Étude du mouvement...</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>Motion study cancelled</source>
+        <translation type="unfinished">Étude de mouvement annulée</translation>
+    </message>
+    <message>
         <location line="+5"/>
+        <source>The motion study failed: %1</source>
+        <translation type="unfinished">L&apos;étude de mouvement a échoué : %1</translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>Position %1 of %2: %3</source>
+        <translation type="unfinished">Position %1 sur %2 : %3</translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>%1 and %2</source>
+        <translation type="unfinished">%1 et %2</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Clash: %1</source>
+        <translation type="unfinished">Collision : %1</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>The motion study&apos;s assembly is no longer the one shown</source>
+        <translation type="unfinished">L&apos;assemblage de l&apos;étude de mouvement n&apos;est plus celui affiché</translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>The assembly changed while its motion was studied: study it again</source>
+        <translation type="unfinished">L&apos;assemblage a changé pendant l&apos;étude de son mouvement : étudiez-le à nouveau</translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>The mates do not hold at %1: the motion cannot start</source>
+        <translation type="unfinished">Les contraintes ne tiennent pas à %1 : le mouvement ne peut pas commencer</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The motion could not start: %1</source>
+        <translation type="unfinished">Le mouvement n&apos;a pas pu commencer : %1</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>It moves through its range</source>
+        <translation type="unfinished">Il parcourt toute sa plage</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>It stops at %1: the mates bind there</source>
+        <translation type="unfinished">Il s&apos;arrête à %1 : les contraintes s&apos;y bloquent</translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>parts clash from %1</source>
+        <translation type="unfinished">des pièces entrent en collision à partir de %1</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>no parts clash</source>
+        <translation type="unfinished">aucune pièce n&apos;entre en collision</translation>
+    </message>
+    <message>
+        <location line="+57"/>
+        <source>Keep Motion Position</source>
+        <translation type="unfinished">Garder la position du mouvement</translation>
+    </message>
+    <message>
+        <location line="+309"/>
         <source>Mate:</source>
         <translation type="unfinished">Contrainte d&apos;assemblage :</translation>
     </message>
@@ -1151,14 +1295,14 @@ Les détails figurent dans le journal :
     <message>
         <location line="+2"/>
         <location line="+28"/>
-        <location line="+63"/>
-        <location line="+299"/>
+        <location line="+64"/>
+        <location line="+300"/>
         <location line="+79"/>
         <source>%1 works on an assembly&apos;s components</source>
         <translation type="unfinished">%1 s&apos;applique aux composants d&apos;un assemblage</translation>
     </message>
     <message>
-        <location line="-463"/>
+        <location line="-465"/>
         <source>Move X:</source>
         <translation type="unfinished">Déplacement X :</translation>
     </message>
@@ -1208,7 +1352,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : une contrainte Fixe le maintient ; supprimez la contrainte pour le faire pivoter</translation>
     </message>
     <message>
-        <location line="+48"/>
+        <location line="+49"/>
         <source>Explode Components</source>
         <translation type="unfinished">Éclater les composants</translation>
     </message>
@@ -1219,12 +1363,12 @@ Les détails figurent dans le journal :
     </message>
     <message>
         <location line="+6"/>
-        <location line="+127"/>
+        <location line="+128"/>
         <source>Exploded view:</source>
         <translation type="unfinished">Vue éclatée :</translation>
     </message>
     <message>
-        <location line="-125"/>
+        <location line="-126"/>
         <source>New view&apos;s name:</source>
         <translation type="unfinished">Nom de la nouvelle vue :</translation>
     </message>
@@ -1235,13 +1379,13 @@ Les détails figurent dans le journal :
     </message>
     <message>
         <location line="+16"/>
-        <location line="+165"/>
+        <location line="+166"/>
         <location line="+200"/>
         <source>Components:</source>
         <translation type="unfinished">Composants :</translation>
     </message>
     <message>
-        <location line="-356"/>
+        <location line="-357"/>
         <source>Along:</source>
         <translation type="unfinished">Selon :</translation>
     </message>
@@ -1266,7 +1410,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : étape %2 sur %3</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+10"/>
         <source>Show Exploded View</source>
         <translation type="unfinished">Afficher une vue éclatée</translation>
     </message>
@@ -3445,7 +3589,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Fermer %1</translation>
     </message>
     <message>
-        <location line="+898"/>
+        <location line="+900"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3664,15 +3808,15 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Dans la face</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-848"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-850"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1223"/>
+        <location line="+1228"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dessin 1</translation>
     </message>
     <message>
-        <location line="-1169"/>
+        <location line="-1174"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Palette de commandes…</translation>
     </message>
@@ -4085,6 +4229,11 @@ commencer à construire votre pièce.</translation>
         <location line="+3"/>
         <source>Check &amp;Interference</source>
         <translation type="unfinished">&amp;Vérifier les interférences</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Motion St&amp;udy...</source>
+        <translation type="unfinished">Étude de mo&amp;uvement...</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -4712,7 +4861,6 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+3"/>
         <location line="+9"/>
-        <location line="+0"/>
         <location line="+13"/>
         <location line="+66"/>
         <source>Modify</source>
@@ -4833,7 +4981,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Développé</translation>
     </message>
     <message>
-        <location line="+1037"/>
+        <location line="+1040"/>
         <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">Tous les fichiers pris en charge (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Dessins Horizon CAD (*.hcad);;Pièces Horizon (*.hzpart);;Assemblages Horizon (*.hzasm);;Mises en plan Horizon (*.hzdwg);;Fichiers DXF (*.dxf);;Fichiers DWG (*.dwg);;Tous les fichiers (*)</translation>
     </message>
@@ -4902,7 +5050,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.</translation>
     </message>
     <message>
-        <location line="-2642"/>
+        <location line="-2645"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
@@ -5128,7 +5276,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <location line="+89"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1060"/>
+        <location line="+1063"/>
         <location line="+502"/>
         <location line="+936"/>
         <location line="+601"/>
@@ -5137,7 +5285,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-3182"/>
+        <location line="-3185"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -5158,17 +5306,17 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2830"/>
+        <location line="+2833"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-2824"/>
+        <location line="-2827"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
     <message>
-        <location line="+374"/>
+        <location line="+377"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (récupéré)</translation>
     </message>
@@ -6270,7 +6418,7 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-3198"/>
+        <location line="-3201"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>
@@ -6284,6 +6432,45 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <location line="+202"/>
         <source>1 selected</source>
         <translation>1 sélectionné</translation>
+    </message>
+</context>
+<context>
+    <name>hz::ui::MotionPlayer</name>
+    <message>
+        <location filename="../src/ui/src/MotionPlayer.cpp" line="+33"/>
+        <source>Motion Study</source>
+        <translation type="unfinished">Étude de mouvement</translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <source>Position</source>
+        <translation type="unfinished">Localisation</translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <location line="+65"/>
+        <source>&amp;Play</source>
+        <translation type="unfinished">&amp;Lire</translation>
+    </message>
+    <message>
+        <location line="-63"/>
+        <source>&amp;Keep This Position</source>
+        <translation type="unfinished">&amp;Garder cette position</translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Leave the components where this position has them, as one undo step</source>
+        <translation type="unfinished">Laisser les composants là où cette position les place, en une seule étape d&apos;annulation</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>&amp;Close</source>
+        <translation type="unfinished">&amp;Fermer</translation>
+    </message>
+    <message>
+        <location line="+64"/>
+        <source>&amp;Pause</source>
+        <translation type="unfinished">&amp;Pause</translation>
     </message>
 </context>
 <context>

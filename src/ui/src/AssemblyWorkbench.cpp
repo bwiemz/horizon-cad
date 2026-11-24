@@ -16,7 +16,9 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QSpinBox>
 #include <QTableWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <array>
@@ -34,6 +36,7 @@
 #include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/ModelCommands.h"
+#include "horizon/document/MotionStudy.h"
 #include "horizon/fileio/BomExport.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Mat4.h"
@@ -45,6 +48,7 @@
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/FeatureForm.h"
+#include "horizon/ui/MotionPlayer.h"
 #include "horizon/ui/Preferences.h"
 #include "horizon/ui/QuantitySpinBox.h"
 #include "horizon/ui/ViewportWidget.h"
@@ -205,8 +209,12 @@ AssemblyWorkbench::AssemblyWorkbench(WorkbenchHost& host, AssemblyTreePanel& tre
 }
 
 AssemblyWorkbench::~AssemblyWorkbench() {
-    // Stop the worker before what it reports to is gone.
+    // Stop the workers before what they report to is gone, and put the
+    // components back where they are drawn from.
     m_interferenceTask.reset();
+    m_motionTask.reset();
+    closeMotion();
+    delete m_motion.data();
 }
 
 doc::AssemblyDocument* AssemblyWorkbench::assembly() const {
@@ -234,6 +242,7 @@ bool AssemblyWorkbench::placeOnOpen(doc::AssemblyDocument& assembly) {
 
 void AssemblyWorkbench::cancelWork() {
     if (m_interferenceTask) m_interferenceTask->cancel();
+    if (m_motionTask) m_motionTask->cancel();
 }
 
 void AssemblyWorkbench::recordAssemblyEdit(doc::AssemblyState before, bool wasDirty,
@@ -384,7 +393,8 @@ std::optional<ComponentDragger::TriadPose> AssemblyWorkbench::triadPose() const 
 
 bool AssemblyWorkbench::beginDrag(std::uint64_t component, const QPointF& at,
                                   const std::optional<Triad::Handle>& handle) {
-    cancelDrag();  // one left over (its release lost) is put back first
+    cancelDrag();   // one left over (its release lost) is put back first
+    closeMotion();  // a drag moves the components where they are, not as shown
     auto asmDoc = m_host.currentAssembly();
     if (!asmDoc) return false;
     const doc::ComponentInstance* comp = asmDoc->component(component);
@@ -649,6 +659,266 @@ void AssemblyWorkbench::showInterference(const doc::AssemblyDocument& assembly,
     if (!lines.isEmpty()) {
         QMessageBox::information(m_host.dialogParent(), tr("Interference"), lines.join('\n'));
     }
+}
+
+void AssemblyWorkbench::onMotionStudy() {
+    m_host.viewport().cancelComponentDrag();  // not under a drag (Phase 158)
+    const QString verb = tr("Motion Study");
+    closeMotion();
+    if (!assembly()) {
+        m_host.showStatus(tr("Motion Study is only available in an assembly document"));
+        return;
+    }
+    if (m_motionTask) {
+        m_host.showStatus(tr("A motion study is already running"));
+        return;
+    }
+    std::vector<uint64_t> drivers;
+    for (const auto& mate : assembly()->mates()) {
+        if (mate.type == doc::MateType::Distance || mate.type == doc::MateType::Angle) {
+            drivers.push_back(mate.id);
+        }
+    }
+    if (drivers.empty()) {
+        m_host.showStatus(
+            tr("A motion is driven by a Distance or Angle mate: add one first "
+               "(Assembly > Add Mate)"));
+        return;
+    }
+
+    // Which mate drives it, when there is a choice.
+    const auto nameOf = [this](uint64_t id) {
+        const auto* comp = assembly()->component(id);
+        return QString::fromStdString(comp == nullptr || comp->name.empty() ? "component"
+                                                                            : comp->name);
+    };
+    uint64_t driver = drivers.front();
+    if (drivers.size() > 1) {
+        FeatureForm pick(m_host.dialogParent(), verb);
+        QStringList names;
+        for (const uint64_t id : drivers) {
+            const doc::Mate& mate = *assembly()->mate(id);
+            names << tr("%1: %2 and %3 (#%4)")
+                         .arg(mateTypeName(mate.type), nameOf(mate.a.componentId),
+                              nameOf(mate.b.componentId))
+                         .arg(mate.id);
+        }
+        QComboBox* choice = pick.choice(QStringLiteral("mate"), tr("Drive:"), names);
+        if (!pick.exec()) return;
+        driver = drivers.at(static_cast<size_t>(std::max(choice->currentIndex(), 0)));
+    }
+
+    // Its range, in its own kind of value.
+    const doc::Mate& mate = *assembly()->mate(driver);
+    const bool angle = mate.type == doc::MateType::Angle;
+    FeatureForm form(m_host.dialogParent(), tr("Motion Study Range"), assembly()->lengthUnit());
+    QuantitySpinBox* from = nullptr;
+    QuantitySpinBox* to = nullptr;
+    // An Angle mate measures 0 to 180 degrees (unsigned); a limited mate is
+    // offered its limits, the range it moves in.
+    constexpr double kReach = 1e6;
+    if (angle) {
+        const double now = mate.value * 180.0 / std::numbers::pi;
+        const double low = mate.minimum ? *mate.minimum * 180.0 / std::numbers::pi : now;
+        const double high =
+            mate.maximum ? *mate.maximum * 180.0 / std::numbers::pi : std::min(now + 90.0, 180.0);
+        from = form.angle(QStringLiteral("from"), tr("From:"), low, 0.0, 180.0);
+        to = form.angle(QStringLiteral("to"), tr("To:"), high, 0.0, 180.0);
+    } else {
+        from = form.length(QStringLiteral("from"), tr("From:"), mate.minimum.value_or(mate.value),
+                           -kReach, kReach);
+        to = form.length(QStringLiteral("to"), tr("To:"), mate.maximum.value_or(mate.value + 50.0),
+                         -kReach, kReach);
+    }
+    QSpinBox* steps =
+        form.count(QStringLiteral("steps"), tr("Steps:"), 24, 1, doc::MotionStudy::kMaxSteps);
+    QComboBox* collisions = form.choice(QStringLiteral("collisions"), tr("Collisions:"),
+                                        {tr("Check each position"), tr("Do not check")});
+    if (!form.exec()) return;
+
+    doc::MotionStudy study;
+    study.mate = driver;
+    const double scale = angle ? std::numbers::pi / 180.0 : 1.0;
+    study.from = from->value() * scale;
+    study.to = to->value() * scale;
+    study.steps = steps->value();
+    study.checkInterference = collisions->currentIndex() == 0;
+
+    std::string why;
+    auto input = doc::prepareMotion(*assembly(), m_host.documents(), driver, &why);
+    if (!input) {
+        m_host.showStatus(tr("%1: %2").arg(verb, QString::fromStdString(why)));
+        return;
+    }
+    m_motionAssembly = m_host.currentAssembly();
+    m_motionStudy = study;
+    m_motionAngle = angle;
+    // Its positions are of the assembly as it is now: an edit from here on,
+    // while it runs or while it plays, ends it.
+    m_motionDocument.reset();
+    for (const auto& open : m_host.documents().documents()) {
+        if (open.get() == m_host.currentDocument()) m_motionDocument = open;
+    }
+    m_motionRevision = m_host.currentDocument()->undoStack().revision();
+    auto prepared = std::make_shared<const doc::MotionInput>(std::move(*input));
+    // A mechanism's every step is a solve, and maybe a check for collisions:
+    // a worker's, unless the window does everything itself.
+    if (!m_host.onWorker(true)) {
+        showMotion(doc::runMotion(*prepared, study));
+        return;
+    }
+    m_motionTask = std::make_unique<BackgroundTask<doc::MotionResult>>(
+        [prepared, study](const std::atomic<bool>& cancelled) {
+            return doc::runMotion(*prepared, study, &cancelled);
+        });
+    m_motionTask->start([this] {
+        QMetaObject::invokeMethod(this, &AssemblyWorkbench::onMotionFinished, Qt::QueuedConnection);
+    });
+    m_host.setPrompt(tr("Studying the motion..."));
+    m_host.backgroundWorkChanged();
+}
+
+void AssemblyWorkbench::onMotionFinished() {
+    if (!m_motionTask || !m_motionTask->finished()) return;
+    const std::unique_ptr<BackgroundTask<doc::MotionResult>> task = std::move(m_motionTask);
+    m_host.backgroundWorkChanged();
+    m_host.setPrompt(tr("Ready"));
+    if (task->cancelled()) {
+        m_host.showStatus(tr("Motion study cancelled"), 10000);
+        return;
+    }
+    if (!task->error().empty()) {
+        m_host.showStatus(
+            tr("The motion study failed: %1").arg(QString::fromStdString(task->error())));
+        return;
+    }
+    showMotion(task->take());
+}
+
+QString AssemblyWorkbench::describePosition(const doc::AssemblyDocument& asmDoc,
+                                            const doc::MotionResult& motion,
+                                            std::size_t index) const {
+    const doc::MotionFrame& frame = motion.frames.at(index);
+    const QString value =
+        m_motionAngle ? Preferences::current().formatAngle(frame.value)
+                      : Preferences::current().formatLength(frame.value, asmDoc.lengthUnit());
+    QString text = tr("Position %1 of %2: %3").arg(index + 1).arg(motion.frames.size()).arg(value);
+    const auto nameOf = [&asmDoc](uint64_t id) {
+        const auto* comp = asmDoc.component(id);
+        return QString::fromStdString(comp == nullptr || comp->name.empty() ? "component"
+                                                                            : comp->name);
+    };
+    QStringList clashes;
+    for (const auto& clash : frame.clashes) {
+        clashes << tr("%1 and %2").arg(nameOf(clash.componentA), nameOf(clash.componentB));
+    }
+    if (!clashes.isEmpty()) text += QStringLiteral("\n") + tr("Clash: %1").arg(clashes.join(", "));
+    return text;
+}
+
+void AssemblyWorkbench::showMotion(doc::MotionResult result) {
+    const std::shared_ptr<doc::AssemblyDocument> studied = m_motionAssembly;
+    if (!studied || studied != m_host.currentAssembly()) {
+        m_host.showStatus(tr("The motion study's assembly is no longer the one shown"));
+        return;
+    }
+    const auto document = m_motionDocument.lock();
+    if (!document || document->undoStack().revision() != m_motionRevision) {
+        m_host.showStatus(tr("The assembly changed while its motion was studied: study it again"));
+        return;
+    }
+    const auto valueText = [this, &studied](double value) {
+        return m_motionAngle ? Preferences::current().formatAngle(value)
+                             : Preferences::current().formatLength(value, studied->lengthUnit());
+    };
+    if (result.frames.empty()) {
+        m_host.showStatus(
+            result.bound
+                ? tr("The mates do not hold at %1: the motion cannot start")
+                      .arg(valueText(*result.bound))
+                : tr("The motion could not start: %1").arg(QString::fromStdString(result.why)));
+        return;
+    }
+    // What it came to, in the status bar.
+    QString summary =
+        result.complete
+            ? tr("It moves through its range")
+            : tr("It stops at %1: the mates bind there").arg(valueText(result.frames.back().value));
+    if (result.firstClash) {
+        summary +=
+            QStringLiteral("; ") +
+            tr("parts clash from %1").arg(valueText(result.frames[*result.firstClash].value));
+    } else if (m_motionStudy.checkInterference) {
+        summary += QStringLiteral("; ") + tr("no parts clash");
+    }
+    m_host.showStatus(summary);
+
+    auto motion = std::make_shared<const doc::MotionResult>(std::move(result));
+    const std::weak_ptr<doc::AssemblyDocument> weak = studied;
+    auto describe = [this, weak, motion](std::size_t index) {
+        const auto shown = weak.lock();
+        return shown ? describePosition(*shown, *motion, index) : QString();
+    };
+    auto show = [this, weak, motion](std::size_t index) {
+        const auto shown = weak.lock();
+        if (!shown) return;
+        shown->setPose(index == MotionPlayer::npos ? std::map<uint64_t, math::Mat4>{}
+                                                   : motion->frames.at(index).placements);
+        if (m_host.currentAssembly() == shown) showPlacements(*shown);
+    };
+    auto keep = [this, motion](std::size_t index) { keepMotionPosition(motion->frames.at(index)); };
+    m_motion = new MotionPlayer(m_host.dialogParent(), motion, std::move(describe), std::move(show),
+                                std::move(keep));
+    m_motion->setAttribute(Qt::WA_DeleteOnClose);
+
+    // An edit while it plays ends it (watched from when it was asked for).
+    if (m_motionWatch == nullptr) {
+        m_motionWatch = new QTimer(this);
+        m_motionWatch->setInterval(100);
+        connect(m_motionWatch, &QTimer::timeout, this, [this] {
+            const auto document = m_motionDocument.lock();
+            if (!m_motion || !document || document->undoStack().revision() != m_motionRevision) {
+                closeMotion();
+            }
+        });
+    }
+    m_motionWatch->start();
+    m_motion->show();
+}
+
+void AssemblyWorkbench::keepMotionPosition(const doc::MotionFrame& frame) {
+    const std::shared_ptr<doc::AssemblyDocument> studied = m_motionAssembly;
+    if (!studied || studied != m_host.currentAssembly()) return;
+    if (m_motionWatch != nullptr) m_motionWatch->stop();  // the edit is this one
+    const doc::AssemblyState before = studied->snapshot();
+    const bool wasDirty = studied->isDirty();
+    studied->setPose({});
+    for (auto& comp : studied->components()) {
+        const auto at = frame.placements.find(comp.id);
+        if (at != frame.placements.end()) comp.transform = at->second;
+    }
+    // The driver held where it is kept, or the next solve would put it back.
+    // A limited one is not held at a value: kept within its limits, the
+    // position stays; kept outside them, the next solve brings it back to
+    // the nearest, as a drag past them does.
+    if (doc::Mate* driver = studied->mate(m_motionStudy.mate)) {
+        if (!driver->minimum && !driver->maximum) driver->value = frame.value;
+    }
+    studied->updatePatterns();
+    studied->setDirty(true);
+    recordAssemblyEdit(before, wasDirty, tr("Keep Motion Position"));
+    showPlacements(*studied);
+    m_host.refreshModifiedIndicators();
+}
+
+MotionPlayer* AssemblyWorkbench::motionPlayer() const {
+    return m_motion.data();
+}
+
+void AssemblyWorkbench::closeMotion() {
+    if (m_motionWatch != nullptr) m_motionWatch->stop();
+    m_motionDocument.reset();
+    if (m_motion) m_motion->reject();  // shows the components where they are
 }
 
 void AssemblyWorkbench::onAddMate() {
@@ -1041,6 +1311,7 @@ QString componentLabel(const doc::ComponentInstance& comp) {
 }  // namespace
 
 void AssemblyWorkbench::onExplodeComponents() {
+    closeMotion();                            // a pose is drawn over any exploded view
     m_host.viewport().cancelComponentDrag();  // not under a drag
     const QString verb = tr("Explode Components");
     if (!assembly() || assembly()->components().empty()) {
@@ -1139,6 +1410,7 @@ void AssemblyWorkbench::onExplodeComponents() {
 }
 
 void AssemblyWorkbench::onShowExplodedView() {
+    closeMotion();                            // a pose is drawn over any exploded view
     m_host.viewport().cancelComponentDrag();  // one under way was placed unexploded
     const QString verb = tr("Show Exploded View");
     if (!assembly()) {

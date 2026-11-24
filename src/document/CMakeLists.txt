@@ -13,6 +13,7 @@ add_library(hz_document STATIC
     src/Sketch.cpp
     src/AssemblyDocument.cpp
     src/AssemblyMates.cpp
+    src/MotionStudy.cpp
     src/DocumentManager.cpp
     src/BillOfMaterials.cpp
     src/ConfigurationTable.cpp
