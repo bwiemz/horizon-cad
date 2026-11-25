@@ -821,25 +821,29 @@ TEST(ExactValidator, AStraightSplineEdgeJustOffItsPcurvesIsReportedWithHowFar) {
     }
 }
 
-// A straight B-spline edge whose curve runs against its pcurves (its ends swapped, so its
-// vertices still sit on it) is reported as running against them, as it was.
-TEST(ExactValidator, AStraightSplineEdgeRunningAgainstItsPcurvesIsReported) {
+// A straight B-spline edge (two points, the validator's straight segment) one of whose pcurves
+// runs there and back and there again in (u, v): every point of it lies on the segment, so only
+// the order test can tell, and it is reported as running against the curve, as it was.
+TEST(ExactValidator, APcurveRunningBackAlongAStraightSplineEdgeIsReported) {
     StraightSplineEdge edge(0.0);
     ASSERT_NE(edge.edge, nullptr);
-    const auto* c = static_cast<const geo::NurbsCurve*>(edge.edge->exactCurve.get());
-    const Vec3 a = c->controlPoints()[0];
-    const Vec3 b = c->controlPoints()[1];
-    // The same segment from its far end, with a middle point that makes it run there and back:
-    // a → b → a → b over the range, so its ends are at the vertices but it doubles back.
-    edge.edge->exactCurve = std::make_shared<geo::NurbsCurve>(
-        std::vector<Vec3>{a, b, a, b}, std::vector<double>{1, 1, 1, 1},
+    ASSERT_EQ(static_cast<const geo::NurbsCurve&>(*edge.edge->exactCurve).controlPointCount(), 2);
+    EXPECT_TRUE(topo::validateExact(*edge.block, kTol).empty());
+    topo::HalfEdge* h = edge.edge->halfEdge;
+    const math::Vec2 a = h->pcurve->evaluate(h->pcurveStart);
+    const math::Vec2 b = h->pcurve->evaluate(h->pcurveEnd);
+    h->pcurve = std::make_shared<geo::Nurbs2D>(
+        std::vector<math::Vec2>{a, b, a, b}, std::vector<double>{1, 1, 1, 1},
         std::vector<double>{0, 0, 1.0 / 3, 2.0 / 3, 1, 1}, 1);
+    h->pcurveStart = 0.0;
+    h->pcurveEnd = 1.0;
     const auto issues = topo::validateExact(*edge.block, kTol);
-    ASSERT_FALSE(issues.empty());
-    for (const auto& i : issues) {
-        EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve);
-        EXPECT_EQ(i.detail, "pcurve runs against, or winds differently round, the edge's curve");
-    }
+    ASSERT_EQ(issues.size(), 1u);
+    EXPECT_EQ(issues[0].kind, ExactIssueKind::PcurveOffCurve);
+    EXPECT_EQ(issues[0].edge, edge.edge);
+    EXPECT_EQ(issues[0].face, h->face);
+    EXPECT_EQ(issues[0].detail,
+              "pcurve runs against, or winds differently round, the edge's curve");
 }
 
 // Holes whose boxes overlap without the holes meeting keep the face clean, and holes that do

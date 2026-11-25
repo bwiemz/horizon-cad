@@ -4,6 +4,7 @@
 // unwrapped (horizon/topology/LoopUnwrap.h).
 
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "horizon/geometry/curves/Curve2D.h"
@@ -68,6 +69,10 @@ private:
         int of(double y) const;
         void build(double ylo, double yhi, std::size_t items);
         void add(int item, double ylo, double yhi);
+        /// Each item i registered over its heights ranges[i] (an empty or NaN range: none), in
+        /// as many buckets of [ylo, yhi] as keeps the registrations a few per item, whatever
+        /// the items' spans (a hostile file's long chords cannot fill memory).
+        void fill(double ylo, double yhi, const std::vector<std::pair<double, double>>& ranges);
     };
     struct Box {
         double x0, y0, x1, y1;
@@ -87,6 +92,9 @@ private:
     std::vector<double> sag_;
     std::vector<Box> bandBox_;
     Buckets bands_;
+    /// The chords whose band has no finite box (a sag that is infinite or not a number): each
+    /// is always looked at, so its own comparison decides.
+    std::vector<int> alwaysBand_;
 };
 
 }  // namespace hz::topo::detail

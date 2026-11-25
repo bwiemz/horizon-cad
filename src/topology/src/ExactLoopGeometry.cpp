@@ -179,6 +179,24 @@ void LoopIndex::Buckets::add(int item, double ylo, double yhi) {
     for (int b = of(ylo); b <= last; ++b) members[static_cast<std::size_t>(b)].push_back(item);
 }
 
+void LoopIndex::Buckets::fill(double ylo, double yhi,
+                              const std::vector<std::pair<double, double>>& ranges) {
+    const std::size_t n = ranges.size();
+    const auto registered = [](const std::pair<double, double>& r) { return r.first <= r.second; };
+    build(ylo, yhi, n);
+    for (int tries = 0; tries < 16; ++tries) {
+        std::size_t total = 0;
+        for (const auto& r : ranges) {
+            if (registered(r)) total += static_cast<std::size_t>(of(r.second) - of(r.first) + 1);
+        }
+        if (total <= kRegistrationsPerItem * n + kMaxBuckets || count == 1) break;
+        build(ylo, yhi, std::max<std::size_t>(2, static_cast<std::size_t>(count)));
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+        if (registered(ranges[i])) add(static_cast<int>(i), ranges[i].first, ranges[i].second);
+    }
+}
+
 LoopIndex::LoopIndex(const LoopPolygon& loop) : loop_(loop) {
     const std::size_t n = loop.size();
     if (n == 0) return;
@@ -200,31 +218,15 @@ LoopIndex::LoopIndex(const LoopPolygon& loop) : loop_(loop) {
         all = {std::min(all.x0, b.x0), std::min(all.y0, b.y0), std::max(all.x1, b.x1),
                std::max(all.y1, b.y1)};
     }
-    // Fewer buckets where items span many: the registrations stay a few per item.
-    const auto bucketed = [&](Buckets& into, double ylo, double yhi, const auto& rangeOf) {
-        into.build(ylo, yhi, n);
-        for (int tries = 0; tries < 8; ++tries) {
-            std::size_t total = 0;
-            for (std::size_t i = 0; i < n; ++i) {
-                const auto [y0, y1] = rangeOf(i);
-                total += static_cast<std::size_t>(into.of(y1) - into.of(y0) + 1);
-            }
-            if (total <= kRegistrationsPerItem * n + kMaxBuckets || into.count == 1) break;
-            into.build(ylo, yhi, std::max<std::size_t>(2, static_cast<std::size_t>(into.count)));
-        }
-        for (std::size_t i = 0; i < n; ++i) {
-            const auto [y0, y1] = rangeOf(i);
-            into.add(static_cast<int>(i), y0, y1);
-        }
-    };
-    bucketed(chords_, all.y0, all.y1, [&](std::size_t i) {
-        return std::pair{chordBox_[i].y0, chordBox_[i].y1};
-    });
-    bucketed(edges_, extent_.y0, extent_.y1, [&](std::size_t i) {
+    std::vector<std::pair<double, double>> ranges(n);
+    for (std::size_t i = 0; i < n; ++i) ranges[i] = {chordBox_[i].y0, chordBox_[i].y1};
+    chords_.fill(all.y0, all.y1, ranges);
+    for (std::size_t i = 0; i < n; ++i) {
         const Vec2& a = loop[i].a;
         const Vec2& b = loop[(i + 1) % n].a;
-        return std::pair{std::min(a.y, b.y), std::max(a.y, b.y)};
-    });
+        ranges[i] = {std::min(a.y, b.y), std::max(a.y, b.y)};
+    }
+    edges_.fill(extent_.y0, extent_.y1, ranges);
 }
 
 void LoopIndex::prepareBands() {
@@ -257,15 +259,17 @@ void LoopIndex::prepareBands() {
         ylo = 0.0;
         yhi = 0.0;
     }
-    bands_.build(ylo, yhi, n);
+    std::vector<std::pair<double, double>> ranges(n);
     for (std::size_t i = 0; i < n; ++i) {
         const Box& g = bandBox_[i];
         if (std::isfinite(g.y0) && std::isfinite(g.y1)) {
-            bands_.add(static_cast<int>(i), g.y0, g.y1);
+            ranges[i] = {g.y0, g.y1};
         } else {
-            for (auto& m : bands_.members) m.push_back(static_cast<int>(i));
+            ranges[i] = {1.0, 0.0};  // registered nowhere: always looked at
+            alwaysBand_.push_back(static_cast<int>(i));
         }
     }
+    bands_.fill(ylo, yhi, ranges);
 }
 
 math::Containment LoopIndex::classify(const Vec2& point) const {
@@ -301,6 +305,10 @@ bool LoopIndex::inBand(const Vec2& point) const {
         const auto k = static_cast<std::size_t>(i);
         const Box& g = bandBox_[k];
         if (point.x < g.x0 || point.x > g.x1 || point.y < g.y0 || point.y > g.y1) continue;
+        if (distanceToSegment(point, loop_[k].a, loop_[k].b) <= sag_[k]) return true;
+    }
+    for (const int i : alwaysBand_) {
+        const auto k = static_cast<std::size_t>(i);
         if (distanceToSegment(point, loop_[k].a, loop_[k].b) <= sag_[k]) return true;
     }
     return false;
