@@ -343,6 +343,42 @@ TEST(ExactDisplay, MassPropertiesMeasuresTheExactFaces) {
     EXPECT_NE(text.find("Volume: 6283.185 "), std::string::npos) << "2000 pi: " << text;
     EXPECT_NE(text.find("Surface area: 1884.956 "), std::string::npos) << "600 pi: " << text;
     EXPECT_EQ(text.find("As modelled"), std::string::npos) << text;
+    EXPECT_EQ(text.find("Exact to"), std::string::npos) << "a clean file: " << text;
+}
+
+// M8 (goal 6): a part exact only to the gaps its file gives its edges is said to be: Mass
+// Properties gives how far its edges stand off its faces, and the integration's estimate of its
+// error, which counts them, never a bare "Exact". A 4 mm block whose corner stands 1e-4 off its
+// three faces' planes, read as exact to that.
+TEST(ExactDisplay, MassPropertiesSaysWhatATolerantPartIsExactTo) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    std::string text = hz::step_text::block(false);
+    const std::string corner = "CARTESIAN_POINT('',(4.,4.,4.))";
+    ASSERT_NE(text.find(corner), std::string::npos);
+    text.replace(text.find(corner), corner.size(), "CARTESIAN_POINT('',(4.,4.,4.0001))");
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    const auto read = hz::io::StepFormat::fromString(text, nullptr, nullptr, inMillimetres);
+    ASSERT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    const QString step = dir.filePath(QStringLiteral("block.step"));
+    ASSERT_TRUE(hz::io::StepFormat::save(step.toStdString(), {read.front().get()}));
+    MainWindow w;
+    importInto(w, step);
+    ASSERT_NE(w.activeDocument()->exactSolid(), nullptr) << w.activeDocument()->exactNote();
+
+    DialogResponder answer(QMessageBox::Ok, QStringLiteral("Mass Properties"));
+    FormFiller filler(
+        QStringLiteral("Mass Properties"),
+        FormAnswers().choose(QStringLiteral("material"), QStringLiteral("None (volume only)")));
+    trigger(w, "action_mass_properties");
+    ASSERT_TRUE(filler.seen());
+    ASSERT_TRUE(answer.seen());
+    const std::string said = answer.text().toStdString();
+    EXPECT_NE(said.find("Exact to 0.0001 mm, as its file gives its edges"), std::string::npos)
+        << said;
+    EXPECT_NE(said.find("its volume and area to within "), std::string::npos) << said;
+    EXPECT_EQ(said.find("Exact (integrated"), std::string::npos) << said;
 }
 
 // A feature after the import drops the counterpart: the window draws the faceted part, meshed

@@ -85,6 +85,7 @@
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/modeling/TitleBlock.h"
 #include "horizon/render/SceneGraph.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AiAssistantPanel.h"
 #include "horizon/ui/AiSheetTools.h"
@@ -3642,10 +3643,16 @@ void MainWindow::onMassProperties() {
     const std::optional<model::Material>& material = chosen.second;
     const model::Material* density = material ? &*material : nullptr;
     // An imported part's exact counterpart is measured, integrated on its
-    // faces as read; any other part as modelled, and ideally below.
+    // faces as read, once, with the integration's estimate of its error; any
+    // other part as modelled, and ideally below.
     const topo::Solid* exact = m_document->exactSolid();
-    const auto modelled =
-        model::MassPropertiesCalculator::compute(exact ? *exact : *solid, density);
+    model::IdealMassProperties exactMeasure;
+    if (exact != nullptr) {
+        exactMeasure = model::MassPropertiesCalculator::computeIdeal(*exact, density);
+    }
+    const model::MassProperties modelled =
+        exact != nullptr ? exactMeasure.properties
+                         : model::MassPropertiesCalculator::compute(*solid, density);
     if (!modelled.valid) {
         statusBar()->showMessage(modelled.problem.empty()
                                      ? tr("The part's mass properties could not be worked out")
@@ -3696,10 +3703,32 @@ void MainWindow::onMassProperties() {
         weighed ? tr("%1: density %2 g/%3\n\n").arg(materialName, n(modelled.density / 1000.0), cm3)
                 : QString();
     if (exact) {
-        QMessageBox::information(
-            this, verb,
-            header + tr("Exact (integrated on its faces as they were imported):\n") +
-                measures(modelled) + QStringLiteral("\n\n") + inertia(modelled, tr("exact")));
+        // Exact to what its file gives its edges, and said so (goal 6): how far
+        // its edges were let stand off its faces, where that is past the
+        // model's resolution, and the integration's estimate of its error,
+        // which counts them, where that is past a billionth.
+        double standOff = 0.0;
+        for (const auto& edge : exact->edges()) {
+            if (edge.alive) standOff = std::max(standOff, edge.tolerance);
+        }
+        const bool tolerant = standOff > topo::exactTolerance(*exact).linear;
+        const QString within =
+            QString::number(100.0 * exactMeasure.estimatedError, 'g', 2) + QLatin1Char('%');
+        QString said;
+        if (tolerant) {
+            said = tr("Exact to %1 %2, as its file gives its edges (integrated on its faces as "
+                      "they were imported; its volume and area to within %3):\n")
+                       .arg(n(standOff / per), u, within);
+        } else if (exactMeasure.estimatedError > 1e-9) {
+            said = tr("Exact (integrated on its faces as they were imported; its volume and area "
+                      "to within %1):\n")
+                       .arg(within);
+        } else {
+            said = tr("Exact (integrated on its faces as they were imported):\n");
+        }
+        QMessageBox::information(this, verb,
+                                 header + said + measures(modelled) + QStringLiteral("\n\n") +
+                                     inertia(modelled, tr("exact")));
         return;
     }
 
