@@ -10,7 +10,7 @@ user can reach it in the application.
 | Area | What users of SolidWorks / AutoCAD expect | What Horizon has | Gap |
 |------|------------------------------------------|------------------|-----|
 | **AI** | Neither has an assistant that builds parts or edits drawings from a request. | Claude, GPT, Gemini and local models; tools for parts, assemblies, drawings (made and edited), views of the model; every change one undo step; `horizon-mcp` for outside AI clients. | **Ahead.** Keep widening the tools as features land. |
-| **Geometry kernel** | Exact B-Rep (Parasolid / ACIS): true cylinders, fillets and NURBS, booleans on exact surfaces. | A B-Rep whose faces are facets that record their true surface; booleans on the facets. Volumes converge with resolution. Beside it, stage 1 of an exact kernel, which nothing in the application reads yet: typed analytic and NURBS surfaces and curves, pcurves, one tolerance model, exact predicates, an exact validator, constrained Delaunay triangulation, watertight meshing of trimmed faces. | **Largest gap**, being closed in-house in seven stages; stage 1 is done, and stage 2 (exact exchange) is the first the application sees. |
+| **Geometry kernel** | Exact B-Rep (Parasolid / ACIS): true cylinders, fillets and NURBS, booleans on exact surfaces. | A B-Rep whose faces are facets that record their true surface; booleans on the facets. Volumes converge with resolution. Beside it, the first two stages of an exact kernel: its foundations (typed analytic and NURBS surfaces and curves, pcurves, one tolerance model, exact predicates, an exact validator, watertight meshing of trimmed faces), and exact exchange. A STEP import keeps its faces exact, and an imported part is drawn, measured and exported from them, its mass exact; features still work on its facets. | **Largest gap**, being closed in-house in seven stages; stages 1 and 2 are done, and stage 3 (exact construction) makes the parts Horizon builds exact. |
 | **Part features** | Extrude, revolve, sweep, loft, fillet, chamfer, shell, draft, hole wizard, patterns, mirror, ribs, configurations. | All of these but ribs; configurations; variables. Fillet and loft are experimental on hard inputs. | Small in breadth; robustness on hard inputs. |
 | **Sheet metal** | Base flange from an open sketch, edge flanges, hems, bend tables, flat pattern to DXF for cutting. | A folded-strip library (bends, K-factor, bend allowance, flat-pattern length), **not reachable** in the application. | **Large and cheap to start**: the maths exists. Next step. |
 | **Assemblies** | Mates, subassemblies, patterns, interference, exploded views, BOM, motion. | All, motion as studies of a mate driven through a range. Experimental. | Moderate: flexible subassemblies; motion over time, with forces. |
@@ -42,7 +42,11 @@ is in [the exact kernel spec](../specs/2026-11-24-exact-kernel-design.md).
 Stage 1 is done: typed analytic and NURBS surfaces and curves, pcurves, one
 tolerance model, exact robust predicates, an exact validator, Pattern copies
 that keep exact geometry, constrained Delaunay triangulation, and watertight
-meshing of trimmed faces at `BoundaryMesh`'s read point. Nothing in the
-application reads exact geometry until stage 2, exact exchange. Until then the
-facets-with-true-surfaces kernel keeps volumes, masses and exports right to a
-chosen accuracy, which is what most parts need.
+meshing of trimmed faces at `BoundaryMesh`'s read point. Stage 2, exact
+exchange, is done too, and is the first the application sees: a STEP import
+keeps its faces exact (62 of the interop corpus's 64 solids; the other two
+are left out with why), and an imported part is drawn, measured and exported
+from its exact faces, while every feature still works on its faceted copy.
+The parts Horizon builds stay faceted until stage 3, exact construction. Until
+then the facets-with-true-surfaces kernel keeps their volumes, masses and
+exports right to a chosen accuracy, which is what most parts need.

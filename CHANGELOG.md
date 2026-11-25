@@ -19,6 +19,18 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Exact kernel, stage 2: exact exchange.** A STEP import keeps its faces
+  exact: typed planes, cylinders, cones, spheres and tori, and the file's own
+  B-splines, each edge's tolerance grown to the gaps the file gives it, which
+  the import states ("exact to 0.00299 mm, as the file gives its edges"). An
+  imported part is drawn, measured and exported from those faces: its mass
+  properties are integrated over them, and a STEP round trip writes each
+  surface back as it came. Features still work on its faceted copy. A solid
+  that cannot be made exact yet is left out and the import says why: two of
+  the interop corpus's 64 solids are, and the spec lists them with every
+  other shape this stage leaves out. Design:
+  [the exact kernel spec](docs/superpowers/specs/2026-11-24-exact-kernel-design.md).
+
 - **Exact kernel, stage 1.** The foundations of an in-house exact B-rep kernel,
   with nothing in the application reading them yet: typed analytic and NURBS
   surfaces and curves, pcurves, one tolerance model, exact predicates, an exact
