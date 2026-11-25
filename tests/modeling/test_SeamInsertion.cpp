@@ -709,6 +709,28 @@ TEST(SeamInsertion, ALoopWindingRoundBothWaysIsRefused) {
     EXPECT_TRUE(seamsOf(*side).empty());
 }
 
+// The parts of a rim a seam's line splits are pieces of it, `<rim>/piece:0` and `/piece:1`: a
+// reference to the rim, as a feature keeps it, has no exact match left and takes both (FilletOp
+// and ChamferOp take an exact match alone where there is one).
+TEST(SeamInsertion, ASplitRimsPartsAreItsPieces) {
+    const auto solid = bandCylinder(2.0);
+    ASSERT_NE(solid, nullptr);
+    std::string rim;
+    for (const auto& e : solid->edges()) {
+        if (std::abs(e.halfEdge->origin->point.z - 2.0) < 1e-12) rim = e.topoId.tag();
+    }
+    ASSERT_FALSE(rim.empty());
+    EXPECT_EQ(hz::model::insertSeams(*solid, topo::exactTolerance(*solid)), "");
+    const auto whole = topo::TopologyID::fromTag(rim);
+    std::vector<std::string> pieces;
+    for (const auto& e : solid->edges()) {
+        EXPECT_NE(e.topoId, whole) << "no part keeps the whole rim's name";
+        if (e.topoId.isDescendantOf(whole)) pieces.push_back(e.topoId.tag());
+    }
+    std::sort(pieces.begin(), pieces.end());
+    EXPECT_EQ(pieces, (std::vector<std::string>{rim + "/piece:0", rim + "/piece:1"}));
+}
+
 // A face no seam can join says why, and is left as it was: a sphere's cap bounded by its rim
 // alone (one loop round it, and no pole to run a seam to), and a band whose two loops run round
 // the same way in (u, v), which no seam closes.

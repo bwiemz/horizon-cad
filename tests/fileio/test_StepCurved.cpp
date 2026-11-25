@@ -1213,3 +1213,72 @@ TEST(StepCurvedTest, ASweptEllipseIsAnEllipticCylinder) {
     expectRelative(m.ideal.properties.volume, kPi * 2.0 * 1.0 * 2.0, 1e-9, "the cylinder");
     EXPECT_EQ(m.outlined, 0u);
 }
+
+namespace {
+
+/// bandCylinder(), its top rim's vertex at @p topVertex, imported into @p part as a body.
+void importBand(hz::doc::Document& part, const std::string& topVertex) {
+    std::string text = bandCylinder();
+    const std::string vertex = "#12 = CARTESIAN_POINT('',(1.,0.,2.));";
+    text.replace(text.find(vertex), vertex.size(), "#12 = CARTESIAN_POINT(''," + topVertex + ");");
+    auto solids = StepFormat::fromString(text, nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    part.featureTree().addFeature(std::make_unique<hz::doc::ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(solids[0])), "band.step"));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.solid(), nullptr);
+}
+
+/// The chords of @p solid's top rim (at z = 2), by the names the part gives them.
+std::vector<std::string> topRimChords(const hz::topo::Solid& solid) {
+    std::vector<std::string> names;
+    for (const auto& e : solid.edges()) {
+        const hz::math::Vec3 a = e.halfEdge->origin->point;
+        const hz::math::Vec3 b = e.halfEdge->twin->origin->point;
+        if (std::abs(a.z - 2.0) < 1e-9 && std::abs(b.z - 2.0) < 1e-9) {
+            names.push_back(e.topoId.tag());
+        }
+    }
+    return names;
+}
+
+}  // namespace
+
+// A fillet saved on an imported band's rim names the rim as the part names it, after the faces
+// it parts: each chord's logical edge. The seam's split of the exact rim leaves that name whole:
+// every chord of both its parts carries it, and nothing else does, so a reference to the rim
+// takes all of it. Where the rims' vertices are in line, the seamed side is cut into a grid of
+// quads, and the fillet rounds the rim all round: about 0.0515 comes off, the corner's
+// (1 - pi / 4) 0.2^2 round it. (Every band's side was cut into triangles before its seam, and a
+// fillet on its rim failed, as it still does where the rim is split, whose parts' chords do not
+// line up with the other rim's to the last bit: a mitered fillet needs three edges at each
+// vertex of its chain.)
+TEST(StepCurvedTest, AFilletOnAnImportedBandsRimRoundsAllOfIt) {
+    for (const std::string& top : {std::string("(1.,0.,2.)"), std::string("(0.,1.,2.)")}) {
+        SCOPED_TRACE(top);
+        hz::doc::Document part;
+        importBand(part, top);
+        ASSERT_NE(part.solid(), nullptr);
+        const auto chords = topRimChords(*part.solid());
+        ASSERT_EQ(chords.size(), 32u);
+        const std::string rim = hz::model::logicalEdge(chords.front());
+        int named = 0;
+        for (const auto& e : part.solid()->edges()) {
+            if (hz::model::logicalEdge(e.topoId.tag()) == rim) ++named;
+        }
+        for (const auto& chord : chords) EXPECT_EQ(hz::model::logicalEdge(chord), rim);
+        EXPECT_EQ(named, 32) << "the rim's chords, and nothing else";
+    }
+
+    hz::doc::Document part;
+    importBand(part, "(1.,0.,2.)");
+    ASSERT_NE(part.solid(), nullptr);
+    const double before = MassPropertiesCalculator::compute(*part.solid()).volume;
+    const std::string rim = hz::model::logicalEdge(topRimChords(*part.solid()).front());
+    part.featureTree().addFeature(std::make_unique<hz::doc::FilletFeature>(
+        std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::fromTag(rim)}, 0.2));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.solid(), nullptr);
+    const double off = before - MassPropertiesCalculator::compute(*part.solid()).volume;
+    EXPECT_NEAR(off, 0.0515, 0.0515 * 0.05) << "all round the rim, not half";
+}

@@ -36,7 +36,9 @@ namespace hz::model {
 /// - **The splits.** Each new vertex lies on its edge's exact curve. Both of the edge's
 ///   half-edges keep their pcurves, split at the matching parameters, and the vertex's tolerance
 ///   covers how far those pcurves have it. Each new edge keeps its edge's tolerance, and the
-///   seam's tolerance covers how far its curve passes from the vertices it joins.
+///   seam's tolerance covers how far its curve passes from the vertices it joins. The parts of a
+///   split edge are its pieces, `<edge>/piece:<k>`, so a reference to the edge takes them all;
+///   the seam is `<face>/seam:<0 for u, 1 for v>`.
 /// - **Failure.** A face that cannot be given its seam may be left with edges split. The solid
 ///   stays combinatorially valid.
 std::string insertSeams(topo::Solid& solid, const math::ModelTolerance& tolerance);

@@ -446,6 +446,45 @@ std::string planSplit(HalfEdge& h, double s, const math::ModelTolerance& toleran
     return {};
 }
 
+/// The number @p digits spells, or nullopt where it is not all digits or has more than nine.
+std::optional<int> pieceNumber(const std::string& digits) {
+    if (digits.empty() || digits.size() > 9) return std::nullopt;
+    int k = 0;
+    for (const char c : digits) {
+        if (c < '0' || c > '9') return std::nullopt;
+        k = k * 10 + (c - '0');
+    }
+    return k;
+}
+
+/// The edge a name `<edge>/piece:<k>` is a piece of, or nullopt for a name of no piece.
+std::optional<std::string> pieceOf(const std::string& tag) {
+    const std::size_t at = tag.rfind("/piece:");
+    if (at == std::string::npos || !pieceNumber(tag.substr(at + 7))) return std::nullopt;
+    return tag.substr(0, at);
+}
+
+/// The names of the two parts a split of @p e leaves, the part from its start first: pieces of
+/// the edge it was (`<edge>/piece:<k>`), as the kernel names what an operation cuts in pieces,
+/// so a reference to the edge has no exact match left and takes them all as its descendants. A
+/// piece cut again keeps its name, and its new part is the edge's next piece. Nameless where @p e
+/// is.
+std::pair<topo::TopologyID, topo::TopologyID> pieceNames(const Solid& solid, const Edge& e) {
+    if (!e.topoId.isValid()) return {};
+    const std::optional<std::string> whole = pieceOf(e.topoId.tag());
+    if (!whole) {
+        return {e.topoId.child("piece", 0), e.topoId.child("piece", 1)};
+    }
+    const std::string prefix = *whole + "/piece:";
+    int next = 1;
+    for (const Edge& other : solid.edges()) {
+        const std::string& tag = other.topoId.tag();
+        if (tag.compare(0, prefix.size(), prefix) != 0) continue;
+        if (const auto k = pieceNumber(tag.substr(prefix.size())); k && *k >= next) next = *k + 1;
+    }
+    return {e.topoId, topo::TopologyID::fromTag(*whole).child("piece", next)};
+}
+
 /// Splits the edge of @p plan's half-edge as planned: the edge keeps its start to the new
 /// vertex, a new edge runs on from it, and each half-edge's pcurve is split at its parameter.
 /// Returns the half-edge of the planned half-edge's loop that leaves the new vertex.
@@ -456,15 +495,17 @@ HalfEdge* applySplit(Solid& solid, const Split& plan) {
     HalfEdge* backward = forward->twin;
     const double sForward = h == forward ? plan.sOwn : plan.sTwin;
     const double sBackward = h == forward ? plan.sTwin : plan.sOwn;
-    const int index = static_cast<int>(solid.edges().size());
+
+    auto [first, second] = pieceNames(solid, e);
 
     Vertex* v = solid.allocVertex();
     v->point = plan.point;
     v->tolerance = plan.vertexTolerance;
-    v->topoId = e.topoId.child("crossing", index);
+    if (second.isValid()) v->topoId = second.child("start", 0);
 
     Edge* rest = solid.allocEdge();
-    rest->topoId = e.topoId.child("split", index);
+    e.topoId = std::move(first);
+    rest->topoId = std::move(second);
     rest->exactCurve = e.exactCurve;
     rest->curveStart = plan.t;
     rest->curveEnd = e.curveEnd;
