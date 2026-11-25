@@ -39,7 +39,10 @@ struct StepReadOptions {
 };
 
 /// What a write as designed could not do: the curved faces kept in
-/// facets, each with why; and, for an assembly, the occurrences left out.
+/// facets, each with why, and the exact faces and edges not written as their
+/// kind (a surface or curve whose numbers no STEP entity holds), each with
+/// why and what took its place; and, for an assembly, the occurrences left
+/// out.
 struct StepWriteReport {
     std::vector<std::string> faceted;
     std::vector<std::string> leftOut;

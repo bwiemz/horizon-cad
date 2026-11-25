@@ -40,17 +40,23 @@
 using hz::io::ImportReport;
 using hz::io::StepFormat;
 using hz::math::Vec3;
+using hz::step_text::alibreTube;
+using hz::step_text::apexCone;
 using hz::step_text::bandCylinder;
 using hz::step_text::block;
 using hz::step_text::blockWithABall;
 using hz::step_text::cone;
 using hz::step_text::Data;
+using hz::step_text::drillPoint;
 using hz::step_text::externalStyleCylinder;
 using hz::step_text::real;
+using hz::step_text::seamedCap;
 using hz::step_text::seamedHemisphere;
 using hz::step_text::sphere;
 using hz::step_text::splineCylinder;
+using hz::step_text::splineSphereSurface;
 using hz::step_text::torus;
+using hz::step_text::vertexLoopBall;
 
 namespace {
 
@@ -1044,6 +1050,51 @@ TEST(StepExact, ASeamPastTheLimitLeavesItsSolidOut) {
 
 namespace {
 
+/// A cylinder of radius 1 about z, its bottom flat at z = 0 and its top cut by the plane through
+/// (0, 0, 2) tilted 45 degrees about x: its top rim an ELLIPSE (semi-axes sqrt 2 and 1) in that
+/// plane. Its volume is 2 pi.
+std::string obliqueCut() {
+    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CIRCLE('',#4,1.);
+#6 = CARTESIAN_POINT('',(0.,1.,0.));
+#7 = VERTEX_POINT('',#6);
+#8 = CARTESIAN_POINT('',(0.,0.,2.));
+#9 = DIRECTION('',(0.,-0.7071067811865476,0.7071067811865476));
+#10 = DIRECTION('',(0.,0.7071067811865476,0.7071067811865476));
+#11 = AXIS2_PLACEMENT_3D('',#8,#9,#10);
+#12 = ELLIPSE('',#11,1.4142135623730951,1.);
+#13 = CARTESIAN_POINT('',(0.,1.,3.));
+#14 = VERTEX_POINT('',#13);
+#15 = EDGE_CURVE('',#7,#7,#5,.T.);
+#16 = EDGE_CURVE('',#14,#14,#12,.T.);
+#17 = LINE('',#6,VECTOR('',#2,1.));
+#18 = EDGE_CURVE('',#7,#14,#17,.T.);
+#19 = CYLINDRICAL_SURFACE('',#4,1.);
+#20 = ORIENTED_EDGE('',*,*,#15,.T.);
+#21 = ORIENTED_EDGE('',*,*,#18,.T.);
+#22 = ORIENTED_EDGE('',*,*,#16,.F.);
+#23 = ORIENTED_EDGE('',*,*,#18,.F.);
+#24 = EDGE_LOOP('',(#20,#21,#22,#23));
+#25 = FACE_OUTER_BOUND('',#24,.T.);
+#26 = ADVANCED_FACE('',(#25),#19,.T.);
+#27 = PLANE('',#4);
+#28 = ORIENTED_EDGE('',*,*,#15,.F.);
+#29 = EDGE_LOOP('',(#28));
+#30 = FACE_OUTER_BOUND('',#29,.T.);
+#31 = ADVANCED_FACE('',(#30),#27,.F.);
+#32 = PLANE('',#11);
+#33 = ORIENTED_EDGE('',*,*,#16,.T.);
+#34 = EDGE_LOOP('',(#33));
+#35 = FACE_OUTER_BOUND('',#34,.T.);
+#36 = ADVANCED_FACE('',(#35),#32,.T.);
+#37 = CLOSED_SHELL('',(#26,#31,#36));
+#38 = MANIFOLD_SOLID_BREP('oblique cut',#37);
+)");
+}
+
 /// @p solid written to STEP and read back: its one solid, or null. @p text, when given, receives
 /// what was written.
 std::unique_ptr<topo::Solid> writtenAndRead(const topo::Solid& solid, std::string* text = nullptr) {
@@ -1332,6 +1383,15 @@ TEST(StepExact, ARoundTripChangesNoSurface) {
     read("split rims", cylinderWithSplitRims(), inMillimetres());
     read("a band", bandCylinder(), inMillimetres());
     read("Solid Edge's bore", solidEdgeCylinder(), inMillimetres());
+    read("an apex cone, as Unigraphics writes one", apexCone(), inMillimetres());
+    read("a ball bounded by a point", vertexLoopBall(), inMillimetres());
+    read("a drill's point", drillPoint(), inMillimetres());
+    read("Alibre's tube", alibreTube(), inMillimetres());
+    read("a seamed cap", seamedCap(5.0), inMillimetres());
+    read("a seamed B-spline hemisphere", seamedHemisphere("#20,#21,#22", splineSphereSurface(10.0)),
+         inMillimetres());
+    read("a cylinder with a B-spline cap", splineCappedCylinder(), inMillimetres());
+    read("an oblique cut (an ELLIPSE rim)", obliqueCut(), inMillimetres());
     read("a file in inches",
          withEntities(replaced(externalStyleCylinder(), "VECTOR('',#2,1.)", "VECTOR('',#2,2.)"),
                       inches()),
@@ -1508,4 +1568,173 @@ TEST(StepExact, AMixedSolidGoesOutWithEachFaceAsItIs) {
     EXPECT_EQ(firstIssue(*back), "");
     const double volume = 2.0 * hz::math::kPi + 24.0;
     EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*back).volume, volume, volume * 1e-9);
+}
+
+namespace {
+
+/// A cylinder of radius 1 and height 2 whose side is two faces, one round 270 degrees of it (from
+/// (1, 0) the long way to (0, -1)) and one round the other 90 (the reviewer's probe).
+std::string splitCylinder() {
+    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CIRCLE('',#4,1.);
+#6 = CARTESIAN_POINT('',(0.,0.,2.));
+#7 = AXIS2_PLACEMENT_3D('',#6,#2,#3);
+#8 = CIRCLE('',#7,1.);
+#10 = CARTESIAN_POINT('',(1.,0.,0.));
+#11 = VERTEX_POINT('',#10);
+#12 = CARTESIAN_POINT('',(0.,-1.,0.));
+#13 = VERTEX_POINT('',#12);
+#14 = CARTESIAN_POINT('',(1.,0.,2.));
+#15 = VERTEX_POINT('',#14);
+#16 = CARTESIAN_POINT('',(0.,-1.,2.));
+#17 = VERTEX_POINT('',#16);
+#18 = VECTOR('',#2,1.);
+#19 = LINE('',#10,#18);
+#20 = LINE('',#12,#18);
+#21 = EDGE_CURVE('',#11,#13,#5,.T.);
+#22 = EDGE_CURVE('',#13,#11,#5,.T.);
+#23 = EDGE_CURVE('',#15,#17,#8,.T.);
+#24 = EDGE_CURVE('',#17,#15,#8,.T.);
+#25 = EDGE_CURVE('',#11,#15,#19,.T.);
+#26 = EDGE_CURVE('',#13,#17,#20,.T.);
+#27 = CYLINDRICAL_SURFACE('',#4,1.);
+#30 = ORIENTED_EDGE('',*,*,#21,.T.);
+#31 = ORIENTED_EDGE('',*,*,#26,.T.);
+#32 = ORIENTED_EDGE('',*,*,#23,.F.);
+#33 = ORIENTED_EDGE('',*,*,#25,.F.);
+#34 = EDGE_LOOP('',(#30,#31,#32,#33));
+#35 = FACE_OUTER_BOUND('',#34,.T.);
+#36 = ADVANCED_FACE('big270',(#35),#27,.T.);
+#40 = ORIENTED_EDGE('',*,*,#22,.T.);
+#41 = ORIENTED_EDGE('',*,*,#25,.T.);
+#42 = ORIENTED_EDGE('',*,*,#24,.F.);
+#43 = ORIENTED_EDGE('',*,*,#26,.F.);
+#44 = EDGE_LOOP('',(#40,#41,#42,#43));
+#45 = FACE_OUTER_BOUND('',#44,.T.);
+#46 = ADVANCED_FACE('small90',(#45),#27,.T.);
+#50 = PLANE('',#4);
+#51 = ORIENTED_EDGE('',*,*,#22,.F.);
+#52 = ORIENTED_EDGE('',*,*,#21,.F.);
+#53 = EDGE_LOOP('',(#51,#52));
+#54 = FACE_OUTER_BOUND('',#53,.T.);
+#55 = ADVANCED_FACE('bottom',(#54),#50,.F.);
+#60 = PLANE('',#7);
+#61 = ORIENTED_EDGE('',*,*,#23,.T.);
+#62 = ORIENTED_EDGE('',*,*,#24,.T.);
+#63 = EDGE_LOOP('',(#61,#62));
+#64 = FACE_OUTER_BOUND('',#63,.T.);
+#65 = ADVANCED_FACE('top',(#64),#60,.T.);
+#70 = CLOSED_SHELL('',(#36,#46,#55,#65));
+#71 = MANIFOLD_SOLID_BREP('split 270/90',#70);
+)");
+}
+
+/// @p solid without its exact form, as a body kept as it was is (StepReadOptions::
+/// keepWhenNotExact): its carriers alone.
+void stripExact(topo::Solid& solid) {
+    for (auto& e : solid.edges()) {
+        e.exactCurve = nullptr;
+        e.curveStart = 0.0;
+        e.curveEnd = 0.0;
+        e.tolerance = 0.0;
+    }
+    for (auto& f : solid.faces()) {
+        f.exactSurface = nullptr;
+        f.reversed = false;
+        std::vector<topo::Wire*> loops{f.outerLoop};
+        loops.insert(loops.end(), f.innerLoops.begin(), f.innerLoops.end());
+        for (topo::Wire* w : loops) {
+            topo::HalfEdge* h = w->halfEdge;
+            do {
+                h->pcurve = nullptr;
+                h = h->next;
+            } while (h != w->halfEdge);
+        }
+    }
+}
+
+}  // namespace
+
+// Fix round 1, Important 1: a face with no exact geometry goes out on its carrier, its same_sense
+// whether the carrier faces the way its loops run in the carrier's own (u, v). A cylinder's side
+// split into a face round 270 degrees and one round 90, kept without its exact form (an old part's
+// body): the 270-degree face's corners have their middle in the 90-degree gap, where the carrier
+// faces the other way, yet each carrier faces out of its face. Written and read back, every
+// carrier faces out at its face's own middle, as each did as read.
+TEST(StepExact, ACarrierRoundMostOfItsSurfaceIsWrittenFacingAsItsFace) {
+    auto in = StepFormat::fromString(splitCylinder(), nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(in.size(), 1u) << StepFormat::lastError();
+    stripExact(*in[0]);
+    const auto back = StepFormat::fromString(StepFormat::toString({in[0].get()}));
+    ASSERT_EQ(back.size(), 1u) << StepFormat::lastError();
+    int sides = 0;
+    for (const auto& f : back[0]->faces()) {
+        ASSERT_NE(f.surface, nullptr);
+        // A side reaches both rims; its middle is its bottom arc's, half way up.
+        const topo::HalfEdge* h = f.outerLoop->halfEdge;
+        const topo::Edge* arc = nullptr;
+        bool top = false;
+        do {
+            const Vec3& a = h->origin->point;
+            const Vec3& b = h->next->origin->point;
+            top = top || a.z > 1.0;
+            if (a.z < 1.0 && b.z < 1.0) arc = h->edge;
+            h = h->next;
+        } while (h != f.outerLoop->halfEdge);
+        if (arc == nullptr || !top) continue;
+        const Vec3 at = arc->exactCurve->evaluate(0.5 * (arc->curveStart + arc->curveEnd));
+        const auto [u, v] = f.surface->locate(Vec3{at.x, at.y, 1.0});
+        EXPECT_GT(f.surface->normal(u, v).dot(Vec3{at.x, at.y, 0.0}), 0.99)
+            << f.topoId.tag() << ": its carrier faces into the solid";
+        ++sides;
+    }
+    EXPECT_EQ(sides, 2);
+}
+
+// Fix round 1, Important 2: an exact face or edge whose numbers no STEP entity holds (a cone's
+// half-angle of 90 degrees, a circle of radius 0) goes out as it did before the exact kernel, on
+// its carrier, and the write report says so; one with no carrier is left out, and says that.
+TEST(StepExact, AnExactFaceOrEdgeNotWrittenAsItsKindIsSaid) {
+    auto in = StepFormat::fromString(externalStyleCylinder(), nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(in.size(), 1u) << StepFormat::lastError();
+    topo::Solid& cylinder = *in[0];
+    const geo::Frame frame = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
+    for (auto& f : cylinder.faces()) {
+        if (f.exactSurface->kind() == geo::SurfaceKind::Cylinder) {
+            f.exactSurface = std::make_shared<geo::Cone>(frame, 1.0, hz::math::kPi / 2.0);
+        }
+    }
+    for (auto& e : cylinder.edges()) {
+        if (e.exactCurve->kind() == geo::CurveKind::Circle && e.halfEdge->origin->point.z < 1.0) {
+            e.exactCurve = std::make_shared<geo::CircleCurve>(frame, 0.0);
+        }
+    }
+    StepFormat::WriteReport report;
+    const std::string text = StepFormat::toString({&cylinder}, {}, &report);
+    EXPECT_EQ(text.find("CONICAL_SURFACE"), std::string::npos);
+    EXPECT_TRUE(anySays(report.faceted,
+                        "face step/solid:0/f:27: not written as its kind (its cone's half-angle is "
+                        "not between 0 and 90 degrees); written on its carrier"))
+        << (report.faceted.empty() ? "nothing said" : report.faceted.front());
+    EXPECT_TRUE(anySays(report.faceted,
+                        "edge step/solid:0/e:14: not written as its kind (its circle's radius is "
+                        "not positive); written on its carrier"));
+
+    // An exact primitive has no carriers: such a face of it is left out, and said so.
+    auto primitive = hz::model::exact::makeCylinder(frame, 1.0, 2.0);
+    ASSERT_NE(primitive, nullptr);
+    for (auto& f : primitive->faces()) {
+        if (f.exactSurface->kind() == geo::SurfaceKind::Cylinder) {
+            f.exactSurface = std::make_shared<geo::Cone>(frame, 1.0, hz::math::kPi / 2.0);
+        }
+    }
+    StepFormat::WriteReport left;
+    StepFormat::toString({primitive.get()}, {}, &left);
+    EXPECT_TRUE(anySays(left.faceted,
+                        "face cylinder/side: not written as its kind (its cone's "
+                        "half-angle is not between 0 and 90 degrees); left out"))
+        << (left.faceted.empty() ? "nothing said" : left.faceted.front());
 }

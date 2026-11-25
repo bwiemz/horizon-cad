@@ -228,12 +228,18 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
     }
 }
 
-std::vector<double> MassPropertiesCalculator::shellVolumes(const topo::Solid& solid,
-                                                           std::string* problem, double accuracy,
-                                                           const std::atomic<bool>* cancelled) {
-    detail::ShellVolumes measured = detail::measureShellVolumes(solid, accuracy, cancelled);
+std::vector<ShellVolume> MassPropertiesCalculator::shellVolumes(const topo::Solid& solid,
+                                                                bool coarse, std::string* problem,
+                                                                const std::atomic<bool>* cancelled,
+                                                                const std::vector<bool>& which) {
+    detail::ShellVolumes measured = detail::measureShellVolumes(solid, coarse, cancelled, which);
     if (problem != nullptr) *problem = std::move(measured.problem);
-    return std::move(measured.volumes);
+    std::vector<ShellVolume> out;
+    out.reserve(measured.volumes.size());
+    for (std::size_t i = 0; i < measured.volumes.size() && i < measured.errors.size(); ++i) {
+        out.push_back({measured.volumes[i], measured.errors[i]});
+    }
+    return out;
 }
 
 }  // namespace hz::model

@@ -343,13 +343,21 @@ struct WrittenSurface {
 /// geometry it makes (Ruling 42): a plane through its frame's origin about x × y, with its x; a
 /// surface of revolution about its frame's z with its x. A left-handed frame (a mirror image's),
 /// or a negative axial scale, then runs the surface's u (or v) the other way, and the surface
-/// written faces against it: said in `flipped`. Nullopt where its numbers make none STEP holds
-/// (a radius that is not positive, a cone's half-angle outside (0, pi/2), a scale of 0): the
-/// face goes out on its carrier, as before the exact kernel.
-std::optional<WrittenSurface> writeExactSurface(StepWriter& w, const geo::Surface& s) {
+/// written faces against it: said in `flipped`. Nullopt, with why in @p why ("its cone's
+/// half-angle is not between 0 and 90 degrees"), where its numbers make none STEP holds (a radius
+/// that is not positive, a cone's half-angle outside (0, pi/2), a scale of 0): the face goes out
+/// on its carrier, as before the exact kernel, and the write report says so.
+std::optional<WrittenSurface> writeExactSurface(StepWriter& w, const geo::Surface& s,
+                                                std::string& why) {
+    const auto none = [&why](const std::string& because) -> std::optional<WrittenSurface> {
+        why = because;
+        return std::nullopt;
+    };
     const auto revolved = [&](const geo::Frame& f, double axialScale, const std::string& kind,
                               const std::string& radii) -> std::optional<WrittenSurface> {
-        if (!std::isfinite(axialScale) || axialScale == 0.0) return std::nullopt;
+        if (!std::isfinite(axialScale) || axialScale == 0.0) {
+            return none("its axial scale is 0 or not finite");
+        }
         const bool leftHanded = f.x.cross(f.y).dot(f.z) < 0.0;
         const int placement = writePlacement(w, f.origin, f.z, f.x);
         return WrittenSurface{w.add(kind + "('',#" + std::to_string(placement) + "," + radii + ")"),
@@ -358,32 +366,37 @@ std::optional<WrittenSurface> writeExactSurface(StepWriter& w, const geo::Surfac
     if (const auto* plane = dynamic_cast<const geo::Plane*>(&s)) {
         const geo::Frame& f = plane->frame();
         const Vec3 axis = f.x.cross(f.y);
-        if (!positiveFinite(axis.length()) || !std::isfinite(plane->scale()) ||
-            plane->scale() == 0.0) {
-            return std::nullopt;
+        if (!positiveFinite(axis.length())) return none("its plane's axes span no plane");
+        if (!std::isfinite(plane->scale()) || plane->scale() == 0.0) {
+            return none("its plane's scale is 0 or not finite");
         }
         const int placement = writePlacement(w, f.origin, axis * (1.0 / axis.length()), f.x);
         return WrittenSurface{w.add("PLANE('',#" + std::to_string(placement) + ")"), false};
     }
     if (const auto* cylinder = dynamic_cast<const geo::Cylinder*>(&s)) {
-        if (!positiveFinite(cylinder->radius())) return std::nullopt;
+        if (!positiveFinite(cylinder->radius())) {
+            return none("its cylinder's radius is not positive");
+        }
         return revolved(cylinder->frame(), cylinder->axialScale(), "CYLINDRICAL_SURFACE",
                         fmtReal(cylinder->radius()));
     }
     if (const auto* cone = dynamic_cast<const geo::Cone*>(&s)) {
         const double r = cone->radius();
         const double a = cone->halfAngle();
-        if (!std::isfinite(r) || r < 0.0 || !(a > 0.0 && a < math::kHalfPi)) return std::nullopt;
+        if (!std::isfinite(r) || r < 0.0) return none("its cone's radius is negative");
+        if (!(a > 0.0 && a < math::kHalfPi)) {
+            return none("its cone's half-angle is not between 0 and 90 degrees");
+        }
         return revolved(cone->frame(), cone->axialScale(), "CONICAL_SURFACE",
                         fmtReal(r) + "," + fmtReal(a));
     }
     if (const auto* sphere = dynamic_cast<const geo::Sphere*>(&s)) {
-        if (!positiveFinite(sphere->radius())) return std::nullopt;
+        if (!positiveFinite(sphere->radius())) return none("its sphere's radius is not positive");
         return revolved(sphere->frame(), 1.0, "SPHERICAL_SURFACE", fmtReal(sphere->radius()));
     }
     if (const auto* torus = dynamic_cast<const geo::Torus*>(&s)) {
         if (!positiveFinite(torus->majorRadius()) || !positiveFinite(torus->minorRadius())) {
-            return std::nullopt;
+            return none("its torus's radii are not positive");
         }
         return revolved(torus->frame(), 1.0, "TOROIDAL_SURFACE",
                         fmtReal(torus->majorRadius()) + "," + fmtReal(torus->minorRadius()));
@@ -391,7 +404,7 @@ std::optional<WrittenSurface> writeExactSurface(StepWriter& w, const geo::Surfac
     if (const auto* nurbs = dynamic_cast<const geo::NurbsSurface*>(&s)) {
         return WrittenSurface{writeSurface(w, *nurbs), false};
     }
-    return std::nullopt;
+    return none("its surface is of no kind STEP has");
 }
 
 /// @p c run the other way over the same domain: its net and weights reversed, its knots
@@ -413,11 +426,18 @@ geo::NurbsCurve reversedSpline(const geo::NurbsCurve& c) {
 /// placed about its frame's x × y with its x (so its y is the frame's, whichever hand the frame
 /// is), or its B-spline (writeCurve). With @p backward, the same curve running the other way: a
 /// line's direction, a conic's y (and so its axis) turned round, a B-spline's net reversed.
-/// Nullopt where its numbers make none STEP holds.
-std::optional<int> writeExactCurve(StepWriter& w, const geo::Curve3& c, bool backward = false) {
+/// Nullopt, with why in @p why, where its numbers make none STEP holds.
+std::optional<int> writeExactCurve(StepWriter& w, const geo::Curve3& c, std::string& why,
+                                   bool backward = false) {
+    const auto none = [&why](const std::string& because) -> std::optional<int> {
+        why = because;
+        return std::nullopt;
+    };
     if (const auto* line = dynamic_cast<const geo::LineCurve*>(&c)) {
         const double scale = line->scale();
-        if (!std::isfinite(scale) || scale == 0.0) return std::nullopt;
+        if (!std::isfinite(scale) || scale == 0.0) {
+            return none("its line's magnitude is 0 or not finite");
+        }
         const Vec3 direction =
             (scale < 0.0) != backward ? line->direction() * -1.0 : line->direction();
         const int point = w.addPoint(line->origin());
@@ -428,17 +448,17 @@ std::optional<int> writeExactCurve(StepWriter& w, const geo::Curve3& c, bool bac
     const auto placed = [&](const geo::Frame& f, const std::string& kind,
                             const std::string& radii) -> std::optional<int> {
         const Vec3 axis = f.x.cross(f.y) * (backward ? -1.0 : 1.0);
-        if (!positiveFinite(axis.length())) return std::nullopt;
+        if (!positiveFinite(axis.length())) return none("its axes span no plane");
         const int placement = writePlacement(w, f.origin, axis * (1.0 / axis.length()), f.x);
         return w.add(kind + "('',#" + std::to_string(placement) + "," + radii + ")");
     };
     if (const auto* circle = dynamic_cast<const geo::CircleCurve*>(&c)) {
-        if (!positiveFinite(circle->radius())) return std::nullopt;
+        if (!positiveFinite(circle->radius())) return none("its circle's radius is not positive");
         return placed(circle->frame(), "CIRCLE", fmtReal(circle->radius()));
     }
     if (const auto* ellipse = dynamic_cast<const geo::EllipseCurve*>(&c)) {
         if (!positiveFinite(ellipse->majorRadius()) || !positiveFinite(ellipse->minorRadius())) {
-            return std::nullopt;
+            return none("its ellipse's radii are not positive");
         }
         return placed(ellipse->frame(), "ELLIPSE",
                       fmtReal(ellipse->majorRadius()) + "," + fmtReal(ellipse->minorRadius()));
@@ -446,7 +466,7 @@ std::optional<int> writeExactCurve(StepWriter& w, const geo::Curve3& c, bool bac
     if (const auto* nurbs = dynamic_cast<const geo::NurbsCurve*>(&c)) {
         return backward ? writeCurve(w, reversedSpline(*nurbs)) : writeCurve(w, *nurbs);
     }
-    return std::nullopt;
+    return none("its curve is of no kind STEP has");
 }
 
 // ---------------------------------------------------------------------------
@@ -551,15 +571,84 @@ std::optional<std::pair<Vec3, Vec3>> flatPlaneOf(const topo::Face& f, double tol
     return plane;
 }
 
-/// Whether @p f's carrier faces the way its outer loop runs: its normal near the loop's middle
-/// against the loop's (planeOf). A loop whose corners make no polygon (a circle's one vertex)
-/// says nothing, and the carrier is taken to face as its face does, as the reader leaves every
-/// carrier it reads.
+/// Whether @p f's carrier faces the way its outer loop runs: the loop's winding in the carrier's
+/// own (u, v), counter-clockwise about du x dv. Its corners, and points along each edge's
+/// curve, are located on the carrier, each moved a whole period where the carrier closes, so
+/// that the loop runs on unbroken; a loop that comes back a period over (a band round the
+/// carrier), or whose (u, v) area is next to nothing (a seam there and back), says nothing, and
+/// the carrier is taken to face as its face does, as the reader leaves every carrier it reads.
+/// A point taken from the loop's corners alone does not do: on a face spanning more than half
+/// its carrier their middle lies off the face, where the carrier faces the other way.
 bool carrierRunsWithLoops(const topo::Face& f) {
-    const auto plane = planeOf(f);
-    if (!plane || f.surface == nullptr) return true;
-    const auto [u, v] = f.surface->locate(plane->second);
-    return f.surface->normal(u, v).dot(plane->first) >= 0.0;
+    if (f.surface == nullptr || f.outerLoop == nullptr || f.outerLoop->halfEdge == nullptr) {
+        return true;
+    }
+    const geo::NurbsSurface& s = *f.surface;
+    const double periodU = s.closedU() ? s.uMax() - s.uMin() : 0.0;
+    const double periodV = s.closedV() ? s.vMax() - s.vMin() : 0.0;
+    constexpr int kAlong = 8;  // points along a curved edge, its start among them
+    std::vector<math::Vec2> loop;
+    const auto unwrapped = [](double x, double previous, double period) {
+        return period > 0.0 ? x - period * std::round((x - previous) / period) : x;
+    };
+    const auto put = [&](const Vec3& p) {
+        const auto [u, v] = s.locate(p);
+        if (!std::isfinite(u) || !std::isfinite(v)) return false;
+        if (loop.empty()) {
+            loop.emplace_back(u, v);
+        } else {
+            loop.emplace_back(unwrapped(u, loop.back().x, periodU),
+                              unwrapped(v, loop.back().y, periodV));
+        }
+        return true;
+    };
+    const topo::HalfEdge* he = f.outerLoop->halfEdge;
+    std::size_t count = 0;
+    do {
+        if (he->origin == nullptr || he->next == nullptr || he->next->origin == nullptr) {
+            return true;
+        }
+        if (!put(he->origin->point)) return true;
+        const geo::NurbsCurve* c = he->edge != nullptr ? he->edge->curve.get() : nullptr;
+        if (c != nullptr && c->degree() > 1) {
+            // Along the half-edge: a curve runs from the end nearer its start, and a closed one
+            // the way its edge's own half-edge does.
+            const Vec3& from = he->origin->point;
+            const Vec3& to = he->next->origin->point;
+            const bool closed = (from - to).length() <= 1e-12 * std::max(1.0, from.length());
+            const bool forward = closed ? he->edge->halfEdge == he
+                                        : (c->evaluate(c->tMin()) - from).length() <=
+                                              (c->evaluate(c->tMax()) - from).length();
+            for (int k = 1; k < kAlong; ++k) {
+                const double f0 = static_cast<double>(k) / kAlong;
+                const double at = c->tMin() + (c->tMax() - c->tMin()) * (forward ? f0 : 1.0 - f0);
+                if (!put(c->evaluate(at))) return true;
+            }
+        }
+        he = he->next;
+    } while (he != nullptr && he != f.outerLoop->halfEdge && ++count < 100000);
+    if (loop.size() < 3) return true;
+    // Back where it started, not a period over.
+    const math::Vec2 back{unwrapped(loop.front().x, loop.back().x, periodU),
+                          unwrapped(loop.front().y, loop.back().y, periodV)};
+    if ((periodU > 0.0 && std::abs(back.x - loop.front().x) > 0.5 * periodU) ||
+        (periodV > 0.0 && std::abs(back.y - loop.front().y) > 0.5 * periodV)) {
+        return true;
+    }
+    double area = 0.0;
+    math::Vec2 lo = loop.front();
+    math::Vec2 hi = lo;
+    for (std::size_t i = 0; i < loop.size(); ++i) {
+        const math::Vec2& a = loop[i];
+        const math::Vec2& b = i + 1 < loop.size() ? loop[i + 1] : back;
+        area += a.x * b.y - b.x * a.y;
+        lo = {std::min(lo.x, a.x), std::min(lo.y, a.y)};
+        hi = {std::max(hi.x, a.x), std::max(hi.y, a.y)};
+    }
+    if (!std::isfinite(area) || std::abs(area) <= 1e-9 * (hi.x - lo.x) * (hi.y - lo.y)) {
+        return true;
+    }
+    return area > 0.0;
 }
 
 /// A curved face as designed: the facets that stand in for one analytic
@@ -1106,6 +1195,16 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
         vertexIds[&v] = w.add("VERTEX_POINT('',#" + std::to_string(w.addPoint(v.point)) + ")");
     }
 
+    // An exact face or edge whose geometry STEP holds no entity for: said in the report, with
+    // what took its place.
+    const auto say = [faceted](const char* what, const topo::TopologyID& id, const std::string& why,
+                               bool onCarrier) {
+        if (faceted == nullptr) return;
+        faceted->push_back(std::string(what) + " " + (id.isValid() ? id.tag() : "(unnamed)") +
+                           ": not written as its kind (" + why + "); " +
+                           (onCarrier ? "written on its carrier" : "left out"));
+    };
+
     // Edges. Orient the written curve along the recorded half-edge direction.
     std::unordered_map<const topo::Edge*, int> edgeIds;
     for (const auto& e : solid.edges()) {
@@ -1136,15 +1235,17 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
                     std::clamp(std::max(e.curveStart, e.curveEnd), spline->tMin(), spline->tMax());
                 return b - a > 1e-12 * (spline->tMax() - spline->tMin());
             };
+            std::string why;
             const std::optional<int> curveId =
                 spanned()
                     ? std::optional<int>(writeCurve(w, spline->segment(e.curveStart, e.curveEnd)))
-                    : writeExactCurve(w, *e.exactCurve, closed && backward);
+                    : writeExactCurve(w, *e.exactCurve, why, closed && backward);
             if (curveId) {
                 edgeIds[&e] = w.add("EDGE_CURVE(''," + ends + ",#" + std::to_string(*curveId) +
                                     "," + (closed || !backward ? ".T." : ".F.") + ")");
                 continue;
             }
+            say("edge", e.topoId, why, e.curve != nullptr);
             if (e.curve == nullptr) continue;
         }
         if (curved.count(&e) != 0) {
@@ -1229,10 +1330,13 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
         std::optional<int> surfId;
         bool withLoops = true;
         if (f.exactSurface != nullptr) {
-            if (const auto written = writeExactSurface(w, *f.exactSurface)) {
+            std::string why;
+            if (const auto written = writeExactSurface(w, *f.exactSurface, why)) {
                 // Its loops run about its outward normal: its surface's, turned where reversed.
                 surfId = written->id;
                 withLoops = written->flipped == f.reversed;
+            } else {
+                say("face", f.topoId, why, f.surface != nullptr);
             }
         }
         if (!surfId) {
@@ -4630,24 +4734,39 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     return read;
 }
 
-/// How near a shell's exact volume is integrated to tell which way it faces: relative to each
-/// face's size, far coarser than mass properties' 1e-11, for only its sign is wanted.
-constexpr double kSignAccuracy = 1e-6;
+/// How many times its estimated error a shell's coarse volume must be, the way its role wants it
+/// (an outer shell's positive, a void's negative), for the coarse pass to settle it.
+constexpr double kSignMargin = 4.0;
 
 /// The shells of @p solid, by their index in its shell order, that face the wrong way for what
 /// they are, by the signed volume each encloses integrated on its exact faces: an outer shell
 /// whose faces face into it (written inside out, as a careless writer may: Horizon's own wrote
 /// its kernel's box so), or a void's whose faces face out of the void. @p voids says which
-/// shells are voids. None where the volumes cannot be measured: the mass properties of such a
-/// solid say why when asked.
+/// shells are voids. A coarse integral settles each shell its volume leaves beyond doubt the way
+/// its role wants; the solid is integrated as mass properties integrate it only where one is not
+/// (a shell facing the wrong way, or too thin for the coarse pass to tell), and only that
+/// integral turns a shell. None where the volumes cannot be measured: the mass properties of
+/// such a solid say why when asked.
 std::vector<std::size_t> shellsInsideOut(const topo::Solid& solid, const std::vector<bool>& voids,
                                          const std::atomic<bool>* cancelled) {
-    const std::vector<double> volumes =
-        model::MassPropertiesCalculator::shellVolumes(solid, nullptr, kSignAccuracy, cancelled);
+    using model::MassPropertiesCalculator;
+    const auto coarse = MassPropertiesCalculator::shellVolumes(solid, true, nullptr, cancelled);
+    // The shells the coarse pass leaves in doubt (all, where it could not be made), alone.
+    std::vector<bool> doubtful(voids.size(), coarse.size() != voids.size());
+    for (std::size_t i = 0; i < coarse.size() && i < voids.size(); ++i) {
+        const double way = voids[i] ? -coarse[i].volume : coarse[i].volume;
+        doubtful[i] = !(way > kSignMargin * coarse[i].error);
+    }
+    if (std::none_of(doubtful.begin(), doubtful.end(), [](bool d) { return d; })) return {};
+    const auto exact =
+        MassPropertiesCalculator::shellVolumes(solid, false, nullptr, cancelled, doubtful);
+    if (exact.size() != voids.size()) return {};
+    // Turned only where it faces the wrong way beyond its error: one that encloses next to
+    // nothing is left as it is.
     std::vector<std::size_t> wrong;
-    if (volumes.size() != voids.size()) return wrong;
-    for (std::size_t i = 0; i < volumes.size(); ++i) {
-        if (voids[i] ? volumes[i] > 0.0 : volumes[i] < 0.0) wrong.push_back(i);
+    for (std::size_t i = 0; i < exact.size(); ++i) {
+        const double way = voids[i] ? -exact[i].volume : exact[i].volume;
+        if (doubtful[i] && way < 0.0 && -way > exact[i].error) wrong.push_back(i);
     }
     return wrong;
 }

@@ -753,30 +753,59 @@ TEST(ExactMass, AStoppedRequestIsNotValid) {
 // Each shell's volume, signed by which way its faces face (compute() normalises the sign away): a
 // block with a ball's void is +64 and -4/3 pi, each integrated on its exact faces; the same block
 // mirrored, its faces turned with its loops, measures the same; the kernel's box, wound facing in
-// and measured by its polygons, is negative; a shell no face of which can be integrated says why.
+// and measured by its polygons, is negative; a cancelled request is empty, and says so. Coarse or
+// not, each volume is within its estimated error of the shell's.
 TEST(ExactMass, ShellVolumesAreSignedByWhichWayTheirFacesFace) {
     const auto block = readOne(hz::step_text::blockWithABall());
     ASSERT_NE(block, nullptr);
-    const double ball = 4.0 / 3.0 * std::numbers::pi;
-    std::string problem;
-    auto volumes = MassPropertiesCalculator::shellVolumes(*block, &problem);
-    ASSERT_EQ(volumes.size(), 2u) << problem;
-    EXPECT_NEAR(volumes[0], 64.0, 64.0 * 1e-6);
-    EXPECT_NEAR(volumes[1], -ball, ball * 1e-6);
-
     const auto mirrored = hz::model::Pattern::transformed(
         *block, hz::math::Mat4::reflection(Vec3{0, 0, 0}, Vec3{1, 0, 0}));
-    volumes = MassPropertiesCalculator::shellVolumes(*mirrored, &problem);
-    ASSERT_EQ(volumes.size(), 2u) << problem;
-    EXPECT_NEAR(volumes[0], 64.0, 64.0 * 1e-6);
-    EXPECT_NEAR(volumes[1], -ball, ball * 1e-6);
+    const double ball = 4.0 / 3.0 * std::numbers::pi;
+    for (const bool coarse : {true, false}) {
+        SCOPED_TRACE(coarse ? "coarse" : "as compute() integrates");
+        for (const topo::Solid* solid : {block.get(), mirrored.get()}) {
+            std::string problem;
+            const auto volumes = MassPropertiesCalculator::shellVolumes(*solid, coarse, &problem);
+            ASSERT_EQ(volumes.size(), 2u) << problem;
+            EXPECT_NEAR(volumes[0].volume, 64.0, std::max(volumes[0].error, 64.0 * 1e-12));
+            EXPECT_NEAR(volumes[1].volume, -ball, std::max(volumes[1].error, ball * 1e-12));
+            EXPECT_LT(volumes[1].error, ball * 1e-2);
+        }
+    }
 
     const auto box = hz::model::PrimitiveFactory::makeBox(10.0, 20.0, 30.0);
-    volumes = MassPropertiesCalculator::shellVolumes(*box, &problem);
+    std::string problem;
+    const auto volumes = MassPropertiesCalculator::shellVolumes(*box, true, &problem);
     ASSERT_EQ(volumes.size(), 1u) << problem;
-    EXPECT_NEAR(volumes[0], -6000.0, 6000.0 * 1e-12);
+    EXPECT_NEAR(volumes[0].volume, -6000.0, 6000.0 * 1e-12);
 
     std::atomic<bool> cancelled{true};
-    EXPECT_TRUE(MassPropertiesCalculator::shellVolumes(*block, &problem, 1e-6, &cancelled).empty());
+    EXPECT_TRUE(MassPropertiesCalculator::shellVolumes(*block, true, &problem, &cancelled).empty());
     EXPECT_EQ(problem, "stopped");
+}
+
+// The coarse pass, which a reader uses to tell a shell's sign cheaply, is honest: on a cone, a
+// sphere, a torus, rational B-spline sides and a B-spline ball's caps, its volume is within its
+// estimated error of the volume integrated as compute() integrates it, and that estimate is a
+// small part of the volume.
+TEST(ExactMass, TheCoarseShellVolumeIsWithinItsEstimate) {
+    const std::string texts[] = {hz::step_text::cone(),
+                                 hz::step_text::sphere(),
+                                 hz::step_text::torus(),
+                                 hz::step_text::splineCylinder(),
+                                 hz::step_text::seamedHemisphere(),
+                                 hz::step_text::drillPoint()};
+    for (const std::string& text : texts) {
+        const auto solid = readOne(text);
+        ASSERT_NE(solid, nullptr);
+        std::string problem;
+        const auto coarse = MassPropertiesCalculator::shellVolumes(*solid, true, &problem);
+        ASSERT_EQ(coarse.size(), 1u) << problem;
+        const auto exact = MassPropertiesCalculator::shellVolumes(*solid, false, &problem);
+        ASSERT_EQ(exact.size(), 1u) << problem;
+        EXPECT_LE(std::fabs(coarse[0].volume - exact[0].volume), coarse[0].error + exact[0].error)
+            << text.substr(0, 0) << coarse[0].volume << " against " << exact[0].volume;
+        EXPECT_LT(coarse[0].error, 0.05 * std::fabs(exact[0].volume));
+        EXPECT_GT(coarse[0].volume, 4.0 * coarse[0].error) << "its sign beyond doubt";
+    }
 }

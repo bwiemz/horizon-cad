@@ -61,20 +61,27 @@ struct ExactMeasure {
 ExactMeasure measureExact(const topo::Solid& solid, const Material* material,
                           const std::atomic<bool>* cancelled, double tolerance = 1e-10);
 
-/// What measureShellVolumes gives: each shell's signed volume, in the solid's shell order, or why
-/// there is none.
+/// What measureShellVolumes gives: each shell's signed volume and the estimate of its error, in
+/// the solid's shell order, or why there are none.
 struct ShellVolumes {
     std::vector<double> volumes;
+    std::vector<double> errors;
     std::string problem;
 };
 
 /// The volume each of @p solid's shells encloses, signed by which way its faces face, as
-/// measureExact sums it but shell by shell and not normalised: each exact face integrated to
-/// @p accuracy of its own size, each other face by its polygons. A shell whose faces face out
-/// of what it encloses is positive; one facing into it (a void's) is negative. Empty volumes,
-/// with the problem said, where a face cannot be integrated, a sum is not finite, or
-/// @p cancelled is set. Nothing throws.
-ShellVolumes measureShellVolumes(const topo::Solid& solid, double accuracy,
-                                 const std::atomic<bool>* cancelled);
+/// measureExact sums it but shell by shell and not normalised, with its estimated error (the
+/// quadrature's, and what edges standing off their surfaces leave uncertain). With @p coarse,
+/// each exact face is integrated to a ten-thousandth of its size by a lower-order rule on fewer
+/// stretches, its pcurves as they are (FaceIntegral's coarse pass: several times cheaper, enough
+/// to tell a sign beyond its estimate), and a flat one bounded by straight edges by the polygon
+/// formulas; otherwise as measureExact integrates it. Each other face by its polygons. A shell
+/// whose faces face out of what it encloses is positive; one facing into it (a void's) is negative.
+/// Empty, with the problem said, where a face cannot be integrated, a sum is not finite, or @p
+/// cancelled is set. With @p which (by shell index), only the shells it marks are measured; each
+/// other is given volume 0 and an infinite error. Nothing throws.
+ShellVolumes measureShellVolumes(const topo::Solid& solid, bool coarse,
+                                 const std::atomic<bool>* cancelled,
+                                 const std::vector<bool>& which = {});
 
 }  // namespace hz::model::detail

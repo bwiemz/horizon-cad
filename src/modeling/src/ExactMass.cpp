@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <exception>
 #include <limits>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -99,6 +100,22 @@ constexpr std::array<double, 8> kKronrodWeights = {
 constexpr std::array<double, 4> kGaussWeights = {
     0.129484966168869693270611432679082, 0.279705391489276667901467771423780,
     0.381830050505118944950369775488975, 0.417959183673469387755102040816327};
+
+/// The coarse pass (measureShellVolumes): the 7-point Kronrod rule on [-1, 1] that extends the
+/// 3-point Gauss rule, largest node first (the middle last), its weights, and the Gauss rule's
+/// (at the second node and the middle).
+constexpr std::array<double, 4> kKronrod7Nodes = {0.960491268708020283423507092629080,
+                                                  0.774596669241483377035853079956480,
+                                                  0.434243749346802558002071502844628, 0.0};
+constexpr std::array<double, 4> kKronrod7Weights = {
+    0.104656226026467265193823857192073, 0.268488089868333440728569280666710,
+    0.401397414775962222905051818618432, 0.450916538658474142345110087045571};
+constexpr std::array<double, 2> kGauss3Weights = {0.555555555555555555555555555555556,
+                                                  0.888888888888888888888888888888889};
+/// The pieces, at most, the coarse pass cuts one fitted pcurve into, whatever its knots, and the
+/// accuracy, relative to the face's size, it integrates each face to.
+constexpr int kCoarsePieces = 4;
+constexpr double kCoarseAccuracy = 1e-4;
 
 struct GaussRule {
     std::vector<double> nodes;  ///< in [-1, 1]
@@ -377,15 +394,21 @@ struct Stretch {
 /// The boundary integral of one exact face.
 class FaceIntegral {
 public:
+    /// With @p coarse, the face's integral to kCoarseAccuracy, by a lower-order rule on fewer
+    /// stretches: its pcurves as they are (none replaced by its edge's curve), a fitted one cut
+    /// into at most kCoarsePieces stretches whatever its knots, each stretch by the 7-point
+    /// Kronrod rule, with the difference from its embedded 3-point Gauss rule for the estimate,
+    /// and halved where that is the worst. A sign wants no more.
     FaceIntegral(const Face& face, const Vec3& origin, double size,
                  const math::ModelTolerance& tolerance, double accuracy,
-                 const std::atomic<bool>* cancelled)
+                 const std::atomic<bool>* cancelled, bool coarse = false)
         : face_(face),
           surface_(*face.exactSurface, origin, size),
           tolerance_(tolerance),
           size_(size),
           accuracy_(accuracy),
-          cancelled_(cancelled) {}
+          cancelled_(cancelled),
+          coarse_(coarse) {}
 
     FaceResult run() {
         FaceResult result;
@@ -617,7 +640,7 @@ private:
     /// points would be put beyond it: it keeps its pcurve, fitted within its tolerance, and its
     /// uncertainty is added to the estimate (addUncertainty).
     bool fitted(const HalfEdge& h) const {
-        return h.edge != nullptr && h.edge->exactCurve != nullptr &&
+        return !coarse_ && h.edge != nullptr && h.edge->exactCurve != nullptr &&
                h.edge->tolerance <= tolerance_.linear &&
                face_.exactSurface->kind() != geo::SurfaceKind::Plane &&
                dynamic_cast<const geo::Nurbs2D*>(h.pcurve.get()) != nullptr;
@@ -752,9 +775,17 @@ private:
     /// tolerance, times the edge's length, times the largest of each integrand (over a unit
     /// normal) seen at five points along it, its ends among them, is added to the face's
     /// estimate: an estimate, as the largest is looked for, not found.
+    ///
+    /// The coarse pass integrates a fitted pcurve as it is, where the full one integrates its
+    /// edge's exact curve, and the pcurve strays from that by up to the edge's tolerance, or the
+    /// resolution it was fitted to: as much is added for it there.
     bool addUncertainty(const HalfEdge& h, const Vec2& shift) {
-        const double tolerance = h.edge->tolerance;
-        if (!(tolerance > tolerance_.linear)) return true;
+        const bool fittedAsItIs = coarse_ &&
+                                  face_.exactSurface->kind() != geo::SurfaceKind::Plane &&
+                                  dynamic_cast<const geo::Nurbs2D*>(h.pcurve.get()) != nullptr;
+        const double tolerance =
+            fittedAsItIs ? tolerance_.effective(h.edge->tolerance) : h.edge->tolerance;
+        if (!fittedAsItIs && !(tolerance > tolerance_.linear)) return true;
         double length = 0.0;
         if (h.edge->exactCurve != nullptr) {
             const GaussRule& rule = gaussRule(16);
@@ -814,7 +845,14 @@ private:
                 knotsOf(spline->knots());
             }
         } else if (const auto* spline = dynamic_cast<const geo::Nurbs2D*>(stretch.curve)) {
-            knotsOf(spline->curve().knots());
+            if (coarse_) {
+                // Its pieces, not its knots: a fitted pcurve is smooth across its knots.
+                const int pieces = std::min(
+                    kCoarsePieces, static_cast<int>(distinct(spline->curve().knots()).size()) - 1);
+                for (int i = 1; i < pieces; ++i) cuts.push_back(lo + (hi - lo) * i / pieces);
+            } else {
+                knotsOf(spline->curve().knots());
+            }
         } else if (stretch.curve == nullptr ||
                    dynamic_cast<const geo::Line2D*>(stretch.curve) != nullptr) {
             Vec2 a;
@@ -942,8 +980,60 @@ private:
         return ok;
     }
 
+    /// The coarse pass's estimate of span @p s: the 7-point Kronrod rule, and as its error the
+    /// difference from the embedded 3-point Gauss rule's (the Gauss rule's error, far more than
+    /// the Kronrod rule's own).
+    bool measureCoarse(Span& s) {
+        const Stretch& stretch = stretches_[s.stretch];
+        const double half = 0.5 * (s.t1 - s.t0);
+        const double centre = 0.5 * (s.t0 + s.t1);
+        Terms kronrod{};
+        Terms gauss{};
+        Terms absolute{};
+        for (std::size_t j = 0; j < 7; ++j) {
+            // Nodes -x0, -x1, -x2, 0, x2, x1, x0: the middle is j = 3.
+            const std::size_t n = j < 4 ? j : 6 - j;
+            const double x = j < 3 ? -kKronrod7Nodes[n] : (j == 3 ? 0.0 : kKronrod7Nodes[n]);
+            const double t = centre + half * x;
+            Vec2 uv;
+            Vec2 d;
+            if (!at(stretch, t, uv, d)) return false;
+            const double multiplier = alongV_ ? -d.x : d.y;
+            if (!finite(uv) || !std::isfinite(multiplier)) {
+                why_ = notFiniteAt(uv);
+                return false;
+            }
+            if (multiplier == 0.0) continue;
+            Terms g{};
+            if (!inner(uv, stretch.reference, g)) return false;
+            const double gaussWeight =
+                n == 1 ? kGauss3Weights[0] : (n == 3 ? kGauss3Weights[1] : 0);
+            for (std::size_t k = 0; k < kTerms; ++k) {
+                const double f = g[k] * multiplier;
+                kronrod[k] += kKronrod7Weights[n] * f;
+                gauss[k] += gaussWeight * f;
+                absolute[k] += kKronrod7Weights[n] * std::fabs(f);
+            }
+        }
+        const double width = std::fabs(half);
+        s.worst = 0.0;
+        for (std::size_t k = 0; k < kTerms; ++k) {
+            s.value[k] = kronrod[k] * half;
+            s.error[k] = std::fabs((kronrod[k] - gauss[k]) * half) +
+                         50.0 * std::numeric_limits<double>::epsilon() * absolute[k] * width;
+            s.magnitude[k] = absolute[k] * width;
+            s.worst = std::max(s.worst, s.error[k]);
+        }
+        if (!std::isfinite(s.worst)) {
+            why_ = "its integral is not finite";
+            return false;
+        }
+        return true;
+    }
+
     /// The 15-point Gauss–Kronrod estimate of span @p s, with QUADPACK's error estimate.
     bool measure(Span& s) {
+        if (coarse_) return measureCoarse(s);
         const Stretch& stretch = stretches_[s.stretch];
         const double half = 0.5 * (s.t1 - s.t0);
         const double centre = 0.5 * (s.t0 + s.t1);
@@ -1052,7 +1142,7 @@ private:
         const auto settled = [&] {
             const double size = *std::max_element(magnitude.begin(), magnitude.end());
             const double worst = *std::max_element(error.begin(), error.end());
-            return worst <= accuracy_ * size;
+            return worst <= (coarse_ ? kCoarseAccuracy : accuracy_) * size;
         };
         std::size_t rounds = 0;
         while (!settled()) {
@@ -1126,6 +1216,7 @@ private:
     double size_;
     double accuracy_;
     const std::atomic<bool>* cancelled_;
+    bool coarse_ = false;
     Terms boundary_{};
     InnerRule rule_;
     Breaks otherBreaks_;  ///< a B-spline's knots in the outer direction
@@ -1174,17 +1265,93 @@ struct Pass {
     std::string problem;
 };
 
+/// How far @p s strays from a plane, where it is flat within @p within: 0 for a plane; for a
+/// B-spline whose control points all lie within that of one plane (a bilinear patch, as
+/// Horizon's writer wrote flat faces before the exact kernel), the farthest of them. Nullopt
+/// where it is not flat.
+std::optional<double> flatness(const geo::Surface& s, double within) {
+    if (s.kind() == geo::SurfaceKind::Plane) return 0.0;
+    const auto* nurbs = dynamic_cast<const geo::NurbsSurface*>(&s);
+    if (nurbs == nullptr || nurbs->controlPoints().empty() ||
+        nurbs->controlPoints().front().empty()) {
+        return std::nullopt;
+    }
+    const auto& net = nurbs->controlPoints();
+    // The plane of its net's four corners (Newell's normal round them).
+    const Vec3 corners[4] = {net.front().front(), net.back().front(), net.back().back(),
+                             net.front().back()};
+    Vec3 normal;
+    Vec3 middle;
+    for (int i = 0; i < 4; ++i) {
+        const Vec3& a = corners[i];
+        const Vec3& b = corners[(i + 1) % 4];
+        normal = normal + Vec3((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x),
+                               (a.x - b.x) * (a.y + b.y));
+        middle = middle + a * 0.25;
+    }
+    const double length = normal.length();
+    if (!(length > 0.0) || !std::isfinite(length)) return std::nullopt;
+    const Vec3 unit = normal * (1.0 / length);
+    double farthest = 0.0;
+    for (const auto& row : net) {
+        for (const Vec3& p : row) farthest = std::max(farthest, std::fabs((p - middle).dot(unit)));
+    }
+    if (!(farthest <= within)) return std::nullopt;
+    return farthest;
+}
+
+/// How far @p face strays from a polygon, where it is one: flat within @p within (flatness),
+/// and bounded by straight edges alone (a line, or a degree-1 B-spline of two points), so that
+/// the polygon formulas give its share, within that much times its area. Nullopt otherwise.
+std::optional<double> polygonal(const Face& face, double within) {
+    if (face.exactSurface == nullptr) return std::nullopt;
+    const std::optional<double> strays = flatness(*face.exactSurface, within);
+    if (!strays) return std::nullopt;
+    std::vector<const topo::Wire*> wires{face.outerLoop};
+    wires.insert(wires.end(), face.innerLoops.begin(), face.innerLoops.end());
+    for (const topo::Wire* wire : wires) {
+        std::vector<const HalfEdge*> ring;
+        if (wire == nullptr || !topo::loopHalfEdges(face, *wire, kMaxStretches, ring)) {
+            return std::nullopt;
+        }
+        for (const HalfEdge* h : ring) {
+            const geo::Curve3* c = h->edge != nullptr ? h->edge->exactCurve.get() : nullptr;
+            const auto* spline = dynamic_cast<const geo::NurbsCurve*>(c);
+            const bool straight = c != nullptr && (c->kind() == geo::CurveKind::Line ||
+                                                   (spline != nullptr && spline->degree() == 1 &&
+                                                    spline->controlPoints().size() == 2));
+            if (!straight) return std::nullopt;
+        }
+    }
+    return strays;
+}
+
 /// Adds @p face to @p pass: an exact face integrated to @p accuracy of its own size, any other by
-/// its polygons, about @p pass's origin. False, with the pass's problem said, where the face
-/// cannot be integrated or @p cancelled is set.
+/// its polygons, about @p pass's origin. With @p coarse, an exact face by FaceIntegral's coarse
+/// pass, and one that is a polygon (polygonal) by the polygon formulas, which are exact for it.
+/// False, with the pass's problem said, where the face cannot be integrated or @p cancelled is
+/// set.
 bool addFace(Pass& pass, const Face& face, double size, const math::ModelTolerance& tolerance,
-             double accuracy, const std::atomic<bool>* cancelled) {
+             double accuracy, const std::atomic<bool>* cancelled, bool coarse = false) {
     if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
         pass.problem = "stopped";
         return false;
     }
     if (!face.alive) return true;
     const Vec3& origin = pass.measures.origin;
+    if (const auto strays = coarse ? polygonal(face, tolerance.linear) : std::nullopt) {
+        // Exact for a plane; a patch flat only within its strays is off by that times its area,
+        // at most, and rounding.
+        double area = 0.0;
+        const double before = pass.measures.sums[0];
+        for (const auto& tri : faceTriangles(face)) {
+            pass.measures.add(tri[0] - origin, tri[1] - origin, tri[2] - origin);
+            area += 0.5 * (tri[1] - tri[0]).cross(tri[2] - tri[0]).length();
+        }
+        pass.volumeError += *strays * area + 64.0 * std::numeric_limits<double>::epsilon() *
+                                                 std::fabs(pass.measures.sums[0] - before) / 6.0;
+        return true;
+    }
     if (!face.exactSurface) {
         // As modelled: the polygon formulas, about the same origin.
         for (const auto& tri : faceTriangles(face)) {
@@ -1193,7 +1360,7 @@ bool addFace(Pass& pass, const Face& face, double size, const math::ModelToleran
         pass.plain.insert(face.topoId.isValid() ? logicalFace(face.topoId.tag()) : nameOf(face));
         return true;
     }
-    FaceIntegral integral(face, origin, size, tolerance, accuracy, cancelled);
+    FaceIntegral integral(face, origin, size, tolerance, accuracy, cancelled, coarse);
     const FaceResult r = integral.run();
     if (!r.problem.empty()) {
         pass.problem = nameOf(face) + ": " + r.problem;
@@ -1286,8 +1453,9 @@ ExactMeasure measure(const topo::Solid& solid, const Material* material,
 
 }  // namespace
 
-ShellVolumes measureShellVolumes(const topo::Solid& solid, double accuracy,
-                                 const std::atomic<bool>* cancelled) {
+ShellVolumes measureShellVolumes(const topo::Solid& solid, bool coarse,
+                                 const std::atomic<bool>* cancelled,
+                                 const std::vector<bool>& which) {
     ShellVolumes out;
     try {
         const double size = topo::exactExtent(solid);
@@ -1297,31 +1465,46 @@ ShellVolumes measureShellVolumes(const topo::Solid& solid, double accuracy,
         }
         const Vec3 origin = middleOf(solid);
         const math::ModelTolerance tolerance = topo::exactTolerance(solid);
+        std::size_t index = 0;
         for (const auto& shell : solid.shells()) {
+            if (!which.empty() && (index >= which.size() || !which[index])) {
+                // Not asked for: no volume, and no bound on it.
+                ++index;
+                out.volumes.push_back(0.0);
+                out.errors.push_back(std::numeric_limits<double>::infinity());
+                continue;
+            }
+            ++index;
             Pass pass;
             pass.measures.origin = origin;
             for (const Face* face : shell.faces) {
                 if (face == nullptr) continue;
-                if (!addFace(pass, *face, size, tolerance, accuracy, cancelled)) {
+                if (!addFace(pass, *face, size, tolerance, kRelativeAccuracy, cancelled, coarse)) {
                     out.problem = pass.problem;
                     out.volumes.clear();
+                    out.errors.clear();
                     return out;
                 }
             }
             // The sums hold six times the volume (kSumFactors).
             const double volume = pass.measures.sums[0] / kSumFactors[0];
-            if (!std::isfinite(volume)) {
+            const double error = pass.volumeError + pass.volumeBoundary;
+            if (!std::isfinite(volume) || !std::isfinite(error)) {
                 out.problem = "a shell's volume is not finite";
                 out.volumes.clear();
+                out.errors.clear();
                 return out;
             }
             out.volumes.push_back(volume);
+            out.errors.push_back(error);
         }
     } catch (const std::exception& e) {
         out.volumes.clear();
+        out.errors.clear();
         out.problem = std::string("the solid could not be measured: ") + e.what();
     } catch (...) {
         out.volumes.clear();
+        out.errors.clear();
         out.problem = "the solid could not be measured: an unknown fault";
     }
     return out;

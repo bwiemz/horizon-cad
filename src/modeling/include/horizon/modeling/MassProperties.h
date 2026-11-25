@@ -87,6 +87,12 @@ struct IdealMassProperties {
     int refinement = 1;
 };
 
+/// One shell's signed volume, and the estimate of its error (shellVolumes).
+struct ShellVolume {
+    double volume = 0.0;
+    double error = 0.0;
+};
+
 class MassPropertiesCalculator {
 public:
     /// Compute mass properties from the solid's boundary. When @p material is
@@ -129,15 +135,21 @@ public:
 
     /// The volume each of @p solid's shells encloses, in the solid's shell order, signed by which
     /// way its faces face: positive for a shell whose faces face out of what it encloses,
-    /// negative for one whose faces face into it (a void's, or a shell written inside out).
-    /// compute() normalises that sign away; a reader that must tell such a shell needs it. Each
-    /// exact face is integrated on its surface as compute() integrates it, but to @p accuracy of
-    /// the face's size (a sign needs far less than compute()'s 1e-11); each other face by its
-    /// polygons. Empty, with why in @p problem, where a face cannot be integrated, a volume is
-    /// not finite, or @p cancelled is set. Nothing throws.
-    static std::vector<double> shellVolumes(const topo::Solid& solid,
-                                            std::string* problem = nullptr, double accuracy = 1e-6,
-                                            const std::atomic<bool>* cancelled = nullptr);
+    /// negative for one whose faces face into it (a void's, or a shell written inside out),
+    /// each with the estimate of its error. compute() normalises that sign away; a reader that
+    /// must tell such a shell needs it. Each exact face is integrated on its surface as
+    /// compute() integrates it; with @p coarse, to a ten-thousandth of each face's size by a
+    /// lower-order rule, several times cheaper: its sign is beyond doubt where its volume is well
+    /// beyond its estimate.
+    /// (A flat face bounded by straight edges, coarse, by the polygon formulas, which are exact
+    /// for it.) Each other face by its polygons. With @p which (by shell index), only the shells
+    /// it marks are measured; each other is given volume 0 and an infinite error. Empty, with
+    /// why in @p problem, where a face cannot be integrated, a volume is not finite, or
+    /// @p cancelled is set. Nothing throws.
+    static std::vector<ShellVolume> shellVolumes(const topo::Solid& solid, bool coarse = false,
+                                                 std::string* problem = nullptr,
+                                                 const std::atomic<bool>* cancelled = nullptr,
+                                                 const std::vector<bool>& which = {});
 };
 
 }  // namespace hz::model
