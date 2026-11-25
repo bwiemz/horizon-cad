@@ -4047,7 +4047,7 @@ bool loopsDetermineRegion(const geo::Surface& s, double near) {
 /// (A loop that runs along a pole without a seam does not fix its region here: which way round
 /// the pole it runs is the next pcurve's window's, not the file's; stage 3's pole topology.)
 ///
-/// An outer loop that closes only after winding round the surface (a band with no seam) says so
+/// An outer loop with no seam that closes only after winding round the surface (a band) says so
 /// in the validator's words, kWindsRound, to be placed as the validator places it (at the face
 /// and its outer loop's first edge): unwrapped here anyway, it is found as soon as the face's
 /// pcurves exist, not after every other face's are built.
@@ -4055,13 +4055,18 @@ std::string faceSense(topo::Face& face, const math::ModelTolerance& tolerance, s
                       double near) {
     if (face.outerLoop == nullptr) return {};
     const std::vector<topo::HalfEdge*> ring = ringOf(*face.outerLoop, limit);
-    const auto area = loopArea(ring, *face.exactSurface, tolerance);
-    if (!area) return ring.empty() ? std::string() : std::string(kWindsRound);
-    if (!std::isfinite(*area) || *area == 0.0) return {};
-    const bool loopsSayReversed = *area < 0.0;
     const bool seamed = std::any_of(ring.begin(), ring.end(), [&face](const topo::HalfEdge* h) {
         return h->twin != nullptr && h->twin->face == &face;
     });
+    const auto area = loopArea(ring, *face.exactSurface, tolerance);
+    if (!area) {
+        // A seamed loop that does not close yet may once its seam is laid out a period over
+        // (both sides of a seam share one window, and a join at a pole shifts nothing): that is
+        // layOutSeams's to try, and the validator's to judge. Only a loop with no seam is a band.
+        return seamed || ring.empty() ? std::string() : std::string(kWindsRound);
+    }
+    if (!std::isfinite(*area) || *area == 0.0) return {};
+    const bool loopsSayReversed = *area < 0.0;
     if (seamed || loopsDetermineRegion(*face.exactSurface, near)) {
         face.reversed = loopsSayReversed;
         return {};

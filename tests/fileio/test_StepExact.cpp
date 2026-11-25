@@ -1032,3 +1032,62 @@ TEST(StepExact, AClosedSplineJoinIsFoundWithinTheSolidsLimit) {
     EXPECT_TRUE(anySays(report.converted, "exact to")) << report.converted.size();
     EXPECT_EQ(firstIssue(*solids[0]), "");
 }
+
+namespace {
+
+/// A hemisphere of radius 10 as OpenCASCADE writes one: its cap bounded by the equator and a
+/// seam meridian from the equator to the pole, used once each way, in the loop order @p order
+/// (a rotation of "#20,#21,#22"), and a flat disc.
+std::string seamedHemisphere(const std::string& order) {
+    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = SPHERICAL_SURFACE('',#4,10.);
+#6 = CIRCLE('',#4,10.);
+#7 = CARTESIAN_POINT('',(10.,0.,0.));
+#8 = VERTEX_POINT('',#7);
+#9 = CARTESIAN_POINT('',(0.,0.,10.));
+#10 = VERTEX_POINT('',#9);
+#11 = DIRECTION('',(0.,-1.,0.));
+#12 = AXIS2_PLACEMENT_3D('',#1,#11,#3);
+#13 = CIRCLE('',#12,10.);
+#14 = EDGE_CURVE('',#8,#8,#6,.T.);
+#15 = EDGE_CURVE('',#8,#10,#13,.T.);
+#16 = DIRECTION('',(0.,0.,-1.));
+#17 = AXIS2_PLACEMENT_3D('',#1,#16,#3);
+#18 = PLANE('',#17);
+#20 = ORIENTED_EDGE('',*,*,#14,.T.);
+#21 = ORIENTED_EDGE('',*,*,#15,.T.);
+#22 = ORIENTED_EDGE('',*,*,#15,.F.);
+#23 = EDGE_LOOP('',()" + order + R"());
+#24 = FACE_OUTER_BOUND('',#23,.T.);
+#25 = ADVANCED_FACE('',(#24),#5,.T.);
+#26 = ORIENTED_EDGE('',*,*,#14,.F.);
+#27 = EDGE_LOOP('',(#26));
+#28 = FACE_OUTER_BOUND('',#27,.T.);
+#29 = ADVANCED_FACE('',(#28),#18,.T.);
+#30 = CLOSED_SHELL('',(#25,#29));
+#31 = MANIFOLD_SOLID_BREP('hemisphere',#30);
+)");
+}
+
+}  // namespace
+
+// A seamed face whose loop joins at a pole (a spherical cap with a seam meridian) is exact
+// wherever its loop starts: its seam's two sides share one (u, v) window, so some starts unwrap
+// only once the seam is laid out a period over. The loop that does not close is a band only
+// when it has no seam (review C2: the fail-fast read every such loop as a band).
+TEST(StepExact, ASeamedCapIsExactWhereverItsLoopStarts) {
+    for (const std::string order : {"#20,#21,#22", "#21,#22,#20", "#22,#20,#21"}) {
+        ImportReport report;
+        const auto solids =
+            StepFormat::fromString(seamedHemisphere(order), &report, nullptr, inMillimetres());
+        ASSERT_EQ(solids.size(), 1u) << order << ": " << StepFormat::lastError();
+        EXPECT_EQ(firstIssue(*solids[0]), "") << order;
+        const topo::Face* cap = faceOfKind(*solids[0], geo::SurfaceKind::Sphere);
+        ASSERT_NE(cap, nullptr) << order;
+        EXPECT_GT(outward(*cap, Vec3{0, 0, 10}).z, 0.99) << order;
+        EXPECT_GT(outward(*cap, Vec3{10, 0, 0}).x, 0.99) << order;
+    }
+}
