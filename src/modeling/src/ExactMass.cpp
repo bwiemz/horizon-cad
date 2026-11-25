@@ -544,6 +544,15 @@ private:
         const double hi = std::max(t0, t1);
         std::vector<double> cuts;
         const auto* line = dynamic_cast<const geo::Line2D*>(stretch.curve);
+        if (stretch.curve == nullptr || line != nullptr) {
+            // A straight stretch along the inner direction moves the outer parameter not at all:
+            // its integrand is 0 throughout.
+            Vec2 a;
+            Vec2 b;
+            Vec2 d;
+            at(stretch, lo, a, d);
+            if ((alongV_ ? d.x : d.y) == 0.0) return true;
+        }
         if (const auto* spline = dynamic_cast<const geo::Nurbs2D*>(stretch.curve)) {
             for (double k : distinct(spline->curve().knots())) {
                 if (k > lo && k < hi) cuts.push_back(k);
@@ -651,7 +660,12 @@ private:
             }
             case InnerRule::Kind::Spans: {
                 breaks_.clear();
-                if (!rule_.breaks.between(lo, hi, kMaxStretches, breaks_)) return tooFar();
+                if (!rule_.breaks.between(lo, hi, kMaxStretches, breaks_)) {
+                    why_ = "a stretch of its boundary lies more than " + num(kMaxPeriods) +
+                           " periods round its surface, or across more than " +
+                           std::to_string(kMaxStretches) + " of its knots";
+                    return false;
+                }
                 double from = lo;
                 for (double b : breaks_) {
                     add(from, b, rule_.points);

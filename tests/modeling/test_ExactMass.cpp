@@ -18,6 +18,7 @@
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
+#include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
@@ -350,6 +351,63 @@ TEST(ExactMass, ABoundaryThatWillNotSettleGivesWhy) {
     EXPECT_FALSE(props.valid);
     EXPECT_NE(props.problem.find("box/top"), std::string::npos) << props.problem;
     EXPECT_NE(props.problem.find("did not settle"), std::string::npos) << props.problem;
+}
+
+namespace {
+
+/// makeBlock's block with its top face (z = 4, u along x from 0 to 2, v along y from 0 to 3, as
+/// its plane is parametrised) on a flat B-spline patch of the same parameters, of degree 1 and
+/// cut into @p spansU along u and @p spansV along v: the same face, its pcurves unchanged, with
+/// that many knots.
+std::unique_ptr<topo::Solid> blockWithAKnottedTop(int spansU, int spansV) {
+    auto block = hz::model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
+    topo::Face* top = faceTagged(*block, "box/top");
+    if (top == nullptr) return nullptr;
+    const auto knots = [](int spans, double length) {
+        std::vector<double> k{0.0};
+        for (int i = 0; i <= spans; ++i) k.push_back(length * i / spans);
+        k.push_back(length);
+        return k;
+    };
+    std::vector<std::vector<Vec3>> points;
+    for (int i = 0; i <= spansU; ++i) {
+        points.emplace_back();
+        for (int j = 0; j <= spansV; ++j) {
+            points.back().push_back({2.0 * i / spansU, 3.0 * j / spansV, 4.0});
+        }
+    }
+    const std::vector<std::vector<double>> weights(
+        points.size(), std::vector<double>(static_cast<std::size_t>(spansV) + 1, 1.0));
+    top->exactSurface = std::make_shared<geo::NurbsSurface>(points, weights, knots(spansU, 2.0),
+                                                            knots(spansV, 3.0), 1, 1);
+    return block;
+}
+
+}  // namespace
+
+// A B-spline face with more knots than one integral may cross, or so many that its integral
+// would cost more evaluations than a face's budget, says so: within the budget it is integrated,
+// past it it is not guessed.
+TEST(ExactMass, AFaceBeyondItsBudgetGivesWhy) {
+    const auto fine = blockWithAKnottedTop(100, 10);
+    ASSERT_NE(fine, nullptr);
+    const MassProperties props = MassPropertiesCalculator::compute(*fine);
+    ASSERT_TRUE(props.valid) << props.problem;
+    EXPECT_NEAR(props.volume, 24.0, 24.0 * 1e-12);
+
+    const auto knotted = blockWithAKnottedTop(20000, 1);
+    ASSERT_NE(knotted, nullptr);
+    const MassProperties tooMany = MassPropertiesCalculator::compute(*knotted);
+    EXPECT_FALSE(tooMany.valid);
+    EXPECT_NE(tooMany.problem.find("box/top"), std::string::npos) << tooMany.problem;
+    EXPECT_NE(tooMany.problem.find("16384 of its knots"), std::string::npos) << tooMany.problem;
+
+    const auto costly = blockWithAKnottedTop(12000, 20);
+    ASSERT_NE(costly, nullptr);
+    const MassProperties tooDear = MassPropertiesCalculator::compute(*costly);
+    EXPECT_FALSE(tooDear.valid);
+    EXPECT_NE(tooDear.problem.find("box/top"), std::string::npos) << tooDear.problem;
+    EXPECT_NE(tooDear.problem.find("4000000 evaluations"), std::string::npos) << tooDear.problem;
 }
 
 // A solid with some faces exact and others plain loops: the plain ones are summed by the polygon
