@@ -10,14 +10,22 @@ a user's would be, and checked two ways:
   - kept as an assembly of part files, and read back;
   - sent out as STEP again, and read back.
 
-  Its bodies, volume and bounding box must be OpenCASCADE's. What it
-  reports leaving out or approximating must be as many items as the
-  manifest says.
+  Its bodies, volume and bounding box must be OpenCASCADE's: its exact
+  volume, integrated on its exact faces, to a millionth unless the manifest's
+  `volume_tolerance` says otherwise, with why. What it reports leaving out or
+  approximating must be as many items as the manifest says. Every solid must
+  be read exact, or be on the regression list (below). Each exact solid's
+  read-point mesh must measure its exact volume to within the mesh's own
+  allowance, its area times its chord tolerance.
 - **Against OpenCASCADE, an independent reader, in CI** (the STEP interop
   job, `tools/interop/occt_check.py`). OpenCASCADE reads each original file,
   and must find the same solids, volume and box. It then reads Horizon CAD's
   export of the file (what File ▸ Export writes of the part imported from
-  it), and must find a valid shape with as many solids and the volume.
+  it), and must find a valid shape with as many solids, the volume, and as
+  many faces of each kind of surface as the original. A surface of linear
+  extrusion may go out as a B-spline, since Horizon CAD has no typed extrusion
+  yet. `--kept occt.json` runs the same comparison on what a CI run's
+  OpenCASCADE found, on a machine without it.
 
 The expected numbers are OpenCASCADE's, never Horizon CAD's own: a reader
 that agrees with itself proves nothing.
@@ -51,7 +59,8 @@ ends included (`.gitattributes`).
 ## What it found
 
 These were ranked by how many of the twenty files they affected, which was
-the order to fix them in. `known_gaps` and `not_read` in the manifest pin
+the order to fix them in. They describe the faceted reader of the time; the
+exact reader since has its own list (the regression list, below). `known_gaps` and `not_read` in the manifest pin
 each one still open. A test fails once a gap closes, so the manifest is
 updated when it is fixed. OpenCASCADE's reading confirmed each of them.
 
@@ -125,6 +134,23 @@ One difference is OpenCASCADE's, not Horizon CAD's: CATIA writes a
 tessellated copy of the plate beside it (TESSELLATED_SOLID), which
 OpenCASCADE reads as a second solid.
 
+## The regression list
+
+A STEP import keeps each solid's exact faces, or leaves the solid out and says
+why. Nothing faceted comes in in its place. Each solid of the corpus so left out
+is listed in its file's `exact_failures`, as the reader names it (`solid <n>`, or
+`solid #<id>` for a file none of whose solids is read). Each entry gives the
+reader's why, as it says it, and the cause. A solid left out that is not listed
+fails the test, and so does a listed one that is read exact. A solid read exact
+whose exact volume cannot be integrated is a failure too. Two solids are listed:
+
+- `occt_euclid_screw.step`, solid #12. Its face #709 is a spindle torus, its
+  tube wider than its ring, and the kernel's torus inversion takes every torus
+  for a ring. The screw is not read until it handles one.
+- `creo_opencellular_emblem.stp`, solid #119. Creo writes one edge's end vertex
+  0.374 mm off its line. The emblem's twelve shells are one surface model, so
+  all twelve are left out.
+
 ## Adding a file
 
 1. Only a file whose licence allows it to be redistributed here, as test
@@ -149,11 +175,14 @@ OpenCASCADE reads as a second solid.
 5. Run `hz_interop_tests`. For each check the file fails for a reason you
    cannot fix now, add it to `known_gaps`, with why. The checks are
    `import-build`, `reopen`, `bodies`, `volume` and `bounds`, and for the
-   OpenCASCADE job also `export`, `export-valid`, `export-bodies` and
-   `export-volume`. If it is not read at all, set `not_read` to part of the
-   error, and `why_not_read`. Set `expect.skipped`, `expect.approximated`
-   and `expect.export_faceted` (the curved faces its export keeps in facets,
-   the `exportFaceted` of `summary.json`) to what it reports now.
+   OpenCASCADE job also `export`, `export-valid`, `export-bodies`,
+   `export-volume` and `export-kinds`. For each solid it leaves out for want of
+   its exact form, add `{"solid", "why", "cause"}` to `exact_failures`, taking
+   the solid and the why from the `solids` of `summary.json`. If it is not read
+   at all for another reason, set `not_read` to part of the error, and
+   `why_not_read`. Set `expect.skipped`, `expect.approximated` and
+   `expect.export_faceted` (the curved faces its export keeps in facets, the
+   `exportFaceted` of `summary.json`) to what it reports now.
 
 ## Provenance and licences
 

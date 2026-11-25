@@ -1,5 +1,5 @@
 {
-  "_comment": "The external STEP corpus (README.md). expect.bodies, volume and bounds are OpenCASCADE's reading of each file (tools/interop/occt_check.py merge), never Horizon CAD's own; skipped and approximated are how many items Horizon CAD reports. known_gaps names the checks a file still fails, each with why: the test fails when one of them passes, so the entry is updated.",
+  "_comment": "The external STEP corpus (README.md). expect.bodies, volume and bounds are OpenCASCADE's reading of each file (tools/interop/occt_check.py merge), never Horizon CAD's own; skipped and approximated are how many items Horizon CAD reports. known_gaps names the checks a file still fails, each with why: the test fails when one of them passes, so the entry is updated. exact_failures is the regression list: each solid not read exact (or whose exact volume cannot be integrated), named as the read names it, with why as it says it and the cause; the test fails when another fails, or a listed one reads exact. volume_tolerance, where given, says why beside it.",
   "files": [
     {
       "file": "alibre_jacktheripper_guide.stp",
@@ -93,7 +93,14 @@
         "approximated": 0,
         "export_faceted": 23
       },
-      "occt_reads_surfaces": "its twelve shells close, but are written as a surface model's open shells, which OpenCASCADE reads as surfaces, not solids: its bodies and volume are Horizon CAD's, its bounds OpenCASCADE's"
+      "occt_reads_surfaces": "its twelve shells close, but are written as a surface model's open shells, which OpenCASCADE reads as surfaces, not solids: its bodies and volume are Horizon CAD's, its bounds OpenCASCADE's",
+      "exact_failures": [
+        {
+          "solid": "solid #119",
+          "why": "its curve ends 0.374 from its vertex, beyond the limit of 0.0853 (a thousandth of the solid's size) (edge #2008)",
+          "cause": "Creo writes edge #2008's end vertex (#1995, at y -55.330) 0.374 mm off its LINE #1868, which runs from the edge's start vertex to y -55.705; the twelve shells of its SHELL_BASED_SURFACE_MODEL (#2358) are one solid to the read, so all twelve are left out"
+        }
+      ]
     },
     {
       "file": "edm_ideas_card_cage.stp",
@@ -137,7 +144,9 @@
         ],
         "skipped": 0,
         "approximated": 0,
-        "export_faceted": 50
+        "export_faceted": 0,
+        "volume_tolerance": 5e-06,
+        "volume_tolerance_why": "its exact volume and OpenCASCADE's (adaptive, to 1e-6) differ by 2.4e-6; the file's edges stand up to 0.0437 mm off its B-spline faces, which leaves its volume uncertain to 1.7e-3 of it"
       }
     },
     {
@@ -154,7 +163,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
-        "export_faceted": 32,
+        "export_faceted": 0,
         "bodies": 14,
         "volume": 76444937.223998,
         "bounds": [
@@ -199,7 +208,7 @@
         ],
         "skipped": 0,
         "approximated": 0,
-        "export_faceted": 16
+        "export_faceted": 0
       }
     },
     {
@@ -292,7 +301,7 @@
         ],
         "skipped": 0,
         "approximated": 0,
-        "export_faceted": 24
+        "export_faceted": 0
       }
     },
     {
@@ -309,7 +318,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
-        "export_faceted": 18,
+        "export_faceted": 0,
         "bodies": 6,
         "volume": 40459.278227,
         "bounds": [
@@ -483,7 +492,14 @@
         "skipped": 0,
         "approximated": 0,
         "export_faceted": 6
-      }
+      },
+      "exact_failures": [
+        {
+          "solid": "solid #12",
+          "why": "its curve stands 3.09 off its face's surface, beyond the limit of 0.0508 (a thousandth of the solid's size) (face #709, edge #426)",
+          "cause": "a spindle torus: face #709 is on TOROIDAL_SURFACE #482, its minor radius (54.87) greater than its major (8.25), and Torus::invert assumes a ring torus"
+        }
+      ]
     },
     {
       "file": "onshape_rocketsmith_upper_airframe.step",
@@ -499,7 +515,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
-        "export_faceted": 9,
+        "export_faceted": 0,
         "bodies": 1,
         "volume": 712989.578317,
         "bounds": [
@@ -513,7 +529,9 @@
             50.8,
             330.2
           ]
-        ]
+        ],
+        "volume_tolerance": 5e-06,
+        "volume_tolerance_why": "its exact volume and OpenCASCADE's (adaptive, to 1e-6) differ by 2.0e-6; the file's edges stand up to 0.00638 mm off its faces, which leaves its volume uncertain to 3.1e-5 of it"
       }
     },
     {
@@ -544,7 +562,7 @@
       "expect": {
         "skipped": 0,
         "approximated": 0,
-        "export_faceted": 8,
+        "export_faceted": 0,
         "bodies": 1,
         "volume": 7556.510756,
         "bounds": [

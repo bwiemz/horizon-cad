@@ -27,3 +27,11 @@ target_link_libraries(hz_interop_tests
 
 include(GoogleTest)
 gtest_discover_tests(hz_interop_tests PROPERTIES LABELS interop)
+
+# The OpenCASCADE check's own comparison (tools/interop/occt_check.py), run on
+# readings a run kept: plain Python, no OpenCASCADE, no network.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME OcctCheckSelfTest
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_occt_check.py)
+endif()
