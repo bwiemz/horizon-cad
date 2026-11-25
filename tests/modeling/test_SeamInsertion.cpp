@@ -667,6 +667,48 @@ TEST(SeamInsertion, EachPeriodicSurfaceIsSeamedAlongItsOwnIsoCurve) {
     EXPECT_EQ(seamsOf(*inside)[0]->exactCurve->kind(), geo::CurveKind::Line);
 }
 
+namespace {
+
+/// A torus of radii 4 and 1 cut along two of its Villarceau circles (radius 4, each in a plane
+/// tangent to it twice) of one family, half a turn apart about its axis: two bands that each
+/// wind round it once in u and once in v, a helix between the two circles.
+std::unique_ptr<topo::Solid> helicalTorusBands() {
+    const double sinA = 0.25;  // r / R
+    const double cosA = std::sqrt(1.0 - sinA * sinA);
+    const auto torus = std::make_shared<geo::Torus>(frameAt({0, 0, 0}, kZ), 4.0, 1.0);
+    Builder b;
+    const Vec3 across1{cosA, 0.0, sinA};
+    const Vec3 across2{-cosA, 0.0, sinA};
+    topo::Edge* one = b.rim(frameAt({0, 1, 0}, across1.cross({0, 1, 0}), across1), 4.0, 0.0, true);
+    topo::Edge* two =
+        b.rim(frameAt({0, -1, 0}, across2.cross({0, -1, 0}), across2), 4.0, 0.0, true);
+    b.face(torus, false, {{{one, true}}, {{two, false}}}, "helix/one");
+    b.face(torus, false, {{{one, false}}, {{two, true}}}, "helix/two");
+    return b.take();
+}
+
+}  // namespace
+
+// Ruling 29: a loop that winds round both ways (a helical band on a torus) needs a seam each way,
+// which this stage does not lay. It is refused before any seam is laid, with why, and nothing is
+// split.
+TEST(SeamInsertion, ALoopWindingRoundBothWaysIsRefused) {
+    const auto solid = helicalTorusBands();
+    ASSERT_NE(solid, nullptr);
+    topo::Face* side = nullptr;
+    for (auto& f : solid->faces()) {
+        if (f.topoId.tag() == "test/helix/one") side = &f;
+    }
+    ASSERT_NE(side, nullptr);
+    const std::string why = hz::model::insertSeams(*solid, *side, topo::exactTolerance(*solid));
+    EXPECT_EQ(why,
+              "its loop winds round the surface both ways, which no seam this stage lays "
+              "can open");
+    EXPECT_EQ(solid->vertexCount(), 2u);
+    EXPECT_EQ(solid->edgeCount(), 2u);
+    EXPECT_TRUE(seamsOf(*side).empty());
+}
+
 // A face no seam can join says why, and is left as it was: a sphere's cap bounded by its rim
 // alone (one loop round it, and no pole to run a seam to), and a band whose two loops run round
 // the same way in (u, v), which no seam closes.

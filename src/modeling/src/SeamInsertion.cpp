@@ -922,16 +922,15 @@ std::string laySeam(Solid& solid, Face& face, int dir, double period, Loop& a, c
     return {};
 }
 
-/// Gives @p face a seam along parameter @p dir where two of its loops wind round that way.
-std::string seamAlong(Solid& solid, Face& face, int dir, const math::ModelTolerance& tolerance) {
+/// Gives @p face, whose @p loops wind round its surface along parameter @p dir only, a seam that
+/// way, joining the two that wind.
+std::string seamAlong(Solid& solid, Face& face, int dir, std::vector<Loop>& loops,
+                      const math::ModelTolerance& tolerance) {
     const geo::Surface& s = *face.exactSurface;
     const double period = periodOf(s, dir);
-    if (!(period > 0.0)) return {};
-    auto loops = loopsOf(solid, face, tolerance);
-    if (!loops) return {};
     std::vector<std::size_t> winding;
-    for (std::size_t k = 0; k < loops->size(); ++k) {
-        if ((*loops)[k].winds[static_cast<std::size_t>(dir)] != 0.0) winding.push_back(k);
+    for (std::size_t k = 0; k < loops.size(); ++k) {
+        if (loops[k].winds[static_cast<std::size_t>(dir)] != 0.0) winding.push_back(k);
     }
     if (winding.empty()) return {};
     if (winding.size() == 1) {
@@ -944,8 +943,8 @@ std::string seamAlong(Solid& solid, Face& face, int dir, const math::ModelTolera
                " of its loops wind round it, and a seam joins two";
     }
     // a is the outer loop where it winds (u0 is its first vertex's), else the first that does.
-    Loop& a = (*loops)[winding[0]];
-    Loop& b = (*loops)[winding[1]];
+    Loop& a = loops[winding[0]];
+    Loop& b = loops[winding[1]];
     const double wa = a.winds[static_cast<std::size_t>(dir)];
     const double wb = b.winds[static_cast<std::size_t>(dir)];
     if (std::fabs(wa) != 1.0 || std::fabs(wb) != 1.0) {
@@ -953,8 +952,8 @@ std::string seamAlong(Solid& solid, Face& face, int dir, const math::ModelTolera
     }
     if (wa == wb) return kNoSeam + "its two loops wind round it the same way";
     std::vector<const Loop*> others;
-    for (std::size_t k = 0; k < loops->size(); ++k) {
-        if (k != winding[0] && k != winding[1]) others.push_back(&(*loops)[k]);
+    for (std::size_t k = 0; k < loops.size(); ++k) {
+        if (k != winding[0] && k != winding[1]) others.push_back(&loops[k]);
     }
     for (const double c : seamLines(a, b, others, dir, period)) {
         if (!clearOf(c, others, dir, period)) continue;
@@ -976,13 +975,30 @@ std::string insertSeams(Solid& solid, Face& face, const math::ModelTolerance& to
     if (!(topo::uPeriod(s) > 0.0) && !(topo::vPeriod(s) > 0.0)) return {};
     if (hasSeam(solid, face)) return {};
     try {
-        for (int dir = 0; dir < 2; ++dir) {
-            if (std::string why = seamAlong(solid, face, dir, tolerance); !why.empty()) return why;
+        auto loops = loopsOf(solid, face, tolerance);
+        if (!loops) return {};
+        // The one way its loops wind round, if any: a loop that winds round both ways (a helical
+        // band on a torus) needs a seam each way, which this stage does not lay.
+        int dir = -1;
+        for (const Loop& loop : *loops) {
+            const bool u = loop.winds[0] != 0.0;
+            const bool v = loop.winds[1] != 0.0;
+            if (u && v) {
+                return "its loop winds round the surface both ways, which no seam this stage "
+                       "lays can open";
+            }
+            if (!u && !v) continue;
+            if (dir >= 0 && dir != (u ? 0 : 1)) {
+                return "its loops wind round the surface both ways, which no seam this stage "
+                       "lays can open";
+            }
+            dir = u ? 0 : 1;
         }
+        if (dir < 0) return {};
+        return seamAlong(solid, face, dir, *loops, tolerance);
     } catch (const std::exception& e) {
         return kNoSeam + e.what();
     }
-    return {};
 }
 
 std::string insertSeams(Solid& solid, const math::ModelTolerance& tolerance) {

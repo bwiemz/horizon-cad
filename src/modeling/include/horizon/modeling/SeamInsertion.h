@@ -16,8 +16,10 @@ namespace hz::model {
 /// vertex's u), and a seam edge along the surface's u0 iso-curve joins the splits, used once
 /// each way. Exact fields and carriers are both split. Empty on success; else why.
 ///
-/// - **v as well.** The same holds in v where the surface is periodic in v: a torus's tube, a
-///   B-spline closed that way. A face whose loops wind round in u and then in v gets both seams.
+/// - **Or v.** A face whose loops wind round in v instead (round a torus's tube, a pipe's elbow;
+///   a B-spline closed that way) gets its seam along v the same way. A loop that winds round both
+///   ways (a helical band on a torus) is refused, with why: it needs a seam each way, which this
+///   stage does not lay.
 /// - **The seam's curve** is the surface's own iso-curve, parametrised by the other parameter:
 ///   a LineCurve on a cylinder or a cone, a CircleCurve meridian on a sphere or a torus (a
 ///   parallel for a torus's v seam), and on a B-spline the NurbsCurve it gives exactly. Where
