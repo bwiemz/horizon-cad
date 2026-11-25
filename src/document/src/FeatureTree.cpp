@@ -2396,7 +2396,11 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
     // The part's exact counterpart, made (or reused) for the part as it
     // stands; a cancel while it is made leaves a cancelled build, no part.
     const auto finishExact = [&exact, &options, &result, control] {
-        if (!options.exactCounterpart || !result.solid || result.cancelled) return;
+        if (!options.exactCounterpart) {
+            result.withoutExact = exact.following();  // one it would have had
+            return;
+        }
+        if (!result.solid || result.cancelled) return;
         bool cancelled = false;
         result.exact = exact.make(*result.solid, options.previous, control, cancelled);
         if (cancelled) {
@@ -2436,7 +2440,10 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
             // Only a failed build pays for this; a successful one copies
             // nothing. Its exact counterpart is the one so far.
             result.solid = replayUpTo(i, control);
-            if (control && control->cancel) result.cancelled = true;
+            if (control && control->cancel) {
+                result.cancelled = true;  // cancelled: no part, whatever the replay made
+                result.solid.reset();
+            }
             finishExact();
             report();
             return result;

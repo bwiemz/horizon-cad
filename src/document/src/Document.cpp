@@ -117,6 +117,7 @@ void Document::clear() {
     m_solid.reset();
     m_exact.reset();
     m_exactKept.reset();
+    m_builtWithoutExact = false;
     m_lastBuildMessage.clear();
     m_failedFeatureIndex = -1;
     m_built = false;
@@ -245,6 +246,7 @@ bool Document::applyBuild(BuildResult result) {
     m_solid = std::move(result.solid);
     m_exact = std::move(result.exact);
     if (m_exact) m_exactKept = m_exact;
+    m_builtWithoutExact = result.withoutExact;
     m_lastBuildMessage = result.failureMessage;
     m_failedFeatureIndex = result.failedFeatureIndex;
     m_built = true;

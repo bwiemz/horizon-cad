@@ -147,7 +147,8 @@ std::vector<std::string> eraseEntriesFor(std::map<std::string, std::weak_ptr<T>>
 
 /// A component's part is drawn and measured from its faceted part
 /// (SolidTessellator of solid()): built without the exact counterpart, whose
-/// mesh it would never use.
+/// mesh it would never use. Such a build leaves it to be built again
+/// (Document::needsBuild) before a tab shows it.
 BuildOptions facetedOnly() {
     BuildOptions options;
     options.exactCounterpart = false;
@@ -269,8 +270,12 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
     if (mode == ComponentState::Resolved) {
         auto part = openPart(fullPath, /*keep=*/false);
         if (!part) return false;
+        // Built for its components alone, without its exact counterpart; one
+        // the user has open in a tab, as the tab shows it.
         if (!part->solid() && part->featureTree().featureCount() > 0) {
-            part->rebuildModel(facetedOnly());
+            const bool shown =
+                std::find(m_documents.begin(), m_documents.end(), part) != m_documents.end();
+            part->rebuildModel(shown ? BuildOptions{} : facetedOnly());
         }
         instance.resolvedPart = part;
         if (part->solid()) instance.cachedMesh = modelMesh(*part);

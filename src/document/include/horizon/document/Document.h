@@ -184,6 +184,12 @@ public:
     /// this document, or of a copy of it, reuses while the imports it was made
     /// from are the part's still (BuildOptions::previous).
     const std::shared_ptr<const ExactCounterpart>& exactCounterpart() const { return m_exactKept; }
+    /// Forget the exact counterpart, shown and kept: for a document read in
+    /// place of what it held, whose imports' names may be the old ones'.
+    void forgetExactCounterpart() {
+        m_exact.reset();
+        m_exactKept.reset();
+    }
 
     /// Take ownership of the built solid (e.g. loaded from a cache): a new
     /// solid, counted as a build. It has no exact counterpart.
@@ -208,10 +214,13 @@ public:
 
     /// Whether the model has not been built since the feature tree last
     /// changed. A build that failed counts: its partial solid and its failure
-    /// stand until the tree changes, rather than being built again.
+    /// stand until the tree changes, rather than being built again. One built
+    /// without the exact counterpart it would have (an imported part built
+    /// for an assembly's component) is built again, with it, before it is
+    /// shown.
     bool needsBuild() const {
         return m_featureTree.featureCount() > 0 &&
-               (!m_built || m_builtRevision != m_featureTree.revision());
+               (!m_built || m_builtRevision != m_featureTree.revision() || m_builtWithoutExact);
     }
 
     // --- Document type ---
@@ -289,8 +298,9 @@ private:
     int m_failedFeatureIndex = -1;
     std::uint64_t m_builds = 0;
     std::uint64_t m_serial = 0;
-    bool m_built = false;          ///< a build has been applied...
-    uint64_t m_builtRevision = 0;  ///< ...for this revision of the feature tree
+    bool m_built = false;              ///< a build has been applied...
+    uint64_t m_builtRevision = 0;      ///< ...for this revision of the feature tree
+    bool m_builtWithoutExact = false;  ///< ...without its exact counterpart
     DocumentType m_type = DocumentType::Drawing;
     math::LengthUnit m_lengthUnit = math::LengthUnit::Millimetre;
 };

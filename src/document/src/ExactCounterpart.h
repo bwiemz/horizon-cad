@@ -28,7 +28,8 @@ struct ExactCounterpart {
     /// "exact form disagrees with its facets: <exact> vs <faceted>". Empty with a solid.
     std::string note;
     /// What it was made from: each import that made the part, in order, by its feature, its
-    /// naming and its body. A build whose imports say the same reuses it.
+    /// naming and its body's definition. A build whose imports say the same reuses it. Empty for
+    /// one that failed for something that may not happen again (an exception): never reused.
     std::string madeFrom;
 };
 
@@ -40,6 +41,9 @@ public:
     /// Follow @p feature, just applied to the part; @p first when there was no part before it.
     /// Any other feature, or an import a Boolean combines, ends the counterpart: none, by design.
     void follow(const Feature& feature, bool first) noexcept;
+
+    /// Whether the part so far is imports alone, and so has a counterpart, or a note why not.
+    bool following() const { return !m_imports.empty() || !m_note.empty(); }
 
     /// The counterpart of the part the followed imports made, @p faceted its faceted copy: @p
     /// previous when it was made from the same imports, so that nothing is meshed again;

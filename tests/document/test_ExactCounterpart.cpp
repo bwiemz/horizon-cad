@@ -6,20 +6,19 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <atomic>
-#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
-#include "../TimeLimits.h"
 #include "StepTestText.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/ModelCommands.h"
 #include "horizon/document/Sketch.h"
@@ -195,6 +194,29 @@ void turnInsideOut(hz::topo::Solid& solid, const std::set<hz::topo::Face*>& face
         he->pcurveEnd = old.start;
     }
 }
+
+/// An import that sets its build's cancel as it is read for the @p at-th time: a cancel that comes
+/// at a known point of a build, in any build.
+class Cancelling : public ImportedBodyFeature {
+public:
+    Cancelling(std::unique_ptr<hz::topo::Solid> body, hz::doc::BuildControl& control, int at)
+        : ImportedBodyFeature(std::shared_ptr<const hz::topo::Solid>(std::move(body)), "part.step"),
+          m_control(control),
+          m_at(at) {}
+
+    std::unique_ptr<hz::topo::Solid> execute(std::unique_ptr<hz::topo::Solid> input,
+                                             std::string* reason) const override {
+        if (++m_reads == m_at) m_control.cancel = true;
+        return ImportedBodyFeature::execute(std::move(input), reason);
+    }
+
+    int reads() const { return m_reads; }
+
+private:
+    hz::doc::BuildControl& m_control;
+    int m_at;
+    mutable int m_reads = 0;
+};
 
 }  // namespace
 
@@ -516,17 +538,29 @@ TEST(ExactCounterpart, ARebuildWithItsImportsUnchangedReusesIt) {
     EXPECT_EQ(part.exactSolid(), made) << "the one made before the cut, not made again";
     EXPECT_EQ(part.exactMesh().get(), mesh);
 
-    // A worker's build of a copy, its imports read again from the part's STEP text, reuses it.
-    Document copy;
+    // A worker builds a copy, its imports read again from the part's STEP text. The first such
+    // read may define them a little otherwise than the import did (a frame renormalised in its
+    // last bit, a scale folded in), so its build may make the counterpart again; the document
+    // takes that build, and every later copy reads them as that one did, and reuses it.
+    const auto workerBuild = [&part](Document& copy) {
+        std::string error;
+        ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(
+            hz::io::NativeFormat::documentToJson(part, false), copy, &error))
+            << error;
+        hz::doc::BuildOptions given;
+        given.previous = part.exactCounterpart();
+        ASSERT_TRUE(part.applyBuild(copy.buildWithDiagnostics(nullptr, given)))
+            << part.lastBuildMessage();
+    };
+    Document firstCopy;
+    workerBuild(firstCopy);
+    const hz::topo::Solid* fromCopy = part.exactSolid();
+    ASSERT_NE(fromCopy, nullptr) << part.exactNote();
+    Document secondCopy;
+    workerBuild(secondCopy);
+    EXPECT_EQ(part.exactSolid(), fromCopy) << "made again for a copy of the same imports";
     std::string error;
-    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(
-        hz::io::NativeFormat::documentToJson(part, false), copy, &error))
-        << error;
     hz::doc::BuildOptions options;
-    options.previous = part.exactCounterpart();
-    ASSERT_TRUE(copy.applyBuild(copy.buildWithDiagnostics(nullptr, options)))
-        << copy.lastBuildMessage();
-    EXPECT_EQ(copy.exactSolid(), made) << "made again for a copy of the same imports";
 
     // Another body under the same feature's name is not taken for it.
     Document other;
@@ -544,6 +578,52 @@ TEST(ExactCounterpart, ARebuildWithItsImportsUnchangedReusesIt) {
     EXPECT_NE(other.exactSolid(), cylinder.exactSolid());
     EXPECT_EQ(other.exactSolid()->faceCount(), 6u);
 
+    // Nor one with the same counts, senses and corners whose surfaces are not the same: the
+    // block with two of its faces' planes swapped. Its build goes on to make one of its own,
+    // and is cancelled here as it begins (a body no exact form holds is refused, but only after
+    // the mesher has searched for seconds).
+    Document block;
+    importInto(block, read(hz::step_text::block(false)));
+    ASSERT_TRUE(block.rebuildModel()) << block.lastBuildMessage();
+    ASSERT_NE(block.exactSolid(), nullptr) << block.exactNote();
+    auto swapped = read(hz::step_text::block(false));
+    ASSERT_NE(swapped, nullptr);
+    std::swap(swapped->faces()[2].exactSurface, swapped->faces()[3].exactSurface);
+    hz::doc::BuildControl control;
+    auto wrongBody = std::make_unique<Cancelling>(std::move(swapped), control, 1);
+    wrongBody->restoreFeatureID(block.featureTree().feature(0)->featureID());
+    Document wrong;
+    wrong.setType(DocumentType::Part);
+    wrong.featureTree().addFeature(std::move(wrongBody));
+    options.previous = block.exactCounterpart();
+    const hz::doc::BuildResult swappedBuild = wrong.buildWithDiagnostics(&control, options);
+    EXPECT_TRUE(swappedBuild.cancelled) << "taken for the block";
+    EXPECT_EQ(control.total.load(), 2) << "its counterpart's step begun";
+
+    // Nor a B-spline cap whose net differs inside its rim, its corners the same.
+    const auto cap = [](double spread) {
+        return read(hz::step_text::seamedHemisphere(
+            "#20,#21,#22", hz::step_text::splineSphereSurface(10.0, spread)));
+    };
+    Document dome;
+    importInto(dome, cap(0.0));
+    ASSERT_TRUE(dome.rebuildModel()) << dome.lastBuildMessage();
+    ASSERT_NE(dome.exactSolid(), nullptr) << dome.exactNote();
+    Document revised;
+    importInto(revised, cap(1e-6));
+    revised.featureTree().feature(0)->restoreFeatureID(dome.featureTree().feature(0)->featureID());
+    options.previous = dome.exactCounterpart();
+    ASSERT_TRUE(revised.applyBuild(revised.buildWithDiagnostics(nullptr, options)))
+        << revised.lastBuildMessage();
+    EXPECT_NE(revised.exactSolid(), dome.exactSolid()) << "taken for the first dome";
+
+    // A document read in place of what it held forgets its counterpart.
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(
+        hz::io::NativeFormat::documentToJson(block, false), dome, &error))
+        << error;
+    EXPECT_EQ(dome.exactSolid(), nullptr);
+    EXPECT_EQ(dome.exactCounterpart(), nullptr);
+
     // The clip suppressed: the cylinder alone, made again; and back, made again with both.
     part.featureTree().feature(1)->setSuppressed(true);
     part.featureTree().markChanged();
@@ -559,44 +639,44 @@ TEST(ExactCounterpart, ARebuildWithItsImportsUnchangedReusesIt) {
     expectNamedAsItsFacets(*part.exactSolid(), *part.solid());
 }
 
-// Ruling 51: a cancel while the counterpart is being made stops it between faces, promptly. The
-// build counts the counterpart as a step of its own (what the cancel waits for), and a cancelled
-// build has no part.
-TEST(ExactCounterpart, ACancelWhileItIsMadeReturnsPromptly) {
-    hz::io::StepReadOptions inMetres;
-    inMetres.unknownLengthUnit = hz::math::LengthUnit::Metre;
-    const std::string clip = hz::step_text::cClip();
+// Ruling 51: a cancel that comes once the features are built stops the counterpart's step before
+// it meshes, and the build is cancelled, with no part. The cancel comes from the last import as it
+// is read, so it falls between the features and the counterpart every time, in any build: no
+// race. (That meshing stops between faces is TrimmedFaceMesher.ACancelStopsItBetweenFaces.)
+TEST(ExactCounterpart, ACancelOnceItsFeaturesAreBuiltStopsIt) {
+    hz::doc::BuildControl control;
+    Document part;
+    importInto(part, read(hz::step_text::externalStyleCylinder()));
+    auto last =
+        std::make_unique<Cancelling>(read(hz::step_text::cClip(Vec3(10, 0, 0))), control, 1);
+    const Cancelling* cancelling = last.get();
+    part.featureTree().addFeature(std::move(last));
+    const hz::doc::BuildResult result = part.buildWithDiagnostics(&control);
+    EXPECT_EQ(cancelling->reads(), 1);
+    EXPECT_TRUE(result.cancelled);
+    EXPECT_EQ(result.solid.get(), nullptr) << "a cancelled build has no part";
+    EXPECT_EQ(result.exact.get(), nullptr);
+    EXPECT_EQ(control.total.load(), 3) << "the counterpart a step of its own, after the 2 features";
+    EXPECT_EQ(control.done.load(), 3);
+}
+
+// Ruling 53: a build whose feature fails builds the part again up to it. A cancel during that
+// replay leaves it cancelled, with no part, as a cancel anywhere else does.
+TEST(ExactCounterpart, ACancelWhileTheFailedFeaturesPartIsReplayedLeavesNoPart) {
+    hz::doc::BuildControl control;
     Document part;
     part.setType(DocumentType::Part);
-    constexpr int kBodies = 24;
-    for (int k = 0; k < kBodies; ++k) {
-        auto solids = hz::io::StepFormat::fromString(clip, nullptr, nullptr, inMetres);
-        ASSERT_EQ(solids.size(), 1u) << hz::io::StepFormat::lastError();
-        part.featureTree().addFeature(imported(std::move(solids.front())));
-    }
-    hz::doc::BuildControl control;
-    hz::doc::BuildResult result;
-    std::atomic<bool> finished{false};
-    std::thread worker([&] {
-        result = part.buildWithDiagnostics(&control);
-        finished = true;
-    });
-    // Until its features are built and the counterpart's step has begun, and a little into its
-    // meshing (about a second of it, here).
-    while (!finished && control.total.load() <= kBodies) std::this_thread::yield();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    const auto cancelledAt = std::chrono::steady_clock::now();
-    control.cancel = true;
-    worker.join();
-    const double ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - cancelledAt)
-            .count();
-    EXPECT_EQ(control.total.load(), kBodies + 1) << "the counterpart a step of its own";
-    EXPECT_TRUE(result.cancelled) << "finished before the cancel";
+    auto first =
+        std::make_unique<Cancelling>(read(hz::step_text::externalStyleCylinder()), control, 2);
+    const Cancelling* cancelling = first.get();
+    part.featureTree().addFeature(std::move(first));
+    part.featureTree().addFeature(cut(-5, -5, 5, 5, 5.0));  // the whole of it: nothing left
+    const hz::doc::BuildResult result = part.buildWithDiagnostics(&control);
+    ASSERT_EQ(result.failedFeatureIndex, 1) << result.failureMessage;
+    EXPECT_EQ(cancelling->reads(), 2) << "read again in the replay";
+    EXPECT_TRUE(result.cancelled);
     EXPECT_EQ(result.solid.get(), nullptr) << "a cancelled build has no part";
-    if (HZ_TIME_LIMITS) {
-        EXPECT_LT(ms, 500.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "the cancel waited for the whole mesh";
-    }
+    EXPECT_EQ(result.exact.get(), nullptr);
 }
 
 // Review (Minor 5): a build for what draws the faceted part alone (an assembly's component, its
@@ -614,4 +694,61 @@ TEST(ExactCounterpart, ABuildThatAsksForNoneMakesNone) {
     EXPECT_TRUE(part.exactNote().empty()) << part.exactNote();
     EXPECT_EQ(control.total.load(), 1) << "no step for a counterpart";
     EXPECT_EQ(part.exactCounterpart(), nullptr);
+    EXPECT_TRUE(part.needsBuild()) << "to be built with it before it is shown";
+
+    // A part with no import has no counterpart to leave out: built so, it is built.
+    Document box;
+    box.setType(DocumentType::Part);
+    box.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(1.0, 2.0, 3.0));
+    ASSERT_TRUE(box.rebuildModel(none)) << box.lastBuildMessage();
+    EXPECT_FALSE(box.needsBuild());
+}
+
+// Ruling 53: an assembly's component part is built without its counterpart, but a part the user
+// has open in a tab is built with it; and one built for its components first is built again, with
+// it, when a tab shows it (it needs a build).
+TEST(ExactCounterpart, APartOpenInATabIsBuiltWithIt) {
+    const auto loader = [](const std::string& /*path*/, Document& doc) {
+        importInto(doc, read(hz::step_text::externalStyleCylinder()));
+        return true;
+    };
+    const auto file = [](const std::string& name) {
+        const std::string path = (std::filesystem::temp_directory_path() / name).string();
+        std::ofstream(path) << "{}";
+        return path;
+    };
+
+    // Open in a tab, not yet built, then placed: built as the tab shows it.
+    hz::doc::DocumentManager first;
+    first.setPartLoader(loader);
+    const std::string shownPath = file("hz_exact_counterpart_tab.hzpart");
+    const auto shown = first.openPart(shownPath);
+    ASSERT_NE(shown, nullptr);
+    hz::doc::ComponentInstance placed;
+    placed.partPath = shownPath;
+    ASSERT_TRUE(first.resolveComponent(placed, hz::doc::ComponentState::Resolved));
+    EXPECT_EQ(placed.resolvedPart, shown);
+    EXPECT_NE(shown->exactSolid(), nullptr) << shown->exactNote();
+    EXPECT_FALSE(shown->needsBuild());
+
+    // Placed first, built for its component alone; opened in a tab, it needs a build, and that
+    // build has it.
+    hz::doc::DocumentManager second;
+    second.setPartLoader(loader);
+    const std::string placedPath = file("hz_exact_counterpart_component.hzpart");
+    hz::doc::ComponentInstance component;
+    component.partPath = placedPath;
+    ASSERT_TRUE(second.resolveComponent(component, hz::doc::ComponentState::Resolved));
+    ASSERT_NE(component.resolvedPart, nullptr);
+    ASSERT_NE(component.resolvedPart->solid(), nullptr);
+    EXPECT_EQ(component.resolvedPart->exactSolid(), nullptr);
+    const auto opened = second.openPart(placedPath);
+    EXPECT_EQ(opened, component.resolvedPart);
+    EXPECT_TRUE(opened->needsBuild()) << "shown as it was built for its component";
+    ASSERT_TRUE(opened->rebuildModel()) << opened->lastBuildMessage();
+    EXPECT_NE(opened->exactSolid(), nullptr) << opened->exactNote();
+    EXPECT_FALSE(opened->needsBuild());
+
+    std::filesystem::remove(shownPath);
+    std::filesystem::remove(placedPath);
 }

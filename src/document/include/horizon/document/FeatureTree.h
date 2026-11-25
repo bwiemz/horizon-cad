@@ -1035,6 +1035,10 @@ struct BuildResult {
     std::string failureMessage;
     int failedFeatureIndex = -1;
     bool cancelled = false;  ///< stopped by BuildControl::cancel; no solid
+    /// Built without the exact counterpart it would have had (BuildOptions::
+    /// exactCounterpart false, the part made of imports alone): a part to be
+    /// built again before it is shown.
+    bool withoutExact = false;
     /// Where each sketch that follows a face was placed (Phase 157), by id:
     /// what a build of a copy (on a worker) gives the document it copied.
     std::map<uint64_t, draft::SketchPlane> placements;

@@ -1257,6 +1257,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
     doc.layerManager().clear();
     doc.constraintSystem().clear();
     doc.parameterRegistry().clear();
+    // Its imports read again may take the old ones' names: no counterpart of
+    // theirs is reused for them.
+    doc.forgetExactCounterpart();
 
     // --- Document type (v16+; earlier files are all drawings) ---
     // Defensive read: a malformed (non-string) "type" must not throw.
