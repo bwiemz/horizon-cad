@@ -15,6 +15,7 @@
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
 
@@ -81,6 +82,23 @@ TEST(ExactReadPoint, FacetedSolidsReadAsBefore) {
     const auto polys = BoundaryMesh::extractFacePolygons(*faceted);
     EXPECT_EQ(polys.size(), faceted->faceCount());
     for (const auto& p : polys) EXPECT_EQ(p.exactSurface, nullptr);
+}
+
+// The read point's own tolerance: 1e-4 of an exact solid's size, the size its model tolerance
+// comes from, and the one the default overload meshes at; none for a faceted solid, which is read
+// from its loops.
+TEST(ExactReadPoint, ItsDefaultToleranceIsATenThousandthOfTheSolid) {
+    const auto cyl = exactCylinder();
+    const double tolerance = BoundaryMesh::defaultChordTolerance(*cyl);
+    EXPECT_GT(tolerance, 0.0);
+    EXPECT_DOUBLE_EQ(tolerance, 1e-4 * topo::exactExtent(*cyl));
+    const auto byDefault = BoundaryMesh::extractFacePolygons(*cyl);
+    const auto asked = BoundaryMesh::extractFacePolygons(*cyl, tolerance);
+    ASSERT_EQ(byDefault.size(), asked.size());
+    EXPECT_EQ(BoundaryMesh::signedVolume(byDefault), BoundaryMesh::signedVolume(asked));
+    EXPECT_EQ(
+        BoundaryMesh::defaultChordTolerance(*model::PrimitiveFactory::makeCylinder(5.0, 10.0)),
+        0.0);
 }
 
 TEST(ExactReadPoint, CylinderSurfaceAreaFromThePolygons) {

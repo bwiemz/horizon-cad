@@ -64,10 +64,15 @@ public:
     /// and exactSurface and wound outward (a mesh is never inverted, whatever the solid's
     /// loops do); a face without one is read from its loop as above. Faces keep the solid's
     /// order, an exact face's triangles standing where the face stands. This overload meshes
-    /// at a chord tolerance of 1e-4 times the diagonal of the box around the solid's vertices and
-    /// points along its exact edges, and throws std::runtime_error if an exact face cannot be
+    /// at defaultChordTolerance(solid), and throws std::runtime_error if an exact face cannot be
     /// meshed (never a silent hole).
     static std::vector<BoundaryPolygon> extractFacePolygons(const topo::Solid& solid);
+
+    /// The chord tolerance extractFacePolygons(solid) meshes @p solid's exact faces at: 1e-4
+    /// times the diagonal of the box around its vertices and points along its exact edges
+    /// (topo::exactExtent), the size its model tolerance comes from; 1e-4 where that is 0. 0 for
+    /// a solid with no exact face, which is read from its loops.
+    static double defaultChordTolerance(const topo::Solid& solid);
 
     /// As above, at the given chord tolerance (absolute: scale it with the part). A face that
     /// cannot be meshed is never a silent hole. With @p problem given, it is set to the first

@@ -478,14 +478,15 @@ double BoundaryMesh::signedVolume(const std::vector<BoundaryPolygon>& polygons) 
     return vol6 / 6.0;
 }
 
+double BoundaryMesh::defaultChordTolerance(const topo::Solid& solid) {
+    if (!topo::hasExactFaces(solid)) return 0.0;
+    // 1e-4 of the part's size, the size its model tolerance comes from.
+    const double size = topo::exactExtent(solid);
+    return size > 0.0 ? 1e-4 * size : 1e-4;
+}
+
 std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid& solid) {
-    double chordTolerance = 0.0;
-    if (topo::hasExactFaces(solid)) {
-        // 1e-4 of the part's size, the size its model tolerance comes from.
-        const double size = topo::exactExtent(solid);
-        chordTolerance = size > 0.0 ? 1e-4 * size : 1e-4;
-    }
-    return extractFacePolygons(solid, chordTolerance);
+    return extractFacePolygons(solid, defaultChordTolerance(solid));
 }
 
 std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid& solid,
