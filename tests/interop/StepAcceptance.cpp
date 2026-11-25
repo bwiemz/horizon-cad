@@ -257,10 +257,12 @@ StepSummary summarize(const fs::path& step, const fs::path& work,
     // band round a hole written without the seam other readers need (#184).
     const fs::path exported = work / "export" / (name + ".step");
     summary.exportPath = exported.string();
+    summary.exactNote = part.exactNote();
     if (!summary.importBuildError.empty() || part.solid() == nullptr) {
         summary.exportError = "not exported: the part does not build";
     } else if (StepFormat::WriteReport report;
                StepFormat::save(exported.string(), {part.exactOrFacetedSolid()}, {}, &report)) {
+        summary.exportedExact = whollyExact(*part.exactOrFacetedSolid());
         summary.exportFaceted = report.faceted;
         const auto again = StepFormat::load(exported.string());
         summary.reimportedBodies = 0;
@@ -286,8 +288,10 @@ StepSummary summarize(const fs::path& step, const fs::path& work,
         } else if (!read.rebuildModel() || read.solid() == nullptr) {
             summary.reopenError = "read back, it does not build: " + read.lastBuildMessage();
         } else {
-            summary.reopenedVolume =
-                MassPropertiesCalculator::compute(*read.exactOrFacetedSolid()).volume;
+            const topo::Solid& measured = *read.exactOrFacetedSolid();
+            summary.reopenedVolume = MassPropertiesCalculator::compute(measured).volume;
+            summary.reopenedExact = whollyExact(measured);
+            summary.reopenedExactNote = read.exactNote();
             summary.reopenedFacetedVolume = MassPropertiesCalculator::compute(*read.solid()).volume;
         }
     }
@@ -345,6 +349,10 @@ nlohmann::json toJson(const StepSummary& s) {
     out["bounds"] =
         s.bounds.empty ? json(nullptr) : json::array({vec(s.bounds.min), vec(s.bounds.max)});
     out["reopenedVolume"] = s.reopenedVolume ? json(*s.reopenedVolume) : json(nullptr);
+    out["reopenedExact"] = s.reopenedExact;
+    out["reopenedExactNote"] = s.reopenedExactNote;
+    out["exportedExact"] = s.exportedExact;
+    out["exactNote"] = s.exactNote;
     out["reopenedFacetedVolume"] =
         s.reopenedFacetedVolume ? json(*s.reopenedFacetedVolume) : json(nullptr);
     out["keptComponents"] = s.keptComponents ? json(*s.keptComponents) : json(nullptr);
@@ -411,6 +419,42 @@ std::vector<std::string> checkExactFailures(const StepSummary& summary, const js
             problems.push_back(l.solid + " reads exact now: take it out of exact_failures (" +
                                l.why + ")");
         }
+    }
+    return problems;
+}
+
+std::vector<std::string> checkReadBack(const StepSummary& summary) {
+    std::vector<std::string> problems;
+    // Read back from STEP text (a part file keeps an imported body as STEP, and an export is
+    // STEP), the exact volume is the same to within what it is known to: its own estimate, where
+    // the file's edges stand off their faces and their pcurves are fitted again on each read;
+    // else to 1e-9, the writer's numbers reading back as written.
+    const double known = std::max(1e-9, exactError(summary));
+    const double read = summary.facetedVolume;
+    const auto check = [&](const std::string& what, double volume, bool exact,
+                           const std::string& note) {
+        // Exact, whatever its volume: a faceted copy may measure within what a file with
+        // stand-off edges is known to.
+        if (!exact) {
+            problems.push_back(what + ": not exact, its faceted copy" +
+                               (note.empty() ? std::string() : " (" + note + ")"));
+        }
+        const double relative = read != 0.0 ? (volume - read) / read : volume;
+        if (!(std::abs(relative) <= known)) {
+            std::ostringstream line;
+            line.precision(12);
+            line << what << ": " << volume << " mm³, not " << read << " (relative " << relative
+                 << ", over " << known << ")";
+            problems.push_back(line.str());
+        }
+    };
+    if (summary.reopenedVolume) {
+        check("kept as a part and read back", *summary.reopenedVolume, summary.reopenedExact,
+              summary.reopenedExactNote);
+    }
+    if (summary.reimportedBodies) {
+        check("sent out as STEP and read back", summary.reimportedVolume, summary.exportedExact,
+              summary.exactNote);
     }
     return problems;
 }

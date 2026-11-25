@@ -206,39 +206,23 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
         EXPECT_TRUE(s.importBuildError.empty())
             << "imported, it does not build: " << s.importBuildError;
     }
-    // Read back from STEP text (a part file keeps an imported body as STEP, and an export is
-    // STEP), its exact volume is the same to within what it is known to: its own estimate, where
-    // its file's edges stand off their faces and their pcurves are fitted again on each read;
-    // else to 1e-9, the writer's numbers reading back as written.
-    const double readBack = std::max(1e-9, hz::interop::exactError(s));
-    const auto readBackFound = [&](double volume) {
-        std::ostringstream found;
-        found.precision(12);
-        found << volume << " mm³, not " << s.facetedVolume << " (relative "
-              << (volume - s.facetedVolume) / s.facetedVolume << ", over " << readBack << ")";
-        return found.str();
-    };
     if (knownGap(manifest, "reopen")) {
         EXPECT_FALSE(s.reopenedVolume.has_value())
             << "it reopens now: take reopen out of known_gaps";
     } else {
-        // Measured as the part is shown, measured and exported: its exact counterpart.
         ASSERT_TRUE(s.reopenedVolume.has_value()) << "kept as a part: " << s.reopenError;
-        const double reopened = s.reopenedVolume.value_or(0.0);
-        EXPECT_TRUE(near(reopened, s.facetedVolume, readBack))
-            << "kept as a part and read back: " << readBackFound(reopened);
     }
     if (s.parts > 0) {
         ASSERT_TRUE(s.keptComponents.has_value()) << "kept as an assembly: " << s.keepError;
         EXPECT_EQ(s.keptComponents.value_or(0), s.occurrences)
             << "kept as an assembly and read back";
     }
-    // Sent out exact (its exact counterpart, its faces as their kinds), it reads back as the
-    // bodies read.
     ASSERT_TRUE(s.reimportedBodies.has_value()) << "sent out as STEP: " << s.exportError;
     EXPECT_EQ(s.reimportedBodies.value_or(0), s.bodies) << "sent out as STEP and read back";
-    EXPECT_TRUE(near(s.reimportedVolume, s.facetedVolume, readBack))
-        << "sent out as STEP and read back: " << readBackFound(s.reimportedVolume);
+    // Kept as a part and sent out, each comes back exact (as the part is shown, measured and
+    // exported: its exact counterpart, never its faceted copy) and at the bodies' volume, to
+    // what that is known to.
+    for (const std::string& problem : hz::interop::checkReadBack(s)) ADD_FAILURE() << problem;
 }
 
 INSTANTIATE_TEST_SUITE_P(Corpus, StepCorpus, ::testing::ValuesIn(corpus()), testName);
@@ -434,6 +418,83 @@ TEST(StepCorpusReadBack, TheExactVolumeIsKnownToItsSolidsOwnEstimates) {
     EXPECT_EQ(hz::interop::exactError(StepSummary{}), 0.0);
 }
 
+namespace {
+
+/// A file read as one exact solid of 1000 mm³, known to @p error, kept as a part and sent out
+/// exact, each read back at exactly its volume.
+StepSummary readBackExactly(double error) {
+    StepSummary s;
+    SolidReading solid = exactSolid("solid 1", 1000.0, 1000.0, 1.0);
+    solid.exactError = error;
+    s.solids.push_back(solid);
+    s.facetedVolume = 1000.0;
+    s.reopenedVolume = 1000.0;
+    s.reopenedExact = true;
+    s.exportedExact = true;
+    s.reimportedBodies = 1;
+    s.reimportedVolume = 1000.0;
+    return s;
+}
+
+}  // namespace
+
+TEST(StepCorpusReadBack, ExactAndAtItsVolumeAgrees) {
+    EXPECT_TRUE(hz::interop::checkReadBack(readBackExactly(0.0)).empty());
+    StepSummary near = readBackExactly(1.69e-3);
+    near.reopenedVolume = 1001.0;
+    near.reimportedVolume = 999.0;
+    EXPECT_TRUE(hz::interop::checkReadBack(near).empty());
+}
+
+// A part reopened as its faceted copy (no exact counterpart, or measured without it) is an
+// error however near its volume: IronCAD's faceted copy is +3.8e-4 from its exact volume,
+// within the 1.69e-3 its file's edges leave it known to.
+TEST(StepCorpusReadBack, APartReopenedAsItsFacetedCopyIsAnErrorWhateverItsVolume) {
+    StepSummary s = readBackExactly(1.69e-3);
+    s.reopenedVolume = 1000.382;
+    s.reopenedExact = false;
+    s.reopenedExactNote = "exact form disagrees with its facets";
+    const auto problems = hz::interop::checkReadBack(s);
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_TRUE(says(problems[0], "kept as a part and read back")) << problems[0];
+    EXPECT_TRUE(says(problems[0], "faceted copy")) << problems[0];
+    EXPECT_TRUE(says(problems[0], s.reopenedExactNote)) << problems[0];
+}
+
+TEST(StepCorpusReadBack, AnExportOfTheFacetedCopyIsAnErrorWhateverItsVolume) {
+    StepSummary s = readBackExactly(1.69e-3);
+    s.exportedExact = false;
+    s.reimportedVolume = 1000.382;
+    const auto problems = hz::interop::checkReadBack(s);
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_TRUE(says(problems[0], "sent out as STEP")) << problems[0];
+    EXPECT_TRUE(says(problems[0], "faceted copy")) << problems[0];
+}
+
+// Exact, but further than it is known to: 1e-9 where its estimate is smaller.
+TEST(StepCorpusReadBack, AVolumeBeyondWhatItIsKnownToIsAnError) {
+    StepSummary s = readBackExactly(0.0);
+    s.reopenedVolume = 1000.0 * (1 + 1e-8);
+    s.reimportedVolume = 1000.0 * (1 - 1e-8);
+    const auto problems = hz::interop::checkReadBack(s);
+    ASSERT_EQ(problems.size(), 2u);
+    EXPECT_TRUE(says(problems[0], "kept as a part and read back")) << problems[0];
+    EXPECT_TRUE(says(problems[1], "sent out as STEP and read back")) << problems[1];
+    StepSummary tolerant = readBackExactly(1e-4);
+    tolerant.reopenedVolume = 1000.2;
+    EXPECT_EQ(hz::interop::checkReadBack(tolerant).size(), 1u);
+}
+
+// What was not kept, or not sent out, is said apart (the test asserts both were).
+TEST(StepCorpusReadBack, WhatWasNotReadBackIsNotLookedAt) {
+    StepSummary s = readBackExactly(0.0);
+    s.reopenedVolume.reset();
+    s.reopenedExact = false;
+    s.reimportedBodies.reset();
+    s.exportedExact = false;
+    EXPECT_TRUE(hz::interop::checkReadBack(s).empty());
+}
+
 // A solid left out has no mesh to measure: the regression list speaks for it.
 TEST(StepCorpusMeshAgainstMass, ASolidLeftOutHasNoMeshToCompare) {
     StepSummary s;
@@ -450,11 +511,12 @@ fs::path written(const fs::path& dir, const std::string& name, const std::string
     return path;
 }
 
+/// The corner stepWithACornerOff raises, as it writes it.
+const std::string kCornerOff = "(7.,11.,13.2)";
+
 /// A 7 x 11 x 13 box written to STEP with its corner at (7, 11, 13) raised 0.2, off the planes
 /// of its faces: a solid the read cannot make exact (it says "beyond the limit"). With
 /// @p alsoGood, a 2 x 3 x 5 box beside it, written after it, which it can.
-const std::string kCornerOff = "(7.,11.,13.2)";
-
 std::string stepWithACornerOff(bool alsoGood) {
     const auto off = hz::model::PrimitiveFactory::makeBox(7.0, 11.0, 13.0);
     const auto good = hz::model::PrimitiveFactory::makeBox(2.0, 3.0, 5.0);
@@ -504,6 +566,10 @@ TEST(StepCorpusSummary, ASolidLeftOutForItsExactFormIsNamedWithWhy) {
     EXPECT_NEAR(s.reopenedVolume.value_or(0.0), 30.0, 1e-9);
     ASSERT_TRUE(s.reopenedFacetedVolume.has_value());
     EXPECT_NEAR(s.reopenedFacetedVolume.value_or(0.0), 30.0, 1e-9);
+    // Reopened and sent out, it is its exact counterpart, never its faceted copy.
+    EXPECT_TRUE(s.reopenedExact) << s.reopenedExactNote;
+    EXPECT_TRUE(s.exportedExact) << s.exactNote;
+    EXPECT_TRUE(hz::interop::checkReadBack(s).empty());
     // The regression list names it, or the summary disagrees with it.
     EXPECT_EQ(hz::interop::checkExactFailures(s, json::object()).size(), 1u);
     EXPECT_TRUE(

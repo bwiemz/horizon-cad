@@ -96,6 +96,12 @@ struct StepSummary {
     /// The same part's faceted copy (Document::solid()), which features and
     /// Booleans work on: its volume.
     std::optional<double> reopenedFacetedVolume;
+    /// What reopenedVolume measured is exact, every face on its exact surface:
+    /// the part read back has its exact counterpart, and is not measured as its
+    /// faceted copy. With why it has none where it does not
+    /// (Document::exactNote()).
+    bool reopenedExact = false;
+    std::string reopenedExactNote;
     std::string reopenError;
     /// Kept as an assembly of part files (saveStepAssembly), read back:
     /// its components. Empty when it could not be.
@@ -103,8 +109,13 @@ struct StepSummary {
     std::string keepError;
     /// Sent out as STEP (the bodies, placed) to this path, and read back.
     std::string exportPath;
+    /// What was sent out is exact, every face on its exact surface: the part's
+    /// exact counterpart, not its faceted copy. With why the part has none
+    /// where it does not (Document::exactNote()).
+    bool exportedExact = false;
+    std::string exactNote;
     std::optional<std::size_t> reimportedBodies;
-    double reimportedVolume = 0.0;  ///< faceted, mm³
+    double reimportedVolume = 0.0;  ///< mm³, as compute() measures it read back
     std::string exportError;
     /// The curved faces the export kept in facets, each with why (File ▸
     /// Export's report): an export so kept measures as its facets there.
@@ -145,6 +156,13 @@ double exactError(const StepSummary& summary);
 /// agree.
 std::vector<std::string> checkExactFailures(const StepSummary& summary,
                                             const nlohmann::json& manifest);
+
+/// Where what @p summary kept as a part, or sent out as STEP, comes back other than as the
+/// bodies read: not exact (the part reopened, or the export made, as its faceted copy), whatever
+/// its volume; or its volume further from theirs than they are known to, max(1e-9,
+/// exactError(summary)), relative. Neither is looked at where it was not kept or not sent out
+/// (that is said apart). One line each; none when both come back exact.
+std::vector<std::string> checkReadBack(const StepSummary& summary);
 
 /// Where an exact solid's read-point mesh (SolidReading::meshVolume) differs from its exact
 /// volume by more than its allowance, or could not be made. One line each; none when every one
