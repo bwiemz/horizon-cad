@@ -3,8 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 #include "../AngleWrap.h"
+#include "../RationalArc.h"
+#include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
 
 namespace hz::geo {
@@ -31,6 +34,52 @@ double longitude(const Frame& f, const math::Vec3& p) {
 /// The distance of @p p from the frame's axis.
 double radialDistance(const Frame& f, const math::Vec3& p) {
     return std::hypot(p.dot(f.x), p.dot(f.y));
+}
+
+/// A meridian of a surface turned about a frame's z axis: a rational B-spline in (radial, axial)
+/// coordinates of the half-plane at each longitude.
+struct Meridian {
+    std::vector<math::Vec2> points;  ///< (distance from the axis, height along it)
+    std::vector<double> weights;
+    std::vector<double> knots;
+    int degree = 1;
+};
+
+/// The straight meridian from (r0, h0) at v0 to (r1, h1) at v1, at one speed.
+Meridian straightMeridian(double r0, double h0, double r1, double h1, double v0, double v1) {
+    return {{{r0, h0}, {r1, h1}}, {1.0, 1.0}, {v0, v0, v1, v1}, 1};
+}
+
+/// The circular meridian centre + radius (cos v, sin v), v from v0 to v1 (rational arcs).
+Meridian circularMeridian(const math::Vec2& centre, double radius, double v0, double v1) {
+    detail::UnitArc arc = detail::unitArc(v0, v1, v0, v1);
+    Meridian m;
+    m.points.reserve(arc.points.size());
+    for (const math::Vec2& p : arc.points) m.points.push_back(centre + p * radius);
+    m.weights = std::move(arc.weights);
+    m.knots = std::move(arc.knots);
+    m.degree = 2;
+    return m;
+}
+
+/// The surface origin + m.x (cos u x + sin u y) + m.y z of @p f, for u from @p u0 to @p u1 and
+/// m the meridian, as a NURBS, exactly: the unit arc's rows round the axis (built from the frame's
+/// own x and y, so a left-handed frame turns as its surface does) times the meridian's columns,
+/// each weight the product of theirs. Its domain is [u0, u1] by the meridian's.
+std::shared_ptr<NurbsSurface> revolvedMeridian(const Frame& f, double u0, double u1,
+                                               const Meridian& m) {
+    const detail::UnitArc arc = detail::unitArc(u0, u1, u0, u1);
+    std::vector<std::vector<math::Vec3>> points(arc.points.size());
+    std::vector<std::vector<double>> weights(arc.points.size());
+    for (std::size_t i = 0; i < arc.points.size(); ++i) {
+        const math::Vec3 out = f.x * arc.points[i].x + f.y * arc.points[i].y;
+        for (std::size_t j = 0; j < m.points.size(); ++j) {
+            points[i].push_back(f.origin + out * m.points[j].x + f.z * m.points[j].y);
+            weights[i].push_back(arc.weights[i] * m.weights[j]);
+        }
+    }
+    return std::make_shared<NurbsSurface>(std::move(points), std::move(weights), arc.knots, m.knots,
+                                          2, m.degree);
 }
 }  // namespace
 
@@ -74,6 +123,18 @@ math::Vec2 Plane::invert(const math::Vec3& point) const {
 
 std::unique_ptr<Surface> Plane::transformed(const math::Mat4& m) const {
     return std::make_unique<Plane>(frame_.transformed(m), scale_ * Frame::scaleOf(m));
+}
+
+std::shared_ptr<NurbsSurface> Plane::toNurbs(double u0, double u1, double v0, double v1) const {
+    u1 = detail::checkedRangeEnd(u0, u1, 0.0, "Plane::toNurbs (u)");
+    v1 = detail::checkedRangeEnd(v0, v1, 0.0, "Plane::toNurbs (v)");
+    // A bilinear patch on a parallelogram: the plane's own parameters.
+    std::vector<std::vector<math::Vec3>> points = {{evaluate(u0, v0), evaluate(u0, v1)},
+                                                   {evaluate(u1, v0), evaluate(u1, v1)}};
+    std::vector<std::vector<double>> weights(2, std::vector<double>(2, 1.0));
+    return std::make_shared<NurbsSurface>(std::move(points), std::move(weights),
+                                          std::vector<double>{u0, u0, u1, u1},
+                                          std::vector<double>{v0, v0, v1, v1}, 1, 1);
 }
 
 // ---- Cylinder ----
@@ -122,6 +183,14 @@ math::Vec2 Cylinder::invert(const math::Vec3& point) const {
 std::unique_ptr<Surface> Cylinder::transformed(const math::Mat4& m) const {
     return std::make_unique<Cylinder>(frame_.transformed(m), radius_ * Frame::scaleOf(m),
                                       axialScale_ * Frame::scaleOf(m));
+}
+
+std::shared_ptr<NurbsSurface> Cylinder::toNurbs(double u0, double u1, double v0, double v1) const {
+    u1 = detail::checkedRangeEnd(u0, u1, kTwoPi, "Cylinder::toNurbs (u)");
+    v1 = detail::checkedRangeEnd(v0, v1, 0.0, "Cylinder::toNurbs (v)");
+    return revolvedMeridian(
+        frame_, u0, u1,
+        straightMeridian(radius_, v0 * axialScale_, radius_, v1 * axialScale_, v0, v1));
 }
 
 // ---- Cone ----
@@ -206,6 +275,16 @@ std::unique_ptr<Surface> Cone::transformed(const math::Mat4& m) const {
     return std::make_unique<Cone>(frame_.transformed(m), radius_ * k, halfAngle_, axialScale_ * k);
 }
 
+std::shared_ptr<NurbsSurface> Cone::toNurbs(double u0, double u1, double v0, double v1) const {
+    u1 = detail::checkedRangeEnd(u0, u1, kTwoPi, "Cone::toNurbs (u)");
+    v1 = detail::checkedRangeEnd(v0, v1, 0.0, "Cone::toNurbs (v)");
+    // A generator is straight: the radius and the height both run with v.
+    const double slope = axialScale_ * std::tan(halfAngle_);
+    return revolvedMeridian(frame_, u0, u1,
+                            straightMeridian(radius_ + v0 * slope, v0 * axialScale_,
+                                             radius_ + v1 * slope, v1 * axialScale_, v0, v1));
+}
+
 // ---- Sphere ----
 
 Sphere::Sphere(const Frame& frame, double radius) : frame_(frame), radius_(radius) {}
@@ -262,6 +341,13 @@ std::unique_ptr<Surface> Sphere::transformed(const math::Mat4& m) const {
     return std::make_unique<Sphere>(frame_.transformed(m), radius_ * Frame::scaleOf(m));
 }
 
+std::shared_ptr<NurbsSurface> Sphere::toNurbs(double u0, double u1, double v0, double v1) const {
+    u1 = detail::checkedRangeEnd(u0, u1, kTwoPi, "Sphere::toNurbs (u)");
+    // v is a latitude: past a pole the meridian goes on round, so at most a turn of it.
+    v1 = detail::checkedRangeEnd(v0, v1, kTwoPi, "Sphere::toNurbs (v)");
+    return revolvedMeridian(frame_, u0, u1, circularMeridian({0.0, 0.0}, radius_, v0, v1));
+}
+
 // ---- Torus ----
 
 Torus::Torus(const Frame& frame, double majorRadius, double minorRadius)
@@ -314,6 +400,13 @@ math::Vec2 Torus::invert(const math::Vec3& point) const {
 std::unique_ptr<Surface> Torus::transformed(const math::Mat4& m) const {
     const double k = Frame::scaleOf(m);
     return std::make_unique<Torus>(frame_.transformed(m), majorRadius_ * k, minorRadius_ * k);
+}
+
+std::shared_ptr<NurbsSurface> Torus::toNurbs(double u0, double u1, double v0, double v1) const {
+    u1 = detail::checkedRangeEnd(u0, u1, kTwoPi, "Torus::toNurbs (u)");
+    v1 = detail::checkedRangeEnd(v0, v1, kTwoPi, "Torus::toNurbs (v)");
+    return revolvedMeridian(frame_, u0, u1,
+                            circularMeridian({majorRadius_, 0.0}, minorRadius_, v0, v1));
 }
 
 }  // namespace hz::geo

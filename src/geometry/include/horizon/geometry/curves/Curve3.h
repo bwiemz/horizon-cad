@@ -8,6 +8,8 @@
 
 namespace hz::geo {
 
+class NurbsCurve;
+
 /// The kind of a Curve3, for code that must treat the analytic ones specially.
 enum class CurveKind { Line, Circle, Ellipse, Nurbs };
 
@@ -42,6 +44,17 @@ public:
     /// This curve moved by the similarity @p m, keeping its parameters:
     /// result->evaluate(t) == m.transformPoint(evaluate(t)).
     virtual std::unique_ptr<Curve3> transformed(const math::Mat4& m) const = 0;
+
+    /// This curve from @p t0 to @p t1 (t0 < t1) as a rational NURBS, exactly: its points are this
+    /// curve's over the range, its domain is [t0, t1], and its ends are C(t0) and C(t1); between
+    /// them its parameter may differ from this curve's. Unlike transformed(), the result moves
+    /// exactly under any affine matrix. Null for a curve with no NURBS form (every curve the
+    /// kernel makes has one: LineCurve, CircleCurve, EllipseCurve and NurbsCurve).
+    /// @throws std::invalid_argument for a range that is empty or not finite, or that runs more
+    ///         than one period round a periodic curve.
+    virtual std::shared_ptr<NurbsCurve> toNurbs(double /*t0*/, double /*t1*/) const {
+        return nullptr;
+    }
 };
 
 }  // namespace hz::geo

@@ -51,6 +51,9 @@ public:
     /// The control points moved by @p m (a NURBS is affine invariant); weights and knots
     /// are unchanged, so parameters are kept.
     std::unique_ptr<Curve3> transformed(const math::Mat4& m) const override;
+    /// segment(t0, t1): the part of this curve over the range, keeping its parameters; a range
+    /// past the domain is held to it.
+    std::shared_ptr<NurbsCurve> toNurbs(double t0, double t1) const override;
 
     // -- Derivatives & Tessellation (Task 2) ---------------------------------
 

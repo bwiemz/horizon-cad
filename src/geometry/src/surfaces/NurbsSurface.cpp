@@ -9,6 +9,7 @@
 #include <string>
 
 #include "../NurbsKnots.h"
+#include "../RationalArc.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Constants.h"
 
@@ -903,6 +904,59 @@ std::pair<NurbsSurface, NurbsSurface> NurbsSurface::splitV(double v) const {
                          m_degreeU, m_degreeV)};
 }
 
+namespace {
+
+/// @p s with @p delta added to its knots along u (@p alongV false) or v: the same surface, its
+/// parameters a period on.
+NurbsSurface shiftedKnots(const NurbsSurface& s, bool alongV, double delta) {
+    std::vector<double> knotsU = s.knotsU();
+    std::vector<double> knotsV = s.knotsV();
+    for (double& k : alongV ? knotsV : knotsU) k += delta;
+    return {s.controlPoints(), s.weights(), std::move(knotsU),
+            std::move(knotsV), s.degreeU(), s.degreeV()};
+}
+
+/// @p s cut to [@p lo, @p hi] along u (@p alongV false) or v, as NurbsSurface::toNurbs says.
+NurbsSurface cutTo(NurbsSurface s, bool alongV, double lo, double hi) {
+    const auto first = [alongV](const NurbsSurface& n) { return alongV ? n.vMin() : n.uMin(); };
+    const auto last = [alongV](const NurbsSurface& n) { return alongV ? n.vMax() : n.uMax(); };
+    const double period = last(s) - first(s);
+    const bool closed = alongV ? s.closedV() : s.closedU();
+    const double eps = 1e-12 * std::max(1.0, period);
+    hi = detail::checkedRangeEnd(lo, hi, closed ? period : 0.0, "NurbsSurface::toNurbs");
+    if (closed && (lo < first(s) - eps || hi > last(s) + eps)) {
+        // Across the seam: cut to close at lo instead, a whole number of periods on.
+        const double turns = std::floor((lo - first(s)) / period);
+        const double at = lo - turns * period;
+        auto started = alongV ? s.startingAtV(at) : s.startingAtU(at);
+        if (!started) {
+            throw std::invalid_argument(
+                "NurbsSurface::toNurbs: the surface closes with its two ends of different "
+                "weights, so no one surface runs across its seam");
+        }
+        s = shiftedKnots(*started, alongV, lo - first(*started));
+    }
+    lo = std::max(lo, first(s));
+    hi = std::min(hi, last(s));
+    if (!(hi - lo > eps)) {
+        throw std::invalid_argument("NurbsSurface::toNurbs: the box lies outside the domain");
+    }
+    if (lo > first(s) + eps && lo < last(s) - eps) {
+        s = (alongV ? s.splitV(lo) : s.splitU(lo)).second;
+    }
+    if (hi < last(s) - eps && hi > first(s) + eps) {
+        s = (alongV ? s.splitV(hi) : s.splitU(hi)).first;
+    }
+    return s;
+}
+
+}  // namespace
+
+std::shared_ptr<NurbsSurface> NurbsSurface::toNurbs(double u0, double u1, double v0,
+                                                    double v1) const {
+    return std::make_shared<NurbsSurface>(cutTo(cutTo(*this, false, u0, u1), true, v0, v1));
+}
+
 // ---------------------------------------------------------------------------
 // closestPoint — 8x8 grid search + 2D Newton iteration
 // ---------------------------------------------------------------------------
@@ -1241,6 +1295,60 @@ std::optional<NurbsSurface> NurbsSurface::startingAtV(double v) const {
     }
     return NurbsSurface(std::move(points), std::move(weights), m_knotsU, started->front().knots(),
                         m_degreeU, m_degreeV);
+}
+
+NurbsSurface NurbsSurface::makeExtrusion(const NurbsCurve& c, const math::Vec3& offset) {
+    if (!std::isfinite(offset.x) || !std::isfinite(offset.y) || !std::isfinite(offset.z) ||
+        offset.lengthSquared() == 0.0) {
+        throw std::invalid_argument("NurbsSurface::makeExtrusion needs a finite, non-zero offset");
+    }
+    // Each control point and its image a row: degree 1 in v between them, the curve's own
+    // weights in both columns, so every iso-line of v is the curve moved.
+    std::vector<std::vector<math::Vec3>> points;
+    std::vector<std::vector<double>> weights;
+    points.reserve(c.controlPoints().size());
+    weights.reserve(c.controlPoints().size());
+    for (std::size_t i = 0; i < c.controlPoints().size(); ++i) {
+        const math::Vec3& p = c.controlPoints()[i];
+        points.push_back({p, p + offset});
+        weights.push_back({c.weights()[i], c.weights()[i]});
+    }
+    return {std::move(points), std::move(weights), c.knots(), {0.0, 0.0, 1.0, 1.0}, c.degree(), 1};
+}
+
+NurbsSurface NurbsSurface::makeRevolution(const NurbsCurve& profile, const math::Vec3& axisPoint,
+                                          const math::Vec3& axisDir, double angle) {
+    const double length = axisDir.length();
+    if (!std::isfinite(length) || !(length > 0.0)) {
+        throw std::invalid_argument("NurbsSurface::makeRevolution needs a finite, non-zero axis");
+    }
+    if (!std::isfinite(angle) || angle == 0.0) {
+        throw std::invalid_argument("NurbsSurface::makeRevolution needs a finite, non-zero angle");
+    }
+    // A negative angle turns the other way: the same turn about the axis reversed.
+    const math::Vec3 axis = axisDir * ((angle < 0.0 ? -1.0 : 1.0) / length);
+    const double sweep =
+        detail::checkedRangeEnd(0.0, std::abs(angle), math::kTwoPi, "NurbsSurface::makeRevolution");
+    const detail::UnitArc arc = detail::unitArc(0.0, sweep, 0.0, sweep);
+    // Each profile control point P turned through each of the arc's control points by the
+    // affine map L(P) = O + a V + b (axis x V), with O its foot on the axis and V = P - O: as the
+    // map is affine, the rational surface it gives is every point of the profile turned by the
+    // arc's angle (The NURBS Book, A8.1).
+    const std::size_t rows = arc.points.size();
+    std::vector<std::vector<math::Vec3>> points(rows);
+    std::vector<std::vector<double>> weights(rows);
+    for (std::size_t i = 0; i < rows; ++i) {
+        points[i].reserve(profile.controlPoints().size());
+        weights[i].reserve(profile.controlPoints().size());
+        for (std::size_t j = 0; j < profile.controlPoints().size(); ++j) {
+            const math::Vec3& p = profile.controlPoints()[j];
+            const math::Vec3 foot = axisPoint + axis * (p - axisPoint).dot(axis);
+            const math::Vec3 out = p - foot;
+            points[i].push_back(foot + out * arc.points[i].x + axis.cross(out) * arc.points[i].y);
+            weights[i].push_back(arc.weights[i] * profile.weights()[j]);
+        }
+    }
+    return {std::move(points), std::move(weights), arc.knots, profile.knots(), 2, profile.degree()};
 }
 
 NurbsSurface NurbsSurface::makePlane(const math::Vec3& origin, const math::Vec3& uDir,

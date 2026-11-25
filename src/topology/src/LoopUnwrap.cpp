@@ -58,6 +58,14 @@ bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo
                 double periodU, double periodV, const std::vector<double>& joinAllowance,
                 LoopPolygon& out) {
     out.clear();
+    // Each join from half-edge k - 1 to k, as unwrapped: the jump left once the next pcurve is
+    // shifted, and how far a step in u or v moves its point there (zero at a pole or apex).
+    struct Join {
+        Vec2 jump;
+        double speedU = 0.0;
+        double speedV = 0.0;
+    };
+    std::vector<Join> joins(ring.size());
     Vec2 prevEnd;
     for (size_t k = 0; k < ring.size(); ++k) {
         const HalfEdge* h = ring[k];
@@ -66,8 +74,8 @@ bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo
         if (!out.empty()) {
             // A raw jump that is already the same point within the join's allowance (a pole or
             // apex, where a derivative vanishes) is a move along the singular side, not a wrap;
-            // the same quantity the join check tests. Which way round it runs is decided by the
-            // next pcurve's own window; that is a stage 3 question (pole topology).
+            // the same quantity the join check tests. Which way round it runs is the loop's to
+            // say: see the closing check below.
             const double allowance = joinAllowance[k - 1];
             const auto d = surface.derivatives(prevEnd.x, prevEnd.y);
             const double dx = prevEnd.x - start.x;
@@ -78,6 +86,7 @@ bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo
             if (periodV > 0.0 && std::fabs(dy) * d.dv.length() > allowance) {
                 shift.y = std::round(dy / periodV) * periodV;
             }
+            joins[k] = {prevEnd - (start + shift), d.du.length(), d.dv.length()};
         }
         Vec2 a = start + shift;
         for (int i = 1; i < samples; ++i) {
@@ -90,14 +99,41 @@ bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo
         prevEnd = a;
     }
     if (out.empty()) return true;
-    const Vec2 gap = out.front().a - prevEnd;
     const auto d = surface.derivatives(prevEnd.x, prevEnd.y);
     const double allowance = joinAllowance[ring.size() - 1];
-    const bool windsU = periodU > 0.0 && std::fabs(gap.x) * d.du.length() > allowance &&
-                        std::round(gap.x / periodU) != 0.0;
-    const bool windsV = periodV > 0.0 && std::fabs(gap.y) * d.dv.length() > allowance &&
-                        std::round(gap.y / periodV) != 0.0;
-    return !windsU && !windsV;
+    const auto winds = [&](double gap, double period, double speed) {
+        return period > 0.0 && std::fabs(gap) * speed > allowance &&
+               std::round(gap / period) != 0.0;
+    };
+    // A loop through a pole or apex may take the whole periods it winds at the singular join
+    // rather than at a regular one: a cone's loop that wraps at its rim runs, reversed (a mirrored
+    // copy's), round the cone at its apex instead. Where the loop closes only after winding, the
+    // periods are taken at the last join that is the same point with them added, and every
+    // chord after it is moved by them; with no such join the loop winds round the surface.
+    const std::size_t perEdge = static_cast<std::size_t>(samples - 1);
+    const auto takeAtSingularJoin = [&](bool alongU) {
+        const Vec2 gap = out.front().a - prevEnd;
+        const double period = alongU ? periodU : periodV;
+        const double whole = std::round((alongU ? gap.x : gap.y) / period) * period;
+        for (size_t k = ring.size(); k-- > 1;) {
+            const Join& j = joins[k];
+            const double jump = (alongU ? j.jump.x : j.jump.y) - whole;
+            if (std::fabs(jump) * (alongU ? j.speedU : j.speedV) > joinAllowance[k - 1]) continue;
+            const Vec2 move = alongU ? Vec2(whole, 0.0) : Vec2(0.0, whole);
+            for (size_t c = k * perEdge; c < out.size(); ++c) {
+                out[c].shift += move;
+                out[c].a += move;
+                out[c].b += move;
+            }
+            prevEnd = out.back().b;
+            return true;
+        }
+        return false;
+    };
+    const Vec2 gap = out.front().a - prevEnd;
+    if (winds(gap.x, periodU, d.du.length()) && !takeAtSingularJoin(true)) return false;
+    const Vec2 left = out.front().a - prevEnd;
+    return !(winds(left.y, periodV, d.dv.length()) && !takeAtSingularJoin(false));
 }
 
 void alignLoop(LoopPolygon& loop, const LoopPolygon& reference, double periodU, double periodV) {

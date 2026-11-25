@@ -70,8 +70,12 @@ double joinAllowance(const HalfEdge& h, const HalfEdge& next,
 /// start. @p joinAllowance[k] is how far apart (a distance on
 /// the surface) half-edge k's end and the next one's start may be and still join; on an axis
 /// where the raw jump is already within it (a pole or an apex, where the derivative vanishes)
-/// nothing is shifted: that jump is a move along the singular side, not a wrap. Every half-edge
-/// must carry a pcurve.
+/// nothing is shifted: that jump is a move along the singular side, not a wrap. Which way round
+/// the singular side it runs is the loop's to say: where the loop would otherwise close only
+/// after winding, the whole periods it winds are taken at the last join where its point is the
+/// same with them added (a pole's or apex's), and every chord after that join is moved by them.
+/// A loop that wraps at a cone's rim wraps at its apex when it runs the other way (a mirrored
+/// copy's loops are reversed). Every half-edge must carry a pcurve.
 bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo::Surface& surface,
                 double periodU, double periodV, const std::vector<double>& joinAllowance,
                 LoopPolygon& out);

@@ -376,12 +376,16 @@ TEST(ExactPrimitives, TolerancesScaleWithACopy) {
     for (const auto& v : copy->vertices()) EXPECT_DOUBLE_EQ(v.tolerance, 1.0);
 }
 
-TEST(ExactPrimitives, ANonSimilarityLeavesTheCopyFaceted) {
+// Appended through a matrix that is not a similarity, a copy keeps no exact geometry: append is
+// for placing solids rigidly. (Pattern::transformed carries it through any affine matrix as
+// NURBS; test_ExactTransform.)
+TEST(ExactPrimitives, ANonSimilarityLeavesAnAppendedCopyFaceted) {
     const auto block = model::exact::makeBlock({0, 0, 0}, {10, 20, 30});
     math::Mat4 shear = math::Mat4::identity();
     shear.m[0][1] = 0.5;
     for (const math::Mat4& m : {math::Mat4::scale({2, 1, 1}), shear}) {
-        const auto copy = model::Pattern::transformed(*block, m);
+        const auto copy = std::make_unique<topo::Solid>();
+        model::Pattern::append(*copy, *block, m);
         EXPECT_EQ(copy->faces().size(), block->faces().size());
         for (const auto& f : copy->faces()) {
             EXPECT_EQ(f.exactSurface, nullptr);

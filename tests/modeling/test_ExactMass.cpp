@@ -64,54 +64,6 @@ void expectRelative(double actual, double expected, double relative, const std::
     EXPECT_NEAR(actual, expected, relative * std::abs(expected)) << what;
 }
 
-/// A frustum from radius 1 at z = 0 to radius 2 at z = 2, written as externalStyleCylinder()
-/// writes its cylinder: a CONICAL_SURFACE side between two rims and a seam, two PLANE caps.
-std::string frustum() {
-    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
-#2 = DIRECTION('',(0.,0.,1.));
-#3 = DIRECTION('',(0.,1.,0.));
-#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
-#5 = CIRCLE('',#4,1.);
-#6 = CARTESIAN_POINT('',(1.,0.,0.));
-#7 = VERTEX_POINT('',#6);
-#8 = CARTESIAN_POINT('',(0.,0.,2.));
-#9 = DIRECTION('',(1.,0.,0.));
-#10 = AXIS2_PLACEMENT_3D('',#8,#2,#9);
-#11 = CIRCLE('',#10,2.);
-#12 = CARTESIAN_POINT('',(2.,0.,2.));
-#13 = VERTEX_POINT('',#12);
-#14 = EDGE_CURVE('',#7,#7,#5,.T.);
-#15 = EDGE_CURVE('',#13,#13,#11,.T.);
-#50 = DIRECTION('',(0.44721359549995793,0.,0.89442719099991586));
-#16 = LINE('',#6,VECTOR('',#50,1.));
-#17 = SURFACE_CURVE('',#16,(),.CURVE_3D.);
-#18 = EDGE_CURVE('',#7,#13,#17,.T.);
-#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);
-#20 = CONICAL_SURFACE('',#19,1.,0.46364760900080612);
-#21 = ORIENTED_EDGE('',*,*,#14,.T.);
-#22 = ORIENTED_EDGE('',*,*,#18,.T.);
-#23 = ORIENTED_EDGE('',*,*,#15,.F.);
-#24 = ORIENTED_EDGE('',*,*,#18,.F.);
-#25 = EDGE_LOOP('',(#21,#22,#23,#24));
-#26 = FACE_OUTER_BOUND('',#25,.T.);
-#27 = ADVANCED_FACE('',(#26),#20,.T.);
-#28 = AXIS2_PLACEMENT_3D('',#8,#2,$);
-#29 = PLANE('',#28);
-#30 = ORIENTED_EDGE('',*,*,#15,.T.);
-#31 = EDGE_LOOP('',(#30));
-#32 = FACE_OUTER_BOUND('',#31,.T.);
-#33 = ADVANCED_FACE('',(#32),#29,.T.);
-#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);
-#35 = PLANE('',#34);
-#36 = ORIENTED_EDGE('',*,*,#14,.F.);
-#37 = EDGE_LOOP('',(#36));
-#38 = FACE_OUTER_BOUND('',#37,.T.);
-#39 = ADVANCED_FACE('',(#38),#35,.F.);
-#40 = CLOSED_SHELL('',(#27,#33,#39));
-#41 = MANIFOLD_SOLID_BREP('frustum',#40);
-)");
-}
-
 /// The live face of @p solid tagged @p tag; null when there is none.
 topo::Face* faceTagged(topo::Solid& solid, const std::string& tag) {
     for (auto& f : solid.faces()) {
@@ -220,7 +172,7 @@ TEST(ExactMass, ImportedSphereTorusAndFrustumAreExact) {
          4.0 * kPi * 1.5 * 1.5},
         {"the torus", hz::step_text::torus(), 2.0 * kPi * kPi * 4.0 * 1.0 * 1.0,
          4.0 * kPi * kPi * 4.0 * 1.0},
-        {"the frustum", frustum(), kPi * 2.0 / 3.0 * (4.0 + 2.0 + 1.0),
+        {"the frustum", hz::step_text::frustum(), kPi * 2.0 / 3.0 * (4.0 + 2.0 + 1.0),
          kPi * 3.0 * std::sqrt(5.0) + kPi * 4.0 + kPi},
     };
     for (const Case& c : cases) {

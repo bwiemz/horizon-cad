@@ -72,11 +72,11 @@ public:
     /// was gathered again for each one added).
     ///
     /// Exact geometry (Face::exactSurface/reversed, Edge::exactCurve and its range, pcurves,
-    /// tolerances) is copied by `append` and `transformed` (below) only when the matrix is a
-    /// similarity: its upper-left 3x3 block M has MtM = s^2 I within a relative 1e-9, a
-    /// reflection allowed. Tolerances scale by s. For any other matrix (a non-uniform scale or
-    /// a shear) the copy's exact fields are left empty: null pointers, ranges 0, `reversed`
-    /// false.
+    /// tolerances) is copied by `append` only when the matrix is a similarity: its upper-left
+    /// 3x3 block M has MtM = s^2 I within a relative 1e-9, a reflection allowed. Tolerances scale
+    /// by s. For any other matrix (a non-uniform scale or a shear) the copy's exact fields are
+    /// left empty: null pointers, ranges 0, `reversed` false. (`transformed` carries them
+    /// through any matrix.)
     static void append(topo::Solid& into, const topo::Solid& source, const math::Mat4& xform);
 
     /// The reverse of `collect`: each body of @p solid as a solid of its own,
@@ -92,14 +92,35 @@ public:
     /// which shell is which (STEP's BREP_WITH_VOIDS).
     static std::vector<std::vector<const topo::Shell*>> bodyShells(const topo::Solid& solid);
 
-    /// A deep copy of @p source moved by the rigid transform @p xform, with
-    /// every carrier and ideal moved with it and every TopologyID kept.  This
-    /// is how a component is placed in an assembly's world space. A mirror
-    /// (Phase 162: a transform whose determinant is negative) reverses every
-    /// loop and surface as it copies them, so the copy faces out as the
-    /// original does; `append` does the same.
+    /// A deep copy of @p source moved by @p xform, with every carrier and
+    /// ideal moved with it and every TopologyID kept.  This is how a component
+    /// is placed in an assembly's world space. A mirror (Phase 162: a
+    /// transform whose determinant is negative) reverses every loop and
+    /// surface as it copies them, so the copy faces out as the original does;
+    /// `append` does the same.
+    ///
+    /// Exact geometry is carried through a similarity as `append` carries it.
+    /// Through any other affine matrix (a non-uniform scale, a shear) each
+    /// typed surface and curve becomes the NURBS it is over its face's box or
+    /// its edge's range (geo::Surface::toNurbs, geo::Curve3::toNurbs), which
+    /// moves exactly; a NURBS one moves as it is. The pcurves on each face so
+    /// converted are refitted with geo::pcurveOn, the tolerances grow to cover
+    /// what is measured as the STEP reader's do (topo::ToleranceGrowth), and
+    /// the copy is validated. Where any of that fails (a matrix that flattens
+    /// the solid, a pcurve that cannot be fitted), the copy keeps no exact
+    /// geometry, as for `append`.
+    ///
+    /// This overload does not say why (Ruling 4: master never did); a caller
+    /// that must know whether a copy stayed exact, and why not, calls the
+    /// overload with `problem`.
     static std::unique_ptr<topo::Solid> transformed(const topo::Solid& source,
                                                     const math::Mat4& xform);
+
+    /// `transformed`, saying in @p problem (when given) why the copy has no
+    /// exact geometry where @p source had it; empty where it has, or where
+    /// @p source had none.
+    static std::unique_ptr<topo::Solid> transformed(const topo::Solid& source,
+                                                    const math::Mat4& xform, std::string* problem);
 
     /// Circular pattern: @p count instances rotated @p angleStepRad apart
     /// about the axis through @p axisPoint along @p axisDir.

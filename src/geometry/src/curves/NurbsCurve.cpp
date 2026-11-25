@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "../NurbsKnots.h"
+#include "../RationalArc.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Tolerance.h"
 
@@ -651,6 +652,11 @@ std::unique_ptr<Curve3> NurbsCurve::transformed(const math::Mat4& m) const {
         pts.push_back(m.transformPoint(p));
     }
     return std::make_unique<NurbsCurve>(std::move(pts), m_weights, m_knots, m_degree);
+}
+
+std::shared_ptr<NurbsCurve> NurbsCurve::toNurbs(double t0, double t1) const {
+    detail::checkedRangeEnd(t0, t1, 0.0, "NurbsCurve::toNurbs");
+    return std::make_shared<NurbsCurve>(segment(t0, t1));
 }
 
 // ---------------------------------------------------------------------------

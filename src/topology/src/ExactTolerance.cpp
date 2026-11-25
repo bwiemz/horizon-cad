@@ -45,4 +45,16 @@ math::ModelTolerance exactTolerance(const Solid& solid) {
     return math::ModelTolerance::forExtent(exactExtent(solid));
 }
 
+ToleranceGrowth::ToleranceGrowth(double extent)
+    : resolution(math::ModelTolerance::forExtent(extent)),
+      sized(1e-3 * extent > resolution.linear),
+      limit(sized ? 1e-3 * extent : resolution.linear) {}
+
+bool ToleranceGrowth::grow(double& tolerance, double gap) const {
+    if (!(gap > resolution.linear)) return true;
+    if (!(gap <= limit)) return false;
+    tolerance = std::max(tolerance, gap);
+    return true;
+}
+
 }  // namespace hz::topo

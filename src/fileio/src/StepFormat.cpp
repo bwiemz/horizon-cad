@@ -4556,15 +4556,14 @@ std::string threeFigures(double x) {
 /// leaves the solid out as soon as that face's pcurves are built.
 ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     ExactRead read;
-    const double extent = topo::exactExtent(solid);
-    const math::ModelTolerance resolution = math::ModelTolerance::forExtent(extent);
+    const topo::ToleranceGrowth growth(topo::exactExtent(solid));
+    const math::ModelTolerance& resolution = growth.resolution;
     read.resolution = resolution.linear;
-    const bool sized = 1e-3 * extent > resolution.linear;
-    const double limit = sized ? 1e-3 * extent : resolution.linear;
+    const double limit = growth.limit;
     const std::string limitSays = "beyond the limit of " + threeFigures(limit) +
-                                  (sized ? " (a thousandth of the solid's size)"
-                                         : " (the model resolution: the solid's size could not "
-                                           "be measured)");
+                                  (growth.sized ? " (a thousandth of the solid's size)"
+                                                : " (the model resolution: the solid's size could "
+                                                  "not be measured)");
     const double base = resolution.linear;
     const auto stop = [&] {
         if (cancelled == nullptr || !cancelled->load(std::memory_order_relaxed)) return false;
@@ -4575,13 +4574,9 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     // <from>, beyond the limit of …".
     const auto grow = [&](double& tolerance, double by, const char* what, const char* from,
                           const topo::Face* f, const topo::Edge* e) {
-        if (!(by > resolution.linear)) return;
-        if (by <= limit) {
-            tolerance = std::max(tolerance, by);
-        } else if (read.problem.empty()) {
-            read.problem = std::string(what) + " " + threeFigures(by) + " " + from + ", " +
-                           limitSays + whereIn(f, e);
-        }
+        if (growth.grow(tolerance, by) || !read.problem.empty()) return;
+        read.problem = std::string(what) + " " + threeFigures(by) + " " + from + ", " + limitSays +
+                       whereIn(f, e);
     };
 
     // Each edge's curve ends at its vertices, as near as the file has them.

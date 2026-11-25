@@ -123,6 +123,16 @@ public:
     /// affine @p m, a reflection included, which turns the normal).
     std::unique_ptr<Surface> transformed(const math::Mat4& m) const override;
 
+    /// The part of this surface over the box, cut by knot insertion (splitU, splitV) and keeping
+    /// its parameters; a box covering the whole domain gives a copy. Along a direction that does
+    /// not close the box is held to the domain; along one that closes, a box across the seam is
+    /// the surface cut to close at the box's start (startingAtU, startingAtV), its parameters
+    /// running from there.
+    /// @throws std::invalid_argument as Surface::toNurbs says, or where the surface closes with
+    ///         its two ends of different weights (no one curve joins them).
+    std::shared_ptr<NurbsSurface> toNurbs(double u0, double u1, double v0,
+                                          double v1) const override;
+
     // -- Knot insertion and splitting -----------------------------------------
 
     /// The same surface with the knot @p u inserted once into the U knots
@@ -214,6 +224,22 @@ public:
     /// Create a conical surface with apex at @p apex along @p axis.
     static NurbsSurface makeCone(const math::Vec3& apex, const math::Vec3& axis, double halfAngle,
                                  double height);
+
+    /// The surface @p c sweeps moved along @p offset, exactly: degree (p, 1), u along the curve
+    /// (its knots), v from 0 at the curve to 1 at the curve moved by the offset. Its du x dv is
+    /// the curve's direction crossed with the offset.
+    static NurbsSurface makeExtrusion(const NurbsCurve& c, const math::Vec3& offset);
+
+    /// The surface @p profile sweeps turned by @p angle about the axis through @p axisPoint
+    /// along @p axisDir, exactly: a rational surface of degree (2, q), v along the profile (its
+    /// knots), u round the axis from 0 (the profile) to |angle|, turning right-handed about
+    /// @p axisDir (a negative angle turns the other way). A point of the profile on the axis
+    /// stays there (a pole). Each quarter turn or less is one rational arc, meeting the angle at
+    /// its knots; a whole turn closes in u.
+    /// @throws std::invalid_argument for an angle that is 0, more than a turn either way or not
+    ///         finite, or an axis direction that is zero or not finite.
+    static NurbsSurface makeRevolution(const NurbsCurve& profile, const math::Vec3& axisPoint,
+                                       const math::Vec3& axisDir, double angle);
 
     /// The same surface with its U direction reversed: rows and weights
     /// reversed, the U knots mirrored. Its normal points the other way.

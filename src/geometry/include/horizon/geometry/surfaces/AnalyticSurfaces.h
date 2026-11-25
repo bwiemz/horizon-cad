@@ -27,6 +27,8 @@ public:
     bool periodicV() const override;
     math::Vec2 invert(const math::Vec3& point) const override;
     std::unique_ptr<Surface> transformed(const math::Mat4& m) const override;
+    std::shared_ptr<NurbsSurface> toNurbs(double u0, double u1, double v0,
+                                          double v1) const override;
 
 private:
     Frame frame_;
@@ -59,6 +61,8 @@ public:
     /// A point on the axis gives u = 0.
     math::Vec2 invert(const math::Vec3& point) const override;
     std::unique_ptr<Surface> transformed(const math::Mat4& m) const override;
+    std::shared_ptr<NurbsSurface> toNurbs(double u0, double u1, double v0,
+                                          double v1) const override;
 
 private:
     Frame frame_;
@@ -99,6 +103,8 @@ public:
     /// (there it is at u + pi, on the other nappe); a point on the axis gives u = 0.
     math::Vec2 invert(const math::Vec3& point) const override;
     std::unique_ptr<Surface> transformed(const math::Mat4& m) const override;
+    std::shared_ptr<NurbsSurface> toNurbs(double u0, double u1, double v0,
+                                          double v1) const override;
 
 private:
     Frame frame_;
@@ -132,6 +138,8 @@ public:
     /// A point on the axis gives u = 0, the centre v = 0.
     math::Vec2 invert(const math::Vec3& point) const override;
     std::unique_ptr<Surface> transformed(const math::Mat4& m) const override;
+    std::shared_ptr<NurbsSurface> toNurbs(double u0, double u1, double v0,
+                                          double v1) const override;
 
 private:
     Frame frame_;
@@ -165,6 +173,8 @@ public:
     /// torus's tube crosses the axis, so the other half-plane may hold a nearer point.
     math::Vec2 invert(const math::Vec3& point) const override;
     std::unique_ptr<Surface> transformed(const math::Mat4& m) const override;
+    std::shared_ptr<NurbsSurface> toNurbs(double u0, double u1, double v0,
+                                          double v1) const override;
 
 private:
     Frame frame_;
