@@ -917,6 +917,120 @@ TEST(ExactValidator, PcurveGapsIsWhatItMeasures) {
     }
 }
 
+namespace {
+
+/// A cylinder (radius 5, height 10) whose bottom rim's vertex is moved @p vertexOff out from its
+/// side and given a tolerance a hundredth of a unit in the last place short of that, and whose
+/// rim's circle is moved out so that it passes 1e-9 inside the vertex: every pcurve at the vertex
+/// ends past the vertex's tolerance by rounding, and the rim's two pcurves stray @p vertexOff -
+/// 1e-9 from its circle. The rim's tolerance is @p rimTolerance; the seam's is the resolution.
+struct RimOffItsVertex {
+    std::unique_ptr<topo::Solid> cyl =
+        model::exact::makeCylinder(geo::Frame::fromAxis({3, -2, 7}, {0, 0, 1}), 5.0, 10.0);
+    topo::Edge* rim = nullptr;
+    topo::Vertex* vertex = nullptr;
+    double strays = 0.0;
+    RimOffItsVertex(double vertexOff, double rimTolerance) {
+        for (auto& e : cyl->edges()) {
+            const auto* c = dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get());
+            if (c == nullptr || std::abs(c->frame().origin.z - 7.0) > 1e-12) continue;
+            rim = &e;
+            vertex = e.halfEdge->origin;
+            const Vec3 centre = c->frame().origin;
+            const double radius = c->radius();
+            vertex->point = centre + (vertex->point - centre) * ((radius + vertexOff) / radius);
+            vertex->tolerance = vertexOff - 1e-14;
+            strays = vertexOff - 1e-9;
+            e.exactCurve = std::make_shared<geo::CircleCurve>(c->frame(), radius + strays);
+            e.tolerance = rimTolerance;
+            break;
+        }
+    }
+};
+
+}  // namespace
+
+// Rounding is taken up all or nothing (Ruling 66). Every pcurve at the rim's vertex ends past the
+// vertex's tolerance by rounding, and the rim's pcurves stray 1e-3 from its circle while its own
+// tolerance is half that: a clear stray beside the shortfalls. Nothing is taken up, and the stray
+// is what is reported: the ends' shortfalls are bound by the vertex's tolerance, which is above
+// the rim's, and growing the rim's to cover them would have covered its stray too.
+TEST(ExactValidator, ARoundingShortfallBesideAStrayTakesUpNothing) {
+    RimOffItsVertex beside(1e-3, 0.5e-3);
+    ASSERT_NE(beside.rim, nullptr);
+    const auto issues = topo::validateExact(*beside.cyl, kTol);
+    std::set<ExactIssueKind> kinds;
+    for (const auto& i : issues) kinds.insert(i.kind);
+    EXPECT_EQ(kinds, (std::set<ExactIssueKind>{ExactIssueKind::PcurveOffCurve,
+                                               ExactIssueKind::PcurveOffVertex}));
+    const topo::RoundingTakeUp takeUp = topo::roundingShortfalls(*beside.cyl, issues, kTol);
+    ASSERT_NE(takeUp.beyond, nullptr);
+    EXPECT_EQ(takeUp.beyond->kind, ExactIssueKind::PcurveOffCurve);
+    EXPECT_EQ(takeUp.beyond->edge, beside.rim);
+    EXPECT_EQ(takeUp.beyond->detail, "pcurve strays 0.001 from the edge's curve");
+    EXPECT_TRUE(takeUp.shortfalls.empty());
+}
+
+// With the stray gone (the rim's tolerance its strays less a hundredth of a unit in the last
+// place), every issue is a rounding shortfall, each of the tolerance its check was bound by: the
+// rim's for its strays, the vertex's for the ends there, the larger. Grown to what the validator
+// measured, the solid is clean, and the rim's tolerance has grown by rounding alone.
+TEST(ExactValidator, RoundingShortfallsAloneAreEachTakenUpWhereTheyAreBound) {
+    RimOffItsVertex alone(1e-3, 1e-3 - 1e-9 - 1e-14);
+    ASSERT_NE(alone.rim, nullptr);
+    const double rimBefore = alone.rim->tolerance;
+    const auto issues = topo::validateExact(*alone.cyl, kTol);
+    ASSERT_FALSE(issues.empty());
+    const topo::RoundingTakeUp takeUp = topo::roundingShortfalls(*alone.cyl, issues, kTol);
+    ASSERT_EQ(takeUp.beyond, nullptr) << (takeUp.beyond ? takeUp.beyond->detail : "");
+    ASSERT_FALSE(takeUp.shortfalls.empty());
+    for (const topo::RoundingShortfall& s : takeUp.shortfalls) {
+        if (s.issue->kind == ExactIssueKind::PcurveOffCurve) {
+            EXPECT_EQ(s.tolerance, &alone.rim->tolerance);
+        } else {
+            EXPECT_EQ(s.tolerance, &alone.vertex->tolerance) << s.issue->detail;
+        }
+        *s.tolerance = std::max(*s.tolerance, s.measured);
+    }
+    EXPECT_TRUE(topo::validateExact(*alone.cyl, kTol).empty());
+    EXPECT_LE(alone.rim->tolerance - rimBefore, 1e-12);
+}
+
+// The rounding allowed is that of the magnitudes a measure is computed from: the same rim on a
+// cylinder placed a million along its own axis is allowed a million times the rounding.
+TEST(ExactValidator, RoundingIsOfTheMagnitudesAMeasureIsComputedFrom) {
+    const auto near =
+        model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    const topo::HalfEdge* h = nullptr;
+    for (const auto& f : near->faces()) {
+        if (f.exactSurface->kind() == geo::SurfaceKind::Cylinder) h = f.outerLoop->halfEdge;
+    }
+    ASSERT_NE(h, nullptr);
+    const double here = topo::pcurveRounding(*near, *h);
+    EXPECT_GT(here, 0.0);
+    EXPECT_LT(here, 1e-12);
+
+    auto far = model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    for (auto& f : far->faces()) {
+        if (f.exactSurface->kind() != geo::SurfaceKind::Cylinder) continue;
+        // The same surface, placed a million down its axis: v runs a million up it.
+        f.exactSurface =
+            std::make_shared<geo::Cylinder>(geo::Frame::fromAxis({0, 0, -1e6}, {0, 0, 1}), 1.0);
+        h = f.outerLoop->halfEdge;
+    }
+    for (auto& e : far->edges()) {
+        for (topo::HalfEdge* he : {e.halfEdge, e.halfEdge->twin}) {
+            if (he->face->exactSurface->kind() != geo::SurfaceKind::Cylinder) continue;
+            const auto* line = dynamic_cast<const geo::Line2D*>(he->pcurve.get());
+            ASSERT_NE(line, nullptr);
+            he->pcurve = std::make_shared<geo::Line2D>(line->start() + math::Vec2{0, 1e6},
+                                                       line->end() + math::Vec2{0, 1e6});
+        }
+    }
+    EXPECT_TRUE(topo::validateExact(*far, kTol).empty()) << "the same cylinder";
+    EXPECT_GT(topo::pcurveRounding(*far, *h), 1e5 * here);
+}
+
 // A straight B-spline edge (two points, the validator's straight segment) one of whose pcurves
 // runs there and back and there again in (u, v): every point of it lies on the segment, so only
 // the order test can tell, and it is reported as running against the curve, as it was.

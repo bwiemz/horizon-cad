@@ -62,4 +62,42 @@ struct PcurveGaps {
 /// next's origin are followed without null checks.
 PcurveGaps pcurveGaps(const HalfEdge& h, const math::ModelTolerance& tolerance);
 
+/// An edge's or a vertex's tolerance that a check of validateExact's found short of what it
+/// measured by rounding alone, and that measure.
+struct RoundingShortfall {
+    /// The tolerance the check was bound by: the edge's, or for a pcurve's end its vertex's where
+    /// that is the larger. It points into the solid the issue is of.
+    double* tolerance = nullptr;
+    double measured = 0.0;              ///< what the validator measured (pcurveGaps)
+    const ExactIssue* issue = nullptr;  ///< the issue it explains
+};
+
+/// @p issues, validateExact's of @p solid with @p tolerance, read as rounding shortfalls: all of
+/// them, or none.
+struct RoundingTakeUp {
+    /// Each issue's shortfalls, where every issue is explained by rounding alone; else empty.
+    std::vector<RoundingShortfall> shortfalls;
+    /// The first issue that is not, where one is not; else null.
+    const ExactIssue* beyond = nullptr;
+};
+
+/// How far two measures of one gap on @p h's pcurve can part by rounding alone (16 units in the
+/// last place of every magnitude they are computed from): how far from the origin @p solid's
+/// points lie (its farthest vertex's distance and its size), how far the surface's and the
+/// curve's own defining terms reach (a frame's origin and radii, or the farthest control point),
+/// and how far a rounding of each parameter moves its point (|u| |dS/du| + |v| |dS/dv| along the
+/// pcurve, |t| |dC/dt| at the curve's ends). Zero where that is not finite. @p h must have a
+/// pcurve and a face with an exact surface, as validateExact's pcurve issues do.
+double pcurveRounding(const Solid& solid, const HalfEdge& h);
+
+/// @p issues as rounding shortfalls (Ruling 66): each a PcurveOffCurve or PcurveOffVertex issue on
+/// the half-edge it names, whose measures (pcurveGaps with @p tolerance) exceed what its check
+/// allowed by pcurveRounding at most, every excess a shortfall of the tolerance the check was bound
+/// by. All or nothing: any other issue, a pcurve past its tolerance by more (or by a measure that
+/// is not a number), or one that runs against its curve, is @c beyond, and nothing is taken up, so
+/// a shortfall's growth cannot cover a stray beside it. @p solid must be the issues' solid and
+/// combinatorially valid.
+RoundingTakeUp roundingShortfalls(const Solid& solid, const std::vector<ExactIssue>& issues,
+                                  const math::ModelTolerance& tolerance);
+
 }  // namespace hz::topo

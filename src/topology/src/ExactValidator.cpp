@@ -6,13 +6,18 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ExactLoopGeometry.h"
+#include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/AnalyticSurfaces.h"
+#include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/geometry/surfaces/Surface.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/LoopUnwrap.h"
 
 namespace hz::topo {
@@ -121,6 +126,112 @@ PcurveGaps measurePcurve(const Edge& e, const HalfEdge& h, const math::ModelTole
         gaps.strays = std::max(gaps.strays, (e.exactCurve->evaluate(t) - p).length());
     }
     return gaps;
+}
+
+/// How many units in the last place of the magnitudes it is computed from two measures of one gap
+/// may part by in rounding alone (pcurveRounding).
+constexpr double kRoundingUlps = 16.0;
+
+/// How far from the origin the terms @p s is evaluated from reach: its frame's origin and its
+/// radii, or its farthest control point.
+double reachOf(const geo::Surface& s) {
+    switch (s.kind()) {
+        case geo::SurfaceKind::Plane:
+            return static_cast<const geo::Plane&>(s).frame().origin.length();
+        case geo::SurfaceKind::Cylinder: {
+            const auto& c = static_cast<const geo::Cylinder&>(s);
+            return c.frame().origin.length() + std::fabs(c.radius());
+        }
+        case geo::SurfaceKind::Cone: {
+            const auto& c = static_cast<const geo::Cone&>(s);
+            return c.frame().origin.length() + std::fabs(c.radius());
+        }
+        case geo::SurfaceKind::Sphere: {
+            const auto& c = static_cast<const geo::Sphere&>(s);
+            return c.frame().origin.length() + std::fabs(c.radius());
+        }
+        case geo::SurfaceKind::Torus: {
+            const auto& c = static_cast<const geo::Torus&>(s);
+            return c.frame().origin.length() + std::fabs(c.majorRadius()) +
+                   std::fabs(c.minorRadius());
+        }
+        case geo::SurfaceKind::Nurbs: {
+            double far = 0.0;
+            if (const auto* n = dynamic_cast<const geo::NurbsSurface*>(&s)) {
+                for (const auto& row : n->controlPoints()) {
+                    for (const Vec3& p : row) far = std::max(far, p.length());
+                }
+            }
+            return far;
+        }
+    }
+    return 0.0;
+}
+
+/// How far from the origin the terms @p c is evaluated from reach: its point, or its centre and
+/// radius, or its farthest control point.
+double reachOf(const geo::Curve3& c) {
+    switch (c.kind()) {
+        case geo::CurveKind::Line:
+            if (const auto* l = dynamic_cast<const geo::LineCurve*>(&c)) {
+                return l->origin().length();
+            }
+            return 0.0;
+        case geo::CurveKind::Circle:
+            if (const auto* k = dynamic_cast<const geo::CircleCurve*>(&c)) {
+                return k->frame().origin.length() + std::fabs(k->radius());
+            }
+            return 0.0;
+        case geo::CurveKind::Ellipse:
+            if (const auto* k = dynamic_cast<const geo::EllipseCurve*>(&c)) {
+                return k->frame().origin.length() + std::fabs(k->majorRadius()) +
+                       std::fabs(k->minorRadius());
+            }
+            return 0.0;
+        case geo::CurveKind::Nurbs: {
+            double far = 0.0;
+            if (const auto* n = dynamic_cast<const geo::NurbsCurve*>(&c)) {
+                for (const Vec3& p : n->controlPoints()) far = std::max(far, p.length());
+            }
+            return far;
+        }
+    }
+    return 0.0;
+}
+
+/// How far from the origin @p solid's points lie: its farthest live vertex's distance and its size.
+double reachOf(const Solid& solid) {
+    double farthest = 0.0;
+    for (const Vertex& v : solid.vertices()) {
+        if (v.alive) farthest = std::max(farthest, v.point.length());
+    }
+    return farthest + exactExtent(solid);
+}
+
+/// pcurveRounding, with its solid's reach (reachOf) @p solidReach.
+double roundingAt(const HalfEdge& h, double solidReach) {
+    if (!h.pcurve || h.face == nullptr || !h.face->exactSurface) return 0.0;
+    const geo::Surface& s = *h.face->exactSurface;
+    double magnitude = solidReach + reachOf(s);
+    // A parameter of magnitude |u| is itself known only to a unit in its last place, which moves
+    // its point by that times the surface's (or the curve's) speed: a cylinder placed far along
+    // its own axis, a B-spline whose knots are large.
+    double moved = 0.0;
+    for (const int i : {0, kSamples / 2, kSamples - 1}) {
+        const Vec2 uv = sample(h, i);
+        const geo::SurfaceDerivatives d = s.derivatives(uv.x, uv.y);
+        moved = std::max(moved, std::fabs(uv.x) * d.du.length() + std::fabs(uv.y) * d.dv.length());
+    }
+    if (h.edge != nullptr && h.edge->exactCurve) {
+        const geo::Curve3& c = *h.edge->exactCurve;
+        magnitude += reachOf(c);
+        for (const double t : {h.edge->curveStart, h.edge->curveEnd}) {
+            moved = std::max(moved, std::fabs(t) * c.derivatives(t).d1.length());
+        }
+    }
+    const double rounding =
+        kRoundingUlps * std::numeric_limits<double>::epsilon() * (magnitude + moved);
+    return std::isfinite(rounding) ? rounding : 0.0;
 }
 
 struct Checker {
@@ -440,6 +551,65 @@ PcurveGaps pcurveGaps(const HalfEdge& h, const math::ModelTolerance& tolerance) 
     if (!h.pcurve || h.edge == nullptr || h.face == nullptr || !h.face->exactSurface) return {};
     std::vector<double> params;
     return measurePcurve(*h.edge, h, tolerance, params);
+}
+
+double pcurveRounding(const Solid& solid, const HalfEdge& h) {
+    return roundingAt(h, reachOf(solid));
+}
+
+RoundingTakeUp roundingShortfalls(const Solid& solid, const std::vector<ExactIssue>& issues,
+                                  const math::ModelTolerance& tolerance) {
+    RoundingTakeUp out;
+    double solidReach = 0.0;
+    bool reached = false;
+    const auto refuse = [&out](const ExactIssue& issue) {
+        out.shortfalls.clear();
+        out.beyond = &issue;
+        return out;
+    };
+    for (const ExactIssue& issue : issues) {
+        const bool offCurve = issue.kind == ExactIssueKind::PcurveOffCurve;
+        if ((!offCurve && issue.kind != ExactIssueKind::PcurveOffVertex) ||
+            issue.halfEdge == nullptr || issue.halfEdge->edge == nullptr) {
+            return refuse(issue);
+        }
+        const HalfEdge& h = *issue.halfEdge;
+        Edge& e = *h.edge;
+        const PcurveGaps gaps = pcurveGaps(h, tolerance);
+        if (!reached) {  // once, at the first issue measured
+            solidReach = reachOf(solid);
+            reached = true;
+        }
+        const double rounding = roundingAt(h, solidReach);
+        // What the check compared, with what, and the tolerance that bound it: an end's is its
+        // vertex's where that is the larger, so the vertex's grows (by rounding), not the edge's.
+        struct Compared {
+            double measured;
+            double* bound;
+        };
+        std::vector<Compared> compared;
+        if (offCurve) {
+            compared.push_back({gaps.strays, &e.tolerance});
+        } else {
+            for (const auto& end : {std::pair<double, Vertex*>{gaps.start, h.origin},
+                                    std::pair<double, Vertex*>{gaps.end, h.next->origin}}) {
+                compared.push_back({end.first, end.second->tolerance > e.tolerance
+                                                   ? &end.second->tolerance
+                                                   : &e.tolerance});
+            }
+        }
+        bool explained = false;
+        for (const Compared& c : compared) {
+            const double allowed = tolerance.effective(*c.bound);
+            if (c.measured <= allowed) continue;
+            if (!(c.measured - allowed <= rounding)) return refuse(issue);  // NaN too
+            out.shortfalls.push_back({c.bound, c.measured, &issue});
+            explained = true;
+        }
+        // An issue of these kinds whose measures are within (a pcurve running against its curve).
+        if (!explained) return refuse(issue);
+    }
+    return out;
 }
 
 }  // namespace hz::topo
