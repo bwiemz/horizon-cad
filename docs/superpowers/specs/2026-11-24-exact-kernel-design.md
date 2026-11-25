@@ -408,10 +408,28 @@ a user can see. Each is several PRs.
      out, with why. Old part files do not hold this text; they hold each body
      as it was read (Ruling 10).
 
-   Changed, not left out: the faceted copy of a band, which features work on,
-   changes with its new seam. Onshape's faceted volume is now 0.81% under its
-   exact one (it was 0.61%), Alibre's 0.63% (0.61%), and IronCAD's shrinks
-   too.
+   Changed, not left out: the faceted copy of a body, which features work on.
+   A band's changes with its new seam: Onshape's faceted volume is now 0.81%
+   under its exact one (it was 0.61%), Alibre's 0.63% (0.61%), and IronCAD's
+   shrinks too. This holds for old part files on open as well, so a saved
+   part's features rebuild on a different copy than they did. Of the corpus's
+   64 old-part bodies, 8 read exact with a faceted copy of another volume
+   (master's, then stage 2's):
+   - IronCAD, 7.0216778e7 → 7.0213538e7 (−4.6e-5);
+   - Alibre, 43.903179 → 43.895323 (−1.8e-4);
+   - the Prusa hinge, 8541.6114 → 8542.0277 (+4.9e-5);
+   - the NX plate, 35698.440 → 35698.696 (+7.2e-6);
+   - four Moon buggy bodies, 1022987.76 → 1023026.43 and 869544.08 →
+     869572.47 (+3.8e-5 and +3.3e-5), and two of 19181081.8 → 19181745.6
+     (+3.5e-5).
+   The Moon buggy bodies and the NX plate change with their new seams alone.
+   The hinge changes with the B-spline fixes alone: `NurbsSurface::locate`
+   and `project` (Ruling 12) place its facets' points otherwise. IronCAD and
+   Alibre change with both. The other 56 bodies' faceted copies keep their
+   volumes to 8.8e-8 or better, and the same edges and facets. Among them are
+   the two bodies kept as they were, Onshape's and Solid Edge's, which move
+   by the B-spline fixes alone (708529.956 → 708529.894, 684.443891 →
+   684.443858).
 
    Carried to later stages:
    - *Stage 3, transforms:* a non-similar transform converts the copy to NURBS
