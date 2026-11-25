@@ -476,10 +476,31 @@ a user can see. Each is several PRs.
      the old writer wrote as closed B-splines ("its two loops wind round it
      the same way"), a Moon buggy body ("its seam would cross where its
      surface closes"), and the emblem (its vertex off its line).
-   - *Stage 3, speed:* the exact pass on B-spline faces (general-path
-     pcurves, and the validator, which Ruling 66 runs a second time on six of
-     the 18 old exports) is what puts budget 2 over (above). Stage 3 migrates
-     every old part on open, so it meets this cost first.
+   - *Stage 3, speed:* the overshoot of budget 2, and of opening an old part,
+     is accepted for stage 2 (Ruling 67). Fresh imports, the main path, meet
+     budget 1 (the worst is ×1.27). Opening the corpus's largest old part takes
+     under 1 s in Debug, and the added time is the exact pass that is this
+     stage's purpose. The speed work goes to stage 3: general-path pcurves on
+     B-spline faces, the validator, and its second validation (Ruling 66 runs
+     it twice on six of the 18 old exports). Stage 3 migrates every old part
+     on open, so it meets this cost first. Two more costs, measured in Debug
+     with the same harness:
+     - *Open to display.* The first build after opening a part made of imports
+       also meshes and integrates its exact counterpart, where it faceted the
+       part alone before: the Moon buggy 1.35 → 4.83 s, IronCAD 0.23 → 1.35 s,
+       ProE 3.11 → 4.57 s, Shapr3D 0.20 → 0.29 s. Each later build reuses the
+       counterpart while the imports are as they were.
+     - *Each rebuild.* A worker's rebuild copied the part by writing its
+       imported bodies as STEP and reading them again through the exact pass,
+       and the copy, a last bit otherwise, meshed the counterpart again
+       whenever a build changed threads (Ruling 51's key). The copy now shares
+       the document's bodies, which nothing changes once read, so a rebuild
+       reads no STEP and either thread reuses the other's counterpart. Per
+       rebuild of an import-only part (copy, read and build, the document's
+       counterpart offered): IronCAD 1656 → 229 ms (master 478), the Moon
+       buggy 4991 → 1385 ms (master 9599), ProE 3484 → 3216 ms (master
+       3785), Shapr3D 338 → 201 ms (master 277), and IronCAD's old part
+       2050 → 228 ms (master 477).
    - *Stage 5:* still no geometric orientation check in the validator; the
      counterpart's volume check against its facets stands in for it.
    - *Stage 6:* the spindle torus, unchanged (the screw is on the regression
