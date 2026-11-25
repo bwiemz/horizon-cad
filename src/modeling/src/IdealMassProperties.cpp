@@ -711,7 +711,8 @@ IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& so
     if (topo::hasExactFaces(solid)) {
         const auto stopped = [cancelled] { return cancelled != nullptr && cancelled->load(); };
         if (stopped()) return {};
-        const detail::ExactMeasure exact = detail::measureExact(solid, material, cancelled);
+        const detail::ExactMeasure exact =
+            detail::measureExact(solid, material, cancelled, tolerance);
         if (stopped()) return {};
         IdealMassProperties result;
         result.properties = exact.properties;
@@ -720,6 +721,8 @@ IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& so
         result.estimatedError = exact.estimatedError;
         result.tolerance = tolerance;
         result.withinTolerance = exact.properties.valid && exact.estimatedError <= tolerance;
+        // Estimated, never measured once: each piece by two rules, Gauss's and Kronrod's.
+        result.refinement = std::max(2, exact.pieces);
         return result;
     }
     // A solid as read, bounded by curves, is measured in facets that record

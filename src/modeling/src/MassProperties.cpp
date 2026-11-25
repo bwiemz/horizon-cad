@@ -165,6 +165,17 @@ MassProperties finish(const Measures& measures, double density) {
     props.inertia.at(0, 2) = props.inertia.at(2, 0) = izx;
 
     props.mass = rho * props.volume;
+    // A part so large that its moments pass the largest double has no finite inertia to give.
+    bool finite = std::isfinite(props.volume) && std::isfinite(props.surfaceArea) &&
+                  std::isfinite(props.mass) && std::isfinite(cm.x) && std::isfinite(cm.y) &&
+                  std::isfinite(cm.z);
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) finite = finite && std::isfinite(props.inertia.at(i, j));
+    }
+    if (!finite) {
+        props.problem = "its mass properties are not finite";
+        return props;
+    }
     props.valid = true;
     return props;
 }
@@ -207,6 +218,11 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
         MassProperties props;
         props.density = material ? material->density : 1.0;
         props.problem = std::string("the solid could not be measured: ") + e.what();
+        return props;
+    } catch (...) {
+        MassProperties props;
+        props.density = material ? material->density : 1.0;
+        props.problem = "the solid could not be measured: an unknown fault";
         return props;
     }
 }

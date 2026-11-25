@@ -10,6 +10,7 @@
 #include <cmath>
 #include <memory>
 #include <numbers>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -128,6 +129,7 @@ void expectIdealIsTheSame(const topo::Solid& solid, const MassProperties& props)
     EXPECT_TRUE(ideal.onIdealSurfaces);
     EXPECT_TRUE(ideal.withinTolerance);
     EXPECT_LE(ideal.estimatedError, 1e-9);
+    EXPECT_GT(ideal.refinement, 1) << "the mass dialog says what was estimated";
 }
 
 /// A straight pcurve from @p a to @p b that wiggles a millionth across its course 100,000 times:
@@ -260,6 +262,16 @@ TEST(ExactMass, AMirroredCylinderIsPositive) {
         expectRelative(props.volume, volume, 1e-9, "its volume, positive");
         const Vec3 centre = m.transformPoint({1, 2, 8});
         EXPECT_NEAR((props.centerOfMass - centre).length(), 0.0, 1e-9 * centre.length());
+        // Positive face by face, not by the solid's sign being normalised: each face's outward
+        // normal (its surface's, turned where it is reversed) points out of the cylinder.
+        for (const auto& f : mirrored->faces()) {
+            const topo::HalfEdge* h = f.outerLoop->halfEdge;
+            const Vec2 uv = h->pcurve->evaluate(0.5 * (h->pcurveStart + h->pcurveEnd));
+            const auto d = f.exactSurface->derivatives(uv.x, uv.y);
+            const Vec3 outward = d.du.cross(d.dv) * (f.reversed ? -1.0 : 1.0);
+            EXPECT_GT(outward.normalized().dot((d.point - centre).normalized()), 0.1)
+                << f.topoId.tag() << " faces into the mirror image";
+        }
     }
 }
 
@@ -449,6 +461,182 @@ TEST(ExactMass, ASolidWhoseFacesAllFaceInMeasuresAsWhatTheyBound) {
     EXPECT_NEAR(props.surfaceArea, 2.0 * (200.0 + 600.0 + 300.0), 2200.0 * 1e-12);
     const MassProperties faceted = MassPropertiesCalculator::compute(*box);
     EXPECT_NEAR((props.centerOfMass - faceted.centerOfMass).length(), 0.0, 1e-9);
+}
+
+namespace {
+
+/// A unit sphere's cap beyond the flat x = 0.5, as the reader takes it from a file that bounds the
+/// sphere's face by the flat's circle alone (the reviewer's probe): the circle is off the sphere's
+/// axis, so its course on the sphere is a fitted pcurve, which strays from the circle by about
+/// 1.6e-7. With @p spline, the sphere is a rational B-spline (2 x 2) instead of a
+/// SPHERICAL_SURFACE.
+std::string capBeyondAFlat(bool spline) {
+    using hz::step_text::real;
+    std::string text;
+    if (spline) {
+        const double w = std::sqrt(0.5);
+        const double xs[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+        const double ys[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+        const double rs[5] = {0, 1, 1, 1, 0};
+        const double zs[5] = {-1, -1, 0, 1, 1};
+        const double wv[5] = {1, w, 1, w, 1};
+        std::string net;
+        std::string weights;
+        int id = 200;
+        for (int i = 0; i < 9; ++i) {
+            const double wu = i % 2 == 1 ? w : 1.0;
+            net += i == 0 ? "(" : ",(";
+            weights += i == 0 ? "(" : ",(";
+            for (int j = 0; j < 5; ++j) {
+                text += "#" + std::to_string(id) + " = CARTESIAN_POINT('',(" + real(xs[i] * rs[j]) +
+                        "," + real(ys[i] * rs[j]) + "," + real(zs[j]) + "));\n";
+                net += std::string(j == 0 ? "#" : ",#") + std::to_string(id);
+                weights += std::string(j == 0 ? "" : ",") + real(wu * wv[j]);
+                ++id;
+            }
+            net += ")";
+            weights += ")";
+        }
+        text += "#5 = ( BOUNDED_SURFACE() B_SPLINE_SURFACE(2,2,(" + net +
+                "),.UNSPECIFIED.,.T.,.F.,.F.) B_SPLINE_SURFACE_WITH_KNOTS((3,2,2,2,3),(3,2,3),"
+                "(0.,0.25,0.5,0.75,1.),(0.,0.5,1.),.UNSPECIFIED.) GEOMETRIC_REPRESENTATION_ITEM() "
+                "RATIONAL_B_SPLINE_SURFACE((" +
+                weights + ")) REPRESENTATION_ITEM('') SURFACE() );\n";
+    } else {
+        text +=
+            "#97 = CARTESIAN_POINT('',(0.,0.,0.));\n#99 = AXIS2_PLACEMENT_3D('',#97,#2,#3);\n"
+            "#5 = SPHERICAL_SURFACE('',#99,1.);\n";
+    }
+    text += R"(#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#6 = CARTESIAN_POINT('',(0.5,0.,0.));
+#8 = AXIS2_PLACEMENT_3D('',#6,#3,#2);
+#9 = CIRCLE('',#8,0.8660254037844386);
+#10 = CARTESIAN_POINT('',(0.5,0.,0.8660254037844386));
+#11 = VERTEX_POINT('',#10);
+#12 = EDGE_CURVE('',#11,#11,#9,.T.);
+#13 = ORIENTED_EDGE('',*,*,#12,.T.);
+#14 = EDGE_LOOP('',(#13));
+#15 = FACE_OUTER_BOUND('',#14,.T.);
+#16 = ADVANCED_FACE('',(#15),#5,.T.);
+#17 = PLANE('',#8);
+#18 = ORIENTED_EDGE('',*,*,#12,.F.);
+#19 = EDGE_LOOP('',(#18));
+#20 = FACE_OUTER_BOUND('',#19,.T.);
+#21 = ADVANCED_FACE('',(#20),#17,.T.);
+#22 = CLOSED_SHELL('',(#16,#21));
+#23 = MANIFOLD_SOLID_BREP('cap beyond a flat',#22);
+)";
+    return hz::step_text::stepFile(text);
+}
+
+}  // namespace
+
+// Spec goal 6: where a face's boundary is a fitted pcurve, the face is integrated against its
+// edge's exact curve, each point of which is put on the surface, so a solid bounded by closed
+// forms is exact even where its pcurves are not. The cap is turned and moved off the origin, so
+// no coordinate of the solid's own is zero along the flat's circle.
+TEST(ExactMass, AFaceBoundedByAFittedCurveIsExact) {
+    const hz::math::Mat4 place = hz::math::Mat4::translation({2, -1, 3}) *
+                                 hz::math::Mat4::rotationX(0.3) * hz::math::Mat4::rotationZ(0.5);
+    const double volume = kPi * 0.5 * 0.5 * (3.0 - 0.5) / 3.0;  // pi h^2 (3R - h) / 3
+    const double area = 2.0 * kPi * 0.5 + kPi * 0.75;           // 2 pi R h, and the flat
+    const Vec3 centre = place.transformPoint({0.675, 0, 0});    // 3 (2R - h)^2 / 4 (3R - h)
+    for (const bool spline : {false, true}) {
+        SCOPED_TRACE(spline ? "a rational B-spline sphere" : "a SPHERICAL_SURFACE");
+        const auto read = readOne(capBeyondAFlat(spline));
+        ASSERT_NE(read, nullptr);
+        const auto cap = hz::model::Pattern::transformed(*read, place);
+        ASSERT_NE(cap, nullptr);
+        const MassProperties props = MassPropertiesCalculator::compute(*cap);
+        ASSERT_TRUE(props.valid) << props.problem;
+        expectRelative(props.volume, volume, 1e-9, "its volume");
+        expectRelative(props.surfaceArea, area, 1e-9, "its area");
+        EXPECT_NEAR((props.centerOfMass - centre).length(), 0.0, 1e-9 * centre.length());
+        expectIdealIsTheSame(*cap, props);
+    }
+}
+
+// An edge that stands off its surface by more than the resolution (a file's own gap, its
+// tolerance grown to cover it) bounds a region known only to that tolerance: the estimate says
+// so, and a tight tolerance is not reached, however exactly the rest is integrated.
+TEST(ExactMass, AnEdgeStandingOffItsSurfaceKeepsItsEstimateHonest) {
+    const auto band = readOne(hz::step_text::bandCylinder("1.001"));
+    ASSERT_NE(band, nullptr);
+    double largest = 0.0;
+    for (const auto& e : band->edges()) largest = std::max(largest, e.tolerance);
+    ASSERT_GT(largest, 5e-4) << "its rims stand off its side";
+    const IdealMassProperties tight = MassPropertiesCalculator::computeIdeal(*band);
+    ASSERT_TRUE(tight.properties.valid) << tight.properties.problem;
+    EXPECT_GT(tight.estimatedError, 1e-5);
+    EXPECT_FALSE(tight.withinTolerance);
+    EXPECT_GT(tight.refinement, 1) << "the mass dialog says what was estimated";
+    const IdealMassProperties loose = MassPropertiesCalculator::computeIdeal(*band, nullptr, 1e-1);
+    EXPECT_TRUE(loose.withinTolerance) << loose.estimatedError;
+}
+
+// A thin-walled analytic part, a coin a thousandth as thick as it is wide on a tilted axis, is
+// exact to rounding; its faces are far larger than its volume, yet the estimate summed over them
+// still comes under the default tolerance, as it must for the mass dialog to say so.
+TEST(ExactMass, AThinWalledPartIsWithinTheDefaultTolerance) {
+    const auto coin =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {1, 1, 0}), 10.0, 0.01);
+    ASSERT_NE(coin, nullptr);
+    const IdealMassProperties ideal = MassPropertiesCalculator::computeIdeal(*coin);
+    ASSERT_TRUE(ideal.properties.valid) << ideal.properties.problem;
+    expectRelative(ideal.properties.volume, kPi * 100.0 * 0.01, 1e-9, "its volume");
+    EXPECT_TRUE(ideal.withinTolerance) << ideal.estimatedError;
+    EXPECT_LE(ideal.estimatedError, 1e-10);
+}
+
+// A part so large that its second moments pass the largest double is not reported valid with
+// infinite inertia: every sum is checked.
+TEST(ExactMass, MomentsBeyondTheLargestNumberAreNotValid) {
+    const auto block = hz::model::exact::makeBlock({0, 0, 0}, {1e70, 1e70, 1e70});
+    ASSERT_NE(block, nullptr);
+    const MassProperties props = MassPropertiesCalculator::compute(*block);
+    EXPECT_FALSE(props.valid);
+    EXPECT_NE(props.problem.find("not finite"), std::string::npos) << props.problem;
+}
+
+namespace {
+
+/// A plane that throws from every evaluation: what a surface with a fault would do. @p standard
+/// picks a std::exception, else a plain int.
+class Throwing : public geo::Plane {
+public:
+    Throwing(const geo::Plane& plane, bool standard) : geo::Plane(plane), standard_(standard) {}
+    Vec3 evaluate(double /*u*/, double /*v*/) const override { throwIt(); }
+    geo::SurfaceDerivatives derivatives(double /*u*/, double /*v*/) const override { throwIt(); }
+
+private:
+    [[noreturn]] void throwIt() const {
+        if (standard_) throw std::runtime_error("a fault");
+        throw 42;
+    }
+    bool standard_;
+};
+
+}  // namespace
+
+// Nothing a surface throws escapes compute(), a std::exception or not: the result is not valid.
+TEST(ExactMass, WhatASurfaceThrowsIsCaught) {
+    for (const bool standard : {true, false}) {
+        auto block = hz::model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
+        ASSERT_NE(block, nullptr);
+        topo::Face* top = faceTagged(*block, "box/top");
+        ASSERT_NE(top, nullptr);
+        const auto* plane = dynamic_cast<const geo::Plane*>(top->exactSurface.get());
+        ASSERT_NE(plane, nullptr);
+        top->exactSurface = std::make_shared<Throwing>(*plane, standard);
+        MassProperties props;
+        EXPECT_NO_THROW(props = MassPropertiesCalculator::compute(*block));
+        EXPECT_FALSE(props.valid);
+        EXPECT_FALSE(props.problem.empty());
+        IdealMassProperties ideal;
+        EXPECT_NO_THROW(ideal = MassPropertiesCalculator::computeIdeal(*block));
+        EXPECT_FALSE(ideal.properties.valid);
+    }
 }
 
 // A request to stop is heard: the result is not valid.

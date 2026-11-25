@@ -80,7 +80,10 @@ struct IdealMassProperties {
     /// ideals part; and for a solid measured by its corners alone. True for
     /// a solid of flat faces, measured as it is.
     bool withinTolerance = false;
-    /// The finest refinement measured: each edge in this many pieces.
+    /// The finest refinement measured: each edge in this many pieces. For a solid with exact
+    /// faces, integrated not refined, the most pieces one stretch of a face's boundary was
+    /// integrated in, and never under 2: each piece is measured by two rules (7-point Gauss,
+    /// 15-point Kronrod), whose difference is the estimate.
     int refinement = 1;
 };
 
@@ -107,9 +110,11 @@ public:
     /// result is not valid. A solid described by curves is measured in
     /// facets that record its surfaces; one that cannot be cut into them is
     /// measured by its corners, and is not exact. A solid with exact faces is
-    /// integrated on them, as compute() integrates it: the same numbers, with
-    /// the integration's estimate as estimatedError, nothing refined, and on
-    /// its ideal surfaces when every face is exact.
+    /// integrated on them, as compute() integrates it: the same numbers at the
+    /// default tolerance, a thin wall's faces taken tighter where a finer one
+    /// is asked for. estimatedError is the integration's estimate, with what
+    /// edges standing off their surfaces (tolerances beyond the resolution)
+    /// leave uncertain; it is on its ideal surfaces when every face is exact.
     ///
     /// @p triangleBudget: no refinement is measured that would make more
     /// triangles than this. Less trades precision for time: the result says

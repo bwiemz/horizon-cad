@@ -24,6 +24,8 @@ struct ExactMeasure {
     /// The live faces with no exact surface, by logical name, each once: summed by the polygon
     /// formulas, as modelled.
     std::vector<std::string> plainFaces;
+    /// The most pieces one stretch of a face's boundary was integrated in.
+    int pieces = 0;
 };
 
 /// The mass properties of @p solid, which has exact faces (topo::hasExactFaces).
@@ -32,12 +34,21 @@ struct ExactMeasure {
 /// zx} is a sum over the faces of an integral over the face's trimmed region R, in its unwrapped
 /// parameters (topo::unwrapLoop), of g(S) · (S_u × S_v)_k, signed by the face's `reversed`; the
 /// area is the same integral of |S_u × S_v|. By Green's theorem each reduces to a line integral
-/// along the face's pcurves of G(u, v) = ∫ g from a reference parameter to u, taken by
+/// along the face's boundary of G(u, v) = ∫ g from a reference parameter to u, taken by
 /// Gauss–Legendre between the surface's knots (in u, or in v where that is cheaper: a cylinder's
-/// or a cone's axis); the line integral is adaptive Gauss–Kronrod (15 points) in each pcurve's
-/// parameter, to 1e-11 of the face. The jump from one pcurve's end to the next one's start is a
-/// straight stretch of the boundary: rounding on most surfaces, a run along the pole or the apex
-/// where a pcurve meets one. Faces with no exact surface are summed by the polygon formulas.
+/// or a cone's axis); the line integral is adaptive Gauss–Kronrod (15 points), to 1e-11 of the
+/// face. Where the estimate summed over the faces is still above @p tolerance relative to the
+/// volume or the area (a thin wall), every face is taken again as much tighter as that needs.
+///
+/// The boundary is each half-edge's pcurve where that is a closed form (a line, a circle, any
+/// B-spline on a plane); a fitted pcurve is replaced by its edge's exact curve, integrated in its
+/// own parameter, each point put on the surface by Newton from a march along the edge started
+/// from the pcurve, so a face bounded by closed forms is exact even where its pcurves are not.
+/// The jump from one stretch's end to the next one's start is a straight stretch of the
+/// boundary: rounding on most surfaces, a run along the pole or the apex where a pcurve meets one.
+/// An edge whose tolerance is beyond the resolution (it stands off its surface) bounds a region
+/// known only to that tolerance: the estimate adds that width times the edge's length times the
+/// integrands' size along it. Faces with no exact surface are summed by the polygon formulas.
 /// Each face is signed by its own sense, so a void subtracts and a mirror image measures as its
 /// original; a solid whose every face faces in measures as the solid they bound, its sign
 /// normalised as the polygon formulas' is (detail::finish).
@@ -45,9 +56,9 @@ struct ExactMeasure {
 /// A face that cannot be integrated (no loop, a half-edge with no pcurve, a loop that winds round
 /// its surface or runs against the face's sense, a value that is not finite, an integral that
 /// does not settle within its budget of evaluations, stretches or subdivisions) leaves the result
-/// not valid, its problem "<face>: <why>". Nothing throws. @p cancelled, when set, stops it
-/// between faces and within one, and the result is not valid.
+/// not valid, its problem "<face>: <why>"; so do sums that are not finite. Nothing throws.
+/// @p cancelled, when set, stops it between faces and within one, and the result is not valid.
 ExactMeasure measureExact(const topo::Solid& solid, const Material* material,
-                          const std::atomic<bool>* cancelled);
+                          const std::atomic<bool>* cancelled, double tolerance = 1e-10);
 
 }  // namespace hz::model::detail

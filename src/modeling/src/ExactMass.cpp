@@ -21,8 +21,10 @@
 
 #include "MassIntegrals.h"
 #include "horizon/geometry/curves/Curve2D.h"
+#include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/curves/Line2D.h"
 #include "horizon/geometry/curves/Nurbs2D.h"
+#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/BoundingBox.h"
@@ -50,8 +52,21 @@ constexpr std::size_t kArea = 10;
 using Terms = std::array<double, kTerms>;
 
 /// Each face's boundary integral is taken to this, relative to the face's own size: the largest
-/// integral of the absolute value of any of its integrands along its boundary.
+/// integral of the absolute value of any of its integrands along its boundary. Where the solid's
+/// estimate summed over its faces is still above the tolerance asked for (a thin wall, whose
+/// faces are large beside its volume), every face is taken again, tighter, as far as this floor:
+/// the Gauss–Kronrod estimate's own (50 ulps of each span's magnitude) is near 1e-14.
 constexpr double kRelativeAccuracy = 1e-11;
+constexpr double kFinestAccuracy = 1e-14;
+
+/// An edge's march: the points of its exact curve put on the face's surface, one after another,
+/// from which each quadrature point's Newton step starts. Twice as many as its fitted pcurve has
+/// spans, within these.
+constexpr int kFewestMarchSteps = 16;
+constexpr int kMostMarchSteps = 256;
+/// Newton steps putting one point of an edge on its surface; it converges in two or three from
+/// the march, and a point that has not settled by then is no nearer for more.
+constexpr int kInversionSteps = 12;
 
 /// The budget of one face. A face from a file is untrusted, so every refinement is bounded: the
 /// stretches of boundary measured (a pcurve's knot spans and halvings), the surface evaluations
@@ -283,6 +298,31 @@ public:
         return std::all_of(out.begin(), out.end(), [](double x) { return std::isfinite(x); });
     }
 
+    /// The point and its first derivatives at @p uv (the second only for an analytic surface).
+    geo::SurfaceDerivatives derivativesAt(const Vec2& uv) {
+        ++evaluations;
+        if (nurbs_ != nullptr) {
+            const geo::SurfacePoint sp = nurbs_->evaluateWithDerivatives(uv.x, uv.y);
+            geo::SurfaceDerivatives d;
+            d.point = sp.point;
+            d.du = sp.du;
+            d.dv = sp.dv;
+            return d;
+        }
+        return surface_.derivatives(uv.x, uv.y);
+    }
+
+    /// @p uv held to a B-spline's domain along a direction that does not wrap, where its
+    /// evaluation clamps the parameter: a step beyond it would move nothing. Analytic surfaces
+    /// evaluate everywhere (a sphere's meridian continues past its pole), and are not held.
+    Vec2 withinDomain(const Vec2& uv) const {
+        if (nurbs_ == nullptr) return uv;
+        Vec2 held = uv;
+        if (!nurbs_->periodicU()) held.x = std::clamp(held.x, nurbs_->uMin(), nurbs_->uMax());
+        if (!nurbs_->periodicV()) held.y = std::clamp(held.y, nurbs_->vMin(), nurbs_->vMax());
+        return held;
+    }
+
     const geo::NurbsSurface* nurbs() const { return nurbs_; }
 
     std::size_t evaluations = 0;
@@ -297,8 +337,10 @@ private:
 
 /// What one face's integration came to.
 struct FaceResult {
-    Terms flux{};   ///< its share of the ten volume integrals and the area, divided by sizes
-    Terms error{};  ///< their estimated errors
+    Terms flux{};      ///< its share of the ten volume integrals and the area, divided by sizes
+    Terms error{};     ///< the quadrature's estimated errors
+    Terms boundary{};  ///< what its edges' tolerances beyond the resolution leave uncertain
+    int pieces = 0;    ///< the most spans one stretch of its boundary was integrated in
     std::string problem;
 };
 
@@ -322,22 +364,32 @@ struct Stretch {
     Vec2 from;  ///< a jump's ends
     Vec2 to;
     double reference = 0.0;  ///< where its loop's inner integrals start
+    /// Where the pcurve is fitted: the edge's exact curve, integrated in its own parameter, each
+    /// point put on the surface (Newton, from the march's (u, v) at that parameter).
+    const geo::Curve3* edge = nullptr;
+    double t0 = 0.0;  ///< the march: from the edge's parameter t0 to t1, evenly, its points'
+    double t1 = 0.0;  ///< (u, v) on the surface
+    std::vector<Vec2> march;
 };
 
 /// The boundary integral of one exact face.
 class FaceIntegral {
 public:
     FaceIntegral(const Face& face, const Vec3& origin, double size,
-                 const math::ModelTolerance& tolerance, const std::atomic<bool>* cancelled)
+                 const math::ModelTolerance& tolerance, double accuracy,
+                 const std::atomic<bool>* cancelled)
         : face_(face),
           surface_(*face.exactSurface, origin, size),
           tolerance_(tolerance),
+          size_(size),
+          accuracy_(accuracy),
           cancelled_(cancelled) {}
 
     FaceResult run() {
         FaceResult result;
         if (!chooseRule(result.problem) || !collectLoops(result.problem)) return result;
         integrate(result);
+        result.boundary = boundary_;
         return result;
     }
 
@@ -505,7 +557,21 @@ private:
             stretch.curve = h.pcurve.get();
             stretch.shift = shift;
             stretch.reference = reference;
-            if (!addSpans(stretch, h.pcurveStart, h.pcurveEnd, problem)) return false;
+            if (fitted(h)) {
+                if (!marchAlong(h, stretch)) {
+                    problem = why_;
+                    return false;
+                }
+                starts.back() = stretch.march.front();
+                ends.back() = stretch.march.back();
+                if (!addSpans(stretch, stretch.t0, stretch.t1, problem)) return false;
+            } else if (!addSpans(stretch, h.pcurveStart, h.pcurveEnd, problem)) {
+                return false;
+            }
+            if (!addUncertainty(h, shift)) {
+                problem = why_;
+                return false;
+            }
         }
         for (std::size_t k = 0; k < ring.size(); ++k) {
             const Vec2 from = ends[k];
@@ -522,8 +588,14 @@ private:
         return true;
     }
 
-    /// The point of @p s at @p t and its derivative in t.
-    static void at(const Stretch& s, double t, Vec2& uv, Vec2& d) {
+    /// The point of @p s at @p t and its derivative in t; false (and why_) where a point of an
+    /// edge cannot be put on the surface.
+    bool at(const Stretch& s, double t, Vec2& uv, Vec2& d) {
+        if (s.edge != nullptr) {
+            const geo::CurveDerivatives c = s.edge->derivatives(t);
+            uv = marchAt(s, t);
+            return putOnSurface(c.point, c.d1, uv, &d);
+        }
         if (s.curve != nullptr) {
             uv = s.curve->evaluate(t) + s.shift;
             d = s.curve->derivative(t, 1);
@@ -531,11 +603,180 @@ private:
             uv = s.from + (s.to - s.from) * t;
             d = s.to - s.from;
         }
+        return true;
     }
 
-    /// Adds @p stretch from @p t0 to @p t1 (either way round) as its first spans: cut at a
-    /// B-spline pcurve's knots, and a straight one where it crosses the surface's knots, where
-    /// the integrand is not smooth.
+    /// Whether @p h's pcurve is fitted, not a closed form, and so integrated on its edge's exact
+    /// curve instead: a B-spline pcurve on any surface but a plane (on a plane each is the exact
+    /// image of its curve, as Line2D and Circle2D pcurves are everywhere), along an edge that
+    /// lies on its surface to the resolution. An edge that stands off its surface by more (its
+    /// tolerance grown to cover a file's gap) is known only to that tolerance, which putting its
+    /// points on the surface cannot remove, and where it runs along the surface's own edge its
+    /// points would be put beyond it: it keeps its pcurve, fitted within its tolerance, and its
+    /// uncertainty is added to the estimate (addUncertainty).
+    bool fitted(const HalfEdge& h) const {
+        return h.edge != nullptr && h.edge->exactCurve != nullptr &&
+               h.edge->tolerance <= tolerance_.linear &&
+               face_.exactSurface->kind() != geo::SurfaceKind::Plane &&
+               dynamic_cast<const geo::Nurbs2D*>(h.pcurve.get()) != nullptr;
+    }
+
+    /// @p h's edge's exact curve as @p s: the parameters it runs between along @p h, and its march
+    /// on the surface, started from the pcurve's own point at each step and from the march's last
+    /// step, whichever is nearer. False (and why_) where its curve is not finite.
+    bool marchAlong(const HalfEdge& h, Stretch& s) {
+        const topo::Edge& e = *h.edge;
+        const bool along = e.halfEdge == &h;
+        s.edge = e.exactCurve.get();
+        s.t0 = along ? e.curveStart : e.curveEnd;
+        s.t1 = along ? e.curveEnd : e.curveStart;
+        if (!std::isfinite(s.t0) || !std::isfinite(s.t1)) {
+            why_ = "an edge of it has a range that is not finite";
+            return false;
+        }
+        int spans = 1;
+        if (const auto* spline = dynamic_cast<const geo::Nurbs2D*>(h.pcurve.get())) {
+            spans = static_cast<int>(distinct(spline->curve().knots()).size());
+        }
+        const int steps = std::clamp(2 * spans, kFewestMarchSteps, kMostMarchSteps);
+        s.march.clear();
+        s.march.reserve(static_cast<std::size_t>(steps) + 1);
+        for (int m = 0; m <= steps; ++m) {
+            const double f = static_cast<double>(m) / steps;
+            const Vec3 p = s.edge->evaluate(s.t0 + (s.t1 - s.t0) * f);
+            const Vec2 own =
+                h.pcurve->evaluate(h.pcurveStart + (h.pcurveEnd - h.pcurveStart) * f) + s.shift;
+            Vec2 uv = own;
+            if (m > 0) {
+                const std::size_t n = s.march.size();
+                const Vec2 next = n >= 2 ? s.march[n - 1] * 2.0 - s.march[n - 2] : s.march[n - 1];
+                if (distanceTo(next, p) < distanceTo(own, p)) uv = next;
+            }
+            if (!putOnSurface(p, Vec3{}, uv, nullptr)) return false;
+            s.march.push_back(uv);
+        }
+        return true;
+    }
+
+    /// How far the surface at @p uv is from @p p (infinite where it is not finite).
+    double distanceTo(const Vec2& uv, const Vec3& p) {
+        ++surface_.evaluations;
+        const double d = (face_.exactSurface->evaluate(uv.x, uv.y) - p).length();
+        return std::isfinite(d) ? d : std::numeric_limits<double>::infinity();
+    }
+
+    /// The march's (u, v) at the edge's parameter @p t, between its steps.
+    static Vec2 marchAt(const Stretch& s, double t) {
+        const auto steps = static_cast<double>(s.march.size() - 1);
+        const double f = s.t1 == s.t0 ? 0.0 : (t - s.t0) / (s.t1 - s.t0) * steps;
+        const double at = std::clamp(f, 0.0, steps);
+        const auto m = std::min(static_cast<std::size_t>(at), s.march.size() - 2);
+        const double w = at - static_cast<double>(m);
+        return s.march[m] * (1.0 - w) + s.march[m + 1] * w;
+    }
+
+    /// Puts @p p on the surface: Gauss–Newton from @p uv, each step taken only where it brings
+    /// the surface nearer, the normal equations held off singular (a pole, an apex) by a
+    /// millionth of a millionth of their trace, so that a parameter that means nothing there is
+    /// left as it was. With @p d, also the (u, v) course of a curve through @p p along
+    /// @p tangent: the tangent resolved onto S_u and S_v. False (and why_) where the surface is
+    /// not finite.
+    bool putOnSurface(const Vec3& p, const Vec3& tangent, Vec2& uv, Vec2* d) {
+        geo::SurfaceDerivatives here = surface_.derivativesAt(uv);
+        double gap = (here.point - p).length();
+        for (int step = 0; step < kInversionSteps && std::isfinite(gap); ++step) {
+            const Vec3 r = here.point - p;
+            const double a = here.du.dot(here.du);
+            const double b = here.du.dot(here.dv);
+            const double c = here.dv.dot(here.dv);
+            const double hold = 1e-12 * (a + c);
+            const double det = (a + hold) * (c + hold) - b * b;
+            if (!(det > 0.0)) break;
+            const double gu = here.du.dot(r);
+            const double gv = here.dv.dot(r);
+            const Vec2 move(-((c + hold) * gu - b * gv) / det, -((a + hold) * gv - b * gu) / det);
+            const Vec2 next = surface_.withinDomain(uv + move);
+            const geo::SurfaceDerivatives there = surface_.derivativesAt(next);
+            const double nextGap = (there.point - p).length();
+            if (!(nextGap < gap)) break;
+            const bool settled = (here.du * move.x + here.dv * move.y).length() <= 1e-15 * size_;
+            uv = next;
+            here = there;
+            gap = nextGap;
+            if (settled) break;
+        }
+        if (!std::isfinite(gap) || !finite(uv)) {
+            why_ = notFiniteAt(uv);
+            return false;
+        }
+        if (d != nullptr) {
+            const double a = here.du.dot(here.du);
+            const double b = here.du.dot(here.dv);
+            const double c = here.dv.dot(here.dv);
+            const double hold = 1e-12 * (a + c);
+            const double det = (a + hold) * (c + hold) - b * b;
+            const double tu = here.du.dot(tangent);
+            const double tv = here.dv.dot(tangent);
+            *d = det > 0.0
+                     ? Vec2(((c + hold) * tu - b * tv) / det, ((a + hold) * tv - b * tu) / det)
+                     : Vec2();
+            if (!finite(*d)) {
+                why_ = notFiniteAt(uv);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// What @p h's edge leaves uncertain of the face: an edge that stands off its surface by its
+    /// tolerance beyond the resolution bounds a region known only to that much, which no
+    /// integration removes. That width, times the edge's length, times the largest of each
+    /// integrand (over a unit normal) along it, is added to the face's estimate.
+    bool addUncertainty(const HalfEdge& h, const Vec2& shift) {
+        const double beyond = h.edge->tolerance - tolerance_.linear;
+        if (!(beyond > 0.0)) return true;
+        double length = 0.0;
+        if (h.edge->exactCurve != nullptr) {
+            const GaussRule& rule = gaussRule(16);
+            const double half = 0.5 * (h.edge->curveEnd - h.edge->curveStart);
+            const double mid = 0.5 * (h.edge->curveEnd + h.edge->curveStart);
+            for (std::size_t i = 0; i < rule.nodes.size(); ++i) {
+                length += std::fabs(half) * rule.weights[i] *
+                          h.edge->exactCurve->derivatives(mid + half * rule.nodes[i]).d1.length();
+            }
+        } else {
+            length = (h.next->origin->point - h.origin->point).length();
+        }
+        Terms most{};
+        most[kArea] = 1.0;
+        constexpr int kLooks = 5;
+        for (int i = 0; i < kLooks; ++i) {
+            const double f = (i + 0.5) / kLooks;
+            const Vec2 uv =
+                h.pcurve->evaluate(h.pcurveStart + (h.pcurveEnd - h.pcurveStart) * f) + shift;
+            Terms t{};
+            if (!surface_.terms(uv.x, uv.y, t)) {
+                why_ = notFiniteAt(uv);
+                return false;
+            }
+            if (!(t[kArea] > 0.0)) continue;
+            for (std::size_t k = 0; k < kArea; ++k) {
+                most[k] = std::max(most[k], std::fabs(t[k]) / t[kArea]);
+            }
+        }
+        const double width = beyond / size_ * (length / size_);
+        if (!std::isfinite(width)) {
+            why_ = "an edge of it has a tolerance or a length that is not finite";
+            return false;
+        }
+        for (std::size_t k = 0; k < kTerms; ++k) boundary_[k] += width * most[k];
+        return true;
+    }
+
+    /// Adds @p stretch from @p t0 to @p t1 (either way round) as its first spans: cut where the
+    /// integrand is not smooth, at a B-spline pcurve's or edge curve's knots, and where a straight
+    /// one crosses the surface's knots. A straight stretch along the inner direction moves the
+    /// outer parameter not at all: its integrand is 0 throughout, and it is left out.
     bool addSpans(const Stretch& stretch, double t0, double t1, std::string& problem) {
         stretches_.push_back(stretch);
         const std::size_t index = stretches_.size() - 1;
@@ -543,44 +784,47 @@ private:
         const double lo = std::min(t0, t1);
         const double hi = std::max(t0, t1);
         std::vector<double> cuts;
-        const auto* line = dynamic_cast<const geo::Line2D*>(stretch.curve);
-        if (stretch.curve == nullptr || line != nullptr) {
-            // A straight stretch along the inner direction moves the outer parameter not at all:
-            // its integrand is 0 throughout.
+        const auto knotsOf = [&](const std::vector<double>& knots) {
+            for (double k : distinct(knots)) {
+                if (k > lo && k < hi) cuts.push_back(k);
+            }
+        };
+        if (stretch.edge != nullptr) {
+            if (const auto* spline = dynamic_cast<const geo::NurbsCurve*>(stretch.edge)) {
+                knotsOf(spline->knots());
+            }
+        } else if (const auto* spline = dynamic_cast<const geo::Nurbs2D*>(stretch.curve)) {
+            knotsOf(spline->curve().knots());
+        } else if (stretch.curve == nullptr ||
+                   dynamic_cast<const geo::Line2D*>(stretch.curve) != nullptr) {
             Vec2 a;
             Vec2 b;
             Vec2 d;
             at(stretch, lo, a, d);
             if ((alongV_ ? d.x : d.y) == 0.0) return true;
-        }
-        if (const auto* spline = dynamic_cast<const geo::Nurbs2D*>(stretch.curve)) {
-            for (double k : distinct(spline->curve().knots())) {
-                if (k > lo && k < hi) cuts.push_back(k);
-            }
-        } else if ((stretch.curve == nullptr || line != nullptr) && surface_.nurbs() != nullptr) {
-            Vec2 a;
-            Vec2 b;
-            Vec2 d;
-            at(stretch, lo, a, d);
             at(stretch, hi, b, d);
-            const Breaks& uBreaks = alongV_ ? otherBreaks_ : rule_.breaks;
-            const Breaks& vBreaks = alongV_ ? rule_.breaks : otherBreaks_;
-            const auto crossings = [&](double from, double to, const Breaks& breaks) {
-                std::vector<double> values;
-                if (from == to) return true;
-                if (!breaks.between(std::min(from, to), std::max(from, to), kMaxStretches,
-                                    values)) {
+            if (surface_.nurbs() != nullptr) {
+                const Breaks& uBreaks = alongV_ ? otherBreaks_ : rule_.breaks;
+                const Breaks& vBreaks = alongV_ ? rule_.breaks : otherBreaks_;
+                const auto crossings = [&](double from, double to, const Breaks& breaks) {
+                    std::vector<double> values;
+                    if (from == to) return true;
+                    if (!breaks.between(std::min(from, to), std::max(from, to), kMaxStretches,
+                                        values)) {
+                        return false;
+                    }
+                    for (double v : values) {
+                        cuts.push_back(lo + (hi - lo) * (v - from) / (to - from));
+                    }
+                    return true;
+                };
+                if (!crossings(a.x, b.x, uBreaks) || !crossings(a.y, b.y, vBreaks)) {
+                    problem = "a stretch of its boundary crosses more than " +
+                              std::to_string(kMaxStretches) +
+                              " knots of its surface, or lies more than " + num(kMaxPeriods) +
+                              " periods round it";
                     return false;
                 }
-                for (double v : values) cuts.push_back(lo + (hi - lo) * (v - from) / (to - from));
-                return true;
-            };
-            if (!crossings(a.x, b.x, uBreaks) || !crossings(a.y, b.y, vBreaks)) {
-                problem = "a stretch of its boundary crosses more than " +
-                          std::to_string(kMaxStretches) +
-                          " knots of its surface, or lies more than " + num(kMaxPeriods) +
-                          " periods round it";
-                return false;
             }
         }
         std::sort(cuts.begin(), cuts.end());
@@ -689,7 +933,7 @@ private:
             const double t = centre + half * x;
             Vec2 uv;
             Vec2 d;
-            at(stretch, t, uv, d);
+            if (!at(stretch, t, uv, d)) return false;
             const double multiplier = alongV_ ? -d.x : d.y;
             if (!finite(uv) || !std::isfinite(multiplier)) {
                 why_ = notFiniteAt(uv);
@@ -788,7 +1032,7 @@ private:
         const auto settled = [&] {
             const double size = *std::max_element(magnitude.begin(), magnitude.end());
             const double worst = *std::max_element(error.begin(), error.end());
-            return worst <= kRelativeAccuracy * size;
+            return worst <= accuracy_ * size;
         };
         std::size_t rounds = 0;
         while (!settled()) {
@@ -844,6 +1088,9 @@ private:
         // region's integrals signed by `sense_`: the volume terms' flux is signed by `reversed`
         // as well, which is the same sign, and the area is the region's.
         result.flux[kArea] *= sense_;
+        std::vector<int> pieces(stretches_.size(), 0);
+        for (const Span& sp : spans_) ++pieces[sp.stretch];
+        result.pieces = pieces.empty() ? 0 : *std::max_element(pieces.begin(), pieces.end());
     }
 
     struct Pending {
@@ -856,7 +1103,10 @@ private:
     const Face& face_;
     FaceSurface surface_;
     const math::ModelTolerance& tolerance_;
+    double size_;
+    double accuracy_;
     const std::atomic<bool>* cancelled_;
+    Terms boundary_{};
     InnerRule rule_;
     Breaks otherBreaks_;  ///< a B-spline's knots in the outer direction
     bool alongV_ = false;
@@ -892,8 +1142,66 @@ ExactMeasure notValid(double density, std::string problem) {
     return out;
 }
 
+/// One pass over the solid's faces, each exact one integrated to @p accuracy of its own size.
+struct Pass {
+    Measures measures;
+    double volumeError = 0.0;  ///< the quadrature's, in the volume's units
+    double areaError = 0.0;
+    double volumeBoundary = 0.0;  ///< what the edges' tolerances leave uncertain
+    double areaBoundary = 0.0;
+    int pieces = 0;
+    std::set<std::string> plain;
+    std::string problem;
+};
+
+Pass integrateFaces(const topo::Solid& solid, const Vec3& origin, double size,
+                    const math::ModelTolerance& tolerance, double accuracy,
+                    const std::atomic<bool>* cancelled) {
+    Pass pass;
+    pass.measures.origin = origin;
+    for (const auto& face : solid.faces()) {
+        if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
+            pass.problem = "stopped";
+            return pass;
+        }
+        if (!face.alive) continue;
+        if (!face.exactSurface) {
+            // As modelled: the polygon formulas, about the same origin.
+            for (const auto& tri : faceTriangles(face)) {
+                pass.measures.add(tri[0] - origin, tri[1] - origin, tri[2] - origin);
+            }
+            pass.plain.insert(face.topoId.isValid() ? logicalFace(face.topoId.tag())
+                                                    : nameOf(face));
+            continue;
+        }
+        FaceIntegral integral(face, origin, size, tolerance, accuracy, cancelled);
+        const FaceResult r = integral.run();
+        if (!r.problem.empty()) {
+            pass.problem = nameOf(face) + ": " + r.problem;
+            return pass;
+        }
+        for (std::size_t k = 0; k < 10; ++k) {
+            pass.measures.sums[k] += r.flux[k] * std::pow(size, kPowers[k]) * kSumFactors[k];
+        }
+        pass.measures.area += r.flux[kArea] * size * size;
+        pass.volumeError += r.error[0] * size * size * size;
+        pass.areaError += r.error[kArea] * size * size;
+        pass.volumeBoundary += r.boundary[0] * size * size * size;
+        pass.areaBoundary += r.boundary[kArea] * size * size;
+        pass.pieces = std::max(pass.pieces, r.pieces);
+    }
+    return pass;
+}
+
+/// Whether every sum is a number: a part so large that its moments pass the largest double is
+/// not measured to infinities.
+bool allFinite(const Measures& m) {
+    return std::isfinite(m.area) &&
+           std::all_of(m.sums.begin(), m.sums.end(), [](double x) { return std::isfinite(x); });
+}
+
 ExactMeasure measure(const topo::Solid& solid, const Material* material,
-                     const std::atomic<bool>* cancelled) {
+                     const std::atomic<bool>* cancelled, double target) {
     const double density = material ? material->density : 1.0;
     const double size = topo::exactExtent(solid);
     if (!(size > 0.0) || !std::isfinite(size)) {
@@ -902,62 +1210,57 @@ ExactMeasure measure(const topo::Solid& solid, const Material* material,
     const Vec3 origin = middleOf(solid);
     const math::ModelTolerance tolerance = topo::exactTolerance(solid);
 
-    Measures measures;
-    measures.origin = origin;
-    double volumeError = 0.0;
-    double areaError = 0.0;
-    std::set<std::string> plain;
-    for (const auto& face : solid.faces()) {
-        if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
-            return notValid(density, "stopped");
+    // The quadrature's estimate relative to the volume and the area, the larger.
+    const auto relative = [](const Pass& p, double volumeError, double areaError) {
+        const double volume = std::fabs(p.measures.sums[0]) / 6.0;
+        const double area = p.measures.area;
+        return std::max(volume > 0.0 ? volumeError / volume : 0.0,
+                        area > 0.0 ? areaError / area : 0.0);
+    };
+    Pass pass = integrateFaces(solid, origin, size, tolerance, kRelativeAccuracy, cancelled);
+    if (!pass.problem.empty()) return notValid(density, pass.problem);
+    // A face's estimate is relative to its own size; summed over faces far larger than the
+    // volume they bound (a thin wall) it may still exceed the target. Taken again as much
+    // tighter as that needs, to the floor: the second pass's estimate is what is said.
+    const double quadrature = relative(pass, pass.volumeError, pass.areaError);
+    if (quadrature > 0.5 * target && std::isfinite(quadrature)) {
+        const double accuracy =
+            std::max(kFinestAccuracy, kRelativeAccuracy * 0.25 * target / quadrature);
+        if (accuracy < kRelativeAccuracy) {
+            pass = integrateFaces(solid, origin, size, tolerance, accuracy, cancelled);
+            if (!pass.problem.empty()) return notValid(density, pass.problem);
         }
-        if (!face.alive) continue;
-        if (!face.exactSurface) {
-            // As modelled: the polygon formulas, about the same origin.
-            for (const auto& tri : faceTriangles(face)) {
-                measures.add(tri[0] - origin, tri[1] - origin, tri[2] - origin);
-            }
-            plain.insert(face.topoId.isValid() ? logicalFace(face.topoId.tag()) : nameOf(face));
-            continue;
-        }
-        FaceIntegral integral(face, origin, size, tolerance, cancelled);
-        const FaceResult r = integral.run();
-        if (!r.problem.empty()) return notValid(density, nameOf(face) + ": " + r.problem);
-        for (std::size_t k = 0; k < 10; ++k) {
-            measures.sums[k] += r.flux[k] * std::pow(size, kPowers[k]) * kSumFactors[k];
-        }
-        measures.area += r.flux[kArea] * size * size;
-        volumeError += r.error[0] * size * size * size;
-        areaError += r.error[kArea] * size * size;
     }
 
     ExactMeasure out;
-    out.plainFaces.assign(plain.begin(), plain.end());
-    if (!std::isfinite(measures.sums[0])) return notValid(density, "its volume is not finite");
+    out.plainFaces.assign(pass.plain.begin(), pass.plain.end());
+    out.pieces = pass.pieces;
+    if (!allFinite(pass.measures)) return notValid(density, "its mass properties are not finite");
     // Each face is signed by its own sense, so a void subtracts; the solid as a whole may face
     // in (the kernel's box is wound so, and read back from STEP it is exact so), and finish()
     // normalises that sign as it does the polygon formulas'.
-    if (measures.sums[0] == 0.0) return notValid(density, "its faces enclose no volume");
-    out.properties = finish(measures, density);
+    if (pass.measures.sums[0] == 0.0) return notValid(density, "its faces enclose no volume");
+    out.properties = finish(pass.measures, density);
     if (!out.properties.valid) {
-        out.properties.problem = "its faces enclose no volume";
+        if (out.properties.problem.empty()) out.properties.problem = "its faces enclose no volume";
         return out;
     }
     out.estimatedError =
-        std::max(volumeError / out.properties.volume,
-                 out.properties.surfaceArea > 0.0 ? areaError / out.properties.surfaceArea : 0.0);
+        relative(pass, pass.volumeError + pass.volumeBoundary, pass.areaError + pass.areaBoundary);
     return out;
 }
 
 }  // namespace
 
 ExactMeasure measureExact(const topo::Solid& solid, const Material* material,
-                          const std::atomic<bool>* cancelled) {
+                          const std::atomic<bool>* cancelled, double tolerance) {
+    const double density = material ? material->density : 1.0;
     try {
-        return measure(solid, material, cancelled);
+        return measure(solid, material, cancelled, tolerance);
     } catch (const std::exception& e) {
-        return notValid(material ? material->density : 1.0,
-                        std::string("the solid could not be measured: ") + e.what());
+        return notValid(density, std::string("the solid could not be measured: ") + e.what());
+    } catch (...) {
+        return notValid(density, "the solid could not be measured: an unknown fault");
     }
 }
 
