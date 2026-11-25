@@ -28,7 +28,11 @@ work, not "post-1.0".
   surface back as it came. Features still work on its faceted copy. A solid
   that cannot be made exact yet is left out and the import says why: two of
   the interop corpus's 64 solids are, and the spec lists them with every
-  other shape this stage leaves out. Design:
+  other shape this stage leaves out. Among them is STEP that Horizon CAD
+  exported before this stage, wherever a round face is large beside its part,
+  a plain cylinder, frustum or tube included: the old writer sized each flat
+  face to its facets, and the face's true round rim stands off it. Part files
+  saved before this stage still open, each imported body as it was. Design:
   [the exact kernel spec](docs/superpowers/specs/2026-11-24-exact-kernel-design.md).
 
 - **Exact kernel, stage 1.** The foundations of an in-house exact B-rep kernel,

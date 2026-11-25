@@ -390,12 +390,23 @@ a user can see. Each is several PRs.
    - a band rim tilted so that its gap peaks between the pcurve's samples
      (Ruling 23's aliasing: a rim tilted 8e-4 strays 3.7e-7 past its
      tolerance);
-   - STEP that Horizon exported before stage 2 (its faceted part, flat faces
-     as bilinear patches sized to their facets), where a true-circle rim
-     stands off its patch beyond the limit or a pcurve strays from its edge:
-     5 of the 18 corpus parts' exports (Alibre, build123d, FreeCAD, Fusion,
-     the Moon buggy, the last 4.5 off at a limit of 4.49). Old part files do
-     not hold this text.
+   - STEP that Horizon exported before stage 2, wherever a round face's
+     radius is large beside its part: plain primitives as well as parts. The
+     old writer wrote each flat face as a bilinear B-spline patch sized to its
+     facet polygon, the 32-gon's oriented bounding box, whose half-side is
+     r·cos(π/32). A cap's true circular rim bulges past that patch by the
+     sagitta, r(1 − cos(π/32)) ≈ 0.0048 r, and the solid is left out once that
+     passes the limit, a thousandth of the solid's size: for a radius more
+     than about a fifth of the part's diagonal. A cylinder of radius 10 and
+     height 20 is left out ("its curve stands 0.0482 off its face's surface,
+     beyond the limit of 0.0346"), and so are a frustum (radius 6 to 2, height
+     9) and a tube; a box with a hole, a boss, a sphere, a torus and an apex
+     cone read. A pcurve straying from its edge on such a patch leaves a solid
+     out too. 5 of the 18 corpus parts' exports are left out so (Alibre,
+     build123d, FreeCAD, Fusion, the Moon buggy, the last 4.5 off at a limit
+     of 4.49). Such a file is a fresh STEP import, so decision 1b holds: left
+     out, with why. Old part files do not hold this text; they hold each body
+     as it was read (Ruling 10).
 
    Changed, not left out: the faceted copy of a band, which features work on,
    changes with its new seam. Onshape's faceted volume is now 0.81% under its
