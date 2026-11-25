@@ -11,6 +11,7 @@
 #include <string>
 #include <system_error>
 
+#include "ExactCounterpart.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
@@ -1362,14 +1363,33 @@ void ImportedBodyFeature::restoreFeatureID(const std::string& id) {
     bumpCounter(s_nextID, id, "imported_");
 }
 
+void ImportedBodyFeature::nameFaces(topo::Solid& body) const {
+    int index = 0;
+    for (auto& face : body.faces()) {
+        face.topoId = topo::TopologyID::make(m_featureID, "face:" + std::to_string(index++));
+    }
+}
+
+std::unique_ptr<topo::Solid> ImportedBodyFeature::exactBody() const {
+    if (!m_solid || m_solid->faces().empty()) return nullptr;
+    for (const auto& face : m_solid->faces()) {
+        if (face.alive && !face.exactSurface) return nullptr;
+    }
+    auto body = model::Pattern::transformed(*m_solid, math::Mat4::identity());
+    nameFaces(*body);
+    if (naming() == model::NamingScheme::Stable) {
+        model::nameEdgesLogically(*body);
+    } else {
+        model::nameEdgesByFaces(*body);
+    }
+    return body;
+}
+
 std::unique_ptr<topo::Solid> ImportedBodyFeature::execute(
     std::unique_ptr<topo::Solid> /*inputSolid*/, std::string* reason) const {
     if (!m_solid) return failWith(reason, "the imported body is missing");
     auto body = model::Pattern::transformed(*m_solid, math::Mat4::identity());
-    int index = 0;
-    for (auto& face : body->faces()) {
-        face.topoId = topo::TopologyID::make(m_featureID, "face:" + std::to_string(index++));
-    }
+    nameFaces(*body);
     // Its curved faces in facets, as the kernel makes its own (Phase 141): a
     // cylinder's face bounded by two circles is no loop of points to measure,
     // cut or draw. The body as read where that cannot be done; the import
@@ -2345,7 +2365,8 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
     return bodies;
 }
 
-BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
+BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
+                                              const BuildOptions& options) const {
     BuildResult result;
     if (m_features.empty()) {
         return result;
@@ -2357,6 +2378,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
     if (control) control->total = limit;
 
     std::unique_ptr<topo::Solid> solid;
+    ExactFollower exact;
     std::vector<const Feature*> before;
     Placed placed;
     // Where each sketch was placed, and the edges projected into it as they
@@ -2369,6 +2391,22 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
                 if (!entity->sourceEdge().empty()) projected.push_back(entity);
             }
             if (projected.empty()) result.projections.erase(id);
+        }
+    };
+    // The part's exact counterpart, made (or reused) for the part as it
+    // stands; a cancel while it is made leaves a cancelled build, no part.
+    const auto finishExact = [&exact, &options, &result, control] {
+        if (!options.exactCounterpart) {
+            result.withoutExact = exact.following();  // one it would have had
+            return;
+        }
+        if (!result.solid || result.cancelled) return;
+        bool cancelled = false;
+        result.exact = exact.make(*result.solid, options.previous, control, cancelled);
+        if (cancelled) {
+            result.cancelled = true;
+            result.solid.reset();
+            result.exact.reset();
         }
     };
     // A Boolean in it stops as soon as the build is cancelled, not only the
@@ -2388,6 +2426,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
         }
         const Feature& feature = *m_features[static_cast<size_t>(i)];
         std::string reason = feature.expressionError();  // Phase 155
+        const bool first = solid == nullptr;
         auto next = reason.empty()
                         ? applyFeature(feature, std::move(solid), &reason, before, placed)
                         : nullptr;
@@ -2399,19 +2438,25 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
             // The part as it stood before the failing feature: the feature
             // consumed the solid it failed on, so build it again up to there.
             // Only a failed build pays for this; a successful one copies
-            // nothing.
+            // nothing. Its exact counterpart is the one so far.
             result.solid = replayUpTo(i, control);
-            if (control && control->cancel) result.cancelled = true;
+            if (control && control->cancel) {
+                result.cancelled = true;  // cancelled: no part, whatever the replay made
+                result.solid.reset();
+            }
+            finishExact();
             report();
             return result;
         }
         solid = std::move(next);
+        exact.follow(feature, first);
         before.push_back(&feature);
         result.lastSuccessfulFeature = i;
     }
 
     if (control) control->done = limit;
     result.solid = std::move(solid);
+    finishExact();
     report();
     return result;
 }

@@ -9,16 +9,22 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include "../TimeLimits.h"
 #include "MeshEdgeSampler.h"  // the tolerance the mesher lays loops out with
+#include "StepTestText.h"
+#include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
+#include "horizon/geometry/curves/Circle2D.h"
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/Line2D.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
@@ -95,15 +101,50 @@ struct Summary {
     std::size_t boundarySegments = 0;  // across all the meshes, each way counted
 };
 
+/// Whether @p s comes to a point along u (@p alongU) or v at @p uv: a pole, an apex, where any
+/// value of that parameter is the same point.
+bool collapses(const geo::Surface& s, const Vec2& uv, bool alongU) {
+    const auto d = s.derivatives(uv.x, uv.y);
+    return (alongU ? d.du : d.dv).length() <= 1e-9 * (alongU ? d.dv : d.du).length();
+}
+
+/// Which parameter a vertex at a pole or an apex collapses along: none, u or v.
+enum class Along : std::uint8_t { None, U, V };
+
+/// The (u, v) of a triangle's vertices from their inversions @p uv, moved by whole periods to lie
+/// together; a vertex at a pole or an apex (@p along), which inverts to any value of the parameter
+/// the surface collapses along, takes the mean of the other two's.
+std::array<Vec2, 3> triangleUv(const geo::Surface& s, std::array<Vec2, 3> uv,
+                               const std::array<Along, 3>& along) {
+    std::size_t ref = 3;
+    for (std::size_t k = 0; k < 3 && ref == 3; ++k) {
+        if (along[k] == Along::None) ref = k;
+    }
+    if (ref == 3) ref = 0;
+    for (std::size_t k = 0; k < 3; ++k) {
+        if (k != ref) uv[k] = uvNear(s, uv[k], uv[ref]);
+    }
+    for (std::size_t k = 0; k < 3; ++k) {
+        const Vec2& a = uv[(k + 1) % 3];
+        const Vec2& b = uv[(k + 2) % 3];
+        if (along[k] == Along::U) uv[k].x = 0.5 * (a.x + b.x);
+        if (along[k] == Along::V) uv[k].y = 0.5 * (a.y + b.y);
+    }
+    return uv;
+}
+
 /// The brief's properties of a solid's meshes: each face meshed; watertight (every boundary
 /// segment, as an ordered pair of positions, once each way across all the meshes, which covers
 /// shared edges and seams alike; once only on an open sheet, whose edges have no second face);
 /// within the chord tolerance (plus @p slack for the inversion the check itself does) at each
 /// triangle's (u, v) centroid and edge midpoints; every triangle facing the way the surface's
-/// outward normal does at its centroid; normals the surface's, outward.
+/// outward normal does at its centroid; normals the surface's, outward. At a pole or an apex
+/// (where the surface collapses, or one of @p poles: a B-spline's row may come together only
+/// within tolerance, its normal there noise) a vertex's (u, v) is its neighbours', and its normal
+/// is of unit length and faces the way each triangle there does.
 Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshes,
                     const MeshOptions& options, double slack, bool closed = true,
-                    const Inverse& inverse = {}) {
+                    const Inverse& inverse = {}, const std::vector<Vec3>& poles = {}) {
     Summary out;
     std::size_t live = 0;
     for (const auto& f : solid.faces()) live += f.alive ? 1 : 0;
@@ -118,7 +159,22 @@ Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshe
         const geo::Surface& s = *m.face->exactSurface;
         const double sign = m.face->reversed ? -1.0 : 1.0;
         std::vector<Vec2> uvs;
+        uvs.reserve(m.points.size());
         for (const Vec3& q : m.points) uvs.push_back(inverse ? inverse(s, q) : s.invert(q));
+        std::vector<Along> along(m.points.size(), Along::None);
+        for (std::size_t i = 0; i < m.points.size(); ++i) {
+            const bool given = std::any_of(poles.begin(), poles.end(), [&](const Vec3& p) {
+                return (m.points[i] - p).length() <= slack;
+            });
+            if (collapses(s, uvs[i], true)) {
+                along[i] = Along::U;
+            } else if (collapses(s, uvs[i], false)) {
+                along[i] = Along::V;
+            } else if (given) {
+                const auto d = s.derivatives(uvs[i].x, uvs[i].y);
+                along[i] = d.du.length() <= d.dv.length() ? Along::U : Along::V;
+            }
+        }
 
         std::map<std::pair<std::uint32_t, std::uint32_t>, int> directed;
         double worst = 0.0;
@@ -132,9 +188,8 @@ Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshe
             const Vec3& a = m.points[t[0]];
             const Vec3& b = m.points[t[1]];
             const Vec3& c = m.points[t[2]];
-            const Vec2 ua = uvs[t[0]];
-            const Vec2 ub = uvNear(s, uvs[t[1]], ua);
-            const Vec2 uc = uvNear(s, uvs[t[2]], ua);
+            const auto [ua, ub, uc] = triangleUv(s, {uvs[t[0]], uvs[t[1]], uvs[t[2]]},
+                                                 {along[t[0]], along[t[1]], along[t[2]]});
             const Vec2 centroid = (ua + ub + uc) / 3.0;
             for (const Vec2& q : {centroid, (ua + ub) * 0.5, (ub + uc) * 0.5, (uc + ua) * 0.5}) {
                 worst = std::max(worst, distanceToTriangle(s.evaluate(q.x, q.y), a, b, c));
@@ -156,7 +211,18 @@ Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshe
         }
         for (std::size_t i = 0; i < m.points.size(); ++i) {
             EXPECT_LT((s.evaluate(uvs[i].x, uvs[i].y) - m.points[i]).length(), slack) << tag;
-            EXPECT_NEAR(m.normals[i].dot(s.normal(uvs[i].x, uvs[i].y) * sign), 1.0, 1e-9) << tag;
+            const Vec3 sn = s.normal(uvs[i].x, uvs[i].y);
+            if (sn.lengthSquared() > 0.0 && along[i] == Along::None) {
+                EXPECT_NEAR(m.normals[i].dot(sn * sign), 1.0, 1e-9) << tag;
+                continue;
+            }
+            EXPECT_NEAR(m.normals[i].length(), 1.0, 1e-9) << tag << ": a pole's normal";
+            for (const auto& t : m.triangles) {
+                if (t[0] != i && t[1] != i && t[2] != i) continue;
+                const Vec3 n =
+                    (m.points[t[1]] - m.points[t[0]]).cross(m.points[t[2]] - m.points[t[0]]);
+                EXPECT_GT(m.normals[i].dot(n), 0.0) << tag << ": a pole's normal";
+            }
         }
     }
     EXPECT_FALSE(boundary.empty());
@@ -367,6 +433,99 @@ std::shared_ptr<geo::Surface> bilinear(const Vec3& p00, const Vec3& p10, const V
 
 std::shared_ptr<geo::Curve2D> line(const Vec2& a, const Vec2& b) {
     return std::make_shared<geo::Line2D>(a, b);
+}
+
+/// A frustum about z from radius @p bottom at z = 0 to @p top at z = @p height (both above 0 and
+/// unequal), as ExactPrimitives builds a cylinder: a cone side with one seam along x, two planar
+/// caps, two rim circles. With @p widening the cone's frame sits at the narrower rim and its v
+/// runs towards the wider one, as STEP writes a cone (a half-angle above 0); otherwise the frame
+/// sits at the bottom with z up, and the half-angle is negative where the frustum narrows.
+std::unique_ptr<topo::Solid> makeFrustum(double bottom, double top, double height, bool widening) {
+    auto solid = std::make_unique<topo::Solid>();
+    topo::Shell* shell = solid->allocShell();
+    shell->solid = solid.get();
+    const auto addFace = [&](const char* role, std::shared_ptr<const geo::Surface> surface) {
+        topo::Face* f = solid->allocFace();
+        f->topoId = topo::TopologyID::make("frustum", role);
+        f->exactSurface = std::move(surface);
+        f->shell = shell;
+        shell->faces.push_back(f);
+        return f;
+    };
+    const auto addHalfEdge = [&](topo::Vertex* origin, std::shared_ptr<const geo::Curve2D> pcurve,
+                                 double start, double end) {
+        topo::HalfEdge* h = solid->allocHalfEdge();
+        h->origin = origin;
+        if (origin->halfEdge == nullptr) origin->halfEdge = h;
+        h->pcurve = std::move(pcurve);
+        h->pcurveStart = start;
+        h->pcurveEnd = end;
+        return h;
+    };
+    const auto addLoop = [&](topo::Face* f, const std::vector<topo::HalfEdge*>& hes) {
+        topo::Wire* w = solid->allocWire();
+        w->halfEdge = hes.front();
+        for (std::size_t i = 0; i < hes.size(); ++i) {
+            hes[i]->face = f;
+            hes[i]->next = hes[(i + 1) % hes.size()];
+            hes[i]->next->prev = hes[i];
+        }
+        f->outerLoop = w;
+    };
+    // a runs along the curve from t0 to t1, b the other way.
+    const auto addEdge = [&](topo::HalfEdge* a, topo::HalfEdge* b,
+                             std::shared_ptr<const geo::Curve3> curve, double t0, double t1) {
+        topo::Edge* e = solid->allocEdge();
+        e->halfEdge = a;
+        a->twin = b;
+        b->twin = a;
+        a->edge = b->edge = e;
+        e->exactCurve = std::move(curve);
+        e->curveStart = t0;
+        e->curveEnd = t1;
+    };
+    const double T = math::kTwoPi;
+    const Vec3 up{0, 0, height};
+    // v0 is the rim at the frame, v1 the other: (u, v) = (0, 0) and (0, height).
+    const bool atTop = widening == (top < bottom);
+    const geo::Frame frame = atTop ? geo::Frame::fromAxis(up, {0, 0, -1}, {1, 0, 0})
+                                   : geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1, 0, 0});
+    const double r0 = atTop ? top : bottom;
+    const double r1 = atTop ? bottom : top;
+    topo::Vertex* v0 = solid->allocVertex();
+    v0->point = frame.origin + frame.x * r0;
+    topo::Vertex* v1 = solid->allocVertex();
+    v1->point = frame.origin + frame.z * height + frame.x * r1;
+    topo::Face* side =
+        addFace("side", std::make_shared<geo::Cone>(frame, r0, std::atan2(r1 - r0, height)));
+    // The cap at the frame faces -frame.z, the other +frame.z; each rim runs counter-clockwise
+    // in its cap's (u, v), against the side's u at the cap facing along frame.z.
+    topo::Face* cap0 =
+        addFace(atTop ? "top" : "bottom", std::make_shared<geo::Plane>(geo::Frame::fromAxis(
+                                              frame.origin, frame.z * -1.0, {1, 0, 0})));
+    topo::Face* cap1 = addFace(atTop ? "bottom" : "top",
+                               std::make_shared<geo::Plane>(geo::Frame::fromAxis(
+                                   frame.origin + frame.z * height, frame.z, {1, 0, 0})));
+    // The side's loop runs counter-clockwise in (u, v): along v = 0, up u = 2 pi, back along
+    // v = height, down u = 0.
+    topo::HalfEdge* rim0 = addHalfEdge(v0, line({0, 0}, {T, 0}), 0.0, 1.0);
+    topo::HalfEdge* seamUp = addHalfEdge(v0, line({T, 0}, {T, height}), 0.0, 1.0);
+    topo::HalfEdge* rim1 = addHalfEdge(v1, line({T, height}, {0, height}), 0.0, 1.0);
+    topo::HalfEdge* seamDown = addHalfEdge(v1, line({0, height}, {0, 0}), 0.0, 1.0);
+    addLoop(side, {rim0, seamUp, rim1, seamDown});
+    topo::HalfEdge* capRim0 =
+        addHalfEdge(v0, std::make_shared<geo::Circle2D>(Vec2{0, 0}, r0), 0.0, T);
+    topo::HalfEdge* capRim1 =
+        addHalfEdge(v1, std::make_shared<geo::Circle2D>(Vec2{0, 0}, r1), 0.0, T);
+    addLoop(cap0, {capRim0});
+    addLoop(cap1, {capRim1});
+    geo::Frame far = frame;
+    far.origin = frame.origin + frame.z * height;
+    addEdge(rim0, capRim0, std::make_shared<geo::CircleCurve>(frame, r0), 0.0, T);
+    addEdge(capRim1, rim1, std::make_shared<geo::CircleCurve>(far, r1), 0.0, T);
+    const Vec3 d = v1->point - v0->point;
+    addEdge(seamUp, seamDown, std::make_shared<geo::LineCurve>(v0->point, d), 0.0, d.length());
+    return solid;
 }
 
 /// The open face z = h u v over [0, L]^2 (a hyperbolic paraboloid), bounded by four straight
@@ -627,6 +786,79 @@ private:
     std::shared_ptr<const geo::Surface> s_;
     Vec2 a_;
     Vec2 b_;
+};
+
+/// A circle in (u, v) run clockwise, as a hole's loop runs, over [0, 2 pi].
+class ClockwiseCircle : public geo::Curve2D {
+public:
+    ClockwiseCircle(const Vec2& centre, double radius) : c_(centre), r_(radius) {}
+    Vec2 evaluate(double t) const override {
+        return {c_.x + r_ * std::cos(t), c_.y - r_ * std::sin(t)};
+    }
+    Vec2 derivative(double t, int order) const override {
+        if (order == 1) return {-r_ * std::sin(t), -r_ * std::cos(t)};
+        return {-r_ * std::cos(t), r_ * std::sin(t)};
+    }
+    double tMin() const override { return 0.0; }
+    double tMax() const override { return math::kTwoPi; }
+    bool isClosed() const override { return true; }
+
+private:
+    Vec2 c_;
+    double r_;
+};
+
+/// The image on a surface of a pcurve, as an edge's curve over the pcurve's range.
+class PcurveImage : public geo::Curve3 {
+public:
+    PcurveImage(std::shared_ptr<const geo::Surface> surface,
+                std::shared_ptr<const geo::Curve2D> pcurve)
+        : s_(std::move(surface)), c_(std::move(pcurve)) {}
+    geo::CurveKind kind() const override { return geo::CurveKind::Nurbs; }
+    Vec3 evaluate(double t) const override {
+        const Vec2 q = c_->evaluate(t);
+        return s_->evaluate(q.x, q.y);
+    }
+    geo::CurveDerivatives derivatives(double t) const override {
+        const Vec2 q = c_->evaluate(t);
+        const Vec2 d = c_->derivative(t, 1);
+        const Vec2 dd = c_->derivative(t, 2);
+        const auto sd = s_->derivatives(q.x, q.y);
+        return {sd.point, sd.du * d.x + sd.dv * d.y,
+                sd.duu * (d.x * d.x) + sd.duv * (2.0 * d.x * d.y) + sd.dvv * (d.y * d.y) +
+                    sd.du * dd.x + sd.dv * dd.y};
+    }
+    geo::Interval range() const override { return {c_->tMin(), c_->tMax()}; }
+    bool periodic() const override { return c_->isClosed(); }
+    double closestParameter(const Vec3& p) const override {
+        const auto dist = [&](double t) { return (evaluate(t) - p).length(); };
+        constexpr int kSteps = 1000;
+        const double t0 = c_->tMin();
+        const double step = (c_->tMax() - t0) / kSteps;
+        double best = t0;
+        for (int i = 1; i <= kSteps; ++i) {
+            if (dist(t0 + step * i) < dist(best)) best = t0 + step * i;
+        }
+        double lo = std::max(t0, best - step);
+        double hi = std::min(c_->tMax(), best + step);
+        for (int i = 0; i < 100; ++i) {
+            const double x1 = hi - 0.618033988749895 * (hi - lo);
+            const double x2 = lo + 0.618033988749895 * (hi - lo);
+            if (dist(x1) <= dist(x2)) {
+                hi = x2;
+            } else {
+                lo = x1;
+            }
+        }
+        return 0.5 * (lo + hi);
+    }
+    std::unique_ptr<geo::Curve3> transformed(const math::Mat4& /*m*/) const override {
+        return nullptr;
+    }
+
+private:
+    std::shared_ptr<const geo::Surface> s_;
+    std::shared_ptr<const geo::Curve2D> c_;
 };
 
 /// z = rise u g(v) over x = L u, y = L v, with g a cubic B-spline bump from 0 at v = 0 up to 1
@@ -1278,5 +1510,768 @@ TEST(TrimmedFaceMesher, ThePrimitivesMeshQuickly) {
                     took.count());
         EXPECT_GT(triangles, 0u);
         EXPECT_LT(took.count(), 5000.0);  // generous: sanitizer builds run slowly
+    }
+}
+
+TEST(TrimmedFaceMesher, AFrustumIsMeshedWithFewTriangles) {
+    // r 6.5 to 3.2 over 8 at 1e-4 of its diagonal, the read point's tolerance: a cone's (u, v)
+    // lines bend sideways where its radius changes, and rows far apart left long diagonals that
+    // refinement split into 8.9k triangles (9.6k with the cone's v running the other way).
+    const double bottom = 6.5;
+    const double top = 3.2;
+    const double height = 8.0;
+    for (const bool widening : {true, false}) {
+        const auto frustum = makeFrustum(bottom, top, height, widening);
+        const double size = topo::exactExtent(*frustum);
+        MeshOptions options;
+        options.chordTolerance = 1e-4 * size;
+        const auto meshes = meshValid(*frustum, options, size);
+        const Summary s = checkMeshes(*frustum, meshes, options, slackFor(size));
+        EXPECT_LE(worstNeighbourAngle(meshes), options.maxAngle + 1e-12) << widening;
+        std::size_t triangles = 0;
+        for (const FaceMesh& m : meshes) triangles += m.triangles.size();
+        EXPECT_LE(triangles, 4000u) << widening;
+        const double volume =
+            math::kPi * height * (bottom * bottom + bottom * top + top * top) / 3.0;
+        EXPECT_NEAR(s.volume, volume, totalArea(s) * options.chordTolerance) << widening;
+    }
+}
+
+TEST(TrimmedFaceMesher, ATorusIsMeshedWithFewTriangles) {
+    // R10 r3 at 1e-4 of its diagonal: spaced along u for its outer equator everywhere, it took
+    // 33480 triangles. Each row now takes its own radius's step: 27184 (Ruling 5's bound is
+    // 28000; under the mesher's check no grid of aligned rows gets below about 24k).
+    const double major = 10.0;
+    const double minor = 3.0;
+    for (const Vec3& axis : {Vec3{0, 0, 1}, Vec3{1, -2, 0.5}}) {
+        const auto torus = makeTorus(geo::Frame::fromAxis({4, -2, 7}, axis), major, minor);
+        const double size = topo::exactExtent(*torus);
+        MeshOptions options;
+        options.chordTolerance = 1e-4 * size;
+        const auto meshes = meshValid(*torus, options, size);
+        const Summary s = checkMeshes(*torus, meshes, options, slackFor(size));
+        EXPECT_LE(worstNeighbourAngle(meshes), options.maxAngle + 1e-12);
+        ASSERT_EQ(meshes.size(), 1u);
+        EXPECT_LE(meshes[0].triangles.size(), 28000u);
+        const double area = 4.0 * math::kPi * math::kPi * major * minor;
+        const double volume = 2.0 * math::kPi * math::kPi * major * minor * minor;
+        EXPECT_NEAR(s.volume, volume, area * options.chordTolerance);
+    }
+}
+
+TEST(TrimmedFaceMesher, AGridTooFineForDoublesSaysSoPromptly) {
+    // A unit square on a surface with a bump inside, its straight sides flat and exactly on its
+    // axes, so they sample at any tolerance. At the smallest tolerances the grid's step is 0 or
+    // astronomically small and its counts infinite or past any integer: the face says it needs
+    // more triangles than the cap, promptly, before any count is cast or stored.
+    const std::array<double, 5> around = {0.3, 0.4, 0.5, 0.6, 0.7};
+    const auto face =
+        makeOpenFace(featuredSquare(1.0, around, around, 0.1, 0.0), {{{line({0, 0}, {1, 0})},
+                                                                      {line({1, 0}, {1, 1})},
+                                                                      {line({1, 1}, {0, 1})},
+                                                                      {line({0, 1}, {0, 0})}}});
+    for (const double tol : {std::numeric_limits<double>::denorm_min(), 1e-300}) {
+        MeshOptions options;
+        options.chordTolerance = tol;
+        const auto start = std::chrono::steady_clock::now();
+        const auto meshes = TrimmedFaceMesher::meshSolid(*face, options);
+        const std::chrono::duration<double, std::milli> took =
+            std::chrono::steady_clock::now() - start;
+        ASSERT_EQ(meshes.size(), 1u);
+        EXPECT_EQ(meshes[0].problem, "the face's grid alone needs more triangles than the cap")
+            << tol;
+        EXPECT_TRUE(meshes[0].triangles.empty());
+        EXPECT_LT(took.count(), 1000.0) << tol;
+    }
+}
+
+namespace {
+
+/// The cone of the review's probes, at @p degrees, its frame tilted.
+std::shared_ptr<geo::Cone> tiltedCone(double degrees) {
+    return std::make_shared<geo::Cone>(geo::Frame::fromAxis({1, 2, 3}, {0.3, -1, 0.4}), 2.0,
+                                       degrees * math::kPi / 180.0);
+}
+
+/// The open face on @p cone inside the (u, v) polygon @p corners, its edges their images.
+std::vector<Side> conePatchSides(const std::shared_ptr<geo::Cone>& cone,
+                                 const std::vector<Vec2>& corners) {
+    std::vector<Side> sides;
+    sides.reserve(corners.size());
+    for (std::size_t i = 0; i < corners.size(); ++i) {
+        const Vec2& a = corners[i];
+        const Vec2& b = corners[(i + 1) % corners.size()];
+        sides.push_back({line(a, b), 0.0, 1.0, std::make_shared<OnSurface>(cone, a, b), 0.0, 1.0});
+    }
+    return sides;
+}
+
+}  // namespace
+
+TEST(TrimmedFaceMesher, ConeFacesThatAreNotBandsMesh) {
+    // Ruling 7's regressions. A cone face whose boundary is not two rims and a seam keeps the
+    // grid of one u step: staggered rows that met a slanted or curved boundary stopped
+    // refinement converging, one point a round along a band, until the round cap.
+    std::vector<std::pair<std::unique_ptr<topo::Solid>, double>> faces;
+    // A rhombus at 45 degrees.
+    faces.emplace_back(
+        makeOpenFace(
+            tiltedCone(45.0),
+            {conePatchSides(tiltedCone(45.0), {{0.2, 0.5}, {2.4, 1.5}, {2.8, 6.5}, {0.6, 5.5}})}),
+        0.005);
+    // A rectangle with a round hole, at 30 degrees.
+    {
+        const auto cone = tiltedCone(30.0);
+        const auto hole = std::make_shared<ClockwiseCircle>(Vec2{1.25, 3.0}, 0.4);
+        faces.emplace_back(
+            makeOpenFace(cone,
+                         {conePatchSides(cone, {{0.0, 0.0}, {2.5, 0.0}, {2.5, 6.0}, {0.0, 6.0}}),
+                          {{hole, 0.0, math::kTwoPi, std::make_shared<PcurveImage>(cone, hole), 0.0,
+                            math::kTwoPi}}}),
+            0.0015);
+    }
+    // A whole turn of the cone with an oblique top, at 45 degrees.
+    faces.emplace_back(
+        makeOpenFace(
+            tiltedCone(45.0),
+            {conePatchSides(tiltedCone(45.0),
+                            {{0.0, 0.0}, {math::kTwoPi, 0.0}, {math::kTwoPi, 6.0}, {0.0, 3.0}})}),
+        0.01);
+    // A rectangle at 20 degrees, 0.001: refinement there moves along a band one cell a round,
+    // and meets the tolerance in round 93 (it took 64 rounds and stopped).
+    faces.emplace_back(
+        makeOpenFace(
+            tiltedCone(20.0),
+            {conePatchSides(tiltedCone(20.0), {{0.0, 0.0}, {2.5, 0.0}, {2.5, 6.0}, {0.0, 6.0}})}),
+        0.001);
+    for (std::size_t i = 0; i < faces.size(); ++i) {
+        const topo::Solid& face = *faces[i].first;
+        MeshOptions options;
+        options.chordTolerance = faces[i].second;
+        const auto meshes = TrimmedFaceMesher::meshSolid(face, options);
+        ASSERT_EQ(meshes.size(), 1u);
+        EXPECT_TRUE(meshes[0].problem.empty()) << "face " << i << ": " << meshes[0].problem;
+        checkMeshes(face, meshes, options, slackFor(topo::exactExtent(face)), false);
+    }
+}
+
+TEST(TrimmedFaceMesher, FlatConesAreNoHeavierThanWithOneStep) {
+    // Frusta at 85 and 88 degrees from radius 10 to 1: their rims are sampled far finer by the
+    // angle than the cone's bending spaces its grid. Staggered rows from the bending's step
+    // added 8 to 16 rows of a few columns: 3192 triangles where one u step took 1210 (85 degrees
+    // at 1e-3), 1868 where it took 212 (88 degrees at 1e-2). From the rims' step they need none
+    // at 1e-2 and few at 1e-3.
+    for (const double degrees : {85.0, 88.0}) {
+        const double slope = std::tan(degrees * math::kPi / 180.0);
+        const double height = 9.0 / slope;
+        for (const bool widening : {true, false}) {
+            const auto frustum = makeFrustum(10.0, 1.0, height, widening);
+            const double size = topo::exactExtent(*frustum);
+            for (const auto& [relative, bound] :
+                 {std::pair<double, std::size_t>{1e-3, 1210}, {1e-2, 212}}) {
+                MeshOptions options;
+                options.chordTolerance = relative * size;
+                const auto meshes = TrimmedFaceMesher::meshSolid(*frustum, options);
+                checkMeshes(*frustum, meshes, options, slackFor(size));
+                std::size_t triangles = 0;
+                for (const FaceMesh& m : meshes) triangles += m.triangles.size();
+                EXPECT_LE(triangles, bound) << degrees << " " << widening << " " << relative;
+            }
+        }
+    }
+}
+
+TEST(TrimmedFaceMesher, ANearlyCylindricalConeMeshesLikeACylinder) {
+    // Radius 5 to 4.99 over 10, at 1e-4 of its size: a cylinder r5 h10 takes 1010 triangles.
+    // Rows staggered from its slight twist took 1348.
+    for (const bool widening : {true, false}) {
+        const auto frustum = makeFrustum(5.0, 4.99, 10.0, widening);
+        const double size = topo::exactExtent(*frustum);
+        MeshOptions options;
+        options.chordTolerance = 1e-4 * size;
+        const auto meshes = TrimmedFaceMesher::meshSolid(*frustum, options);
+        checkMeshes(*frustum, meshes, options, slackFor(size));
+        std::size_t triangles = 0;
+        for (const FaceMesh& m : meshes) triangles += m.triangles.size();
+        EXPECT_LE(triangles, 1050u) << widening;
+    }
+}
+
+namespace {
+
+/// These files name no length unit, as hand-written ones often do: read in millimetres.
+io::StepReadOptions inMillimetres() {
+    io::StepReadOptions options;
+    options.unknownLengthUnit = math::LengthUnit::Millimetre;
+    return options;
+}
+
+/// A turn and a move off the origin, so that no axis of a solid is the world's.
+math::Mat4 placement() {
+    return math::Mat4::translation({2, -1, 3}) * math::Mat4::rotationX(0.3) *
+           math::Mat4::rotationZ(0.5);
+}
+
+/// The one solid @p text holds, as the reader makes it, placed by placement(); null (and a
+/// failure) when it holds none.
+std::unique_ptr<topo::Solid> readPlaced(const std::string& text) {
+    auto solids = io::StepFormat::fromString(text, nullptr, nullptr, inMillimetres());
+    EXPECT_EQ(solids.size(), 1u) << io::StepFormat::lastError();
+    if (solids.size() != 1) return nullptr;
+    return model::Pattern::transformed(*solids.front(), placement());
+}
+
+/// Where readPlaced puts @p p.
+Vec3 placed(const Vec3& p) {
+    return placement().transformPoint(p);
+}
+
+#if HZ_TIME_LIMITS
+/// The time limit the brief sets on meshing a face that comes to a point, or failing it: @p ms
+/// in an optimised build. An unoptimised one is given an order of magnitude more (TimeLimits.h).
+/// It is defined only where time limits hold: under a sanitizer nothing calls it, and an unused
+/// function fails a -Werror build.
+double meshingLimit(double ms) {
+#ifdef NDEBUG
+    return ms;
+#else
+    return 10.0 * ms * HZ_UNOPTIMIZED_SLOWDOWN;
+#endif
+}
+#endif
+
+/// Each of @p poles is one vertex of every face mesh that reaches it, every triangle there fanned
+/// to it (three or more of them), and some face reaches it.
+void expectPolesFanned(const std::vector<FaceMesh>& meshes, const std::vector<Vec3>& poles,
+                       double size) {
+    for (const Vec3& pole : poles) {
+        std::size_t faces = 0;
+        for (const FaceMesh& m : meshes) {
+            std::vector<std::uint32_t> at;
+            for (std::size_t i = 0; i < m.points.size(); ++i) {
+                if ((m.points[i] - pole).length() <= 1e-9 * size) {
+                    at.push_back(static_cast<std::uint32_t>(i));
+                }
+            }
+            if (at.empty()) continue;
+            ++faces;
+            EXPECT_EQ(at.size(), 1u) << "a pole is one vertex of a face's mesh";
+            std::size_t fan = 0;
+            for (const auto& t : m.triangles) {
+                fan += std::count(t.begin(), t.end(), at.front()) != 0 ? 1 : 0;
+            }
+            EXPECT_GE(fan, 3u);
+        }
+        EXPECT_GE(faces, 1u) << "no face reaches the pole";
+    }
+}
+
+/// A solid read from STEP that comes to a point: its closed-form volume and its poles, as written;
+/// whether the brief's time limit is checked.
+struct Pointed {
+    const char* name;
+    std::string text;
+    double volume;
+    std::vector<Vec3> poles;
+    bool timed = false;
+};
+
+/// @p solid, which comes to a point at each of @p poles and encloses @p volume, meshed at a
+/// hundredth, a thousandth and a ten-thousandth of its size (the last the read point's tolerance):
+/// each mesh as checkMeshes and expectPolesFanned want it, its volume within its area times the
+/// tolerance of @p volume, and with @p timed the read point's meshed within meshingLimit(50 ms).
+void expectMeshesToItsPoints(const topo::Solid& solid, double volume,
+                             const std::vector<Vec3>& poles, bool timed = false,
+                             const Inverse& inverse = {}) {
+    EXPECT_TRUE(topo::validateExact(solid, topo::exactTolerance(solid)).empty());
+    const double size = topo::exactExtent(solid);
+    for (const double relative : {1e-2, 1e-3, 1e-4}) {
+        MeshOptions options;
+        options.chordTolerance = relative * size;
+        const auto start = std::chrono::steady_clock::now();
+        const auto meshes = TrimmedFaceMesher::meshSolid(solid, options);
+        const std::chrono::duration<double, std::milli> took =
+            std::chrono::steady_clock::now() - start;
+        const Summary s = checkMeshes(solid, meshes, options, slackFor(size), true, inverse, poles);
+        expectPolesFanned(meshes, poles, size);
+        EXPECT_NEAR(s.volume, volume, totalArea(s) * options.chordTolerance) << relative;
+        if (timed && relative == 1e-4) {
+#if HZ_TIME_LIMITS
+            EXPECT_LT(took.count(), meshingLimit(50.0));
+#else
+            (void)took;
+#endif
+        }
+    }
+}
+
+/// @p c read and placed, as expectMeshesToItsPoints wants it.
+void expectMeshesToItsPoints(const Pointed& c, const Inverse& inverse = {}) {
+    SCOPED_TRACE(c.name);
+    const auto solid = readPlaced(c.text);
+    ASSERT_NE(solid, nullptr);
+    std::vector<Vec3> poles;
+    poles.reserve(c.poles.size());
+    for (const Vec3& p : c.poles) poles.push_back(placed(p));
+    expectMeshesToItsPoints(*solid, c.volume, poles, c.timed, inverse);
+}
+
+}  // namespace
+
+// The read point's mesher could not mesh a face whose loop runs along an apex: it halved the
+// boundary there 32 times, about 2 s a face, and failed, so a part with a drill point lost its
+// exact counterpart. A cone to its apex (OpenCASCADE's: a seam from its base up to the apex and
+// back), a drill's point on its rod (the same at the rod's end), and a cone as Unigraphics writes
+// one (the Moon buggy's: its apex a VERTEX_LOOP, its surface of radius 0 placed there) each mesh
+// watertight, the apex one vertex fanned to its neighbours, and their volumes converge. The
+// first two, the brief's, are meshed at the read point's tolerance within its time limit.
+TEST(TrimmedFaceMesher, AConeWithItsApexMeshes) {
+    const double kPi = math::kPi;
+    const double tip = 1.8025818570826808;  // 3 / tan(59 degrees)
+    expectMeshesToItsPoints(
+        {"a cone", step_text::cone(), kPi * 4.0 * 3.0 / 3.0, {{0, 0, 3}}, true});
+    expectMeshesToItsPoints({"a drill point",
+                             step_text::drillPoint(),
+                             kPi * 9.0 * 10.0 + kPi * 9.0 * tip / 3.0,
+                             {{0, 0, -tip}},
+                             true});
+    expectMeshesToItsPoints(
+        {"a Unigraphics cone", step_text::apexCone(), kPi * 6.25 * 10.0 / 3.0, {{0, 0, 0}}});
+}
+
+// A whole sphere: one face bounded by a seam from pole to pole and back, as OpenCASCADE writes a
+// ball, and one bounded by a VERTEX_LOOP at its pole alone, as Unigraphics writes one (the Moon
+// buggy's face #32040, a part placed four times), which the reader gives the same seam. Both
+// poles are each one vertex.
+TEST(TrimmedFaceMesher, AWholeSphereMeshes) {
+    const double kPi = math::kPi;
+    expectMeshesToItsPoints({"an OpenCASCADE ball",
+                             step_text::sphere(),
+                             4.0 / 3.0 * kPi * 1.5 * 1.5 * 1.5,
+                             {{0, 0, -1.5}, {0, 0, 1.5}}});
+    expectMeshesToItsPoints({"a Unigraphics ball",
+                             step_text::vertexLoopBall(),
+                             4.0 / 3.0 * kPi * 1000.0,
+                             {{0, 0, -10}, {0, 0, 10}}});
+    // A ball meshed at a tolerance longer than the ball: its poles are still poles, not joins of
+    // pcurves that end a little apart (taken for joins, they stalled refinement).
+    const auto ball = readPlaced(step_text::sphere());
+    ASSERT_NE(ball, nullptr);
+    MeshOptions loose;
+    loose.chordTolerance = 10.0;
+    const auto meshes = TrimmedFaceMesher::meshSolid(*ball, loose);
+    checkMeshes(*ball, meshes, loose, slackFor(3.0));
+    expectPolesFanned(meshes, {placed({0, 0, -1.5}), placed({0, 0, 1.5})}, 3.0);
+}
+
+// A cap of a sphere: OpenCASCADE's hemisphere, its loop the equator and a seam to the pole, in
+// each of its loop's three rotations (some unwrap only once the seam is laid out a period over),
+// and a cap a hundredth of a radian across, whose seam to the pole is a hundredth of the sphere's
+// radius against a pole of a whole turn.
+TEST(TrimmedFaceMesher, ASphereCapMeshes) {
+    const double kPi = math::kPi;
+    const auto cap = [kPi](double height) {  // pi h^2 (3R - h) / 3
+        const double h = 10.0 - height;
+        return kPi * h * h * (30.0 - h) / 3.0;
+    };
+    for (const char* order : {"#20,#21,#22", "#21,#22,#20", "#22,#20,#21"}) {
+        expectMeshesToItsPoints(
+            {order, step_text::seamedHemisphere(order), cap(0.0), {{0, 0, 10}}});
+    }
+    const double small = 10.0 * std::cos(0.01);
+    expectMeshesToItsPoints({"a small cap", step_text::seamedCap(small), cap(small), {{0, 0, 10}}});
+}
+
+namespace {
+
+/// A ball of radius @p r about the origin as one face on the rational B-spline sphere
+/// splineSphereSurface writes, its first and last rows of control points each one point (its
+/// poles, at v = 0 and v = 1): bounded as OpenCASCADE bounds a ball, by a seam from pole to pole
+/// (u = 1 on the way up, u = 0 on the way down), the loop running along each pole between them.
+std::unique_ptr<topo::Solid> makeSplineBall(double r) {
+    const double w = std::sqrt(0.5);
+    const double xs[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+    const double ys[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+    const double rs[5] = {0, 1, 1, 1, 0};
+    const double zs[5] = {-1, -1, 0, 1, 1};
+    const double wv[5] = {1, w, 1, w, 1};
+    std::vector<std::vector<Vec3>> points(9, std::vector<Vec3>(5));
+    std::vector<std::vector<double>> weights(9, std::vector<double>(5));
+    for (std::size_t i = 0; i < 9; ++i) {
+        for (std::size_t j = 0; j < 5; ++j) {
+            points[i][j] = Vec3{xs[i] * rs[j], ys[i] * rs[j], zs[j]} * r;
+            weights[i][j] = (i % 2 == 1 ? w : 1.0) * wv[j];
+        }
+    }
+    auto solid = std::make_unique<topo::Solid>();
+    topo::Shell* shell = solid->allocShell();
+    shell->solid = solid.get();
+    topo::Face* face = solid->allocFace();
+    face->topoId = topo::TopologyID::make("ball", "face");
+    face->exactSurface = std::make_shared<geo::NurbsSurface>(
+        points, weights, std::vector<double>{0, 0, 0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1, 1, 1},
+        std::vector<double>{0, 0, 0, 0.5, 0.5, 1, 1, 1}, 2, 2);
+    face->shell = shell;
+    shell->faces.push_back(face);
+    topo::Vertex* south = solid->allocVertex();
+    south->point = {0, 0, -r};
+    topo::Vertex* north = solid->allocVertex();
+    north->point = {0, 0, r};
+    topo::HalfEdge* up = solid->allocHalfEdge();
+    topo::HalfEdge* down = solid->allocHalfEdge();
+    up->origin = south;
+    down->origin = north;
+    south->halfEdge = up;
+    north->halfEdge = down;
+    up->pcurve = line({1, 0}, {1, 1});
+    down->pcurve = line({0, 1}, {0, 0});
+    for (topo::HalfEdge* h : {up, down}) {
+        h->face = face;
+        h->pcurveStart = 0.0;
+        h->pcurveEnd = 1.0;
+    }
+    up->next = up->prev = down;
+    down->next = down->prev = up;
+    up->twin = down;
+    down->twin = up;
+    topo::Wire* wire = solid->allocWire();
+    wire->halfEdge = up;
+    face->outerLoop = wire;
+    topo::Edge* seam = solid->allocEdge();
+    seam->halfEdge = up;
+    up->edge = down->edge = seam;
+    // The meridian through +x, in the plane of x and z, from the south pole to the north.
+    seam->exactCurve = std::make_shared<geo::CircleCurve>(
+        geo::Frame::fromAxis({0, 0, 0}, {0, -1, 0}, {1, 0, 0}), r);
+    seam->curveStart = -0.5 * math::kPi;
+    seam->curveEnd = 0.5 * math::kPi;
+    return solid;
+}
+
+/// The parameter, over [0, 1], of an angle @p angle (0 to pi/2) along a rational quadratic quarter
+/// circle of weights 1, cos(pi/4), 1: tan(a / 2) = tan(pi / 8) (2t - 1), a measured from its
+/// middle.
+double quarterArcParameter(double angle) {
+    return 0.5 * (std::tan(0.5 * (angle - 0.25 * math::kPi)) / std::tan(0.125 * math::kPi) + 1.0);
+}
+
+/// The parameters of a point of splineSphereSurface's sphere (as makeSplineBall builds it too),
+/// placed by placement(): u four quarter arcs round z from +x, v two from the south pole to the
+/// north. In closed form; the surface's own inversion is a search, and took most of the test's
+/// time. Any other surface inverts itself.
+Inverse splineSphereInverse() {
+    return [](const geo::Surface& s, const Vec3& point) {
+        if (s.kind() != geo::SurfaceKind::Nurbs) return s.invert(point);
+        const Vec3 q = placement().inverse().transformPoint(point);
+        double longitude = std::atan2(q.y, q.x);
+        if (longitude < 0.0) longitude += math::kTwoPi;
+        const double quarter = std::min(3.0, std::floor(longitude / (0.5 * math::kPi)));
+        const double u =
+            (quarter + quarterArcParameter(longitude - quarter * 0.5 * math::kPi)) / 4.0;
+        const double latitude = std::atan2(q.z, std::hypot(q.x, q.y));
+        const double v = latitude < 0.0 ? 0.5 * quarterArcParameter(latitude + 0.5 * math::kPi)
+                                        : 0.5 * (1.0 + quarterArcParameter(latitude));
+        return Vec2{u, v};
+    };
+}
+
+}  // namespace
+
+// Ruling 36: a rational B-spline's collapsed row is a pole as a sphere's is: a whole ball, along
+// both its collapsed rows, and a hemisphere read from STEP, along its last, each on a biquadratic
+// sphere whose first and last rows of control points are each one point, as other systems write
+// a sphere. The reader keeps the B-spline.
+TEST(TrimmedFaceMesher, ASplineSphereMeshesWhereItsRowsCollapse) {
+    const double kPi = math::kPi;
+    {
+        SCOPED_TRACE("a spline ball");
+        const auto ball = model::Pattern::transformed(*makeSplineBall(1.5), placement());
+        ASSERT_NE(ball, nullptr);
+        expectMeshesToItsPoints(*ball, 4.0 / 3.0 * kPi * 1.5 * 1.5 * 1.5,
+                                {placed({0, 0, -1.5}), placed({0, 0, 1.5})}, false,
+                                splineSphereInverse());
+    }
+    const std::string hemisphere =
+        step_text::seamedHemisphere("#20,#21,#22", step_text::splineSphereSurface(10.0));
+    const auto read = io::StepFormat::fromString(hemisphere, nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(read.size(), 1u) << io::StepFormat::lastError();
+    std::size_t splines = 0;
+    for (const topo::Face& f : read.front()->faces()) {
+        splines +=
+            f.alive && f.exactSurface && f.exactSurface->kind() == geo::SurfaceKind::Nurbs ? 1 : 0;
+    }
+    EXPECT_EQ(splines, 1u);
+    expectMeshesToItsPoints(
+        {"a spline hemisphere", hemisphere, 2.0 / 3.0 * kPi * 1000.0, {{0, 0, 10}}},
+        splineSphereInverse());
+}
+
+// Ruling 36, within tolerance: the B-spline hemisphere whose last row of control points comes
+// together only within a spread of 3e-8 or 3e-7, its points moved in turn up and down the axis
+// (the surface's normal near the pole then turns every way) or along x. The pole is still one
+// vertex fanned to its neighbours. In its disc no normal is judged: refinement once chased the
+// ripple towards the pole, and the sampler halved the seam towards it, until the triangle cap
+// (13-28 s a face). At the tolerances it ran away at, it meshes within the brief's time limit.
+TEST(TrimmedFaceMesher, ASplinePoleThatComesTogetherOnlyWithinToleranceMeshes) {
+    const struct {
+        const char* name;
+        double spread;
+        bool alongAxis;
+    } cases[] = {{"3e-8 along the axis", 3e-8, true},
+                 {"3e-7 along the axis", 3e-7, true},
+                 {"3e-7 along x", 3e-7, false}};
+    const double hemisphere = 2.0 / 3.0 * math::kPi * 1000.0;
+    for (const auto& c : cases) {
+        SCOPED_TRACE(c.name);
+        const auto cap = readPlaced(step_text::seamedHemisphere(
+            "#20,#21,#22", step_text::splineSphereSurface(10.0, c.spread, c.alongAxis)));
+        ASSERT_NE(cap, nullptr);
+        EXPECT_TRUE(topo::validateExact(*cap, topo::exactTolerance(*cap)).empty());
+        const double size = topo::exactExtent(*cap);
+        const std::vector<Vec3> pole = {placed({0, 0, 10})};
+        for (const double relative : {1e-2, 1e-3, 1e-4}) {
+            MeshOptions options;
+            options.chordTolerance = relative * size;
+            const auto start = std::chrono::steady_clock::now();
+            const auto meshes = TrimmedFaceMesher::meshSolid(*cap, options);
+            const std::chrono::duration<double, std::milli> took =
+                std::chrono::steady_clock::now() - start;
+            const Summary s = checkMeshes(*cap, meshes, options, slackFor(size), true,
+                                          splineSphereInverse(), pole);
+            expectPolesFanned(meshes, pole, size);
+            EXPECT_NEAR(s.volume, hemisphere, totalArea(s) * options.chordTolerance) << relative;
+            if (relative > 1e-4) {
+#if HZ_TIME_LIMITS
+                EXPECT_LT(took.count(), meshingLimit(50.0)) << relative;
+#else
+                (void)took;
+#endif
+            }
+        }
+    }
+}
+
+namespace {
+
+/// The cap round the south pole of the unit sphere below v = -0.3, over three quarters of a turn
+/// (u from 0 to 3 pi / 2), as one open face: its loop up one meridian, along the rim, down the
+/// other and along the pole back to the first; and with @p hole a round hole off the pole.
+std::unique_ptr<topo::Solid> makePolarSlice(bool hole) {
+    const auto sphere =
+        std::make_shared<geo::Sphere>(geo::Frame::fromAxis({1, 2, 3}, {0.3, -1, 0.4}), 1.0);
+    const double end = 1.5 * math::kPi;
+    const double south = -0.5 * math::kPi;
+    std::vector<Side> outer = {
+        {line({end, south}, {end, -0.3}), 0.0, 1.0,
+         std::make_shared<OnSurface>(sphere, Vec2{end, south}, Vec2{end, -0.3}), 0.0, 1.0},
+        {line({end, -0.3}, {0, -0.3}), 0.0, 1.0,
+         std::make_shared<OnSurface>(sphere, Vec2{end, -0.3}, Vec2{0, -0.3}), 0.0, 1.0},
+        {line({0, -0.3}, {0, south}), 0.0, 1.0,
+         std::make_shared<OnSurface>(sphere, Vec2{0, -0.3}, Vec2{0, south}), 0.0, 1.0}};
+    std::vector<std::vector<Side>> loops = {outer};
+    if (hole) {
+        const auto circle = std::make_shared<ClockwiseCircle>(Vec2{0.75 * math::kPi, -0.9}, 0.2);
+        loops.push_back({{circle, 0.0, math::kTwoPi, std::make_shared<PcurveImage>(sphere, circle),
+                          0.0, math::kTwoPi}});
+    }
+    return makeOpenFace(sphere, loops);
+}
+
+}  // namespace
+
+// The pole at the low end of v, on a face that meets it between two meridians a quarter turn
+// short of a whole one, with and without a hole: the pole is one vertex, the area converges.
+TEST(TrimmedFaceMesher, ASliceOfACapMeetsThePoleBetweenTwoMeridians) {
+    for (const bool hole : {false, true}) {
+        SCOPED_TRACE(hole ? "with a hole" : "without a hole");
+        const auto slice = makePolarSlice(hole);
+        const geo::Surface& s = *slice->faces().front().exactSurface;
+        // Its area: 3/4 of the zone below v = -0.3, less the hole's, r^2 cos v over its disc.
+        double area = 0.75 * math::kTwoPi * (1.0 - std::sin(0.3));
+        if (hole) {
+            constexpr int kRings = 400;
+            for (int i = 0; i < kRings; ++i) {
+                const double rho = 0.2 * (i + 0.5) / kRings;
+                for (int j = 0; j < kRings; ++j) {
+                    const double phi = math::kTwoPi * (j + 0.5) / kRings;
+                    area -= std::cos(-0.9 + rho * std::sin(phi)) * rho * (0.2 / kRings) *
+                            (math::kTwoPi / kRings);
+                }
+            }
+        }
+        const double size = topo::exactExtent(*slice);
+        for (const double relative : {1e-2, 1e-3, 1e-4}) {
+            MeshOptions options;
+            options.chordTolerance = relative * size;
+            const auto meshes = meshValid(*slice, options, size);
+            const Summary sum = checkMeshes(*slice, meshes, options, slackFor(size), false);
+            expectPolesFanned(meshes, {s.evaluate(0.0, -0.5 * math::kPi)}, size);
+            ASSERT_EQ(sum.area.count("open/face"), 1u);
+            // A unit sphere: within the tolerance, the mesh may fall short by twice it per unit
+            // area, and a little more.
+            EXPECT_NEAR(sum.area.at("open/face"), area, 4.0 * area * options.chordTolerance)
+                << relative;
+        }
+    }
+}
+
+namespace {
+
+/// A plane that throws wherever it is evaluated: a std::exception, or with @p standard false
+/// something that is not one.
+class Throwing : public geo::Plane {
+public:
+    Throwing(const geo::Plane& plane, bool standard) : geo::Plane(plane), standard_(standard) {}
+    Vec3 evaluate(double /*u*/, double /*v*/) const override { throwIt(); }
+    geo::SurfaceDerivatives derivatives(double /*u*/, double /*v*/) const override { throwIt(); }
+
+private:
+    [[noreturn]] void throwIt() const {
+        if (standard_) throw std::runtime_error("a fault");
+        throw 42;
+    }
+    bool standard_;
+};
+
+/// makePolarSlice's face (without its hole) with an edge of its own along the pole, from the
+/// meridian at u = 0 to the one at 3 pi / 2, where its loop otherwise runs along the pole between
+/// edges. The edge's curve is the pole, a point: not a stretch between edges, it is not taken for
+/// a pole, and the triangles beside it are flat in space.
+std::unique_ptr<topo::Solid> makeSliceWithAPoleEdge() {
+    const auto sphere =
+        std::make_shared<geo::Sphere>(geo::Frame::fromAxis({1, 2, 3}, {0.3, -1, 0.4}), 1.0);
+    const double end = 1.5 * math::kPi;
+    const double south = -0.5 * math::kPi;
+    const std::array<Vec2, 4> corner = {{{end, south}, {end, -0.3}, {0, -0.3}, {0, south}}};
+    std::vector<Side> sides;
+    sides.reserve(4);
+    for (std::size_t i = 0; i < 4; ++i) {
+        const Vec2& a = corner[i];
+        const Vec2& b = corner[(i + 1) % 4];
+        sides.push_back(
+            {line(a, b), 0.0, 1.0, std::make_shared<OnSurface>(sphere, a, b), 0.0, 1.0});
+    }
+    return makeOpenFace(sphere, {sides});
+}
+
+/// The block from (0, 0, 0) to (2, 3, 4), its top on a Throwing plane.
+std::unique_ptr<topo::Solid> blockWithAThrowingTop(bool standard) {
+    auto block = model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
+    for (auto& f : block->faces()) {
+        const auto* plane = dynamic_cast<const geo::Plane*>(f.exactSurface.get());
+        if (f.topoId.tag() == "box/top" && plane != nullptr) {
+            f.exactSurface = std::make_shared<Throwing>(*plane, standard);
+        }
+    }
+    return block;
+}
+
+}  // namespace
+
+// Anything the mesher cannot mesh it says why at once, with no triangles, where it once halved a
+// boundary 32 times (about 2 s a face): a loop that jumps between two edges along a stretch of its
+// surface that does not come to a point (a B-spline whose bottom row closes on itself in a loop);
+// an apex that would need more points than the triangle cap; a face whose refinement would chase
+// a degeneracy below the model's resolution (an edge of its own along a pole, beside which the
+// triangles are flat in space); and a surface that throws (a fault in a file's geometry),
+// whatever it throws, which stops the solid and escapes nothing.
+TEST(TrimmedFaceMesher, WhatItCannotMeshFailsFast) {
+    // A cubic by linear patch: its bottom row runs from the origin round a loop back to it, its
+    // top row is open. The face's loop runs up its right side, back along its top, down its left
+    // side to the origin, and along the bottom row in (u, v) to where it began.
+    const auto teardrop = std::make_shared<geo::NurbsSurface>(
+        std::vector<std::vector<Vec3>>{{{0, 0, 0}, {-4, 4, 2}},
+                                       {{3, -3, 0}, {-1.5, 5, 2}},
+                                       {{-3, -3, 0}, {1.5, 5, 2}},
+                                       {{0, 0, 0}, {4, 4, 2}}},
+        std::vector<std::vector<double>>(4, std::vector<double>(2, 1.0)),
+        std::vector<double>{0, 0, 0, 0, 1, 1, 1, 1}, std::vector<double>{0, 0, 1, 1}, 3, 1);
+    std::vector<Side> sides;
+    sides.reserve(3);
+    const std::array<Vec2, 4> corner = {{{1, 0}, {1, 1}, {0, 1}, {0, 0}}};
+    for (std::size_t i = 0; i < 3; ++i) {
+        sides.push_back({line(corner[i], corner[i + 1]), 0.0, 1.0,
+                         std::make_shared<OnSurface>(teardrop, corner[i], corner[i + 1]), 0.0,
+                         1.0});
+    }
+    const auto jumps = makeOpenFace(teardrop, {sides});
+
+    // A cone at a tolerance its rim meets under the cap, whose apex would need more points than
+    // half the cap: a triangle on each side of each.
+    const auto cone = readPlaced(step_text::cone());
+    ASSERT_NE(cone, nullptr);
+    const auto poleEdge = makeSliceWithAPoleEdge();
+    const auto throwing = blockWithAThrowingTop(true);
+    const auto throwingAnything = blockWithAThrowingTop(false);
+
+    struct Case {
+        const char* name;
+        const topo::Solid* solid;
+        MeshOptions options;
+        const char* says;
+    };
+    MeshOptions coarse;
+    coarse.chordTolerance = 0.01;
+    MeshOptions capped;  // its rim's segments fit under the cap; its apex's points do not
+    capped.chordTolerance = 1e-3;
+    capped.maxTrianglesPerFace = 200;
+    const Case cases[] = {
+        {"a jump where the surface does not come to a point", jumps.get(), coarse,
+         "does not come to a point"},
+        {"an apex past the cap", cone.get(), capped, "pole needs more triangles than the cap"},
+        {"a degeneracy below the model's resolution", poleEdge.get(), coarse,
+         "below the model's resolution"},
+        {"a surface that throws", throwing.get(), coarse, "could not be meshed: a fault"},
+        {"a surface that throws anything", throwingAnything.get(), coarse,
+         "could not be meshed: an unknown fault"},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        const auto start = std::chrono::steady_clock::now();
+        std::vector<FaceMesh> meshes;
+        EXPECT_NO_THROW(meshes = TrimmedFaceMesher::meshSolid(*c.solid, c.options));
+        const std::chrono::duration<double, std::milli> took =
+            std::chrono::steady_clock::now() - start;
+        bool said = false;
+        for (const FaceMesh& m : meshes) {
+            if (m.problem.empty()) continue;
+            EXPECT_TRUE(m.triangles.empty());
+            said = said || m.problem.find(c.says) != std::string::npos;
+        }
+        EXPECT_TRUE(said) << "nothing says \"" << c.says << "\"";
+#if HZ_TIME_LIMITS
+        EXPECT_LT(took.count(), meshingLimit(50.0));
+#else
+        (void)took;
+#endif
+    }
+}
+
+// Task 9 (Ruling 51): a cancel is looked at between faces. Once set, no face is meshed: each says
+// "cancelled" and has no triangles, so no mesh is left partial; the read point says so of its
+// first exact face.
+TEST(TrimmedFaceMesher, ACancelStopsItBetweenFaces) {
+    const auto block = model::exact::makeBlock({0, 0, 0}, {4, 3, 2});
+    ASSERT_NE(block, nullptr);
+    const std::atomic<bool> cancelled{true};
+    MeshOptions options;
+    options.chordTolerance = 1e-3;
+    options.cancelled = &cancelled;
+    const auto meshes = TrimmedFaceMesher::meshSolid(*block, options);
+    ASSERT_EQ(meshes.size(), 6u);
+    for (const FaceMesh& mesh : meshes) {
+        EXPECT_EQ(mesh.problem, "cancelled");
+        EXPECT_TRUE(mesh.triangles.empty());
+    }
+    std::string problem;
+    const auto polygons =
+        model::BoundaryMesh::extractFacePolygons(*block, 1e-3, &problem, &cancelled);
+    EXPECT_TRUE(polygons.empty());
+    EXPECT_EQ(problem, block->faces().front().topoId.tag() + ": cancelled");
+
+    const std::atomic<bool> going{false};
+    options.cancelled = &going;
+    for (const FaceMesh& mesh : TrimmedFaceMesher::meshSolid(*block, options)) {
+        EXPECT_TRUE(mesh.problem.empty()) << mesh.problem;
     }
 }

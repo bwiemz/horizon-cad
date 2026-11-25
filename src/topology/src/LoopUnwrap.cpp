@@ -45,8 +45,13 @@ bool loopHalfEdges(const Face& face, const Wire& wire, std::size_t limit,
 }
 
 double joinAllowance(const HalfEdge& h, const math::ModelTolerance& tolerance) {
-    return tolerance.effective(std::max(h.edge->tolerance, h.next->origin->tolerance)) +
-           tolerance.effective(std::max(h.next->edge->tolerance, h.next->origin->tolerance));
+    return joinAllowance(h, *h.next, tolerance);
+}
+
+double joinAllowance(const HalfEdge& h, const HalfEdge& next,
+                     const math::ModelTolerance& tolerance) {
+    return tolerance.effective(std::max(h.edge->tolerance, next.origin->tolerance)) +
+           tolerance.effective(std::max(next.edge->tolerance, next.origin->tolerance));
 }
 
 bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo::Surface& surface,
@@ -115,6 +120,23 @@ void alignLoop(LoopPolygon& loop, const LoopPolygon& reference, double periodU, 
         s.a = s.a + delta;
         s.b = s.b + delta;
     }
+}
+
+double signedArea(const LoopPolygon& loop) {
+    if (loop.empty()) return 0.0;
+    // About the first point: far from the origin the products would lose their precision.
+    const Vec2 o = loop.front().a;
+    double twice = 0.0;
+    for (size_t i = 0; i < loop.size(); ++i) {
+        const Vec2 p = loop[i].a - o;
+        const Vec2 q = loop[i].b - o;
+        twice += p.x * q.y - q.x * p.y;
+        // The jump from one pcurve's end to the next one's start: nothing but rounding on most
+        // surfaces, a run along the pole or apex on others.
+        const Vec2 r = loop[(i + 1) % loop.size()].a - o;
+        twice += q.x * r.y - r.x * q.y;
+    }
+    return twice / 2.0;
 }
 
 }  // namespace hz::topo

@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "StepTestText.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
@@ -145,13 +146,14 @@ TEST(StepFormat, CylinderRoundTripIsExactForTheFacetedSolid) {
     auto cyl = PrimitiveFactory::makeCylinder(4.0, 12.0);
     ASSERT_NE(cyl, nullptr);
 
-    // Written as modelled, a cylinder's faces are its planar facets and the
-    // export carries no rational surface: the written model is exactly the
-    // model in memory. (Written as designed, the default since Phase 151,
-    // its side is one face on the cylinder: StepCurvedTest.)
+    // Written as modelled, a cylinder's faces are its planar facets, each on
+    // its own PLANE (exact kernel stage 2, Ruling 13; a bilinear patch until
+    // then), and the export carries no B-spline surface: the written model
+    // is exactly the model in memory. (Written as designed, the default since
+    // Phase 151, its side is one face on the cylinder: StepCurvedTest.)
     const std::string text = StepFormat::toString(refs(*cyl), {false});
-    EXPECT_EQ(text.find("RATIONAL_B_SPLINE_SURFACE"), std::string::npos);
-    EXPECT_NE(text.find("B_SPLINE_SURFACE_WITH_KNOTS"), std::string::npos);
+    EXPECT_EQ(text.find("B_SPLINE_SURFACE"), std::string::npos);
+    EXPECT_NE(text.find(" PLANE("), std::string::npos);
 
     auto solids = StepFormat::fromString(text);
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
@@ -371,8 +373,6 @@ DATA;
         vps[i] = add("VERTEX_POINT('',#" + std::to_string(pts[i]) + ")");
     }
 
-    const int dirX = add("DIRECTION('',(1.,0.,0.))");
-
     // Undirected cube edges as vertex-index pairs.
     const int edgeVerts[12][2] = {{0, 1}, {1, 3}, {3, 2}, {2, 0},   // bottom (z=0)
                                   {4, 5}, {5, 7}, {7, 6}, {6, 4},   // top (z=1)
@@ -381,8 +381,13 @@ DATA;
     for (int e = 0; e < 12; ++e) {
         const int a = edgeVerts[e][0];
         const int b = edgeVerts[e][1];
+        // Along the edge, from its start: every edge of the unit cube is one long.
+        const auto along = [&](int bit) {
+            return num(static_cast<double>((b >> bit) & 1) - static_cast<double>((a >> bit) & 1));
+        };
+        const int dir = add("DIRECTION('',(" + along(0) + "," + along(1) + "," + along(2) + "))");
         const int line = add("LINE('',#" + std::to_string(pts[a]) + ",VECTOR('',#" +
-                             std::to_string(dirX) + ",1.))");
+                             std::to_string(dir) + ",1.))");
         edges[e] = add("EDGE_CURVE('',#" + std::to_string(vps[a]) + ",#" + std::to_string(vps[b]) +
                        ",#" + std::to_string(line) + ",.T.)");
     }
@@ -460,66 +465,7 @@ TEST(StepFormat, ImportsExternalPlanarSolid) {
     EXPECT_NEAR(mp.surfaceArea, 6.0, 1e-6);
 }
 
-namespace {
-
-/// A foreign-style cylinder (radius 1, height 2, axis +Z) the way OCC-based
-/// systems export it: CIRCLE rim edges (closed, seam vertex NOT on the
-/// placement X-axis), a seam LINE wrapped in SURFACE_CURVE, PLANE caps —
-/// the bottom cap with an inward normal declared via same_sense = .F. —
-/// and a CYLINDRICAL_SURFACE lateral face.
-std::string externalStyleCylinder() {
-    return R"(ISO-10303-21;
-HEADER;
-FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 3 1 4 }'));
-ENDSEC;
-DATA;
-#1 = CARTESIAN_POINT('',(0.,0.,0.));
-#2 = DIRECTION('',(0.,0.,1.));
-#3 = DIRECTION('',(0.,1.,0.));
-#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
-#5 = CIRCLE('',#4,1.);
-#6 = CARTESIAN_POINT('',(1.,0.,0.));
-#7 = VERTEX_POINT('',#6);
-#8 = CARTESIAN_POINT('',(0.,0.,2.));
-#9 = DIRECTION('',(1.,0.,0.));
-#10 = AXIS2_PLACEMENT_3D('',#8,#2,#9);
-#11 = CIRCLE('',#10,1.);
-#12 = CARTESIAN_POINT('',(1.,0.,2.));
-#13 = VERTEX_POINT('',#12);
-#14 = EDGE_CURVE('',#7,#7,#5,.T.);
-#15 = EDGE_CURVE('',#13,#13,#11,.T.);
-#16 = LINE('',#6,VECTOR('',#2,1.));
-#17 = SURFACE_CURVE('',#16,(),.CURVE_3D.);
-#18 = EDGE_CURVE('',#7,#13,#17,.T.);
-#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);
-#20 = CYLINDRICAL_SURFACE('',#19,1.);
-#21 = ORIENTED_EDGE('',*,*,#14,.T.);
-#22 = ORIENTED_EDGE('',*,*,#18,.T.);
-#23 = ORIENTED_EDGE('',*,*,#15,.F.);
-#24 = ORIENTED_EDGE('',*,*,#18,.F.);
-#25 = EDGE_LOOP('',(#21,#22,#23,#24));
-#26 = FACE_OUTER_BOUND('',#25,.T.);
-#27 = ADVANCED_FACE('',(#26),#20,.T.);
-#28 = AXIS2_PLACEMENT_3D('',#8,#2,$);
-#29 = PLANE('',#28);
-#30 = ORIENTED_EDGE('',*,*,#15,.T.);
-#31 = EDGE_LOOP('',(#30));
-#32 = FACE_OUTER_BOUND('',#31,.T.);
-#33 = ADVANCED_FACE('',(#32),#29,.T.);
-#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);
-#35 = PLANE('',#34);
-#36 = ORIENTED_EDGE('',*,*,#14,.F.);
-#37 = EDGE_LOOP('',(#36));
-#38 = FACE_OUTER_BOUND('',#37,.T.);
-#39 = ADVANCED_FACE('',(#38),#35,.F.);
-#40 = CLOSED_SHELL('',(#27,#33,#39));
-#41 = MANIFOLD_SOLID_BREP('cyl',#40);
-ENDSEC;
-END-ISO-10303-21;
-)";
-}
-
-}  // namespace
+using hz::step_text::externalStyleCylinder;
 
 TEST(StepFormat, ImportsExternalAnalyticCylinder) {
     auto solids =

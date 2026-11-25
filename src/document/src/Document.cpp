@@ -8,10 +8,13 @@
 #include <optional>
 #include <string>
 
+#include "ExactCounterpart.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/geometry/MeshData.h"
 #include "horizon/math/Expression.h"
 #include "horizon/math/Quantity.h"
+#include "horizon/modeling/SolidTessellator.h"
 
 namespace hz::doc {
 
@@ -114,18 +117,42 @@ void Document::clear() {
 
     m_featureTree.clear();
     m_solid.reset();
+    m_exact.reset();
+    m_exactKept.reset();
+    m_builtWithoutExact = false;
     m_lastBuildMessage.clear();
     m_failedFeatureIndex = -1;
     m_built = false;
 }
 
-bool Document::rebuildModel() {
-    return applyBuild(buildWithDiagnostics());
+bool Document::rebuildModel(const BuildOptions& options) {
+    return applyBuild(buildWithDiagnostics(nullptr, options));
 }
 
-BuildResult Document::buildWithDiagnostics(BuildControl* control) {
+BuildResult Document::buildWithDiagnostics(BuildControl* control, BuildOptions options) {
     applyExpressions();
-    return m_featureTree.buildWithDiagnostics(control);
+    if (options.exactCounterpart && !options.previous) options.previous = m_exactKept;
+    return m_featureTree.buildWithDiagnostics(control, options);
+}
+
+const topo::Solid* Document::exactSolid() const {
+    return m_exact ? m_exact->solid.get() : nullptr;
+}
+
+std::shared_ptr<const geo::MeshData> Document::exactMesh() const {
+    return m_exact ? m_exact->mesh : nullptr;
+}
+
+std::shared_ptr<const geo::MeshData> Document::exactOrFacetedMesh() const {
+    if (auto mesh = exactMesh()) return mesh;
+    if (m_solid == nullptr) return nullptr;
+    return std::make_shared<const geo::MeshData>(
+        model::SolidTessellator::tessellate(*m_solid, model::SolidTessellator::kDisplayTolerance));
+}
+
+const std::string& Document::exactNote() const {
+    static const std::string kNone;
+    return m_exact ? m_exact->note : kNone;
 }
 
 std::map<std::string, std::string> Document::effectiveDefinitions() const {
@@ -226,6 +253,9 @@ bool Document::applyBuild(BuildResult result) {
     if (result.cancelled) return m_failedFeatureIndex < 0;
     ++m_builds;
     m_solid = std::move(result.solid);
+    m_exact = std::move(result.exact);
+    if (m_exact) m_exactKept = m_exact;
+    m_builtWithoutExact = result.withoutExact;
     m_lastBuildMessage = result.failureMessage;
     m_failedFeatureIndex = result.failedFeatureIndex;
     m_built = true;

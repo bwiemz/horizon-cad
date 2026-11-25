@@ -29,5 +29,8 @@ target_link_libraries(hz_ai_tests
         GTest::gtest_main
 )
 
+# The STEP text the reader's tests write: an imported part's exact mass.
+target_include_directories(hz_ai_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests/fileio)
+
 include(GoogleTest)
 gtest_discover_tests(hz_ai_tests DISCOVERY_TIMEOUT 120)

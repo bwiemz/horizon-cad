@@ -979,7 +979,7 @@ jobs:
         run: >
           cmake --build build/fuzz --config Debug --target
           hz_fuzz_native_json hz_fuzz_step hz_fuzz_dxf hz_fuzz_expression
-          hz_fuzz_binary hz_fuzz_plugin_manifest hz_fuzz_pdm
+          hz_fuzz_binary hz_fuzz_plugin_manifest hz_fuzz_pdm hz_fuzz_triangulate
 
       # A minute each, from the committed seeds. A crash leaves its input in
       # fuzz-artifacts/, kept below: add it to the target's corpus directory
@@ -989,7 +989,7 @@ jobs:
           mkdir -p fuzz-artifacts
           status=0
           for pair in native_json:native step:step dxf:dxf expression:expression \
-                      binary:binary plugin_manifest:plugin pdm:pdm; do
+                      binary:binary plugin_manifest:plugin pdm:pdm triangulate:triangulate; do
             target=${pair%%:*}
             corpus=${pair#*:}
             work="fuzz-work/${target}"

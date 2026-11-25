@@ -96,6 +96,7 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
         test_Help.cpp
         test_Samples.cpp
         test_SelfTest.cpp
+        test_ExactDisplay.cpp
     )
     target_link_libraries(hz_ui_window_tests
         PRIVATE
@@ -103,6 +104,8 @@ if(TARGET Qt6::QOffscreenIntegrationPlugin)
             Horizon::Version
             GTest::gtest
     )
+    # The STEP text the reader's tests write: an imported part shown from its exact faces.
+    target_include_directories(hz_ui_window_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests/fileio)
     # Drawings AutoCAD made, and the dwg2dxf this build ships, to open them.
     target_compile_definitions(hz_ui_window_tests
         PRIVATE HZ_DWG_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fileio/fixtures/dwg")

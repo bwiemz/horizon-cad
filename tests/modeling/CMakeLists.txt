@@ -2,6 +2,7 @@ add_executable(hz_modeling_tests
     test_PrimitiveFactory.cpp
     test_ExactPrimitives.cpp
     test_ExactValidator.cpp
+    test_SeamInsertion.cpp
     test_TrimmedFaceMesher.cpp
     test_ExactReadPoint.cpp
     test_ProfileValidator.cpp
@@ -31,6 +32,7 @@ add_executable(hz_modeling_tests
     test_InterferenceChecker.cpp
     test_MassProperties.cpp
     test_IdealMassProperties.cpp
+    test_ExactMass.cpp
     test_Measure.cpp
     test_DrawingProjection.cpp
     test_SectionView.cpp
@@ -46,6 +48,7 @@ add_executable(hz_modeling_tests
 target_link_libraries(hz_modeling_tests
     PRIVATE
         Horizon::Modeling
+        Horizon::FileIO
         Horizon::Topology
         Horizon::Drafting
         Horizon::Render
@@ -53,8 +56,13 @@ target_link_libraries(hz_modeling_tests
         GTest::gtest_main
 )
 
-# The mesher's internal edge sampler, for a test of the tolerance it lays loops out with.
-target_include_directories(hz_modeling_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/modeling/src)
+# The mesher's internal edge sampler, for a test of the tolerance it lays loops out with; and the
+# STEP text the reader's tests write, for exact mass of solids as read.
+target_include_directories(hz_modeling_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/modeling/src
+        ${CMAKE_SOURCE_DIR}/tests/fileio
+)
 
 include(GoogleTest)
 gtest_discover_tests(hz_modeling_tests DISCOVERY_TIMEOUT 120)

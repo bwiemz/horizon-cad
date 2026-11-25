@@ -222,12 +222,21 @@ bool GltfExport::save(const std::string& path, const std::vector<Item>& items) {
 }
 
 bool GltfExport::saveSolid(const std::string& path, const topo::Solid& solid,
-                           const render::Material& material, const std::string& name) {
+                           const render::Material& material, const std::string& name,
+                           std::string* error) {
     Item item;
-    item.mesh = model::SolidTessellator::tessellate(solid);
+    std::string problem;
+    item.mesh = model::SolidTessellator::tessellate(
+        solid, model::SolidTessellator::kDisplayTolerance, &problem);
+    if (!problem.empty()) {
+        if (error) *error = "a face of the part could not be meshed: " + problem;
+        return false;
+    }
     item.material = material;
     item.name = name;
-    return save(path, {item});
+    if (save(path, {item})) return true;
+    if (error) *error = "the solid has no triangles, or the file cannot be written";
+    return false;
 }
 
 }  // namespace hz::io

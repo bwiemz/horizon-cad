@@ -1,6 +1,7 @@
 add_library(hz_modeling STATIC
     src/PrimitiveFactory.cpp
     src/ExactPrimitives.cpp
+    src/SeamInsertion.cpp
     src/TrimmedFaceMesher.cpp
     src/MeshEdgeSampler.cpp
     src/ProfileValidator.cpp
@@ -32,6 +33,7 @@ add_library(hz_modeling STATIC
     src/ReferenceGeometry.cpp
     src/InterferenceChecker.cpp
     src/MassProperties.cpp
+    src/ExactMass.cpp
     src/IdealMassProperties.cpp
     src/Measure.cpp
     src/DrawingProjection.cpp

@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <set>
+#include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "MeshCsg.h"
 #include "horizon/math/RTree.h"
@@ -39,7 +42,9 @@ BoundingBox InterferenceChecker::solidBounds(const topo::Solid& solid) {
     return box;
 }
 
-bool InterferenceChecker::solidsInterfere(const topo::Solid& a, const topo::Solid& b) {
+bool InterferenceChecker::solidsInterfere(const topo::Solid& a, const topo::Solid& b,
+                                          std::string* problem) {
+    if (problem != nullptr) problem->clear();
     const BoundingBox ba = solidBounds(a);
     const BoundingBox bb = solidBounds(b);
     if (!ba.intersects(bb)) return false;
@@ -49,8 +54,17 @@ bool InterferenceChecker::solidsInterfere(const topo::Solid& a, const topo::Soli
     // edge-crosses-face heuristic missed exactly-grazing configurations
     // (crossing points landing on triangulation diagonals of symmetric
     // geometry), and surface touching must not count as interference.
-    const auto polysA = BoundaryMesh::extractFacePolygons(a);
-    const auto polysB = BoundaryMesh::extractFacePolygons(b);
+    // Exact faces are read as their meshes; one that cannot be meshed leaves
+    // the pair to be looked at, with why, as one too fine to work out is.
+    std::vector<BoundaryPolygon> polysA;
+    std::vector<BoundaryPolygon> polysB;
+    try {
+        polysA = BoundaryMesh::extractFacePolygons(a);
+        polysB = BoundaryMesh::extractFacePolygons(b);
+    } catch (const std::runtime_error& e) {
+        if (problem != nullptr) *problem = e.what();
+        return true;
+    }
     if (polysA.empty() || polysB.empty()) return false;
 
     // The tolerances of the parts' size, as BooleanOp takes them.
@@ -101,18 +115,23 @@ std::vector<InterferencePair> InterferenceChecker::check(
             const auto key = std::minmax(i, j);
             if (!tested.insert({key.first, key.second}).second) continue;  // dedup
             // Narrow phase.
-            if (solidsInterfere(*solids[key.first], *solids[key.second])) {
+            std::string problem;
+            if (solidsInterfere(*solids[key.first], *solids[key.second], &problem)) {
                 InterferencePair pair;
                 pair.indexA = key.first;
                 pair.indexB = key.second;
                 pair.overlapBounds = overlapBox(bounds[key.first], bounds[key.second]);
-                auto shared = BooleanOp::execute(*solids[key.first], *solids[key.second],
-                                                 BooleanType::Intersect);
+                // Not measured where it could not be worked out: the Boolean would fail alike.
+                auto shared = problem.empty()
+                                  ? BooleanOp::execute(*solids[key.first], *solids[key.second],
+                                                       BooleanType::Intersect)
+                                  : nullptr;
                 if (shared) {
                     pair.volume = MassPropertiesCalculator::compute(*shared).volume;
                     pair.volumeResolved = true;
                 }
-                pairs.push_back(pair);
+                pair.problem = std::move(problem);
+                pairs.push_back(std::move(pair));
             }
         }
     }

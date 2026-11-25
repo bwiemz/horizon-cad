@@ -1,12 +1,15 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <set>
 #include <string>
 
+#include "StepTestText.h"
 #include "horizon/constraint/Constraint.h"
 #include "horizon/constraint/ConstraintSystem.h"
 #include "horizon/document/Document.h"
@@ -16,9 +19,16 @@
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
+#include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/surfaces/AnalyticSurfaces.h"
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidTessellator.h"
+#include "horizon/topology/ExactTolerance.h"
+#include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/Solid.h"
 
 using namespace hz::doc;
@@ -1322,4 +1332,170 @@ TEST(PartFormatTest, ASketchsGroupsKeepTheirIdsApartFromNewOnes) {
         EXPECT_NE(entity->groupId(), 0u) << "read with its group";
         EXPECT_NE(entity->groupId(), fresh) << "a new group is not one of them";
     }
+}
+
+// ---------------------------------------------------------------------------
+// Imported bodies and the exact kernel (stage 2, Ruling 10): a part saved before stage 2 holds
+// its imported body as STEP that no exact form may hold. It still opens, the body as it was.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// @p body imported into a part, saved and opened again: the opened part's imported body.
+std::shared_ptr<const hz::topo::Solid> savedAndOpened(std::unique_ptr<hz::topo::Solid> body,
+                                                      const std::string& source,
+                                                      hz::io::ImportReport& report) {
+    Document original;
+    original.setType(DocumentType::Part);
+    original.featureTree().addFeature(std::make_unique<ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(body)), source));
+    EXPECT_TRUE(original.rebuildModel()) << original.lastBuildMessage();
+    Document opened;
+    std::string error;
+    EXPECT_TRUE(NativeFormat::documentFromJson(NativeFormat::documentToJson(original, false),
+                                               opened, &error, &report))
+        << error;
+    EXPECT_TRUE(opened.rebuildModel()) << opened.lastBuildMessage();
+    const auto* imported =
+        opened.featureTree().featureCount() == 1
+            ? dynamic_cast<const ImportedBodyFeature*>(opened.featureTree().feature(0))
+            : nullptr;
+    EXPECT_NE(imported, nullptr);
+    return imported != nullptr ? imported->solid() : nullptr;
+}
+
+}  // namespace
+
+// A box whose corner stands 0.2 off its faces' planes, as a Creo part's did: no exact form holds
+// it (the gate leaves it out of a STEP import), yet a part that holds it as its imported body
+// opens, its body kept as master kept it, carriers and no exact fields, and the report says so.
+TEST(PartFormat, AnOldImportedBodyThatCannotBeExactStillOpens) {
+    auto box = hz::model::PrimitiveFactory::makeBox(7.0, 11.0, 13.0);
+    std::string text = hz::io::StepFormat::toString({box.get()});
+    const std::string corner = "(7.,11.,13.)";
+    ASSERT_NE(text.find(corner), std::string::npos);
+    text.replace(text.find(corner), corner.size(), "(7.,11.,13.2)");
+    EXPECT_TRUE(hz::io::StepFormat::fromString(text).empty()) << "a STEP import leaves it out";
+    hz::io::StepReadOptions keep;
+    keep.keepWhenNotExact = true;
+    auto read = hz::io::StepFormat::fromString(text, nullptr, nullptr, keep);
+    ASSERT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    EXPECT_FALSE(hz::topo::hasExactFaces(*read[0])) << "nothing half-exact";
+
+    hz::io::ImportReport report;
+    const auto body = savedAndOpened(std::move(read[0]), "creo.step", report);
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(body->faceCount(), 6u);
+    EXPECT_FALSE(hz::topo::hasExactFaces(*body));
+    for (const auto& f : body->faces()) EXPECT_NE(f.surface, nullptr) << "its carriers";
+    const bool said =
+        std::any_of(report.converted.begin(), report.converted.end(), [](const std::string& line) {
+            const std::string tail = "); kept as it was";
+            return line.rfind("imported body \"creo.step\": not exact (", 0) == 0 &&
+                   line.size() >= tail.size() &&
+                   line.compare(line.size() - tail.size(), tail.size(), tail) == 0;
+        });
+    EXPECT_TRUE(said) << (report.converted.empty() ? "nothing said" : report.converted.front());
+    EXPECT_TRUE(report.empty()) << "nothing was left out";
+}
+
+// A copy of a part for this process (a rebuild on a worker) shares its imported bodies: the copy
+// holds no STEP to read, and its imports are the document's very bodies, each with what its read
+// said of it. Without them, the copy does not make up a body it was not given.
+TEST(PartFormat, ACopyThatSharesItsImportsHoldsTheDocumentsOwnBodiesAndNoStep) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto read = hz::io::StepFormat::fromString(hz::step_text::externalStyleCylinder(), nullptr,
+                                               nullptr, inMillimetres);
+    ASSERT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    Document original;
+    original.setType(DocumentType::Part);
+    auto cylinder = std::make_unique<ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(read[0])), "cylinder.step");
+    auto box = std::make_unique<ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(hz::model::PrimitiveFactory::makeBox(1, 2, 3)),
+        "old.step");
+    box->setNote("imported body \"old.step\": not exact (as it was saved); kept as it was");
+    const ImportedBodyFeature* const imports[] = {cylinder.get(), box.get()};
+    original.featureTree().addFeature(std::move(cylinder));
+    original.featureTree().addFeature(std::move(box));
+
+    hz::io::SharedImports shared;
+    const std::string copy = NativeFormat::documentToJson(original, false, &shared);
+    EXPECT_EQ(copy.find("ISO-10303-21"), std::string::npos) << "no STEP to read";
+    ASSERT_EQ(shared.size(), 2u);
+
+    Document worker;
+    std::string error;
+    hz::io::ImportReport report;
+    ASSERT_TRUE(NativeFormat::documentFromJson(copy, worker, &error, &report, &shared)) << error;
+    ASSERT_EQ(worker.featureTree().featureCount(), 2u);
+    for (std::size_t i = 0; i < 2; ++i) {
+        const auto* imported =
+            dynamic_cast<const ImportedBodyFeature*>(worker.featureTree().feature(i));
+        ASSERT_NE(imported, nullptr);
+        EXPECT_EQ(imported->featureID(), imports[i]->featureID());
+        EXPECT_EQ(imported->solid(), imports[i]->solid()) << "the document's own body";
+        EXPECT_EQ(imported->note(), imports[i]->note());
+        EXPECT_EQ(imported->source(), imports[i]->source());
+    }
+    EXPECT_TRUE(report.empty());
+    EXPECT_EQ(report.converted, std::vector<std::string>{imports[1]->note()}) << "said as read";
+
+    // Not given the bodies, the copy has none: each import is left out, and says why.
+    Document alone;
+    hz::io::ImportReport leftOut;
+    ASSERT_TRUE(NativeFormat::documentFromJson(copy, alone, &error, &leftOut)) << error;
+    EXPECT_EQ(alone.featureTree().featureCount(), 0u);
+    ASSERT_EQ(leftOut.skipped.size(), 2u);
+    EXPECT_NE(leftOut.skipped.front().find("its body is shared, and was not given with the copy"),
+              std::string::npos)
+        << leftOut.skipped.front();
+}
+
+// A body that can be exact opens with its exact faces, and nothing is said of it.
+TEST(PartFormat, AnImportedBodyThatCanBeExactOpensExact) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto read = hz::io::StepFormat::fromString(hz::step_text::externalStyleCylinder(), nullptr,
+                                               nullptr, inMillimetres);
+    ASSERT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    hz::io::ImportReport report;
+    const auto body = savedAndOpened(std::move(read[0]), "cylinder.step", report);
+    ASSERT_NE(body, nullptr);
+    EXPECT_TRUE(hz::topo::hasExactFaces(*body));
+    EXPECT_TRUE(hz::topo::validateExact(*body, hz::topo::exactTolerance(*body)).empty());
+    for (const auto& line : report.converted) {
+        EXPECT_EQ(line.find("not exact"), std::string::npos) << line;
+    }
+}
+
+// Task 8: a part keeps its imported body as STEP the writer writes, each exact face as its kind, so
+// the body opens exact with its faces on their own surfaces: an OpenCASCADE cylinder's side on its
+// cylinder and its caps on their planes, as it was read, not as B-splines.
+TEST(PartFormat, AnImportedBodyStaysExactThroughThePartFile) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto read = hz::io::StepFormat::fromString(hz::step_text::externalStyleCylinder(), nullptr,
+                                               nullptr, inMillimetres);
+    ASSERT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    hz::io::ImportReport report;
+    const auto body = savedAndOpened(std::move(read[0]), "cylinder.step", report);
+    ASSERT_NE(body, nullptr);
+    ASSERT_TRUE(hz::topo::hasExactFaces(*body));
+    EXPECT_TRUE(hz::topo::validateExact(*body, hz::topo::exactTolerance(*body)).empty());
+    std::multiset<hz::geo::SurfaceKind> kinds;
+    for (const auto& f : body->faces()) {
+        ASSERT_NE(f.exactSurface, nullptr);
+        kinds.insert(f.exactSurface->kind());
+        if (const auto* side = dynamic_cast<const hz::geo::Cylinder*>(f.exactSurface.get())) {
+            EXPECT_NEAR(side->radius(), 1.0, 1e-15);
+            EXPECT_NEAR((side->frame().z - Vec3{0, 0, 1}).length(), 0.0, 1e-15);
+        }
+    }
+    EXPECT_EQ(kinds, (std::multiset<hz::geo::SurfaceKind>{hz::geo::SurfaceKind::Plane,
+                                                          hz::geo::SurfaceKind::Cylinder,
+                                                          hz::geo::SurfaceKind::Plane}));
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*body).volume, 2.0 * hz::math::kPi,
+                2.0 * hz::math::kPi * 1e-9);
 }

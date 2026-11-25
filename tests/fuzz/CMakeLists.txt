@@ -61,6 +61,11 @@ hz_add_fuzz_target(hz_fuzz_pdm
     CORPUS ${HZ_FUZZ_CORPUS}/pdm
     LIBS Horizon::Pdm
 )
+hz_add_fuzz_target(hz_fuzz_triangulate
+    SOURCE fuzz_triangulate.cpp
+    CORPUS ${HZ_FUZZ_CORPUS}/triangulate
+    LIBS Horizon::Geometry Horizon::Math
+)
 
 # Regenerates corpus/ from the current writers (see generate_seeds.cpp).
 add_executable(hz_fuzz_seedgen generate_seeds.cpp)

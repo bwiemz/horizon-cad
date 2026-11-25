@@ -3,12 +3,20 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <set>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
+#include "horizon/geometry/Frame.h"
+#include "horizon/geometry/surfaces/Surface.h"
+#include "horizon/math/Constants.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidTessellator.h"
+#include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
@@ -186,4 +194,120 @@ TEST(SolidTessellatorTest, ACylindersFacetsDoNotShowAsEdges) {
         EXPECT_FLOAT_EQ(z0, z1) << edge.tag << " runs up the side: a seam between facets";
     }
     EXPECT_EQ(mesh.edges.size(), 32u) << "sixteen chords round each rim";
+}
+
+// -- A solid with exact faces (stage 2) ---------------------------------------
+
+namespace {
+
+/// A cylinder of radius 1 and height 2 about +z, of whole exact faces: a side with its seam, and
+/// two caps.
+std::unique_ptr<hz::topo::Solid> exactCylinder() {
+    return hz::model::exact::makeCylinder(hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+}
+
+/// Vertex @p i of @p mesh, and its normal.
+Vec3 positionOf(const hz::geo::MeshData& mesh, std::size_t i) {
+    return {mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]};
+}
+Vec3 normalOf(const hz::geo::MeshData& mesh, std::size_t i) {
+    return {mesh.normals[3 * i], mesh.normals[3 * i + 1], mesh.normals[3 * i + 2]};
+}
+
+/// The tag of @p solid's face on a surface of @p kind.
+std::string faceOfKind(const hz::topo::Solid& solid, hz::geo::SurfaceKind kind) {
+    for (const auto& face : solid.faces()) {
+        if (face.exactSurface && face.exactSurface->kind() == kind) return face.topoId.tag();
+    }
+    return {};
+}
+
+}  // namespace
+
+// A solid with exact faces is meshed at the read point to the tolerance asked, and named by face:
+// one entry of faceTags for each face, not one for each of its triangles, so a pick names the
+// face. Its triangles are shaded by the surface's normals (radial on the side, which looks
+// round), its corners lie on the surfaces, and it encloses the cylinder within its tolerance.
+// Its seam (the side on both sides of it) is not drawn; its rims are, round their circles.
+TEST(SolidTessellatorTest, OneTagPerFace) {
+    const auto cylinder = exactCylinder();
+    ASSERT_NE(cylinder, nullptr);
+    constexpr double kTolerance = 0.01;
+    const auto mesh = SolidTessellator::tessellate(*cylinder, kTolerance);
+    ASSERT_TRUE(mesh.hasFaces());
+    std::set<std::string> faces;
+    for (const auto& face : cylinder->faces()) faces.insert(face.topoId.tag());
+    EXPECT_EQ(mesh.faceTags.size(), 3u);
+    EXPECT_EQ(std::set<std::string>(mesh.faceTags.begin(), mesh.faceTags.end()), faces);
+    std::vector<std::size_t> triangles(mesh.faceTags.size(), 0);
+    for (const std::uint32_t face : mesh.triangleFaces) {
+        ASSERT_LT(face, triangles.size());
+        ++triangles[face];
+    }
+    for (std::size_t f = 0; f < triangles.size(); ++f) {
+        EXPECT_GT(triangles[f], 0u) << mesh.faceTags[f];
+    }
+
+    const std::string side = faceOfKind(*cylinder, hz::geo::SurfaceKind::Cylinder);
+    ASSERT_FALSE(side.empty());
+    double vol6 = 0.0;
+    double area = 0.0;
+    std::size_t offSide = 0;  // side corners off the surface, or not shaded radially
+    std::size_t offCaps = 0;  // cap corners outside the rim, or not shaded along the axis
+    for (std::size_t t = 0; t < mesh.indices.size() / 3; ++t) {
+        const bool onSide = mesh.faceTags[mesh.triangleFaces[t]] == side;
+        Vec3 p[3];
+        for (std::size_t k = 0; k < 3; ++k) {
+            const std::size_t i = mesh.indices[3 * t + k];
+            p[k] = positionOf(mesh, i);
+            const Vec3 n = normalOf(mesh, i);
+            const double r = std::hypot(p[k].x, p[k].y);
+            if (onSide) {
+                const Vec3 radial(p[k].x / r, p[k].y / r, 0.0);
+                offSide += std::abs(r - 1.0) > 1e-6 || (n - radial).length() > 1e-5 ? 1 : 0;
+            } else {
+                const double out = p[k].z > 1.0 ? 1.0 : -1.0;
+                offCaps += r > 1.0 + 1e-6 || std::abs(n.z - out) > 1e-6 ? 1 : 0;
+            }
+        }
+        vol6 += p[0].dot(p[1].cross(p[2]));
+        area += 0.5 * (p[1] - p[0]).cross(p[2] - p[0]).length();
+    }
+    EXPECT_EQ(offSide, 0u) << "the side's corners on it, each shaded by its normal there: radial";
+    EXPECT_EQ(offCaps, 0u) << "the caps' corners within their rims, shaded facing out";
+    EXPECT_NEAR(vol6 / 6.0, 2.0 * hz::math::kPi, area * kTolerance) << "wound outward";
+
+    ASSERT_EQ(mesh.edges.size(), 2u) << "the two rims, not the seam";
+    for (const auto& edge : mesh.edges) {
+        ASSERT_GE(edge.points.size(), 3u * 18u) << "round its circle, not a line";
+        const float z = edge.points[2];
+        for (std::size_t k = 0; k + 2 < edge.points.size(); k += 3) {
+            EXPECT_NEAR(std::hypot(edge.points[k], edge.points[k + 1]), 1.0, 1e-6);
+            EXPECT_FLOAT_EQ(edge.points[k + 2], z) << "a rim; the seam runs up the side";
+        }
+    }
+}
+
+// A face the read point cannot mesh is said, never thrown for: the faces that can be meshed are,
+// and that one is left out.
+TEST(SolidTessellatorTest, AFaceThatCannotBeMeshedIsSaidNotThrown) {
+    auto cylinder = exactCylinder();
+    ASSERT_NE(cylinder, nullptr);
+    const std::string side = faceOfKind(*cylinder, hz::geo::SurfaceKind::Cylinder);
+    for (auto& face : cylinder->faces()) {
+        if (face.topoId.tag() == side) face.outerLoop->halfEdge->pcurve = nullptr;
+    }
+    hz::geo::MeshData mesh;
+    EXPECT_NO_THROW(mesh = SolidTessellator::tessellate(*cylinder, 0.01));
+    EXPECT_EQ(mesh.faceTags.size(), 2u) << "the caps";
+    EXPECT_EQ(std::find(mesh.faceTags.begin(), mesh.faceTags.end(), side), mesh.faceTags.end());
+
+    std::string problem;
+    const auto said = SolidTessellator::tessellate(*cylinder, 0.01, &problem);
+    EXPECT_EQ(problem.rfind(side + ": ", 0), 0u) << problem;
+    EXPECT_EQ(said.faceTags, mesh.faceTags);
+
+    std::string none = "not cleared";
+    (void)SolidTessellator::tessellate(*exactCylinder(), 0.01, &none);
+    EXPECT_TRUE(none.empty()) << none;
 }

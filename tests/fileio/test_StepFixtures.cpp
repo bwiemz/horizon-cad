@@ -15,7 +15,6 @@
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
-#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Solid.h"
 
 using hz::io::StepFormat;
@@ -399,9 +398,11 @@ TEST(StepFixtures, ASurfaceModelsShellWithAFaceTurnedIsNoSolid) {
         << StepFormat::lastError();
 }
 
-// A flat face whose corner lies off its plane (Creo's, by 0.75 mm) is cut
-// into triangles, each flat, the corners its edges' own: the part is valid.
-TEST(StepFixtures, AFlatFaceOffItsPlaneIsCutIntoFlatTriangles) {
+// A flat face whose corner lies off its plane (Creo's, by 0.75 mm) holds no
+// exact form: the corner is further off its faces' edges than a thousandth of
+// the part, so the solid is left out (decision 1b), and the read says why.
+// (Its facets were cut into flat triangles before stage 2.)
+TEST(StepFixtures, AFlatFaceOffItsPlaneIsLeftOutWithWhy) {
     auto box = PrimitiveFactory::makeBox(7.0, 11.0, 13.0);
     std::string text = StepFormat::toString({box.get()});
     // The corner at (7, 11, 13) moved 0.2 up, off the planes of its faces.
@@ -409,12 +410,8 @@ TEST(StepFixtures, AFlatFaceOffItsPlaneIsCutIntoFlatTriangles) {
     const auto at = text.find(corner);
     ASSERT_NE(at, std::string::npos);
     text.replace(at, corner.size(), "(7.,11.,13.2)");
-    const auto solids = StepFormat::fromString(text);
-    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
-    const auto faceted = hz::model::facetCurved(*solids[0]);
-    ASSERT_NE(faceted.solid, nullptr) << faceted.error;
-    EXPECT_TRUE(faceted.solid->isValid()) << faceted.solid->validationReport();
-    const auto issues = hz::topo::GeometryValidator::check(*faceted.solid);
-    EXPECT_EQ(issues.nonPlanarLoops, 0);
-    EXPECT_NEAR(volumeOf(*faceted.solid), 7.0 * 11 * 13, 20.0) << "about the box";
+    EXPECT_TRUE(StepFormat::fromString(text).empty());
+    const std::string why = StepFormat::lastError();
+    EXPECT_NE(why.find("could not be made exact"), std::string::npos) << why;
+    EXPECT_NE(why.find("beyond the limit"), std::string::npos) << why;
 }

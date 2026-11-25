@@ -24,16 +24,30 @@
 
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/ImportReport.h"
+#include "horizon/geometry/Frame.h"
+#include "horizon/geometry/Pcurve.h"
+#include "horizon/geometry/curves/AnalyticCurves.h"
+#include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/CharConv.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
+#include "horizon/math/ModelTolerance.h"
+#include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/Faceting.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
+#include "horizon/modeling/SeamInsertion.h"
+#include "horizon/topology/ExactTolerance.h"
+#include "horizon/topology/ExactValidator.h"
+#include "horizon/topology/GeometryValidator.h"
+#include "horizon/topology/LoopUnwrap.h"
+#include "horizon/topology/Queries.h"
 
 namespace hz::io {
 
@@ -295,6 +309,167 @@ int writeSurface(StepWriter& w, const geo::NurbsSurface& s) {
 }
 
 // ---------------------------------------------------------------------------
+// Exact faces and edges as their kind (exact kernel, stage 2)
+// ---------------------------------------------------------------------------
+
+int writeDirection(StepWriter& w, const Vec3& d) {
+    return w.add("DIRECTION('',(" + fmtReal(d.x) + "," + fmtReal(d.y) + "," + fmtReal(d.z) + "))");
+}
+
+/// An AXIS2_PLACEMENT_3D at @p origin, its axis @p axis and its x @p ref: always right-handed, as
+/// STEP's are (its y is axis x ref).
+int writePlacement(StepWriter& w, const Vec3& origin, const Vec3& axis, const Vec3& ref) {
+    const int at = w.addPoint(origin);
+    const int z = writeDirection(w, axis);
+    const int x = writeDirection(w, ref);
+    return w.add("AXIS2_PLACEMENT_3D('',#" + std::to_string(at) + ",#" + std::to_string(z) + ",#" +
+                 std::to_string(x) + ")");
+}
+
+bool positiveFinite(double x) {
+    return std::isfinite(x) && x > 0.0;
+}
+
+/// A surface as written: its id, and whether the normal of the surface written (du x dv) runs
+/// against the normal of the surface it was written for.
+struct WrittenSurface {
+    int id = 0;
+    bool flipped = false;
+};
+
+/// @p s written as its kind: a PLANE, CYLINDRICAL_SURFACE, CONICAL_SURFACE, SPHERICAL_SURFACE or
+/// TOROIDAL_SURFACE placed by its frame, or its B-spline (writeSurface). STEP's typed surfaces
+/// carry no parameter scale, and their placements are right-handed, so each is written as the
+/// geometry it makes (Ruling 42): a plane through its frame's origin about x × y, with its x; a
+/// surface of revolution about its frame's z with its x. A left-handed frame (a mirror image's),
+/// or a negative axial scale, then runs the surface's u (or v) the other way, and the surface
+/// written faces against it: said in `flipped`. Nullopt, with why in @p why ("its cone's
+/// half-angle is not between 0 and 90 degrees"), where its numbers make none STEP holds (a radius
+/// that is not positive, a cone's half-angle outside (0, pi/2), a scale of 0): the face goes out
+/// on its carrier, as before the exact kernel, and the write report says so.
+std::optional<WrittenSurface> writeExactSurface(StepWriter& w, const geo::Surface& s,
+                                                std::string& why) {
+    const auto none = [&why](const std::string& because) -> std::optional<WrittenSurface> {
+        why = because;
+        return std::nullopt;
+    };
+    const auto revolved = [&](const geo::Frame& f, double axialScale, const std::string& kind,
+                              const std::string& radii) -> std::optional<WrittenSurface> {
+        if (!std::isfinite(axialScale) || axialScale == 0.0) {
+            return none("its axial scale is 0 or not finite");
+        }
+        const bool leftHanded = f.x.cross(f.y).dot(f.z) < 0.0;
+        const int placement = writePlacement(w, f.origin, f.z, f.x);
+        return WrittenSurface{w.add(kind + "('',#" + std::to_string(placement) + "," + radii + ")"),
+                              leftHanded != (axialScale < 0.0)};
+    };
+    if (const auto* plane = dynamic_cast<const geo::Plane*>(&s)) {
+        const geo::Frame& f = plane->frame();
+        const Vec3 axis = f.x.cross(f.y);
+        if (!positiveFinite(axis.length())) return none("its plane's axes span no plane");
+        if (!std::isfinite(plane->scale()) || plane->scale() == 0.0) {
+            return none("its plane's scale is 0 or not finite");
+        }
+        const int placement = writePlacement(w, f.origin, axis * (1.0 / axis.length()), f.x);
+        return WrittenSurface{w.add("PLANE('',#" + std::to_string(placement) + ")"), false};
+    }
+    if (const auto* cylinder = dynamic_cast<const geo::Cylinder*>(&s)) {
+        if (!positiveFinite(cylinder->radius())) {
+            return none("its cylinder's radius is not positive");
+        }
+        return revolved(cylinder->frame(), cylinder->axialScale(), "CYLINDRICAL_SURFACE",
+                        fmtReal(cylinder->radius()));
+    }
+    if (const auto* cone = dynamic_cast<const geo::Cone*>(&s)) {
+        const double r = cone->radius();
+        const double a = cone->halfAngle();
+        if (!std::isfinite(r) || r < 0.0) return none("its cone's radius is negative");
+        if (!(a > 0.0 && a < math::kHalfPi)) {
+            return none("its cone's half-angle is not between 0 and 90 degrees");
+        }
+        return revolved(cone->frame(), cone->axialScale(), "CONICAL_SURFACE",
+                        fmtReal(r) + "," + fmtReal(a));
+    }
+    if (const auto* sphere = dynamic_cast<const geo::Sphere*>(&s)) {
+        if (!positiveFinite(sphere->radius())) return none("its sphere's radius is not positive");
+        return revolved(sphere->frame(), 1.0, "SPHERICAL_SURFACE", fmtReal(sphere->radius()));
+    }
+    if (const auto* torus = dynamic_cast<const geo::Torus*>(&s)) {
+        if (!positiveFinite(torus->majorRadius()) || !positiveFinite(torus->minorRadius())) {
+            return none("its torus's radii are not positive");
+        }
+        return revolved(torus->frame(), 1.0, "TOROIDAL_SURFACE",
+                        fmtReal(torus->majorRadius()) + "," + fmtReal(torus->minorRadius()));
+    }
+    if (const auto* nurbs = dynamic_cast<const geo::NurbsSurface*>(&s)) {
+        return WrittenSurface{writeSurface(w, *nurbs), false};
+    }
+    return none("its surface is of no kind STEP has");
+}
+
+/// @p c run the other way over the same domain: its net and weights reversed, its knots
+/// mirrored.
+geo::NurbsCurve reversedSpline(const geo::NurbsCurve& c) {
+    std::vector<Vec3> points(c.controlPoints().rbegin(), c.controlPoints().rend());
+    std::vector<double> weights(c.weights().rbegin(), c.weights().rend());
+    const std::vector<double>& knots = c.knots();
+    std::vector<double> mirrored;
+    mirrored.reserve(knots.size());
+    for (auto k = knots.rbegin(); k != knots.rend(); ++k) {
+        mirrored.push_back(knots.front() + knots.back() - *k);
+    }
+    return {std::move(points), std::move(weights), std::move(mirrored), c.degree()};
+}
+
+/// @p c written as its kind, parametrised as @p c is: a LINE whose VECTOR's magnitude is the
+/// line's scale (a negative scale written as its direction turned round), a CIRCLE or an ELLIPSE
+/// placed about its frame's x × y with its x (so its y is the frame's, whichever hand the frame
+/// is), or its B-spline (writeCurve). With @p backward, the same curve running the other way: a
+/// line's direction, a conic's y (and so its axis) turned round, a B-spline's net reversed.
+/// Nullopt, with why in @p why, where its numbers make none STEP holds.
+std::optional<int> writeExactCurve(StepWriter& w, const geo::Curve3& c, std::string& why,
+                                   bool backward = false) {
+    const auto none = [&why](const std::string& because) -> std::optional<int> {
+        why = because;
+        return std::nullopt;
+    };
+    if (const auto* line = dynamic_cast<const geo::LineCurve*>(&c)) {
+        const double scale = line->scale();
+        if (!std::isfinite(scale) || scale == 0.0) {
+            return none("its line's magnitude is 0 or not finite");
+        }
+        const Vec3 direction =
+            (scale < 0.0) != backward ? line->direction() * -1.0 : line->direction();
+        const int point = w.addPoint(line->origin());
+        const int vector = w.add("VECTOR('',#" + std::to_string(writeDirection(w, direction)) +
+                                 "," + fmtReal(std::abs(scale)) + ")");
+        return w.add("LINE('',#" + std::to_string(point) + ",#" + std::to_string(vector) + ")");
+    }
+    const auto placed = [&](const geo::Frame& f, const std::string& kind,
+                            const std::string& radii) -> std::optional<int> {
+        const Vec3 axis = f.x.cross(f.y) * (backward ? -1.0 : 1.0);
+        if (!positiveFinite(axis.length())) return none("its axes span no plane");
+        const int placement = writePlacement(w, f.origin, axis * (1.0 / axis.length()), f.x);
+        return w.add(kind + "('',#" + std::to_string(placement) + "," + radii + ")");
+    };
+    if (const auto* circle = dynamic_cast<const geo::CircleCurve*>(&c)) {
+        if (!positiveFinite(circle->radius())) return none("its circle's radius is not positive");
+        return placed(circle->frame(), "CIRCLE", fmtReal(circle->radius()));
+    }
+    if (const auto* ellipse = dynamic_cast<const geo::EllipseCurve*>(&c)) {
+        if (!positiveFinite(ellipse->majorRadius()) || !positiveFinite(ellipse->minorRadius())) {
+            return none("its ellipse's radii are not positive");
+        }
+        return placed(ellipse->frame(), "ELLIPSE",
+                      fmtReal(ellipse->majorRadius()) + "," + fmtReal(ellipse->minorRadius()));
+    }
+    if (const auto* nurbs = dynamic_cast<const geo::NurbsCurve*>(&c)) {
+        return backward ? writeCurve(w, reversedSpline(*nurbs)) : writeCurve(w, *nurbs);
+    }
+    return none("its curve is of no kind STEP has");
+}
+
+// ---------------------------------------------------------------------------
 // Curved faces as designed (Phase 151)
 // ---------------------------------------------------------------------------
 
@@ -360,6 +535,121 @@ std::optional<std::pair<Vec3, Vec3>> planeOf(const topo::Face& f) {
     const double length = normal.length();
     if (length <= 0.0 || count == 0) return std::nullopt;
     return std::make_pair(normal * (1.0 / length), centroid * (1.0 / count));
+}
+
+/// The plane a face with no exact geometry is written on where it is flat (Ruling 13): its outer
+/// loop's (planeOf: its normal the way the loop runs), where its carrier, if it has one, is flat,
+/// and every corner of its loops and every control point of its edges' curves lies within
+/// @p tolerance of that plane. A flat face goes out on its plane, not on its carrier, a patch
+/// sized to its corners that the circles of its rims, written as designed, stand outside of.
+std::optional<std::pair<Vec3, Vec3>> flatPlaneOf(const topo::Face& f, double tolerance) {
+    const auto plane = planeOf(f);
+    if (!plane) return std::nullopt;
+    Vec3 carrierOrigin;
+    Vec3 carrierNormal;
+    if (f.surface != nullptr &&
+        !topo::GeometryValidator::facePlane(f, carrierOrigin, carrierNormal)) {
+        return std::nullopt;  // a curved carrier, whatever its corners do
+    }
+    const Vec3& normal = plane->first;
+    const Vec3& at = plane->second;
+    const auto on = [&](const Vec3& p) { return std::abs((p - at).dot(normal)) <= tolerance; };
+    std::vector<const topo::Wire*> loops{f.outerLoop};
+    loops.insert(loops.end(), f.innerLoops.begin(), f.innerLoops.end());
+    for (const topo::Wire* wire : loops) {
+        if (wire == nullptr || wire->halfEdge == nullptr) return std::nullopt;
+        const topo::HalfEdge* he = wire->halfEdge;
+        std::size_t count = 0;
+        do {
+            if (he->origin == nullptr || !on(he->origin->point)) return std::nullopt;
+            if (he->edge != nullptr && he->edge->curve != nullptr) {
+                const auto& points = he->edge->curve->controlPoints();
+                if (!std::all_of(points.begin(), points.end(), on)) return std::nullopt;
+            }
+            he = he->next;
+        } while (he != nullptr && he != wire->halfEdge && ++count < 1000000);
+    }
+    return plane;
+}
+
+/// Whether @p f's carrier faces the way its outer loop runs: the loop's winding in the carrier's
+/// own (u, v), counter-clockwise about du x dv. Its corners, and points along each edge's
+/// curve, are located on the carrier, each moved a whole period where the carrier closes, so
+/// that the loop runs on unbroken; a loop that comes back a period over (a band round the
+/// carrier), or whose (u, v) area is next to nothing (a seam there and back), says nothing, and
+/// the carrier is taken to face as its face does, as the reader leaves every carrier it reads.
+/// A point taken from the loop's corners alone does not do: on a face spanning more than half
+/// its carrier their middle lies off the face, where the carrier faces the other way.
+bool carrierRunsWithLoops(const topo::Face& f) {
+    if (f.surface == nullptr || f.outerLoop == nullptr || f.outerLoop->halfEdge == nullptr) {
+        return true;
+    }
+    const geo::NurbsSurface& s = *f.surface;
+    const double periodU = s.closedU() ? s.uMax() - s.uMin() : 0.0;
+    const double periodV = s.closedV() ? s.vMax() - s.vMin() : 0.0;
+    constexpr int kAlong = 8;  // points along a curved edge, its start among them
+    std::vector<math::Vec2> loop;
+    const auto unwrapped = [](double x, double previous, double period) {
+        return period > 0.0 ? x - period * std::round((x - previous) / period) : x;
+    };
+    const auto put = [&](const Vec3& p) {
+        const auto [u, v] = s.locate(p);
+        if (!std::isfinite(u) || !std::isfinite(v)) return false;
+        if (loop.empty()) {
+            loop.emplace_back(u, v);
+        } else {
+            loop.emplace_back(unwrapped(u, loop.back().x, periodU),
+                              unwrapped(v, loop.back().y, periodV));
+        }
+        return true;
+    };
+    const topo::HalfEdge* he = f.outerLoop->halfEdge;
+    std::size_t count = 0;
+    do {
+        if (he->origin == nullptr || he->next == nullptr || he->next->origin == nullptr) {
+            return true;
+        }
+        if (!put(he->origin->point)) return true;
+        const geo::NurbsCurve* c = he->edge != nullptr ? he->edge->curve.get() : nullptr;
+        if (c != nullptr && c->degree() > 1) {
+            // Along the half-edge: a curve runs from the end nearer its start, and a closed one
+            // the way its edge's own half-edge does.
+            const Vec3& from = he->origin->point;
+            const Vec3& to = he->next->origin->point;
+            const bool closed = (from - to).length() <= 1e-12 * std::max(1.0, from.length());
+            const bool forward = closed ? he->edge->halfEdge == he
+                                        : (c->evaluate(c->tMin()) - from).length() <=
+                                              (c->evaluate(c->tMax()) - from).length();
+            for (int k = 1; k < kAlong; ++k) {
+                const double f0 = static_cast<double>(k) / kAlong;
+                const double at = c->tMin() + (c->tMax() - c->tMin()) * (forward ? f0 : 1.0 - f0);
+                if (!put(c->evaluate(at))) return true;
+            }
+        }
+        he = he->next;
+    } while (he != nullptr && he != f.outerLoop->halfEdge && ++count < 100000);
+    if (loop.size() < 3) return true;
+    // Back where it started, not a period over.
+    const math::Vec2 back{unwrapped(loop.front().x, loop.back().x, periodU),
+                          unwrapped(loop.front().y, loop.back().y, periodV)};
+    if ((periodU > 0.0 && std::abs(back.x - loop.front().x) > 0.5 * periodU) ||
+        (periodV > 0.0 && std::abs(back.y - loop.front().y) > 0.5 * periodV)) {
+        return true;
+    }
+    double area = 0.0;
+    math::Vec2 lo = loop.front();
+    math::Vec2 hi = lo;
+    for (std::size_t i = 0; i < loop.size(); ++i) {
+        const math::Vec2& a = loop[i];
+        const math::Vec2& b = i + 1 < loop.size() ? loop[i + 1] : back;
+        area += a.x * b.y - b.x * a.y;
+        lo = {std::min(lo.x, a.x), std::min(lo.y, a.y)};
+        hi = {std::max(hi.x, a.x), std::max(hi.y, a.y)};
+    }
+    if (!std::isfinite(area) || std::abs(area) <= 1e-9 * (hi.x - lo.x) * (hi.y - lo.y)) {
+        return true;
+    }
+    return area > 0.0;
 }
 
 /// A curved face as designed: the facets that stand in for one analytic
@@ -906,14 +1196,59 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
         vertexIds[&v] = w.add("VERTEX_POINT('',#" + std::to_string(w.addPoint(v.point)) + ")");
     }
 
+    // An exact face or edge whose geometry STEP holds no entity for: said in the report, with
+    // what took its place.
+    const auto say = [faceted](const char* what, const topo::TopologyID& id, const std::string& why,
+                               bool onCarrier) {
+        if (faceted == nullptr) return;
+        faceted->push_back(std::string(what) + " " + (id.isValid() ? id.tag() : "(unnamed)") +
+                           ": not written as its kind (" + why + "); " +
+                           (onCarrier ? "written on its carrier" : "left out"));
+    };
+
     // Edges. Orient the written curve along the recorded half-edge direction.
     std::unordered_map<const topo::Edge*, int> edgeIds;
     for (const auto& e : solid.edges()) {
-        if (e.halfEdge == nullptr || e.curve == nullptr || inside(e)) continue;
+        if (e.halfEdge == nullptr || e.halfEdge->twin == nullptr ||
+            (e.curve == nullptr && e.exactCurve == nullptr) || inside(e)) {
+            continue;
+        }
         const topo::Vertex* start = e.halfEdge->origin;
         const topo::Vertex* end = e.halfEdge->twin->origin;
         const std::string ends =
             "#" + std::to_string(vertexIds.at(start)) + ",#" + std::to_string(vertexIds.at(end));
+        if (e.exactCurve != nullptr) {
+            // On its exact curve as its kind, from its start at curveStart to its end at
+            // curveEnd: with the curve where that runs up it. A reader can tell which way round a
+            // closed edge runs only from its sense, and takes its curve's way for it (Horizon's
+            // reader its carrier's), so a closed edge goes out on its curve turned, where it runs
+            // back down it, and with it. An open edge on a B-spline goes out on its own span of
+            // it: on a closed one, an end at the join is at either end of the curve, and no
+            // reader can tell which half the edge runs over.
+            const bool closed = start == end;
+            const bool backward = e.curveEnd < e.curveStart;
+            const auto* spline = dynamic_cast<const geo::NurbsCurve*>(e.exactCurve.get());
+            const auto spanned = [&]() -> bool {
+                if (closed || spline == nullptr) return false;
+                const double a =
+                    std::clamp(std::min(e.curveStart, e.curveEnd), spline->tMin(), spline->tMax());
+                const double b =
+                    std::clamp(std::max(e.curveStart, e.curveEnd), spline->tMin(), spline->tMax());
+                return b - a > 1e-12 * (spline->tMax() - spline->tMin());
+            };
+            std::string why;
+            const std::optional<int> curveId =
+                spanned()
+                    ? std::optional<int>(writeCurve(w, spline->segment(e.curveStart, e.curveEnd)))
+                    : writeExactCurve(w, *e.exactCurve, why, closed && backward);
+            if (curveId) {
+                edgeIds[&e] = w.add("EDGE_CURVE(''," + ends + ",#" + std::to_string(*curveId) +
+                                    "," + (closed || !backward ? ".T." : ".F.") + ")");
+                continue;
+            }
+            say("edge", e.topoId, why, e.curve != nullptr);
+            if (e.curve == nullptr) continue;
+        }
         if (curved.count(&e) != 0) {
             const auto rim = rims.find(&e);
             const std::optional<Circle> circle =
@@ -956,12 +1291,14 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
                             (senseForward ? ".T." : ".F.") + ")");
     }
 
+    // How near a flat face's corners must lie to one plane for it to go out on that plane.
+    const double flatWithin = math::ModelTolerance::forExtent(topo::exactExtent(solid)).linear;
+
     // Faces; a cavity's @p reversed, facing out of its void as a closed
     // shell of the void must (its bounds and its sense turned round).
     const auto sense = [](bool forward) { return forward ? std::string(".T.") : ".F."; };
     auto writeFace = [&](const topo::Face& f, bool reversed) -> std::optional<int> {
-        if (f.outerLoop == nullptr || f.surface == nullptr) return std::nullopt;
-
+        if (f.outerLoop == nullptr) return std::nullopt;
         auto writeLoop = [&](const topo::Wire* wire, bool outer) -> std::optional<int> {
             std::vector<int> oriented;
             const topo::HalfEdge* start = wire->halfEdge;
@@ -987,9 +1324,41 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
         }
         if (bounds.empty()) return std::nullopt;
 
-        const int surfId = writeSurface(w, *f.surface);
+        // Its surface, and whether that surface's normal runs the way its loops do, so that
+        // its same_sense says truly which way it faces: an exact face on its exact surface as
+        // its kind; a flat one with none on its plane (Ruling 13); another on its carrier, as
+        // is an exact face whose surface's numbers make none STEP holds.
+        std::optional<int> surfId;
+        bool withLoops = true;
+        if (f.exactSurface != nullptr) {
+            std::string why;
+            if (const auto written = writeExactSurface(w, *f.exactSurface, why)) {
+                // Its loops run about its outward normal: its surface's, turned where reversed.
+                surfId = written->id;
+                withLoops = written->flipped == f.reversed;
+            } else {
+                say("face", f.topoId, why, f.surface != nullptr);
+            }
+        }
+        if (!surfId) {
+            const auto plane =
+                f.exactSurface == nullptr ? flatPlaneOf(f, flatWithin) : std::nullopt;
+            if (plane) {
+                const auto& [normal, at] = *plane;
+                const geo::Frame frame = geo::Frame::fromAxis(at, normal);
+                surfId = w.add("PLANE('',#" +
+                               std::to_string(writePlacement(w, at, frame.z, frame.x)) + ")");
+                withLoops = true;  // its normal is its loop's
+            } else if (f.surface != nullptr) {
+                surfId = writeSurface(w, *f.surface);
+                withLoops = carrierRunsWithLoops(f);
+            } else {
+                return std::nullopt;
+            }
+        }
+
         return w.add("ADVANCED_FACE(''," + StepWriter::refList(bounds) + ",#" +
-                     std::to_string(surfId) + "," + sense(!reversed) + ")");
+                     std::to_string(*surfId) + "," + sense(withLoops != reversed) + ")");
     };
 
     // A curved face as designed: one face on its surface, round its outline;
@@ -1066,17 +1435,30 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
         return "'solid_" + std::to_string(index) + "_" + std::to_string(body) + "'";
     };
 
+    // A body wound facing in (the kernel's box is: its builders wind either way) goes out
+    // facing out, as STEP has every solid: each of its shells turned round. Only where its loops
+    // measure it, its faces having no exact surface, which faces out as its `reversed` says, and
+    // its edges being chords, not curves whose few corners measure nothing.
+    const bool loopsMeasure = !model::describedByCurves(solid);
+    const auto woundIn = [loopsMeasure](const topo::Shell& shell) {
+        return loopsMeasure &&
+               std::none_of(shell.faces.begin(), shell.faces.end(),
+                            [](const topo::Face* f) { return f->exactSurface != nullptr; }) &&
+               topo::signedVolume(shell) < 0.0;
+    };
+
     // Each body: its outer shell, and a void for each cavity it encloses.
     std::vector<int> solidIds;
     for (const auto& shells : model::Pattern::bodyShells(solid)) {
         const auto facesOf = [](const topo::Shell* shell) {
             return std::vector<const topo::Face*>(shell->faces.begin(), shell->faces.end());
         };
-        const auto outer = writeShell(facesOf(shells.front()), false);
+        const bool turned = woundIn(*shells.front());
+        const auto outer = writeShell(facesOf(shells.front()), turned);
         if (!outer) continue;
         std::vector<int> voids;
         for (std::size_t i = 1; i < shells.size(); ++i) {
-            if (const auto cavity = writeShell(facesOf(shells[i]), true)) {
+            if (const auto cavity = writeShell(facesOf(shells[i]), !turned)) {
                 voids.push_back(
                     w.add("ORIENTED_CLOSED_SHELL('',*,#" + std::to_string(*cavity) + ",.F.)"));
             }
@@ -1430,12 +1812,15 @@ private:
 
 class SolidBuilder {
 public:
+    /// @p lengthUncertainty is the file's, in its own length unit; 0 where it gives none.
     SolidBuilder(const StepParser& parser, int solidIndex,
-                 const std::atomic<bool>* cancelled = nullptr, double radiansPerUnit = 1.0)
+                 const std::atomic<bool>* cancelled = nullptr, double radiansPerUnit = 1.0,
+                 double lengthUncertainty = 0.0)
         : m_parser(parser),
           m_solidIndex(solidIndex),
           m_cancelled(cancelled),
-          m_radiansPerUnit(radiansPerUnit) {}
+          m_radiansPerUnit(radiansPerUnit),
+          m_lengthUncertainty(lengthUncertainty) {}
 
     /// Build one topo::Solid from a group of solid ids: MANIFOLD_SOLID_BREPs,
     /// one shell each (Horizon multi-shell solids export as siblings in one
@@ -1467,6 +1852,7 @@ public:
                 if (!shellsOf(solidId, plan, error)) return nullptr;
             }
         }
+        m_vertexSize = vertexSize(plan);
         auto solid = assemble(plan, error);
         if (solid == nullptr) return nullptr;
 
@@ -1491,11 +1877,37 @@ public:
                 }
             }
         }
+        m_plan = plan;
         return turned ? assemble(plan, error) : std::move(solid);
+    }
+
+    /// Which shells of the solid built are voids, in its shell order (its shells are built in
+    /// the order of its plan).
+    std::vector<bool> voidShells() const {
+        std::vector<bool> voids;
+        voids.reserve(m_plan.size());
+        for (const ShellRef& shell : m_plan) voids.push_back(shell.isVoid);
+        return voids;
+    }
+
+    /// The solid built again with each of @p shells (indices in its shell order) turned round, as
+    /// build() turns a void or a surface model's shell that measures the wrong way: each of its
+    /// faces' loops run the other way and its face reversed, so its topology and its geometry
+    /// agree. Null, with @p error said, where it cannot be built.
+    std::unique_ptr<topo::Solid> turned(const std::vector<std::size_t>& shells,
+                                        std::string& error) {
+        for (const std::size_t i : shells) {
+            if (i < m_plan.size()) m_plan[i].reversed = !m_plan[i].reversed;
+        }
+        return assemble(m_plan, error);
     }
 
     /// How many of a surface model's shells were open surfaces, left out.
     std::size_t openShells() const { return m_openShells; }
+
+    /// Why the solid built has no exact form, where a face's surface or an edge's curve could not
+    /// be read exactly (its carrier could); empty when every face and edge has one.
+    const std::string& exactProblem() const { return m_exactProblem; }
 
 private:
     /// A shell to build: its CLOSED_SHELL (or OPEN_SHELL), and whether its
@@ -1508,11 +1920,68 @@ private:
         std::size_t outer = 0;
     };
 
+    /// The size of the solid @p plan builds, as its vertices measure it (the diagonal of the box
+    /// round them): known before any edge is read, which the solid's own extent, from its exact
+    /// curves, is not. A round part's vertices may measure it smaller; 0 when none reads.
+    double vertexSize(const std::vector<ShellRef>& plan) const {
+        math::BoundingBox box;
+        std::unordered_set<int> seen;
+        const auto vertex = [&](const StepValue& ref) {
+            const StepInstance* v =
+                ref.isRef() && seen.insert(ref.ref).second ? m_parser.find(ref.ref) : nullptr;
+            const StepList* args = v != nullptr ? v->leaf("VERTEX_POINT") : nullptr;
+            if (args == nullptr || args->size() < 2 || !(*args)[1].isRef()) return;
+            if (const auto p = readPoint((*args)[1].ref); p && finite(*p)) box.expand(*p);
+        };
+        for (const ShellRef& shellRef : plan) {
+            const StepInstance* shell = m_parser.find(shellRef.id);
+            const StepList* faces = shell ? shell->leaf("CLOSED_SHELL") : nullptr;
+            if (faces == nullptr && shell != nullptr) faces = shell->leaf("OPEN_SHELL");
+            if (faces == nullptr || faces->size() < 2 || !(*faces)[1].isList()) continue;
+            for (const StepValue& faceRef : *(*faces)[1].items) {
+                const StepInstance* face = faceRef.isRef() ? m_parser.find(faceRef.ref) : nullptr;
+                const StepList* fArgs = face ? face->leaf("ADVANCED_FACE") : nullptr;
+                if (fArgs == nullptr && face != nullptr) fArgs = face->leaf("FACE_SURFACE");
+                if (fArgs == nullptr || fArgs->size() < 2 || !(*fArgs)[1].isList()) continue;
+                for (const StepValue& boundRef : *(*fArgs)[1].items) {
+                    const StepInstance* bound =
+                        boundRef.isRef() ? m_parser.find(boundRef.ref) : nullptr;
+                    const StepList* b = bound ? bound->leaf("FACE_OUTER_BOUND") : nullptr;
+                    if (b == nullptr && bound != nullptr) b = bound->leaf("FACE_BOUND");
+                    const StepInstance* loop = b != nullptr && b->size() >= 2 && (*b)[1].isRef()
+                                                   ? m_parser.find((*b)[1].ref)
+                                                   : nullptr;
+                    if (loop == nullptr) continue;
+                    if (const StepList* vl = loop->leaf("VERTEX_LOOP"); vl && vl->size() >= 2) {
+                        vertex((*vl)[1]);
+                    }
+                    const StepList* edges = loop->leaf("EDGE_LOOP");
+                    if (edges == nullptr || edges->size() < 2 || !(*edges)[1].isList()) continue;
+                    for (const StepValue& oeRef : *(*edges)[1].items) {
+                        const StepInstance* oe = oeRef.isRef() ? m_parser.find(oeRef.ref) : nullptr;
+                        const StepList* oeArgs = oe ? oe->leaf("ORIENTED_EDGE") : nullptr;
+                        if (oeArgs == nullptr || oeArgs->size() < 4 || !(*oeArgs)[3].isRef()) {
+                            continue;
+                        }
+                        const StepInstance* ec = m_parser.find((*oeArgs)[3].ref);
+                        const StepList* ecArgs = ec ? ec->leaf("EDGE_CURVE") : nullptr;
+                        if (ecArgs == nullptr || ecArgs->size() < 3) continue;
+                        vertex((*ecArgs)[1]);
+                        vertex((*ecArgs)[2]);
+                    }
+                }
+            }
+        }
+        const double size = box.isValid() ? (box.max() - box.min()).length() : 0.0;
+        return std::isfinite(size) ? size : 0.0;
+    }
+
     /// The solid of the shells in @p plan, each built as it says.
     std::unique_ptr<topo::Solid> assemble(const std::vector<ShellRef>& plan, std::string& error) {
         m_solid = std::make_unique<topo::Solid>();
         m_vertices.clear();
         m_edges.clear();
+        m_exactProblem.clear();
         for (const ShellRef& shellRef : plan) {
             if (!buildShell(shellRef, error)) return nullptr;
         }
@@ -1883,9 +2352,11 @@ private:
         return std::make_shared<geo::NurbsCurve>(curve->segment(a, b));
     }
 
-    /// Curve for an EDGE_CURVE, given the edge's endpoint positions.
-    std::shared_ptr<geo::NurbsCurve> readEdgeGeometry(int curveId, const Vec3& start,
-                                                      const Vec3& end, int depth = 0) const {
+    /// Curve for an EDGE_CURVE, given the edge's endpoint positions. A B-spline's, as read
+    /// before it is cut to the edge, into @p whole when given: the edge's exact curve.
+    std::shared_ptr<geo::NurbsCurve> readEdgeGeometry(
+        int curveId, const Vec3& start, const Vec3& end, int depth = 0,
+        std::shared_ptr<geo::NurbsCurve>* whole = nullptr) const {
         const StepInstance* inst = m_parser.find(curveId);
         if (inst == nullptr || depth > 4) return nullptr;
 
@@ -1896,14 +2367,16 @@ private:
         for (const char* wrapper : {"SURFACE_CURVE", "SEAM_CURVE", "INTERSECTION_CURVE"}) {
             if (const StepList* sc = inst->leaf(wrapper)) {
                 if (sc->size() >= 2 && (*sc)[1].isRef()) {
-                    return readEdgeGeometry((*sc)[1].ref, start, end, depth + 1);
+                    return readEdgeGeometry((*sc)[1].ref, start, end, depth + 1, whole);
                 }
                 return nullptr;
             }
         }
 
         if (inst->hasType("B_SPLINE_CURVE_WITH_KNOTS") || inst->hasType("B_SPLINE_CURVE")) {
-            return spanOf(readBSplineCurve(*inst), start, end);
+            auto read = readBSplineCurve(*inst);
+            if (whole != nullptr) *whole = read;
+            return spanOf(std::move(read), start, end);
         }
         if (inst->hasType("LINE")) {
             // STEP lines are unbounded; the edge vertices bound them exactly.
@@ -2141,6 +2614,266 @@ private:
         return nullptr;
     }
 
+    // -- Exact geometry (exact kernel, stage 2) ---------------------------------
+    //
+    // Beside each carrier, the geometry the file gives, as it gives it: STEP's parametrisations
+    // of its analytic surfaces and curves are the kernel's. A face or an edge whose numbers make
+    // no exact surface or curve (though they made a carrier) leaves the solid without its exact
+    // form: m_exactProblem says why, and the solid is not read.
+
+    static bool finite(const Vec3& v) {
+        return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+    }
+
+    /// AXIS2_PLACEMENT_3D @p id as a frame, its axes as readPlacement reads them (the carriers'
+    /// own); nullopt where its numbers are not finite or its axis has no direction.
+    std::optional<geo::Frame> readFrame(int id) const {
+        Vec3 origin;
+        Vec3 zAxis;
+        Vec3 xAxis;
+        if (!readPlacement(id, origin, zAxis, xAxis) || !finite(origin) || !finite(zAxis) ||
+            !finite(xAxis) || !(zAxis.length() > 0.5) || !(xAxis.length() > 0.5)) {
+            return std::nullopt;
+        }
+        return geo::Frame::fromAxis(origin, zAxis, xAxis);
+    }
+
+    /// The frame of the placement @p args holds at @p i.
+    std::optional<geo::Frame> frameAt(const StepList& args, std::size_t i) const {
+        return i < args.size() && args[i].isRef() ? readFrame(args[i].ref) : std::nullopt;
+    }
+
+    /// The real @p args holds at @p i when it is finite and positive; 0 otherwise.
+    static double positiveAt(const StepList& args, std::size_t i) {
+        const double v = i < args.size() && args[i].kind == StepValue::Real ? args[i].num : 0.0;
+        return std::isfinite(v) && v > 0.0 ? v : 0.0;
+    }
+
+    /// Notes the first reason the solid has no exact form: @p why, at @p where in the file.
+    void noteExact(const std::string& where, const std::string& why) {
+        if (m_exactProblem.empty()) m_exactProblem = why + " (" + where + ")";
+    }
+
+    /// The exact surface of face @p faceId, on SURFACE @p surfId: a PLANE, CYLINDRICAL_SURFACE,
+    /// CONICAL_SURFACE, SPHERICAL_SURFACE or TOROIDAL_SURFACE as itself, in its placement's
+    /// frame; a B-spline as @p read, the carrier read for it before any turning round. A
+    /// SURFACE_OF_LINEAR_EXTRUSION has no typed surface yet: its carrier, a B-spline, is its
+    /// exact surface (the one kind that does not come in as the file gives it). Null, and noted,
+    /// where the file's numbers make none. A surface several faces lie on is one surface.
+    std::shared_ptr<const geo::Surface> exactSurfaceOf(
+        int faceId, int surfId, const std::shared_ptr<geo::NurbsSurface>& read) {
+        if (const auto it = m_exactSurfaces.find(surfId); it != m_exactSurfaces.end()) {
+            return it->second;
+        }
+        const StepInstance* inst = m_parser.find(surfId);
+        if (inst == nullptr) return nullptr;  // its carrier was read, so it is there
+        std::shared_ptr<const geo::Surface> exact;
+        std::string why;
+        if (inst->hasType("B_SPLINE_SURFACE_WITH_KNOTS") || inst->hasType("B_SPLINE_SURFACE")) {
+            exact = read;
+        } else if (const StepList* plane = inst->leaf("PLANE")) {
+            if (const auto frame = frameAt(*plane, 1)) {
+                exact = std::make_shared<geo::Plane>(*frame);
+            } else {
+                why = "its plane's placement cannot be read";
+            }
+        } else if (const StepList* cyl = inst->leaf("CYLINDRICAL_SURFACE")) {
+            const auto frame = frameAt(*cyl, 1);
+            const double radius = positiveAt(*cyl, 2);
+            if (frame && radius > 0.0) {
+                exact = std::make_shared<geo::Cylinder>(*frame, radius);
+            } else {
+                why = "its cylinder's placement or radius cannot be read";
+            }
+        } else if (inst->hasType("SURFACE_OF_LINEAR_EXTRUSION")) {
+            return read;  // sized to its own face's loops: one face's alone
+        } else if (const StepList* cone = inst->leaf("CONICAL_SURFACE")) {
+            const auto frame = frameAt(*cone, 1);
+            const double radius =
+                cone->size() > 2 && (*cone)[2].kind == StepValue::Real ? (*cone)[2].num : -1.0;
+            const double semi = positiveAt(*cone, 3) * m_radiansPerUnit;
+            if (frame && std::isfinite(radius) && radius >= 0.0 && semi > 0.0 &&
+                semi < math::kPi / 2) {
+                exact = std::make_shared<geo::Cone>(*frame, radius, semi);
+            } else {
+                why = "its cone's placement, radius or half-angle cannot be read";
+            }
+        } else if (const StepList* sphere = inst->leaf("SPHERICAL_SURFACE")) {
+            const auto frame = frameAt(*sphere, 1);
+            const double radius = positiveAt(*sphere, 2);
+            if (frame && radius > 0.0) {
+                exact = std::make_shared<geo::Sphere>(*frame, radius);
+            } else {
+                why = "its sphere's placement or radius cannot be read";
+            }
+        } else if (const StepList* torus = inst->leaf("TOROIDAL_SURFACE")) {
+            const auto frame = frameAt(*torus, 1);
+            const double major = positiveAt(*torus, 2);
+            const double minor = positiveAt(*torus, 3);
+            if (frame && major > 0.0 && minor > 0.0) {
+                exact = std::make_shared<geo::Torus>(*frame, major, minor);
+            } else {
+                why = "its torus's placement or radii cannot be read";
+            }
+        }
+        if (exact == nullptr) {
+            noteExact("face #" + std::to_string(faceId),
+                      why.empty() ? "its surface cannot be read exactly" : why);
+            return nullptr;
+        }
+        m_exactSurfaces.emplace(surfId, exact);
+        return exact;
+    }
+
+    /// The exact curve of EDGE_CURVE geometry @p curveId: a LINE through its point along its
+    /// VECTOR, the vector's magnitude a unit of its parameter; a CIRCLE or an ELLIPSE in its
+    /// placement; a B-spline as @p whole, read for the carrier before it was cut to the edge. A
+    /// SURFACE_CURVE's, SEAM_CURVE's or INTERSECTION_CURVE's own curve, as the carrier is read.
+    /// Null, with @p why said, where the file's numbers make none.
+    std::shared_ptr<const geo::Curve3> exactCurveOf(int curveId,
+                                                    const std::shared_ptr<geo::NurbsCurve>& whole,
+                                                    std::string& why, int depth = 0) const {
+        const StepInstance* inst = depth > 4 ? nullptr : m_parser.find(curveId);
+        if (inst == nullptr) {
+            why = "its curve cannot be read";
+            return nullptr;
+        }
+        for (const char* wrapper : {"SURFACE_CURVE", "SEAM_CURVE", "INTERSECTION_CURVE"}) {
+            if (const StepList* sc = inst->leaf(wrapper)) {
+                if (sc->size() >= 2 && (*sc)[1].isRef()) {
+                    return exactCurveOf((*sc)[1].ref, whole, why, depth + 1);
+                }
+                why = "its curve cannot be read";
+                return nullptr;
+            }
+        }
+        if (inst->hasType("B_SPLINE_CURVE_WITH_KNOTS") || inst->hasType("B_SPLINE_CURVE")) {
+            if (whole == nullptr) why = "its B-spline curve cannot be read";
+            return whole;
+        }
+        if (const StepList* line = inst->leaf("LINE")) {
+            // LINE(name, point, VECTOR(name, direction, magnitude)), the vector an entity of its
+            // own or written in place.
+            const auto origin =
+                line->size() >= 3 && (*line)[1].isRef() ? readPoint((*line)[1].ref) : std::nullopt;
+            const StepList* vector = nullptr;
+            if (line->size() >= 3 && (*line)[2].isRef()) {
+                const StepInstance* v = m_parser.find((*line)[2].ref);
+                vector = v != nullptr ? v->leaf("VECTOR") : nullptr;
+            } else if (line->size() >= 3 && (*line)[2].kind == StepValue::Typed &&
+                       (*line)[2].text == "VECTOR" && (*line)[2].items) {
+                vector = (*line)[2].items.get();
+            }
+            const auto direction = vector != nullptr && vector->size() >= 3 && (*vector)[1].isRef()
+                                       ? readDirection((*vector)[1].ref)
+                                       : std::nullopt;
+            const double magnitude = vector != nullptr ? positiveAt(*vector, 2) : 0.0;
+            if (!origin || !direction || !finite(*origin) || !finite(*direction) ||
+                !(direction->length() > 0.0) || !(magnitude > 0.0)) {
+                why = "its line's point, direction or magnitude cannot be read";
+                return nullptr;
+            }
+            return std::make_shared<geo::LineCurve>(*origin, *direction, magnitude);
+        }
+        if (const StepList* circle = inst->leaf("CIRCLE")) {
+            const auto frame = frameAt(*circle, 1);
+            const double radius = positiveAt(*circle, 2);
+            if (frame && radius > 0.0) return std::make_shared<geo::CircleCurve>(*frame, radius);
+            why = "its circle's placement or radius cannot be read";
+            return nullptr;
+        }
+        if (const StepList* ellipse = inst->leaf("ELLIPSE")) {
+            const auto frame = frameAt(*ellipse, 1);
+            const double a = positiveAt(*ellipse, 2);
+            const double b = positiveAt(*ellipse, 3);
+            if (frame && a > 0.0 && b > 0.0)
+                return std::make_shared<geo::EllipseCurve>(*frame, a, b);
+            why = "its ellipse's placement or semi-axes cannot be read";
+            return nullptr;
+        }
+        why = "its curve cannot be read exactly";
+        return nullptr;
+    }
+
+    /// Puts edge @p e on @p curve, from @p start at curveStart to @p end at curveEnd: the
+    /// parameters its vertices invert to, the way round @p sameSense says (EDGE_CURVE's sense
+    /// against its curve's). A closed edge runs one whole period, or the whole of a closed
+    /// B-spline, which is not periodic here, from its join. False, with @p why said, for an edge
+    /// that runs across a closed B-spline's join, which no one range of it covers, and a closed
+    /// edge on a B-spline that does not close, or whose vertex is off the join.
+    bool placeOnCurve(topo::Edge& e, std::shared_ptr<const geo::Curve3> curve,
+                      const topo::Vertex* start, const topo::Vertex* end, bool sameSense,
+                      std::string& why) const {
+        const bool closed = start == end || (start->point - end->point).length() < kMergeTol;
+        double t0 = curve->closestParameter(start->point);
+        double t1 = curve->closestParameter(end->point);
+        const geo::Interval range = curve->range();
+        if (curve->periodic()) {
+            const double period = range.max - range.min;
+            if (closed) {
+                t1 = t0 + (sameSense ? period : -period);
+            } else if (sameSense && t1 <= t0) {
+                t1 += period;
+            } else if (!sameSense && t1 >= t0) {
+                t1 -= period;
+            }
+        } else if (const auto* nurbs = dynamic_cast<const geo::NurbsCurve*>(curve.get())) {
+            const Vec3 first = nurbs->evaluate(range.min);
+            const Vec3 last = nurbs->evaluate(range.max);
+            math::BoundingBox hull;
+            for (const Vec3& p : nurbs->controlPoints()) hull.expand(p);
+            // How near its ends must be to join, and a vertex to be at the join: the file's
+            // uncertainty, no finer than the curve's resolution and no coarser than the
+            // solid's limit, a thousandth of its size. The solid's exact extent is not known
+            // while its edges are read, so its size is its vertices' (vertexSize), or the
+            // curve's where that is larger: vertices alone may measure a round part smaller.
+            const double size = (hull.max() - hull.min()).length();
+            const double cap = 1e-3 * std::max(m_vertexSize, size);
+            const double near = std::max(std::min(m_lengthUncertainty, cap),
+                                         math::ModelTolerance::forExtent(size).linear);
+            const auto atJoin = [&](const Vec3& p) {
+                return (p - first).length() <= near || (p - last).length() <= near;
+            };
+            const bool joins = (first - last).length() <= near;
+            if (closed) {
+                // One period of a closed B-spline is its whole range, from its join round to it.
+                if (!joins) {
+                    why = "it is closed, but its B-spline curve is not";
+                    return false;
+                }
+                if (!atJoin(start->point)) {
+                    why = "its vertex is off where its closed B-spline curve joins";
+                    return false;
+                }
+                t0 = sameSense ? range.min : range.max;
+                t1 = sameSense ? range.max : range.min;
+            } else if (joins) {
+                if (atJoin(start->point)) t0 = sameSense ? range.min : range.max;
+                if (atJoin(end->point)) t1 = sameSense ? range.max : range.min;
+                if ((t1 > t0) != sameSense) {
+                    why = "it runs across where its closed B-spline curve joins";
+                    return false;
+                }
+            }
+        }
+        if (!std::isfinite(t0) || !std::isfinite(t1)) {
+            why = "its vertices cannot be placed on its curve";
+            return false;
+        }
+        e.exactCurve = std::move(curve);
+        e.curveStart = t0;
+        e.curveEnd = t1;
+        return true;
+    }
+
+    /// Edge @p e on @p curve from @p t0 to @p t1: a seam the reader makes, its curve its own.
+    static void placeSeam(topo::Edge& e, std::shared_ptr<const geo::Curve3> curve, double t0,
+                          double t1) {
+        e.exactCurve = std::move(curve);
+        e.curveStart = t0;
+        e.curveEnd = t1;
+    }
+
     // -- Topology --------------------------------------------------------------
 
     topo::Vertex* vertexFor(int vertexPointId) {
@@ -2185,8 +2918,9 @@ private:
             return nullptr;
         }
         const bool sameSense = (*args)[4].kind == StepValue::Enum && (*args)[4].text == "T";
+        std::shared_ptr<geo::NurbsCurve> whole;
         auto curve = readEdgeGeometry((*args)[3].ref, sameSense ? start->point : end->point,
-                                      sameSense ? end->point : start->point);
+                                      sameSense ? end->point : start->point, 0, &whole);
         if (curve == nullptr) {
             error = "unsupported curve geometry on EDGE_CURVE #" + std::to_string(edgeCurveId);
             return nullptr;
@@ -2196,6 +2930,13 @@ private:
         e->curve = std::move(curve);
         e->topoId = topo::TopologyID::make(
             "step", "solid:" + std::to_string(m_solidIndex) + "/e:" + std::to_string(edgeCurveId));
+        // Its exact curve, beside the carrier: from its start vertex, where its half-edge
+        // running start to end (linkTwins makes it the edge's) begins.
+        std::string why;
+        auto exact = exactCurveOf((*args)[3].ref, whole, why);
+        if (exact == nullptr || !placeOnCurve(*e, std::move(exact), start, end, sameSense, why)) {
+            noteExact("edge #" + std::to_string(edgeCurveId), why);
+        }
         EdgeRecord rec;
         rec.edge = e;
         rec.start = start;
@@ -2246,6 +2987,9 @@ private:
             rec.end = end;
             return &m_edges.emplace(-4 * faceId - k, std::move(rec)).first->second;
         };
+        // The seams' exact curves: the carriers' circles, in the surface's frame.
+        const auto frame = readFrame((*args)[1].ref);
+        if (!frame) noteExact("face #" + std::to_string(faceId), "its placement cannot be read");
         if (sphere != nullptr) {
             const double r = (*args)[2].num;
             if (!(r > 0.0)) return false;
@@ -2254,6 +2998,14 @@ private:
             EdgeRecord* meridian =
                 seam(1, south, north,
                      makeArcInFrame(origin, r, -math::kPi / 2.0, math::kPi / 2.0, xAxis, zAxis));
+            if (frame) {
+                // In the plane of x and z, from the south pole to the north.
+                placeSeam(
+                    *meridian->edge,
+                    std::make_shared<geo::CircleCurve>(
+                        geo::Frame::fromAxis(frame->origin, frame->x.cross(frame->z), frame->x), r),
+                    -math::kPi / 2.0, math::kPi / 2.0);
+            }
             loopEdges = {{meridian, true}, {meridian, false}};
             return true;
         }
@@ -2267,6 +3019,16 @@ private:
         EdgeRecord* tube =
             seam(2, corner, corner,
                  makeArcInFrame(origin + xAxis * major, minor, 0.0, math::kTwoPi, xAxis, zAxis));
+        if (frame) {
+            placeSeam(*round->edge, std::make_shared<geo::CircleCurve>(*frame, major + minor), 0.0,
+                      math::kTwoPi);
+            placeSeam(*tube->edge,
+                      std::make_shared<geo::CircleCurve>(
+                          geo::Frame::fromAxis(frame->origin + frame->x * major,
+                                               frame->x.cross(frame->z), frame->x),
+                          minor),
+                      0.0, math::kTwoPi);
+        }
         loopEdges = {{round, true}, {tube, true}, {round, false}, {tube, false}};
         return true;
     }
@@ -2276,10 +3038,17 @@ private:
     EdgeRecord* seamTo(int faceId, int surfaceId, topo::Vertex* rim, topo::Vertex* apex) {
         const StepInstance* surface = m_parser.find(surfaceId);
         std::shared_ptr<geo::NurbsCurve> curve;
+        // Its exact curve, from the rim at curveStart to the apex at the end.
+        std::shared_ptr<const geo::Curve3> exact;
+        double end = 0.0;
         if (surface != nullptr && surface->hasType("CONICAL_SURFACE")) {
             curve = std::make_shared<geo::NurbsCurve>(std::vector<Vec3>{rim->point, apex->point},
                                                       std::vector<double>{1.0, 1.0},
                                                       std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
+            end = (apex->point - rim->point).length();
+            if (end > 0.0 && std::isfinite(end)) {
+                exact = std::make_shared<geo::LineCurve>(rim->point, apex->point - rim->point);
+            }
         } else if (const StepList* sphere =
                        surface != nullptr ? surface->leaf("SPHERICAL_SURFACE") : nullptr) {
             Vec3 centre;
@@ -2298,12 +3067,24 @@ private:
             const double angle = std::atan2((apex->point - centre).dot(toward),
                                             (apex->point - centre).dot(from.normalized()));
             curve = makeArcInFrame(centre, r, 0.0, angle, from.normalized(), toward);
+            const Vec3 along = from.normalized();
+            if (finite(centre) && finite(toward) && along.length() > 0.5 && std::isfinite(angle)) {
+                // In the plane of the rim and the apex, from the rim.
+                exact = std::make_shared<geo::CircleCurve>(
+                    geo::Frame::fromAxis(centre, along.cross(toward), along), r);
+                end = angle;
+            }
         }
         if (curve == nullptr) return nullptr;
         topo::Edge* e = m_solid->allocEdge();
         e->curve = std::move(curve);
         e->topoId = topo::TopologyID::make("step", "solid:" + std::to_string(m_solidIndex) +
                                                        "/f:" + std::to_string(faceId) + "/seam");
+        if (exact != nullptr) {
+            placeSeam(*e, std::move(exact), 0.0, end);
+        } else {
+            noteExact("face #" + std::to_string(faceId), "its seam up to its apex cannot be made");
+        }
         EdgeRecord rec;
         rec.edge = e;
         rec.start = rim;
@@ -2485,11 +3266,14 @@ private:
         }
 
         // ADVANCED_FACE same_sense: .F. means the face normal is the reverse
-        // of the surface normal.  The kernel has no per-face sense flag (its
+        // of the surface normal.  The carrier has no per-face sense flag (its
         // convention is surface normal == outward face normal), so bake the
         // flip into the surface itself.
         const bool sameSenseFace = (args->size() < 4 || (*args)[3].kind != StepValue::Enum ||
                                     (*args)[3].text != "F") != reversed;
+        // The exact face keeps its surface as the file gives it, and says which way it faces.
+        face->exactSurface = exactSurfaceOf(faceId, (*args)[2].ref, face->surface);
+        face->reversed = !sameSenseFace;
         if (!sameSenseFace) {
             face->surface = reverseSurfaceU(*face->surface);
         }
@@ -2518,11 +3302,18 @@ private:
     const StepParser& m_parser;
     int m_solidIndex;
     const std::atomic<bool>* m_cancelled;
-    double m_radiansPerUnit;  ///< of the file's plane angle unit
+    double m_radiansPerUnit;     ///< of the file's plane angle unit
+    double m_lengthUncertainty;  ///< the file's, in its length unit; 0 where it gives none
+    double m_vertexSize = 0.0;   ///< the solid's size as its vertices measure it (vertexSize)
     std::unique_ptr<topo::Solid> m_solid;
     std::unordered_map<int, topo::Vertex*> m_vertices;
     std::map<int, EdgeRecord> m_edges;
+    /// The shells build() built, each as it turned them: the solid's shells, in order.
+    std::vector<ShellRef> m_plan;
     std::size_t m_openShells = 0;
+    /// Each typed or B-spline surface's exact surface, by its SURFACE: shared by its faces.
+    std::unordered_map<int, std::shared_ptr<const geo::Surface>> m_exactSurfaces;
+    std::string m_exactProblem;
 };
 
 // ===========================================================================
@@ -2651,6 +3442,36 @@ double contextMillimetres(const StepParser& parser, int contextId, std::string* 
         }
     }
     return 0.0;
+}
+
+/// The length uncertainty the representation context `contextId` gives
+/// (GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT), in millimetres: the largest of its
+/// UNCERTAINTY_MEASURE_WITH_UNITs that measure a length, each in its own
+/// unit, or in `mm` per unit (the solid's) where a LENGTH_MEASURE's cannot
+/// be read. 0 when it gives none.
+double contextUncertaintyMillimetres(const StepParser& parser, int contextId, double mm) {
+    const StepInstance* ctx = parser.find(contextId);
+    const StepList* list = ctx ? ctx->leaf("GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT") : nullptr;
+    if (list == nullptr || list->empty() || !(*list)[0].isList()) return 0.0;
+    double largest = 0.0;
+    for (const StepValue& u : *(*list)[0].items) {
+        const StepInstance* measure = u.isRef() ? parser.find(u.ref) : nullptr;
+        const StepList* args = measure ? measure->leaf("UNCERTAINTY_MEASURE_WITH_UNIT") : nullptr;
+        if (args == nullptr || args->size() < 2) continue;
+        const double unit =
+            (*args)[1].isRef() ? unitMillimetres(parser, (*args)[1].ref, nullptr) : 0.0;
+        // LENGTH_MEASURE(1.E-5), or a bare real in a length unit.
+        const StepValue& v = (*args)[0];
+        double value = 0.0;
+        if (v.kind == StepValue::Typed && v.text == "LENGTH_MEASURE" && v.items &&
+            !v.items->empty() && v.items->front().kind == StepValue::Real) {
+            value = v.items->front().num * (unit > 0.0 ? unit : mm);
+        } else if (v.kind == StepValue::Real && unit > 0.0) {
+            value = v.num * unit;
+        }
+        if (std::isfinite(value) && value > largest) largest = value;
+    }
+    return largest;
 }
 
 // ===========================================================================
@@ -3442,6 +4263,569 @@ bool parseText(StepParser& parser, const std::atomic<bool>* cancelled) {
     return parsed;
 }
 
+// ===========================================================================
+// The exact form (exact kernel, stage 2)
+// ===========================================================================
+
+/// A pcurve moved a whole period along its surface: a seam's other side.
+class ShiftedCurve2D final : public geo::Curve2D {
+public:
+    ShiftedCurve2D(std::shared_ptr<const geo::Curve2D> base, const math::Vec2& shift)
+        : m_base(std::move(base)), m_shift(shift) {}
+
+    math::Vec2 evaluate(double t) const override { return m_base->evaluate(t) + m_shift; }
+    math::Vec2 derivative(double t, int order) const override {
+        return m_base->derivative(t, order);
+    }
+    double tMin() const override { return m_base->tMin(); }
+    double tMax() const override { return m_base->tMax(); }
+    bool isClosed() const override { return m_base->isClosed(); }
+
+private:
+    std::shared_ptr<const geo::Curve2D> m_base;
+    math::Vec2 m_shift;
+};
+
+/// Where in its file @p id names, for a report: "face #27", "the seam of face #27" (one the
+/// reader made) or "edge #18". Empty for another name.
+std::string fileEntity(const topo::TopologyID& id) {
+    const std::string& tag = id.tag();
+    const auto solid = tag.find("solid:");
+    const auto slash = solid == std::string::npos ? std::string::npos : tag.find('/', solid);
+    if (slash == std::string::npos) return {};
+    const std::string tail = tag.substr(slash + 1);
+    std::size_t end = 2;
+    while (end < tail.size() && std::isdigit(static_cast<unsigned char>(tail[end])) != 0) ++end;
+    const std::string number = tail.substr(std::min<std::size_t>(2, tail.size()), end - 2);
+    if (tail.rfind("f:", 0) == 0) {
+        return (tail.find("/seam") != std::string::npos ? "the seam of face #" : "face #") + number;
+    }
+    if (tail.rfind("e:", 0) == 0) return "edge #" + number;
+    return {};
+}
+
+/// " (face #27, edge #18)": where in its file an exact problem lies; empty when not known.
+std::string whereIn(const topo::Face* face, const topo::Edge* edge) {
+    std::string where = face != nullptr ? fileEntity(face->topoId) : std::string();
+    const std::string onEdge = edge != nullptr ? fileEntity(edge->topoId) : std::string();
+    if (!onEdge.empty() && onEdge != where) where += (where.empty() ? "" : ", ") + onEdge;
+    return where.empty() ? where : " (" + where + ")";
+}
+
+/// The half-edges of @p wire, in order; empty when its cycle breaks within @p limit.
+std::vector<topo::HalfEdge*> ringOf(const topo::Wire& wire, std::size_t limit) {
+    std::vector<topo::HalfEdge*> ring;
+    topo::HalfEdge* h = wire.halfEdge;
+    while (h != nullptr && ring.size() <= limit) {
+        ring.push_back(h);
+        h = h->next;
+        if (h == wire.halfEdge) return ring;
+    }
+    return {};
+}
+
+/// What the exact validator says of a loop that closes only after winding round its surface.
+constexpr const char* kWindsRound = "loop closes only after winding round the surface";
+
+/// The signed area in (u, v) of the loop @p ring of a face on @p s, unwrapped as the exact
+/// validator unwraps it; nullopt where it cannot be (a loop that winds round the surface). An
+/// area within rounding of none (the box round the loop's samples times 1e-12) is 0: it says
+/// nothing of which way the loop runs.
+std::optional<double> loopArea(const std::vector<topo::HalfEdge*>& ring, const geo::Surface& s,
+                               const math::ModelTolerance& tolerance) {
+    const std::vector<const topo::HalfEdge*> walk(ring.begin(), ring.end());
+    std::vector<double> allowances;
+    allowances.reserve(walk.size());
+    for (const topo::HalfEdge* h : walk) allowances.push_back(topo::joinAllowance(*h, tolerance));
+    topo::LoopPolygon poly;
+    if (walk.empty() || !topo::unwrapLoop(walk, topo::kLoopSamples, s, topo::uPeriod(s),
+                                          topo::vPeriod(s), allowances, poly)) {
+        return std::nullopt;
+    }
+    math::Vec2 lo = poly.front().a;
+    math::Vec2 hi = lo;
+    for (const topo::LoopSegment& seg : poly) {
+        lo = {std::min(lo.x, seg.a.x), std::min(lo.y, seg.a.y)};
+        hi = {std::max(hi.x, seg.a.x), std::max(hi.y, seg.a.y)};
+    }
+    const double area = topo::signedArea(poly);
+    return std::abs(area) <= 1e-12 * (hi.x - lo.x) * (hi.y - lo.y) ? 0.0 : area;
+}
+
+/// Points along the edge of @p s's domain where u (@p alongV false) or v (true) is @p at: 17 of
+/// them, both ends included.
+std::vector<Vec3> domainEdge(const geo::NurbsSurface& s, bool alongV, double at) {
+    constexpr int kSteps = 16;
+    std::vector<Vec3> points;
+    points.reserve(kSteps + 1);
+    for (int k = 0; k <= kSteps; ++k) {
+        const double f = static_cast<double>(k) / kSteps;
+        points.push_back(alongV ? s.evaluate(s.uMin() + (s.uMax() - s.uMin()) * f, at)
+                                : s.evaluate(at, s.vMin() + (s.vMax() - s.vMin()) * f));
+    }
+    return points;
+}
+
+/// Whether a loop on @p s determines the region it bounds: on a plane, a cylinder, a cone (a
+/// swept surface's B-spline among them) and a B-spline neither closed both ways nor coming to a
+/// pole, the region off the loop's disc reaches an edge of the surface no edge of the face
+/// bounds, so the face is the disc. On a sphere, a torus, or a B-spline closed both ways or with
+/// a pole, a loop bounds two regions, and its (u, v) area always picks the disc. A B-spline is
+/// judged within @p near (the solid's limit, a thousandth of its size), not NurbsSurface's own
+/// closure: an edge of its domain whose points spread no further is a pole, and a direction
+/// whose two edges come no further apart is closed, so a fitted surface's pole opened a hair, or
+/// a torus-like surface closed only nearly, is not taken for one the loops decide. Erring that
+/// way only leaves a solid out.
+bool loopsDetermineRegion(const geo::Surface& s, double near) {
+    switch (s.kind()) {
+        case geo::SurfaceKind::Plane:
+        case geo::SurfaceKind::Cylinder:
+        case geo::SurfaceKind::Cone:
+            return true;
+        case geo::SurfaceKind::Sphere:
+        case geo::SurfaceKind::Torus:
+            return false;
+        case geo::SurfaceKind::Nurbs: {
+            const auto* nurbs = dynamic_cast<const geo::NurbsSurface*>(&s);
+            if (nurbs == nullptr) return false;
+            const auto spread = [](const std::vector<Vec3>& points) {
+                math::BoundingBox box;
+                for (const Vec3& p : points) box.expand(p);
+                return (box.max() - box.min()).length();
+            };
+            const auto apart = [](const std::vector<Vec3>& a, const std::vector<Vec3>& b) {
+                double most = 0.0;
+                for (std::size_t k = 0; k < a.size() && k < b.size(); ++k) {
+                    most = std::max(most, (a[k] - b[k]).length());
+                }
+                return most;
+            };
+            const auto uLow = domainEdge(*nurbs, false, nurbs->uMin());
+            const auto uHigh = domainEdge(*nurbs, false, nurbs->uMax());
+            const auto vLow = domainEdge(*nurbs, true, nurbs->vMin());
+            const auto vHigh = domainEdge(*nurbs, true, nurbs->vMax());
+            const bool pole = spread(uLow) <= near || spread(uHigh) <= near ||
+                              spread(vLow) <= near || spread(vHigh) <= near;
+            const bool closedBothWays = apart(uLow, uHigh) <= near && apart(vLow, vHigh) <= near;
+            return !pole && !closedBothWays;
+        }
+    }
+    return false;
+}
+
+/// Gives @p face its sense, or says why it has none this stage represents.
+///
+/// Where its loops determine its region (loopsDetermineRegion within @p near), or its outer loop
+/// uses a seam of its own (both sides of one edge, a period apart, so its (u, v) region is
+/// fixed), the face faces the way its outer loop runs in (u, v), counter-clockwise about its
+/// outward normal: the loops are the solid's topology, and same_sense only repeats it (Horizon's
+/// own writer gave same_sense .T. whichever way a face's surface faced). Elsewhere the face
+/// keeps its file's sense (same_sense, with its shell's and bounds' flags); where its loop's
+/// unwrapped area says the other way, either the face is the surface outside its loop (a ball's
+/// skin round a flat), which holds a pole or wraps the surface and this stage cannot represent,
+/// or its file's same_sense is wrong: which, it cannot tell, so it says both. A loop whose area
+/// says nothing (a seam joined only at poles, laid out next) leaves the face as its file says.
+/// (A loop that runs along a pole without a seam does not fix its region here: which way round
+/// the pole it runs is the next pcurve's window's, not the file's; stage 3's pole topology.)
+///
+/// An outer loop with no seam that closes only after winding round the surface (a band) says so
+/// in the validator's words, kWindsRound, and leaves the face as it was: finishExact gives it its
+/// seam and asks again. Said of a face that still has none, it is placed as the validator places
+/// it (at the face and its outer loop's first edge).
+std::string faceSense(topo::Face& face, const math::ModelTolerance& tolerance, std::size_t limit,
+                      double near) {
+    if (face.outerLoop == nullptr) return {};
+    const std::vector<topo::HalfEdge*> ring = ringOf(*face.outerLoop, limit);
+    const bool seamed = std::any_of(ring.begin(), ring.end(), [&face](const topo::HalfEdge* h) {
+        return h->twin != nullptr && h->twin->face == &face;
+    });
+    const auto area = loopArea(ring, *face.exactSurface, tolerance);
+    if (!area) {
+        // A seamed loop that does not close yet may once its seam is laid out a period over
+        // (both sides of a seam share one window, and a join at a pole shifts nothing): that is
+        // layOutSeams's to try, and the validator's to judge. Only a loop with no seam is a band.
+        return seamed || ring.empty() ? std::string() : std::string(kWindsRound);
+    }
+    if (!std::isfinite(*area) || *area == 0.0) return {};
+    const bool loopsSayReversed = *area < 0.0;
+    if (seamed || loopsDetermineRegion(*face.exactSurface, near)) {
+        face.reversed = loopsSayReversed;
+        return {};
+    }
+    if (loopsSayReversed == face.reversed) return {};
+    return "its loops run against its same_sense: either the face is the surface outside its "
+           "loop (it holds a pole or wraps the surface), which this stage cannot represent, or "
+           "the file's same_sense is wrong";
+}
+
+/// How many layouts layOutSeams tries for one face, at most. A well-formed face has a seam along
+/// each periodic direction at most (a torus's two), each of two sides, each tried at 4 shifts:
+/// 16 tries; only a malformed face (many seams, none that orients it) reaches the cap.
+constexpr int kSeamTries = 16;
+
+/// Lays the seams of @p face out so that each of its loops runs the way the face needs in
+/// (u, v): counter-clockwise for its outer loop, unless the face is reversed. A seam's two
+/// sides lie on one line of the surface; where the loop joins them only at poles (a sphere's
+/// meridian from pole to pole and back, as OpenCASCADE writes a ball), the unwrapping cannot
+/// tell them a period apart, and one side is moved the period that runs the loop the right way.
+/// Elsewhere the unwrapping shifts whole periods itself, and the layout is left as it is. Only
+/// half-edges whose twin bounds the same face are tried, at most kSeamTries layouts for the face
+/// (each an unwrap of its loop): past that, or once @p cancelled is set, it stops and says why;
+/// otherwise empty.
+std::string layOutSeams(topo::Face& face, const math::ModelTolerance& tolerance, std::size_t limit,
+                        const std::atomic<bool>* cancelled) {
+    const geo::Surface& s = *face.exactSurface;
+    const double pu = topo::uPeriod(s);
+    const double pv = topo::vPeriod(s);
+    if (pu == 0.0 && pv == 0.0) return {};
+    std::vector<topo::Wire*> loops{face.outerLoop};
+    loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+    int tries = 0;
+    for (topo::Wire* wire : loops) {
+        if (wire == nullptr) continue;
+        const std::vector<topo::HalfEdge*> ring = ringOf(*wire, limit);
+        const bool seamed = std::any_of(ring.begin(), ring.end(), [&face](const topo::HalfEdge* h) {
+            return h->twin != nullptr && h->twin->face == &face;
+        });
+        if (!seamed) continue;
+        const bool wantPositive = (wire == face.outerLoop) != face.reversed;
+        const auto runsRight = [&] {
+            const auto area = loopArea(ring, s, tolerance);
+            return area && *area != 0.0 && (*area > 0.0) == wantPositive;
+        };
+        if (runsRight()) continue;
+        const math::Vec2 shifts[] = {{pu, 0.0}, {-pu, 0.0}, {0.0, pv}, {0.0, -pv}};
+        bool laid = false;
+        for (topo::HalfEdge* h : ring) {
+            if (laid || h->twin == nullptr || h->twin->face != &face) continue;
+            const std::shared_ptr<const geo::Curve2D> original = h->pcurve;
+            for (const math::Vec2& shift : shifts) {
+                if (shift.x == 0.0 && shift.y == 0.0) continue;
+                if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
+                    h->pcurve = original;
+                    return kCancelled;
+                }
+                if (tries == kSeamTries) {
+                    h->pcurve = original;
+                    return "seam layout gave up after " + std::to_string(kSeamTries) + " tries";
+                }
+                ++tries;
+                h->pcurve = std::make_shared<ShiftedCurve2D>(original, shift);
+                laid = runsRight();
+                if (laid) break;
+            }
+            if (!laid) h->pcurve = original;
+        }
+    }
+    return {};
+}
+
+/// What making a solid's exact form came to: why it could not be made, or how exact it is.
+struct ExactRead {
+    std::string problem;      ///< empty when the solid is exact
+    double resolution = 0.0;  ///< the model resolution its size gives it
+    double largestEdgeTolerance = 0.0;
+};
+
+/// A length for a report, to three figures.
+std::string threeFigures(double x) {
+    std::ostringstream out;
+    out << std::setprecision(3) << x;
+    return out.str();
+}
+
+/// Finishes the exact form of @p solid, as read (each face's exact surface, each edge's exact
+/// curve over its range): builds each half-edge's pcurve with geo::pcurveOn, grows each edge's
+/// and vertex's tolerance to cover how far the file has it stray, and checks the whole with
+/// topo::validateExact at the solid's model resolution.
+///
+/// Each pcurve is fitted to the larger of the model resolution of the solid's size and the
+/// curve's own stand-off from its surface (measured, never chased): a clean edge to the
+/// resolution, one that stands off to its gap. As an OpenCASCADE reader's per-entity tolerances
+/// do, each edge's tolerance (and each vertex's) grows to cover what is measured, its vertices'
+/// gaps, its pcurves' deviations and stand-offs, up to the limit of a thousandth of the solid's
+/// size (the resolution, where its size cannot be measured), and where every pcurve the validator
+/// finds past its tolerances is past them by rounding alone, to the validator's measure (Rulings 64
+/// and 66, topo::roundingShortfalls). Past the limit the solid is not exact, and the problem says
+/// so; so it does for a problem the validator finds, or a pcurve that cannot be built. The file's
+/// UNCERTAINTY_MEASURE sets neither.
+///
+/// A periodic face whose loops wind round its surface with no seam (a band between two rims) is
+/// given one by model::insertSeams once every face's pcurves exist, for its seam splits edges
+/// the faces after it share; its sense and its seams' layout follow. Every other face's problem
+/// leaves the solid out as soon as that face's pcurves are built.
+ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
+    ExactRead read;
+    const double extent = topo::exactExtent(solid);
+    const math::ModelTolerance resolution = math::ModelTolerance::forExtent(extent);
+    read.resolution = resolution.linear;
+    const bool sized = 1e-3 * extent > resolution.linear;
+    const double limit = sized ? 1e-3 * extent : resolution.linear;
+    const std::string limitSays = "beyond the limit of " + threeFigures(limit) +
+                                  (sized ? " (a thousandth of the solid's size)"
+                                         : " (the model resolution: the solid's size could not "
+                                           "be measured)");
+    const double base = resolution.linear;
+    const auto stop = [&] {
+        if (cancelled == nullptr || !cancelled->load(std::memory_order_relaxed)) return false;
+        read.problem = kCancelled;
+        return true;
+    };
+    // Grows @p tolerance to cover @p by; past the limit, the first such says why: "<what> <by>
+    // <from>, beyond the limit of …".
+    const auto grow = [&](double& tolerance, double by, const char* what, const char* from,
+                          const topo::Face* f, const topo::Edge* e) {
+        if (!(by > resolution.linear)) return;
+        if (by <= limit) {
+            tolerance = std::max(tolerance, by);
+        } else if (read.problem.empty()) {
+            read.problem = std::string(what) + " " + threeFigures(by) + " " + from + ", " +
+                           limitSays + whereIn(f, e);
+        }
+    };
+
+    // Each edge's curve ends at its vertices, as near as the file has them.
+    for (auto& e : solid.edges()) {
+        if (!e.alive || e.halfEdge == nullptr || e.halfEdge->twin == nullptr || !e.exactCurve) {
+            continue;
+        }
+        topo::Vertex* ends[2] = {e.halfEdge->origin, e.halfEdge->twin->origin};
+        const double at[2] = {e.curveStart, e.curveEnd};
+        for (int k = 0; k < 2; ++k) {
+            const double gap = (e.exactCurve->evaluate(at[k]) - ends[k]->point).length();
+            grow(e.tolerance, gap, "its curve ends", "from its vertex", nullptr, &e);
+            grow(ends[k]->tolerance, gap, "its curve ends", "from its vertex", nullptr, &e);
+        }
+    }
+    if (!read.problem.empty()) return read;
+
+    // Each half-edge's course on its face, built (a file's PCURVEs are not read): from its
+    // origin's parameter on its edge's curve to its next's.
+    const std::size_t limitHalfEdges = 2 * solid.edges().size() + 1;
+    std::vector<topo::Face*> bands;
+    for (auto& f : solid.faces()) {
+        if (stop()) return read;
+        if (!f.alive) continue;
+        if (!f.exactSurface) {
+            read.problem = "a face has no exact surface" + whereIn(&f, nullptr);
+            return read;
+        }
+        std::vector<topo::Wire*> loops{f.outerLoop};
+        loops.insert(loops.end(), f.innerLoops.begin(), f.innerLoops.end());
+        for (topo::Wire* wire : loops) {
+            const std::vector<topo::HalfEdge*> ring =
+                wire != nullptr ? ringOf(*wire, limitHalfEdges) : std::vector<topo::HalfEdge*>{};
+            for (topo::HalfEdge* h : ring) {
+                if (stop()) return read;
+                topo::Edge& e = *h->edge;
+                if (!e.exactCurve) {
+                    read.problem = "an edge has no exact curve" + whereIn(&f, &e);
+                    return read;
+                }
+                if (h->twin != nullptr && h->twin->face == &f && h->twin->pcurve) {
+                    // A seam's other side: the same course, the other way.
+                    h->pcurve = h->twin->pcurve;
+                    h->pcurveStart = h->twin->pcurveEnd;
+                    h->pcurveEnd = h->twin->pcurveStart;
+                } else {
+                    const bool forward = h == e.halfEdge;
+                    const double t0 = forward ? e.curveStart : e.curveEnd;
+                    const double t1 = forward ? e.curveEnd : e.curveStart;
+                    // Fitted to the resolution; where the curve stands off its surface within
+                    // the limit, no pcurve comes nearer, so it is fitted to its gap (twice the
+                    // gap measured, which may peak between the samples that measured it, and the
+                    // resolution) in the same call, and the edge's tolerance covers what is
+                    // measured.
+                    geo::Pcurve pc =
+                        geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1, base, limit);
+                    if (!pc.problem.empty() || pc.curve == nullptr) {
+                        read.problem = std::isfinite(pc.standOff) && pc.standOff > limit
+                                           ? "its curve stands " + threeFigures(pc.standOff) +
+                                                 " off its face's surface, " + limitSays
+                                           : pc.problem;
+                        read.problem += whereIn(&f, &e);
+                        return read;
+                    }
+                    h->pcurve = std::move(pc.curve);
+                    h->pcurveStart = pc.start;
+                    h->pcurveEnd = pc.end;
+                    grow(e.tolerance, pc.deviation, "its pcurve strays", "from its curve", &f, &e);
+                }
+                // Its ends, on the surface, at its vertices.
+                const math::Vec2 a = h->pcurve->evaluate(h->pcurveStart);
+                const math::Vec2 b = h->pcurve->evaluate(h->pcurveEnd);
+                grow(e.tolerance, (f.exactSurface->evaluate(a.x, a.y) - h->origin->point).length(),
+                     "its pcurve ends", "from its vertex", &f, &e);
+                grow(e.tolerance,
+                     (f.exactSurface->evaluate(b.x, b.y) - h->next->origin->point).length(),
+                     "its pcurve ends", "from its vertex", &f, &e);
+                if (!read.problem.empty()) return read;
+            }
+        }
+        // The face's sense, and its seams laid out, as soon as its pcurves exist: a face that
+        // cannot have them leaves the solid out before the faces after it are built. A band
+        // waits for its seam, below.
+        if (std::string why = faceSense(f, resolution, limitHalfEdges, limit); !why.empty()) {
+            if (why == kWindsRound) {
+                bands.push_back(&f);
+                continue;
+            }
+            read.problem = why + whereIn(&f, nullptr);
+            return read;
+        }
+        if (std::string why = layOutSeams(f, resolution, limitHalfEdges, cancelled); !why.empty()) {
+            read.problem = why == kCancelled ? why : why + whereIn(&f, nullptr);
+            return read;
+        }
+    }
+
+    // Each band given its seam, now that every face's pcurves exist (its seam splits edges that
+    // faces built after it share), then its sense and its seams' layout, as every other face had.
+    // The tolerances its seam and splits are given, measured as grow measures, are held to the
+    // limit as every other is: the seam's, how far its line passes from the vertices it joins; a
+    // split's vertex's, how far its edge's pcurves have it.
+    for (topo::Face* f : bands) {
+        if (stop()) return read;
+        if (std::string why = model::insertSeams(solid, *f, resolution); !why.empty()) {
+            read.problem = why + whereIn(f, f->outerLoop->halfEdge->edge);
+            return read;
+        }
+        std::vector<topo::Wire*> loops{f->outerLoop};
+        loops.insert(loops.end(), f->innerLoops.begin(), f->innerLoops.end());
+        for (topo::Wire* wire : loops) {
+            const std::vector<topo::HalfEdge*> ring =
+                wire != nullptr ? ringOf(*wire, 2 * solid.edges().size() + 1)
+                                : std::vector<topo::HalfEdge*>{};
+            for (const topo::HalfEdge* h : ring) {
+                if (h->edge->tolerance > limit) {
+                    read.problem = "its seam passes " + threeFigures(h->edge->tolerance) +
+                                   " from a vertex it joins, " + limitSays + whereIn(f, h->edge);
+                    return read;
+                }
+                if (h->origin->tolerance > limit) {
+                    read.problem = "its seam splits an edge where the edge's pcurves part by " +
+                                   threeFigures(h->origin->tolerance) + ", " + limitSays +
+                                   whereIn(f, h->edge);
+                    return read;
+                }
+            }
+        }
+    }
+    const std::size_t limitSeamed = 2 * solid.edges().size() + 1;
+    for (topo::Face* f : bands) {
+        if (stop()) return read;
+        if (std::string why = faceSense(*f, resolution, limitSeamed, limit); !why.empty()) {
+            const topo::Edge* first = why == kWindsRound ? f->outerLoop->halfEdge->edge : nullptr;
+            read.problem = why + whereIn(f, first);
+            return read;
+        }
+        if (std::string why = layOutSeams(*f, resolution, limitSeamed, cancelled); !why.empty()) {
+            read.problem = why == kCancelled ? why : why + whereIn(f, nullptr);
+            return read;
+        }
+    }
+
+    if (stop()) return read;
+    auto issues = topo::validateExact(solid, resolution);
+    // Where the validator finds pcurves past their tolerances by rounding alone (Rulings 64 and
+    // 66): each tolerance was grown to pcurveOn's measure of the gap, at its own points and by its
+    // own route, of a pcurve that may since have been reversed for a seam's other side, moved a
+    // period, or split by a band's seam, and the validator's measure of the same gap can come out
+    // a last bit larger (where sin, cos and atan2 round otherwise, as macOS's do). Only where every
+    // issue is such a shortfall does each tolerance grow to the validator's own measure, held to
+    // the limit as every other gap is, and the solid is validated again; otherwise the first issue
+    // that is not one is reported as ever, and nothing is taken up, so that no shortfall's growth
+    // covers a pcurve that strays beside it.
+    if (!issues.empty()) {
+        const topo::RoundingTakeUp takeUp = topo::roundingShortfalls(solid, issues, resolution);
+        if (takeUp.beyond != nullptr) {
+            read.problem =
+                takeUp.beyond->detail + whereIn(takeUp.beyond->face, takeUp.beyond->edge);
+            return read;
+        }
+        for (const topo::RoundingShortfall& s : takeUp.shortfalls) {
+            const bool stray = s.issue->kind == topo::ExactIssueKind::PcurveOffCurve;
+            grow(*s.tolerance, s.measured, stray ? "its pcurve strays" : "its pcurve ends",
+                 stray ? "from its curve" : "from its vertex", s.issue->face, s.issue->edge);
+        }
+        if (!read.problem.empty()) return read;
+        if (stop()) return read;
+        issues = topo::validateExact(solid, resolution);
+    }
+    if (!issues.empty()) {
+        read.problem = issues.front().detail + whereIn(issues.front().face, issues.front().edge);
+        return read;
+    }
+    for (const auto& e : solid.edges()) {
+        if (e.alive) read.largestEdgeTolerance = std::max(read.largestEdgeTolerance, e.tolerance);
+    }
+    return read;
+}
+
+/// How many times its estimated error a shell's coarse volume must be, the way its role wants it
+/// (an outer shell's positive, a void's negative), for the coarse pass to settle it.
+constexpr double kSignMargin = 4.0;
+
+/// The shells of @p solid, by their index in its shell order, that face the wrong way for what
+/// they are, by the signed volume each encloses integrated on its exact faces: an outer shell
+/// whose faces face into it (written inside out, as a careless writer may: Horizon's own wrote
+/// its kernel's box so), or a void's whose faces face out of the void. @p voids says which
+/// shells are voids. A coarse integral settles each shell its volume leaves beyond doubt the way
+/// its role wants; the solid is integrated as mass properties integrate it only where one is not
+/// (a shell facing the wrong way, or too thin for the coarse pass to tell), and only that
+/// integral turns a shell. None where the volumes cannot be measured: the mass properties of
+/// such a solid say why when asked.
+std::vector<std::size_t> shellsInsideOut(const topo::Solid& solid, const std::vector<bool>& voids,
+                                         const std::atomic<bool>* cancelled) {
+    using model::MassPropertiesCalculator;
+    const auto coarse = MassPropertiesCalculator::shellVolumes(solid, true, nullptr, cancelled);
+    // The shells the coarse pass leaves in doubt (all, where it could not be made), alone.
+    std::vector<bool> doubtful(voids.size(), coarse.size() != voids.size());
+    for (std::size_t i = 0; i < coarse.size() && i < voids.size(); ++i) {
+        const double way = voids[i] ? -coarse[i].volume : coarse[i].volume;
+        doubtful[i] = !(way > kSignMargin * coarse[i].error);
+    }
+    if (std::none_of(doubtful.begin(), doubtful.end(), [](bool d) { return d; })) return {};
+    const auto exact =
+        MassPropertiesCalculator::shellVolumes(solid, false, nullptr, cancelled, doubtful);
+    if (exact.size() != voids.size()) return {};
+    // Turned only where it faces the wrong way beyond its error: one that encloses next to
+    // nothing is left as it is.
+    std::vector<std::size_t> wrong;
+    for (std::size_t i = 0; i < exact.size(); ++i) {
+        const double way = voids[i] ? -exact[i].volume : exact[i].volume;
+        if (doubtful[i] && way < 0.0 && -way > exact[i].error) wrong.push_back(i);
+    }
+    return wrong;
+}
+
+/// @p solid without its exact form, as master reads it: every exact field cleared, so nothing
+/// half-exact survives a solid kept though its exact form failed part way.
+void clearExact(topo::Solid& solid) {
+    for (auto& v : solid.vertices()) v.tolerance = 0.0;
+    for (auto& e : solid.edges()) {
+        e.exactCurve = nullptr;
+        e.curveStart = 0.0;
+        e.curveEnd = 0.0;
+        e.tolerance = 0.0;
+    }
+    const std::size_t limit = 2 * solid.edges().size() + 1;
+    for (auto& f : solid.faces()) {
+        f.exactSurface = nullptr;
+        f.reversed = false;
+        std::vector<topo::Wire*> loops{f.outerLoop};
+        loops.insert(loops.end(), f.innerLoops.begin(), f.innerLoops.end());
+        for (topo::Wire* wire : loops) {
+            if (wire == nullptr) continue;
+            for (topo::HalfEdge* h : ringOf(*wire, limit)) {
+                h->pcurve = nullptr;
+                h->pcurveStart = 0.0;
+                h->pcurveEnd = 0.0;
+            }
+        }
+    }
+}
+
 /// A file's solid groups, each built once, in millimetres: null where one
 /// could not be. What fell short, for a report.
 struct BuiltSolids {
@@ -3449,6 +4833,10 @@ struct BuiltSolids {
     std::vector<std::string> failures;
     std::vector<std::string> approximated;
     std::map<std::string, int> conversions;
+    /// The solids exact only to their file's tolerance, each with how far its edges stray.
+    std::vector<std::string> exactTo;
+    /// The solids kept without their exact form (StepReadOptions::keepWhenNotExact), with why.
+    std::vector<std::string> keptAsItWas;
     std::string firstError;
     /// A solid's length unit is not named, or cannot be read, and none was
     /// chosen: nothing more is built, and the file is not read.
@@ -3481,17 +4869,74 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
             mm = math::millimetresPer(*options.unknownLengthUnit);
             unit = unitName(*options.unknownLengthUnit);
         }
-        SolidBuilder builder(parser, static_cast<int>(index), cancelled,
-                             group.context != 0 ? contextRadians(parser, group.context) : 1.0);
+        // How far the file says its geometry may stray, in millimetres.
+        const double uncertainty =
+            group.context != 0 ? contextUncertaintyMillimetres(parser, group.context, mm) : 0.0;
+        const double radians = group.context != 0 ? contextRadians(parser, group.context) : 1.0;
+        SolidBuilder builder(parser, static_cast<int>(index), cancelled, radians, uncertainty / mm);
+        // The solid as the file has it, in millimetres, built by @p from: its topology and
+        // carriers, and the exact fields read with them, as no exact pass has yet changed them.
+        // Throws as the geometry constructors do.
+        const auto asTheFileHasIt = [&](SolidBuilder& from, std::string& why) {
+            std::unique_ptr<topo::Solid> built = from.build(group.msbs, group.surfaces, why);
+            if (built != nullptr && mm != 1.0) {
+                built = model::Pattern::transformed(*built, math::Mat4::scale(mm));
+            }
+            return built;
+        };
+        // Its exact form, or nothing (decision 1b): a solid whose faces or edges cannot be read
+        // exactly, or whose exact form does not hold together, is left out, with why. Nothing
+        // faceted comes in in its place. (STEP embedded in a native part file is kept as it was
+        // read before, without its exact form: old parts still open.)
+        const std::string solidN = "solid " + std::to_string(index + 1);
         std::unique_ptr<topo::Solid> solid;
         std::string error;
+        std::string notExact;
+        ExactRead exact;
         try {
-            solid = builder.build(group.msbs, group.surfaces, error);
+            solid = asTheFileHasIt(builder, error);
+            if (solid != nullptr) notExact = builder.exactProblem();
         } catch (const std::exception& e) {
             // The geometry constructors throw on inputs the reader's own
-            // checks let through (a degree-0 B-spline, ragged control rows).
+            // checks let through (a degree-0 B-spline, ragged control rows,
+            // a scale into millimetres that overflows): no solid at all.
             error = e.what();
+            solid = nullptr;
         }
+        // Whether the exact pass ran on the solid, which changes its topology as it goes (a band's
+        // seam inserted, the rims it crosses split) and may fail after it has.
+        const bool exactPassRan = solid != nullptr && notExact.empty();
+        if (exactPassRan) {
+            // A throw making the exact form leaves the solid, as read, without one: left out of
+            // an import, kept as it was in a native file's embedded STEP.
+            try {
+                exact = finishExact(*solid, cancelled);
+                // A shell written inside out (every face facing into what it bounds, consistently,
+                // so the validator cannot tell) is turned outward as build() turns a void that
+                // measures the wrong way: built again with its loops run the other way and its
+                // faces reversed, and made exact again. A void stays facing into itself.
+                const std::vector<std::size_t> inside =
+                    exact.problem.empty() ? shellsInsideOut(*solid, builder.voidShells(), cancelled)
+                                          : std::vector<std::size_t>{};
+                if (!inside.empty()) {
+                    std::string why;
+                    auto again = builder.turned(inside, why);
+                    if (again == nullptr || !builder.exactProblem().empty()) {
+                        notExact = "its shell written inside out could not be turned round: " +
+                                   (why.empty() ? builder.exactProblem() : why);
+                    } else {
+                        if (mm != 1.0) {
+                            again = model::Pattern::transformed(*again, math::Mat4::scale(mm));
+                        }
+                        exact = finishExact(*again, cancelled);
+                        solid = std::move(again);
+                    }
+                }
+            } catch (const std::exception& e) {
+                notExact = std::string("its exact form could not be made: ") + e.what();
+            }
+        }
+        if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) return built;
         if (solid == nullptr) {
             if (built.firstError.empty()) {
                 built.firstError = "failed to reconstruct solid #" +
@@ -3506,9 +4951,54 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
                                                 : " of its shells are open surfaces") +
                                      ", not a solid, and left out");
         }
-
-        // Into millimetres.
-        if (mm != 1.0) solid = model::Pattern::transformed(*solid, math::Mat4::scale(mm));
+        if (notExact.empty()) {
+            notExact = exact.problem;
+            if (notExact.empty() && exact.largestEdgeTolerance > exact.resolution) {
+                built.exactTo.push_back(solidN + ": exact to " +
+                                        threeFigures(exact.largestEdgeTolerance) +
+                                        " mm, as the file gives its edges");
+            }
+        }
+        if (!notExact.empty()) {
+            if (!options.keepWhenNotExact) {
+                if (built.firstError.empty()) {
+                    built.firstError = "solid #" + std::to_string(group.msbs.front()) +
+                                       " could not be made exact: " + notExact;
+                }
+                built.failures.push_back(solidN + ": " + notExact);
+                continue;
+            }
+            // Kept as master read it: as the file has it, untouched by an exact pass that failed
+            // part way (Ruling 10). What the pass changed is not the file's, and may not even hold
+            // together (a seam inserted on one band and the next refused, a ring left merged by
+            // a split that threw): the solid is built again from the file, and the exact fields
+            // the builder reads with it cleared.
+            if (exactPassRan) {
+                std::string why;
+                try {
+                    SolidBuilder again(parser, static_cast<int>(index), cancelled, radians,
+                                       uncertainty / mm);
+                    solid = asTheFileHasIt(again, why);
+                } catch (const std::exception& e) {
+                    why = e.what();
+                    solid = nullptr;
+                }
+                if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
+                    return built;
+                }
+                if (solid == nullptr) {
+                    // It built once from the same file: not reached, yet said if it is.
+                    if (built.firstError.empty()) {
+                        built.firstError = "failed to reconstruct solid #" +
+                                           std::to_string(group.msbs.front()) + ": " + why;
+                    }
+                    built.failures.push_back(which + ": " + why);
+                    continue;
+                }
+            }
+            clearExact(*solid);
+            built.keptAsItWas.push_back(solidN + ": not exact (" + notExact + "); kept as it was");
+        }
         if (chosen) {
             ++built.conversions["read in " + unit +
                                 ", as chosen: the file names no length unit this version reads"];
@@ -3519,8 +5009,9 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
                                 " into millimetres"];
         }
         // Its curved faces go in as facets (ImportedBodyFeature): say where
-        // that falls short.
-        if (reporting) {
+        // that falls short. (A body read again from a native file was said
+        // so of when it was imported.)
+        if (reporting && !options.keepWhenNotExact) {
             const auto faceted = model::facetCurved(*solid);
             if (!faceted.solid) {
                 built.approximated.push_back(
@@ -3550,6 +5041,8 @@ void reportRead(const BuiltSolids& built, const ProductStructure& structure, Imp
         report->converted.push_back(
             (count == 1 ? std::string("1 solid ") : std::to_string(count) + " solids ") + what);
     }
+    for (const auto& line : built.exactTo) report->converted.push_back(line);
+    for (const auto& line : built.keptAsItWas) report->converted.push_back(line);
 }
 
 /// @p solid's names moved from solid @p from's to solid @p to's: a second
@@ -3575,15 +5068,39 @@ struct Preamble {
     int productContext = 0;
 };
 
-Preamble writePreamble(StepWriter& w) {
+/// The uncertainty a file states for its solids, in millimetres, where nothing is given a
+/// tolerance: the writer's own resolution.
+constexpr double kWrittenUncertainty = 1e-7;
+
+/// The uncertainty a file of @p solids states, in millimetres: kWrittenUncertainty, or the largest
+/// tolerance a vertex of theirs was given, where that is larger. A vertex's tolerance covers how
+/// far it stands from the ends of its edges' curves, as its file had it. The reader joins a closed
+/// B-spline's ends, and takes a vertex to be at that join, within its file's uncertainty
+/// (SolidBuilder::placeOnCurve): stated finer than its vertices stand, a solid read exact within
+/// a loose file's uncertainty would be read back with a vertex off its join, and not exact.
+double uncertaintyOf(const std::vector<const topo::Solid*>& solids) {
+    double largest = kWrittenUncertainty;
+    for (const topo::Solid* solid : solids) {
+        if (solid == nullptr) continue;
+        for (const auto& v : solid->vertices()) {
+            if (v.alive && std::isfinite(v.tolerance)) largest = std::max(largest, v.tolerance);
+        }
+    }
+    return largest;
+}
+
+Preamble writePreamble(StepWriter& w, double uncertaintyMillimetres) {
     Preamble pre;
     // Geometric representation context (SI millimetres) shared by all solids.
     const int lengthUnit = w.add("(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.))");
     const int angleUnit = w.add("(NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.))");
     const int solidAngleUnit = w.add("(NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT())");
+    const std::string measure = uncertaintyMillimetres > kWrittenUncertainty
+                                    ? fmtReal(uncertaintyMillimetres)
+                                    : std::string("1.E-7");
     const int uncertainty =
-        w.add("UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-7),#" + std::to_string(lengthUnit) +
-              ",'distance_accuracy_value','confusion accuracy')");
+        w.add("UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(" + measure + "),#" +
+              std::to_string(lengthUnit) + ",'distance_accuracy_value','confusion accuracy')");
     pre.context = w.add(
         "(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#" +
         std::to_string(uncertainty) + ")) GLOBAL_UNIT_ASSIGNED_CONTEXT((#" +
@@ -3672,7 +5189,7 @@ std::string StepFormat::toString(const std::vector<const topo::Solid*>& solids,
         report->faceted.clear();
         report->leftOut.clear();
     }
-    const Preamble pre = writePreamble(w);
+    const Preamble pre = writePreamble(w, uncertaintyOf(solids));
 
     int index = 0;
     for (const topo::Solid* solid : solids) {
@@ -3704,7 +5221,11 @@ std::string StepFormat::assemblyToString(const std::string& name,
     const auto leaveOut = [report](const std::string& why) {
         if (report != nullptr) report->leftOut.push_back(why);
     };
-    const Preamble pre = writePreamble(w);
+    std::vector<const topo::Solid*> bodies;
+    for (const StepWritePart& part : parts) {
+        bodies.insert(bodies.end(), part.bodies.begin(), part.bodies.end());
+    }
+    const Preamble pre = writePreamble(w, uncertaintyOf(bodies));
     const auto direction = [&w](const Vec3& d) {
         return w.add("DIRECTION('',(" + fmtReal(d.x) + "," + fmtReal(d.y) + "," + fmtReal(d.z) +
                      "))");

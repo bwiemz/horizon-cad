@@ -2,10 +2,12 @@
 
 #include <array>
 #include <cmath>
-#include <stdexcept>
-#include <unordered_set>
+#include <exception>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "ExactMass.h"
 #include "MassIntegrals.h"
 #include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/Faceting.h"
@@ -29,61 +31,14 @@ using Triangle = std::array<Vec3, 3>;
 // individually (the old interior-reference heuristic) only worked for
 // star-shaped solids and reported non-convex solids — like a sheet-metal
 // L-fold — at a fraction of their true volume. Curved faces are approximated
-// by their loop polygon (the follow-up for smooth-surface accuracy is per-face
-// NURBS integration). A face with holes is triangulated as a whole, its holes
-// bridged in: fans of its loops would give the right volume but count each
-// hole's area into the surface area instead of out of it.
+// by their loop polygon. A solid with exact faces is integrated on them
+// instead (ExactMass.h). A face with holes is triangulated as a whole, its
+// holes bridged in: fans of its loops would give the right volume but count
+// each hole's area into the surface area instead of out of it.
 std::vector<Triangle> boundaryTriangles(const topo::Solid& solid) {
     std::vector<Triangle> tris;
-    // A face with an exact surface is read where every consumer reads faces: as the mesh
-    // BoundaryMesh gives, wound outward. One that cannot be meshed leaves no volume to measure
-    // (the props are invalid), never a hole in a volume that reads as smaller.
-    std::unordered_set<const topo::Face*> exactFaces;
-    if (topo::hasExactFaces(solid)) {
-        try {
-            for (const auto& poly : BoundaryMesh::extractFacePolygons(solid)) {
-                if (poly.exactSurface) {
-                    tris.push_back({poly.points[0], poly.points[1], poly.points[2]});
-                }
-            }
-        } catch (const std::runtime_error&) {
-            return {};
-        }
-        for (const auto& face : solid.faces()) {
-            if (face.alive && face.exactSurface) exactFaces.insert(&face);
-        }
-    }
     for (const auto& face : solid.faces()) {
-        if (exactFaces.count(&face) != 0) continue;
-        const topo::Wire* w = face.outerLoop;
-        if (!w || !w->halfEdge) continue;
-
-        std::vector<Vec3> loop;
-        const topo::HalfEdge* start = w->halfEdge;
-        const topo::HalfEdge* cur = start;
-        do {
-            if (cur && cur->origin) loop.push_back(cur->origin->point);
-            cur = cur ? cur->next : nullptr;
-        } while (cur && cur != start && loop.size() < 100000);
-
-        if (!face.innerLoops.empty() && loop.size() >= 3) {
-            std::vector<std::vector<Vec3>> holes;
-            for (const topo::Wire* inner : face.innerLoops) {
-                if (inner) holes.push_back(BoundaryMesh::loopPoints(*inner, true));
-            }
-            const auto keyhole = BoundaryMesh::keyholePolygon(loop, std::move(holes));
-            for (const auto& tri : BoundaryMesh::triangulatePolygon(keyhole)) tris.push_back(tri);
-            continue;
-        }
-
-        // A fan from the first corner overlaps itself on a non-convex face
-        // (a U-shaped cap counted 11 for 7), and the surface area adds
-        // triangle areas unsigned: triangulate the face properly instead.
-        if (loop.size() == 3) {
-            tris.push_back({loop[0], loop[1], loop[2]});
-        } else if (loop.size() > 3) {
-            for (const auto& tri : BoundaryMesh::triangulatePolygon(loop)) tris.push_back(tri);
-        }
+        for (const Triangle& tri : detail::faceTriangles(face)) tris.push_back(tri);
     }
     return tris;
 }
@@ -106,6 +61,40 @@ void subexpressions(double w0, double w1, double w2, double& f1, double& f2, dou
 }  // namespace
 
 namespace detail {
+
+std::vector<Triangle> faceTriangles(const topo::Face& face) {
+    std::vector<Triangle> tris;
+    const topo::Wire* w = face.outerLoop;
+    if (!w || !w->halfEdge) return tris;
+
+    std::vector<Vec3> loop;
+    const topo::HalfEdge* start = w->halfEdge;
+    const topo::HalfEdge* cur = start;
+    do {
+        if (cur && cur->origin) loop.push_back(cur->origin->point);
+        cur = cur ? cur->next : nullptr;
+    } while (cur && cur != start && loop.size() < 100000);
+
+    if (!face.innerLoops.empty() && loop.size() >= 3) {
+        std::vector<std::vector<Vec3>> holes;
+        for (const topo::Wire* inner : face.innerLoops) {
+            if (inner) holes.push_back(BoundaryMesh::loopPoints(*inner, true));
+        }
+        const auto keyhole = BoundaryMesh::keyholePolygon(loop, std::move(holes));
+        for (const auto& tri : BoundaryMesh::triangulatePolygon(keyhole)) tris.push_back(tri);
+        return tris;
+    }
+
+    // A fan from the first corner overlaps itself on a non-convex face
+    // (a U-shaped cap counted 11 for 7), and the surface area adds
+    // triangle areas unsigned: triangulate the face properly instead.
+    if (loop.size() == 3) {
+        tris.push_back({loop[0], loop[1], loop[2]});
+    } else if (loop.size() > 3) {
+        for (const auto& tri : BoundaryMesh::triangulatePolygon(loop)) tris.push_back(tri);
+    }
+    return tris;
+}
 
 void Measures::addVolume(const Vec3& p0, const Vec3& p1, const Vec3& p2) {
     const double a1 = p1.x - p0.x, b1 = p1.y - p0.y, c1 = p1.z - p0.z;
@@ -159,7 +148,7 @@ MassProperties finish(const Measures& measures, double density) {
     if (props.volume <= 0.0) return props;  // degenerate
 
     const Vec3 cm(intg[1] / props.volume, intg[2] / props.volume, intg[3] / props.volume);
-    props.centerOfMass = cm;
+    props.centerOfMass = measures.origin + cm;
 
     const double rho = props.density;
     const double ixx = rho * (intg[5] + intg[6] - props.volume * (cm.y * cm.y + cm.z * cm.z));
@@ -177,6 +166,17 @@ MassProperties finish(const Measures& measures, double density) {
     props.inertia.at(0, 2) = props.inertia.at(2, 0) = izx;
 
     props.mass = rho * props.volume;
+    // A part so large that its moments pass the largest double has no finite inertia to give.
+    bool finite = std::isfinite(props.volume) && std::isfinite(props.surfaceArea) &&
+                  std::isfinite(props.mass) && std::isfinite(cm.x) && std::isfinite(cm.y) &&
+                  std::isfinite(cm.z);
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) finite = finite && std::isfinite(props.inertia.at(i, j));
+    }
+    if (!finite) {
+        props.problem = "its mass properties are not finite";
+        return props;
+    }
     props.valid = true;
     return props;
 }
@@ -184,6 +184,7 @@ MassProperties finish(const Measures& measures, double density) {
 }  // namespace detail
 
 MassProperties detail::measureLoops(const topo::Solid& solid, const Material* material) {
+    if (topo::hasExactFaces(solid)) return measureExact(solid, material, nullptr).properties;
     const double density = material ? material->density : 1.0;
     std::vector<Triangle> tris = boundaryTriangles(solid);
     if (tris.size() < 4) {  // need a closed volume
@@ -201,14 +202,44 @@ MassProperties detail::measureLoops(const topo::Solid& solid, const Material* ma
 
 MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
                                                  const Material* material) {
-    // A solid as read, bounded by curves, is measured in facets: the corners
-    // of its loops alone (two on a cylinder's side) enclose nothing like it.
-    // Where it cannot be cut into facets, its corners are all there is.
-    if (!topo::hasExactFaces(solid) && describedByCurves(solid)) {
-        const auto faceted = facetCurved(solid);
-        if (faceted.solid) return detail::measureLoops(*faceted.solid, material);
+    try {
+        // A solid with exact faces is integrated on them (ExactMass.h), never meshed.
+        if (topo::hasExactFaces(solid)) {
+            return detail::measureExact(solid, material, nullptr).properties;
+        }
+        // A solid as read, bounded by curves, is measured in facets: the corners
+        // of its loops alone (two on a cylinder's side) enclose nothing like it.
+        // Where it cannot be cut into facets, its corners are all there is.
+        if (describedByCurves(solid)) {
+            const auto faceted = facetCurved(solid);
+            if (faceted.solid) return detail::measureLoops(*faceted.solid, material);
+        }
+        return detail::measureLoops(solid, material);
+    } catch (const std::exception& e) {
+        MassProperties props;
+        props.density = material ? material->density : 1.0;
+        props.problem = std::string("the solid could not be measured: ") + e.what();
+        return props;
+    } catch (...) {
+        MassProperties props;
+        props.density = material ? material->density : 1.0;
+        props.problem = "the solid could not be measured: an unknown fault";
+        return props;
     }
-    return detail::measureLoops(solid, material);
+}
+
+std::vector<ShellVolume> MassPropertiesCalculator::shellVolumes(const topo::Solid& solid,
+                                                                bool coarse, std::string* problem,
+                                                                const std::atomic<bool>* cancelled,
+                                                                const std::vector<bool>& which) {
+    detail::ShellVolumes measured = detail::measureShellVolumes(solid, coarse, cancelled, which);
+    if (problem != nullptr) *problem = std::move(measured.problem);
+    std::vector<ShellVolume> out;
+    out.reserve(measured.volumes.size());
+    for (std::size_t i = 0; i < measured.volumes.size() && i < measured.errors.size(); ++i) {
+        out.push_back({measured.volumes[i], measured.errors[i]});
+    }
+    return out;
 }
 
 }  // namespace hz::model

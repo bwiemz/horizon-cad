@@ -26,8 +26,8 @@ void putFloat(std::string& out, double value) {
 
 }  // namespace
 
-std::string StlExport::toBinary(const topo::Solid& solid, double tolerance) {
-    const geo::MeshData mesh = model::SolidTessellator::tessellate(solid, tolerance);
+std::string StlExport::toBinary(const topo::Solid& solid, double tolerance, std::string* problem) {
+    const geo::MeshData mesh = model::SolidTessellator::tessellate(solid, tolerance, problem);
     const size_t triangles = mesh.indices.size() / 3;
 
     std::string out;
@@ -64,7 +64,12 @@ std::string StlExport::toBinary(const topo::Solid& solid, double tolerance) {
 }
 
 bool StlExport::save(const std::string& path, const topo::Solid& solid, std::string* error) {
-    const std::string bytes = toBinary(solid);
+    std::string problem;
+    const std::string bytes = toBinary(solid, 0.1, &problem);
+    if (!problem.empty()) {
+        if (error) *error = "a face of the part could not be meshed: " + problem;
+        return false;
+    }
     if (bytes.size() <= 84) {
         if (error) *error = "the part has no surface to write";
         return false;

@@ -431,6 +431,10 @@ private:
     ai::DrawingMade makeDrawingForAssistant(const ai::DrawingRequest& request);
     void activateTabDocument();
     void rebuildScene() override;
+    /// The status line's note of why the part in front has no exact
+    /// counterpart where its imports would give it one (Document::exactNote),
+    /// shown while it has one.
+    void updateExactNote();
     void refreshAllPanels();
     void updateWindowTitle();
 
@@ -589,6 +593,7 @@ private:
     QLabel* m_statusSelection = nullptr;
     QLabel* m_statusTool = nullptr;
     QLabel* m_autosaveWarning = nullptr;
+    QLabel* m_exactNote = nullptr;
 };
 
 }  // namespace hz::ui

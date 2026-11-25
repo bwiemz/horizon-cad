@@ -11,10 +11,14 @@ namespace hz::io {
 class StlExport {
 public:
     /// The file's bytes. @p tolerance is the tessellation's chord tolerance.
-    static std::string toBinary(const topo::Solid& solid, double tolerance = 0.1);
+    /// An exact face that cannot be meshed is left out, and said in
+    /// @p problem when given (model::SolidTessellator::tessellate).
+    static std::string toBinary(const topo::Solid& solid, double tolerance = 0.1,
+                                std::string* problem = nullptr);
 
     /// Write the solid to @p path, atomically. False, with why in @p error,
-    /// when the solid has no triangles or the file cannot be written.
+    /// when the solid has no triangles, a face of it cannot be meshed, or the
+    /// file cannot be written.
     static bool save(const std::string& path, const topo::Solid& solid,
                      std::string* error = nullptr);
 };

@@ -460,7 +460,8 @@ void McpSession::registerDocumentTools() {
             if (extension == ".dxf") {
                 written = io::DxfFormat::save(path, *m_document, &error);
             } else {
-                const topo::Solid* solid = m_document->solid();
+                // As the part is shown and measured: its exact counterpart, where it has one.
+                const topo::Solid* solid = m_document->exactOrFacetedSolid();
                 if (solid == nullptr) {
                     return ai::ToolResult::error("The part has no solid to export.");
                 }
@@ -470,9 +471,8 @@ void McpSession::registerDocumentTools() {
                 } else if (extension == ".stl") {
                     written = io::StlExport::save(path, *solid, &error);
                 } else if (extension == ".glb") {
-                    written = io::GltfExport::saveSolid(path, *solid, render::Material{});
-                    if (!written)
-                        error = "the solid has no triangles, or the file cannot be written";
+                    written = io::GltfExport::saveSolid(path, *solid, render::Material{}, "solid",
+                                                        &error);
                 } else {
                     return ai::ToolResult::error(
                         "Export to .step, .stp, .stl, .glb or .dxf (given: " + extension + ").");

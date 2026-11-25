@@ -37,8 +37,12 @@ public:
     static bool save(const std::string& path, const std::vector<Item>& items);
 
     /// Convenience: tessellate @p solid and export it with @p material.
+    /// False, with why in @p error when given, where a face of it cannot be
+    /// meshed (model::SolidTessellator::tessellate), it has no triangles, or
+    /// the file cannot be written.
     static bool saveSolid(const std::string& path, const topo::Solid& solid,
-                          const render::Material& material, const std::string& name = "solid");
+                          const render::Material& material, const std::string& name = "solid",
+                          std::string* error = nullptr);
 };
 
 }  // namespace hz::io

@@ -387,8 +387,10 @@ void ExchangeCommands::finishDrawingImport(const QString& fileName, const QStrin
 }
 
 const topo::Solid* ExchangeCommands::solidToExport(const QString& format) {
+    // The part as it is shown and measured: its exact counterpart, where it
+    // has one, not the facets its features work on.
     const topo::Solid* solid =
-        m_host.currentAssembly() ? nullptr : m_host.currentDocument()->solid();
+        m_host.currentAssembly() ? nullptr : m_host.currentDocument()->exactOrFacetedSolid();
     if (!solid) {
         m_host.showStatus(tr("%1 export writes a part's body; this document has none").arg(format));
     }
@@ -521,11 +523,11 @@ void ExchangeCommands::onExportGltf() {
     if (fileName.isEmpty()) return;
     const QString title = m_host.currentTitle();
     const std::string name = title.isEmpty() ? std::string("Part") : title.toStdString();
+    std::string error;
     if (!io::GltfExport::saveSolid(
             fileName.toStdString(), *solid,
-            render::Material{math::Vec3{0.6, 0.75, 0.85}, 0.15f, 0.5f, 32.0f}, name)) {
-        m_host.reportFileError(tr("Could not export"), fileName.toStdString(),
-                               "the file could not be written");
+            render::Material{math::Vec3{0.6, 0.75, 0.85}, 0.15f, 0.5f, 32.0f}, name, &error)) {
+        m_host.reportFileError(tr("Could not export"), fileName.toStdString(), error);
         return;
     }
     m_host.setPrompt(tr("Exported %1.").arg(QFileInfo(fileName).fileName()));

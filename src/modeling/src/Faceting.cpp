@@ -81,6 +81,41 @@ bool isFlat(const geo::NurbsSurface& s) {
     return true;
 }
 
+/// How far a polyline through @p points turns: the angles between its
+/// successive chords. A point nearer the last one kept than @p shortest is
+/// passed over: a chord that short has a direction of rounding alone. Sampled
+/// densely across a span of a few last bits (a seam straight up a band in
+/// (u, v), its ends at one u but for rounding), such chords turned hundreds
+/// of radians, and the span was cut into hundreds of pieces. Where every
+/// chord is at least @p shortest, every point is kept and the turn is as it
+/// always was, to the last bit.
+double turningOf(const std::vector<Vec3>& points, double shortest) {
+    std::vector<Vec3> kept;
+    kept.reserve(points.size());
+    for (const Vec3& p : points) {
+        if (kept.empty() || (p - kept.back()).length() >= shortest) kept.push_back(p);
+    }
+    double turn = 0.0;
+    for (std::size_t i = 1; i + 1 < kept.size(); ++i) {
+        const Vec3 a = kept[i] - kept[i - 1];
+        const Vec3 b = kept[i + 1] - kept[i];
+        const double la = a.length();
+        const double lb = b.length();
+        if (la > 0.0 && lb > 0.0) turn += std::acos(std::clamp(a.dot(b) / (la * lb), -1.0, 1.0));
+    }
+    return turn;
+}
+
+/// The length below which a chord between points of @p points has a direction
+/// of rounding alone: a thousand times the last bit of their largest coordinate.
+double roundingChord(const std::vector<Vec3>& points) {
+    double largest = 0.0;
+    for (const Vec3& p : points) {
+        largest = std::max({largest, std::abs(p.x), std::abs(p.y), std::abs(p.z)});
+    }
+    return 1024.0 * std::numeric_limits<double>::epsilon() * largest;
+}
+
 /// The points of an edge from its half-edge's origin to its end: along its
 /// curve, equal lengths apart, as many as keep each chord within
 /// @p maxAngle of turning, and at least @p least chords of a curve that
@@ -106,20 +141,11 @@ std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle, int least = 1) {
         std::reverse(ts.begin(), ts.end());
         std::reverse(dense.begin(), dense.end());
     }
-    double turn = 0.0;
     std::vector<double> length(dense.size(), 0.0);
     for (size_t i = 1; i < dense.size(); ++i) {
         length[i] = length[i - 1] + (dense[i] - dense[i - 1]).length();
-        if (i + 1 < dense.size()) {
-            const Vec3 a = dense[i] - dense[i - 1];
-            const Vec3 b = dense[i + 1] - dense[i];
-            const double la = a.length();
-            const double lb = b.length();
-            if (la > 0.0 && lb > 0.0) {
-                turn += std::acos(std::clamp(a.dot(b) / (la * lb), -1.0, 1.0));
-            }
-        }
     }
+    const double turn = turningOf(dense, roundingChord(dense));
     const int n =
         std::max(turn > 1e-9 ? least : 1, static_cast<int>(std::ceil(turn / maxAngle - 1e-9)));
     std::vector<Vec3> out{p};
@@ -432,7 +458,10 @@ std::optional<Rectangle> faceInUV(const std::vector<std::vector<Vec3>>& edges, S
 /// How many pieces keep the surface's iso-curve across a rectangle from
 /// corner @p from to corner @p to, @p dir running, within @p maxAngle of
 /// turning each: the curve through the middle of the other direction (at
-/// its edge a sphere's is a pole, all rounding).
+/// its edge a sphere's is a pole, all rounding). Its turning is measured on
+/// chords no shorter than sixteen times the precision points are found on
+/// the surface to (turningOf), or than rounding: a span shorter than that, a
+/// straight seam's few last bits of u, is one piece.
 size_t piecesAcross(const SurfaceMap& map, UV from, UV to, int dir, double maxAngle) {
     constexpr int kDense = 256;
     std::vector<Vec3> dense;
@@ -442,14 +471,7 @@ size_t piecesAcross(const SurfaceMap& map, UV from, UV to, int dir, double maxAn
         coord(uv, 1 - dir) = 0.5 * (coord(from, 1 - dir) + coord(to, 1 - dir));
         dense.push_back(map.at(uv));
     }
-    double turn = 0.0;
-    for (size_t i = 1; i + 1 < dense.size(); ++i) {
-        const Vec3 a = dense[i] - dense[i - 1];
-        const Vec3 b = dense[i + 1] - dense[i];
-        const double la = a.length();
-        const double lb = b.length();
-        if (la > 0.0 && lb > 0.0) turn += std::acos(std::clamp(a.dot(b) / (la * lb), -1.0, 1.0));
-    }
+    const double turn = turningOf(dense, std::max(16.0 * map.precision(), roundingChord(dense)));
     return static_cast<size_t>(std::max(1, static_cast<int>(std::ceil(turn / maxAngle - 1e-9))));
 }
 

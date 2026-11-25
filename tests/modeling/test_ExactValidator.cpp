@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <set>
 #include <string>
@@ -19,6 +20,7 @@
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/TrimmedFaceMesher.h"
 #include "horizon/topology/ExactValidator.h"
+#include "horizon/topology/LoopUnwrap.h"
 
 using namespace hz;
 using hz::math::Vec3;
@@ -46,6 +48,34 @@ void expectKinds(const topo::Solid& s, ExactIssueKind expected,
 }
 
 }  // namespace
+
+// The loop measures the validator judges by are one definition each (LoopUnwrap.h), which the
+// STEP reader's face sense and model::insertSeams measure through too: a loop's signed area, its
+// jumps included, and a half-edge's join to the next, whether linked to it or only named.
+TEST(ExactValidator, ItsLoopMeasuresAreShared) {
+    topo::LoopPolygon square;
+    const math::Vec2 corners[4] = {{1.0, 1.0}, {3.0, 1.0}, {3.0, 3.0}, {1.0, 3.0}};
+    for (int i = 0; i < 4; ++i) {
+        square.push_back({nullptr, 0.0, 1.0, {}, corners[i], corners[(i + 1) % 4]});
+    }
+    EXPECT_EQ(topo::signedArea(square), 4.0);
+    // Chords that do not join: the jump from one's end to the next one's start counts.
+    topo::LoopPolygon gapped = {{nullptr, 0.0, 1.0, {}, {0.0, 0.0}, {2.0, 0.0}},
+                                {nullptr, 0.0, 1.0, {}, {2.0, 2.0}, {0.0, 2.0}}};
+    EXPECT_EQ(topo::signedArea(gapped), 4.0);
+    std::reverse(square.begin(), square.end());
+    for (auto& seg : square) std::swap(seg.a, seg.b);
+    EXPECT_EQ(topo::signedArea(square), -4.0);
+
+    const auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({}, {0, 0, 1}), 5.0, 10.0);
+    for (const auto& f : cyl->faces()) {
+        const topo::HalfEdge* h = f.outerLoop->halfEdge;
+        do {
+            EXPECT_EQ(topo::joinAllowance(*h, kTol), topo::joinAllowance(*h, *h->next, kTol));
+            h = h->next;
+        } while (h != f.outerLoop->halfEdge);
+    }
+}
 
 TEST(ExactValidator, TheExactPrimitivesAtAnyPlacementAreClean) {
     for (const Vec3& at : {Vec3{0, 0, 0}, Vec3{-7, 3, 11}, Vec3{100, -50, 20}}) {
@@ -725,4 +755,348 @@ TEST(ExactValidator, AHoleInsideAnotherHoleIsReportedAsTheMesherReportsIt) {
     const auto meshes = model::TrimmedFaceMesher::meshSolid(apart.solid, {});
     ASSERT_EQ(meshes.size(), 1u);
     EXPECT_TRUE(meshes[0].problem.empty()) << meshes[0].problem;
+}
+
+TEST(ExactValidator, AnEdgeOverMoreThanOnePeriodIsRangeTooLong) {
+    auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    topo::Edge* rim = nullptr;
+    for (auto& e : cyl->edges()) {
+        if (dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get())) {
+            rim = &e;
+            break;
+        }
+    }
+    ASSERT_NE(rim, nullptr);
+    rim->curveEnd += math::kTwoPi;
+    int count = 0;
+    for (const auto& i : topo::validateExact(*cyl, kTol)) {
+        if (i.kind == ExactIssueKind::RangeTooLong && i.edge == rim) ++count;
+    }
+    EXPECT_EQ(count, 1);
+}
+
+TEST(ExactValidator, ALoopWiderThanAPeriodIsRangeTooLong) {
+    auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    topo::Face* side = nullptr;
+    for (auto& f : cyl->faces()) {
+        if (f.topoId.tag() == "cylinder/side") side = &f;
+    }
+    ASSERT_NE(side, nullptr);
+    const double wide = 3.0 * math::kPi;
+    const double h = 10.0;
+    // The side's four pcurves, in loop order, rewritten to span u over 3 pi and still join.
+    const math::Vec2 pts[4][2] = {
+        {{0, 0}, {wide, 0}}, {{wide, 0}, {wide, h}}, {{wide, h}, {0, h}}, {{0, h}, {0, 0}}};
+    topo::HalfEdge* he = side->outerLoop->halfEdge;
+    for (const auto& seg : pts) {
+        he->pcurve = std::make_shared<geo::Line2D>(seg[0], seg[1]);
+        he->pcurveStart = 0.0;
+        he->pcurveEnd = 1.0;
+        he = he->next;
+    }
+    int count = 0;
+    for (const auto& i : topo::validateExact(*cyl, kTol)) {
+        if (i.kind == ExactIssueKind::RangeTooLong && i.face == side) ++count;
+    }
+    EXPECT_EQ(count, 1);
+}
+
+namespace {
+
+/// The block with one of its straight edges given a straight B-spline of degree 1 for its curve
+/// (as Horizon writes every edge), moved @p off across the edge, perpendicular to both of its
+/// faces' normals... along the bisector of its two faces, so that both pcurves stray alike.
+struct StraightSplineEdge {
+    std::unique_ptr<topo::Solid> block = model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
+    topo::Edge* edge = nullptr;
+    explicit StraightSplineEdge(double off) {
+        for (auto& e : block->edges()) {
+            const Vec3 a = e.exactCurve->evaluate(e.curveStart);
+            const Vec3 b = e.exactCurve->evaluate(e.curveEnd);
+            // The edge along z at x = 2, y = 3: its faces face +x and +y.
+            if (std::abs(a.x - 2) > 1e-12 || std::abs(a.y - 3) > 1e-12 ||
+                std::abs(b.x - 2) > 1e-12 || std::abs(b.y - 3) > 1e-12) {
+                continue;
+            }
+            const Vec3 shift = Vec3{1, 1, 0}.normalized() * off;
+            e.exactCurve = std::make_shared<geo::NurbsCurve>(
+                std::vector<Vec3>{a + shift, b + shift}, std::vector<double>{1.0, 1.0},
+                std::vector<double>{0, 0, 1, 1}, 1);
+            e.curveStart = 0.0;
+            e.curveEnd = 1.0;
+            edge = &e;
+            break;
+        }
+    }
+};
+
+}  // namespace
+
+// Pins for the validator's pruning (Ruling 20): a straight B-spline edge whose pcurves stray just
+// past its tolerance is reported, with the distance it strays, and one just within is clean.
+TEST(ExactValidator, AStraightSplineEdgeJustOffItsPcurvesIsReportedWithHowFar) {
+    const double limit = kTol.linear;
+    StraightSplineEdge within(0.9 * limit);
+    ASSERT_NE(within.edge, nullptr);
+    EXPECT_TRUE(topo::validateExact(*within.block, kTol).empty());
+
+    StraightSplineEdge past(1.5 * limit);
+    ASSERT_NE(past.edge, nullptr);
+    const auto issues = topo::validateExact(*past.block, kTol);
+    ASSERT_EQ(issues.size(), 2u);
+    for (const auto& i : issues) {
+        EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve);
+        EXPECT_EQ(i.edge, past.edge);
+        EXPECT_EQ(i.detail, "pcurve strays 4.5e-05 from the edge's curve");
+    }
+}
+
+namespace {
+
+/// The most topo::pcurveGaps measures on either half-edge of @p e.
+double mostMeasured(const topo::Edge& e) {
+    double most = 0.0;
+    for (const topo::HalfEdge* h : {e.halfEdge, e.halfEdge->twin}) {
+        const topo::PcurveGaps gaps = topo::pcurveGaps(*h, kTol);
+        most = std::max({most, gaps.start, gaps.end, gaps.strays});
+    }
+    return most;
+}
+
+/// With @p e's tolerance @p measured, @p solid is clean; with it a last bit lower, its only issues
+/// are @p e's pcurves straying, each naming its half-edge, whose own measure is past the tolerance.
+void expectStraysOnlyPast(topo::Solid& solid, topo::Edge& e, double measured) {
+    e.tolerance = measured;
+    EXPECT_TRUE(topo::validateExact(solid, kTol).empty()) << "a tolerance of the measure";
+    e.tolerance = std::nextafter(measured, 0.0);
+    const auto issues = topo::validateExact(solid, kTol);
+    EXPECT_FALSE(issues.empty()) << "a tolerance a last bit below it";
+    for (const auto& i : issues) {
+        EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve) << i.detail;
+        EXPECT_EQ(i.edge, &e);
+        ASSERT_NE(i.halfEdge, nullptr) << i.detail;
+        EXPECT_EQ(i.halfEdge->edge, &e);
+        EXPECT_EQ(i.halfEdge->face, i.face);
+        EXPECT_GT(topo::pcurveGaps(*i.halfEdge, kTol).strays, e.tolerance);
+    }
+}
+
+}  // namespace
+
+// The STEP reader measures a pcurve the validator reports with topo::pcurveGaps, to tell a last
+// bit's rounding from a stray (Ruling 64), so it is what validateExact measures, to the last bit:
+// on a cylinder whose rim's circle is moved out from its side (each sample's nearest point on the
+// circle searched for) and on a straight B-spline edge moved off its faces (the fast path's
+// segment), a tolerance of the measure is clean, and one a last bit below it is reported as the
+// pcurves straying. Where the fast path accepts a pcurve as it stands, there is nothing to cover.
+TEST(ExactValidator, PcurveGapsIsWhatItMeasures) {
+    auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({3, -2, 7}, {0, 0, 1}), 5.0, 10.0);
+    topo::Edge* rim = nullptr;
+    for (auto& e : cyl->edges()) {
+        if (const auto* c = dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get())) {
+            e.exactCurve = std::make_shared<geo::CircleCurve>(c->frame(), c->radius() + 1e-3);
+            rim = &e;
+            break;
+        }
+    }
+    ASSERT_NE(rim, nullptr);
+    const double onTheRim = mostMeasured(*rim);
+    EXPECT_NEAR(onTheRim, 1e-3, 1e-12);
+    expectStraysOnlyPast(*cyl, *rim, onTheRim);
+
+    StraightSplineEdge off(1.5 * kTol.linear);
+    ASSERT_NE(off.edge, nullptr);
+    const double onTheSegment = mostMeasured(*off.edge);
+    EXPECT_NEAR(onTheSegment, 1.5 * kTol.linear, 1e-12);
+    expectStraysOnlyPast(*off.block, *off.edge, onTheSegment);
+
+    StraightSplineEdge within(0.5 * kTol.linear);
+    ASSERT_NE(within.edge, nullptr);
+    for (const topo::HalfEdge* h : {within.edge->halfEdge, within.edge->halfEdge->twin}) {
+        EXPECT_EQ(topo::pcurveGaps(*h, kTol).strays, 0.0);
+    }
+}
+
+namespace {
+
+/// A cylinder (radius 5, height 10) whose bottom rim's vertex is moved @p vertexOff out from its
+/// side and given a tolerance a hundredth of a unit in the last place short of that, and whose
+/// rim's circle is moved out so that it passes 1e-9 inside the vertex: every pcurve at the vertex
+/// ends past the vertex's tolerance by rounding, and the rim's two pcurves stray @p vertexOff -
+/// 1e-9 from its circle. The rim's tolerance is @p rimTolerance; the seam's is the resolution.
+struct RimOffItsVertex {
+    std::unique_ptr<topo::Solid> cyl =
+        model::exact::makeCylinder(geo::Frame::fromAxis({3, -2, 7}, {0, 0, 1}), 5.0, 10.0);
+    topo::Edge* rim = nullptr;
+    topo::Vertex* vertex = nullptr;
+    double strays = 0.0;
+    RimOffItsVertex(double vertexOff, double rimTolerance) {
+        for (auto& e : cyl->edges()) {
+            const auto* c = dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get());
+            if (c == nullptr || std::abs(c->frame().origin.z - 7.0) > 1e-12) continue;
+            rim = &e;
+            vertex = e.halfEdge->origin;
+            const Vec3 centre = c->frame().origin;
+            const double radius = c->radius();
+            vertex->point = centre + (vertex->point - centre) * ((radius + vertexOff) / radius);
+            vertex->tolerance = vertexOff - 1e-14;
+            strays = vertexOff - 1e-9;
+            e.exactCurve = std::make_shared<geo::CircleCurve>(c->frame(), radius + strays);
+            e.tolerance = rimTolerance;
+            break;
+        }
+    }
+};
+
+}  // namespace
+
+// Rounding is taken up all or nothing (Ruling 66). Every pcurve at the rim's vertex ends past the
+// vertex's tolerance by rounding, and the rim's pcurves stray 1e-3 from its circle while its own
+// tolerance is half that: a clear stray beside the shortfalls. Nothing is taken up, and the stray
+// is what is reported: the ends' shortfalls are bound by the vertex's tolerance, which is above
+// the rim's, and growing the rim's to cover them would have covered its stray too.
+TEST(ExactValidator, ARoundingShortfallBesideAStrayTakesUpNothing) {
+    RimOffItsVertex beside(1e-3, 0.5e-3);
+    ASSERT_NE(beside.rim, nullptr);
+    const auto issues = topo::validateExact(*beside.cyl, kTol);
+    std::set<ExactIssueKind> kinds;
+    for (const auto& i : issues) kinds.insert(i.kind);
+    EXPECT_EQ(kinds, (std::set<ExactIssueKind>{ExactIssueKind::PcurveOffCurve,
+                                               ExactIssueKind::PcurveOffVertex}));
+    const topo::RoundingTakeUp takeUp = topo::roundingShortfalls(*beside.cyl, issues, kTol);
+    ASSERT_NE(takeUp.beyond, nullptr);
+    EXPECT_EQ(takeUp.beyond->kind, ExactIssueKind::PcurveOffCurve);
+    EXPECT_EQ(takeUp.beyond->edge, beside.rim);
+    EXPECT_EQ(takeUp.beyond->detail, "pcurve strays 0.001 from the edge's curve");
+    EXPECT_TRUE(takeUp.shortfalls.empty());
+}
+
+// With the stray gone (the rim's tolerance its strays less a hundredth of a unit in the last
+// place), every issue is a rounding shortfall, each of the tolerance its check was bound by: the
+// rim's for its strays, the vertex's for the ends there, the larger. Grown to what the validator
+// measured, the solid is clean, and the rim's tolerance has grown by rounding alone.
+TEST(ExactValidator, RoundingShortfallsAloneAreEachTakenUpWhereTheyAreBound) {
+    RimOffItsVertex alone(1e-3, 1e-3 - 1e-9 - 1e-14);
+    ASSERT_NE(alone.rim, nullptr);
+    const double rimBefore = alone.rim->tolerance;
+    const auto issues = topo::validateExact(*alone.cyl, kTol);
+    ASSERT_FALSE(issues.empty());
+    const topo::RoundingTakeUp takeUp = topo::roundingShortfalls(*alone.cyl, issues, kTol);
+    ASSERT_EQ(takeUp.beyond, nullptr) << (takeUp.beyond ? takeUp.beyond->detail : "");
+    ASSERT_FALSE(takeUp.shortfalls.empty());
+    for (const topo::RoundingShortfall& s : takeUp.shortfalls) {
+        if (s.issue->kind == ExactIssueKind::PcurveOffCurve) {
+            EXPECT_EQ(s.tolerance, &alone.rim->tolerance);
+        } else {
+            EXPECT_EQ(s.tolerance, &alone.vertex->tolerance) << s.issue->detail;
+        }
+        *s.tolerance = std::max(*s.tolerance, s.measured);
+    }
+    EXPECT_TRUE(topo::validateExact(*alone.cyl, kTol).empty());
+    EXPECT_LE(alone.rim->tolerance - rimBefore, 1e-12);
+}
+
+// The rounding allowed is that of the magnitudes a measure is computed from: the same rim on a
+// cylinder placed a million along its own axis is allowed a million times the rounding.
+TEST(ExactValidator, RoundingIsOfTheMagnitudesAMeasureIsComputedFrom) {
+    const auto near =
+        model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    const topo::HalfEdge* h = nullptr;
+    for (const auto& f : near->faces()) {
+        if (f.exactSurface->kind() == geo::SurfaceKind::Cylinder) h = f.outerLoop->halfEdge;
+    }
+    ASSERT_NE(h, nullptr);
+    const double here = topo::pcurveRounding(*near, *h);
+    EXPECT_GT(here, 0.0);
+    EXPECT_LT(here, 1e-12);
+
+    auto far = model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    for (auto& f : far->faces()) {
+        if (f.exactSurface->kind() != geo::SurfaceKind::Cylinder) continue;
+        // The same surface, placed a million down its axis: v runs a million up it.
+        f.exactSurface =
+            std::make_shared<geo::Cylinder>(geo::Frame::fromAxis({0, 0, -1e6}, {0, 0, 1}), 1.0);
+        h = f.outerLoop->halfEdge;
+    }
+    for (auto& e : far->edges()) {
+        for (topo::HalfEdge* he : {e.halfEdge, e.halfEdge->twin}) {
+            if (he->face->exactSurface->kind() != geo::SurfaceKind::Cylinder) continue;
+            const auto* line = dynamic_cast<const geo::Line2D*>(he->pcurve.get());
+            ASSERT_NE(line, nullptr);
+            he->pcurve = std::make_shared<geo::Line2D>(line->start() + math::Vec2{0, 1e6},
+                                                       line->end() + math::Vec2{0, 1e6});
+        }
+    }
+    EXPECT_TRUE(topo::validateExact(*far, kTol).empty()) << "the same cylinder";
+    EXPECT_GT(topo::pcurveRounding(*far, *h), 1e5 * here);
+}
+
+// A straight B-spline edge (two points, the validator's straight segment) one of whose pcurves
+// runs there and back and there again in (u, v): every point of it lies on the segment, so only
+// the order test can tell, and it is reported as running against the curve, as it was.
+TEST(ExactValidator, APcurveRunningBackAlongAStraightSplineEdgeIsReported) {
+    StraightSplineEdge edge(0.0);
+    ASSERT_NE(edge.edge, nullptr);
+    ASSERT_EQ(static_cast<const geo::NurbsCurve&>(*edge.edge->exactCurve).controlPointCount(), 2);
+    EXPECT_TRUE(topo::validateExact(*edge.block, kTol).empty());
+    topo::HalfEdge* h = edge.edge->halfEdge;
+    const math::Vec2 a = h->pcurve->evaluate(h->pcurveStart);
+    const math::Vec2 b = h->pcurve->evaluate(h->pcurveEnd);
+    h->pcurve = std::make_shared<geo::Nurbs2D>(
+        std::vector<math::Vec2>{a, b, a, b}, std::vector<double>{1, 1, 1, 1},
+        std::vector<double>{0, 0, 1.0 / 3, 2.0 / 3, 1, 1}, 1);
+    h->pcurveStart = 0.0;
+    h->pcurveEnd = 1.0;
+    const auto issues = topo::validateExact(*edge.block, kTol);
+    ASSERT_EQ(issues.size(), 1u);
+    EXPECT_EQ(issues[0].kind, ExactIssueKind::PcurveOffCurve);
+    EXPECT_EQ(issues[0].edge, edge.edge);
+    EXPECT_EQ(issues[0].face, h->face);
+    EXPECT_EQ(issues[0].detail,
+              "pcurve runs against, or winds differently round, the edge's curve");
+}
+
+// Holes whose boxes overlap without the holes meeting keep the face clean, and holes that do
+// meet, or lie one inside the other, are reported as before, among many: what the validator
+// prunes is only what cannot cross or contain.
+TEST(ExactValidator, HolesWhoseBoxesOverlapKeepTheirVerdicts) {
+    // Diagonal neighbours: boxes overlap in [-0.6, 0.6]^2, the circles are 0.46 apart.
+    CircleWithHoles near(10.0, {{{-2, -2}, 2.6}, {{2, 2}, 2.6}});
+    EXPECT_TRUE(topo::validateExact(near.solid, kTol).empty());
+    CircleWithHoles meeting(10.0, {{{-1.5, 0}, 2.0}, {{1.5, 0}, 2.0}});
+    const auto crossing = topo::validateExact(meeting.solid, kTol);
+    ASSERT_EQ(crossing.size(), 1u);
+    EXPECT_EQ(crossing[0].kind, ExactIssueKind::LoopsCross);
+    EXPECT_EQ(crossing[0].detail, "two loops of the face cross");
+    EXPECT_EQ(crossing[0].edge, meeting.solid.faces()[0].innerLoops[1]->halfEdge->edge);
+
+    // A grid of 25 holes 3 apart, clean; then the middle one moved onto its neighbour (it meets
+    // that one only), and a small one added inside the middle one.
+    std::vector<CircleWithHoles::Hole> grid;
+    for (int i = 0; i < 5; ++i) {
+        for (int j = 0; j < 5; ++j) grid.push_back({{-6.0 + 3.0 * i, -6.0 + 3.0 * j}, 1.2});
+    }
+    CircleWithHoles many(20.0, grid);
+    EXPECT_TRUE(topo::validateExact(many.solid, kTol).empty());
+    auto touching = grid;
+    touching[12].centre.x += 1.0;
+    CircleWithHoles crowded(20.0, touching);
+    const auto met = topo::validateExact(crowded.solid, kTol);
+    ASSERT_EQ(met.size(), 1u);
+    EXPECT_EQ(met[0].kind, ExactIssueKind::LoopsCross);
+    EXPECT_EQ(met[0].edge, crowded.solid.faces()[0].innerLoops[17]->halfEdge->edge);
+    auto nested = grid;
+    nested.push_back({{0.0, 0.0}, 0.5});
+    CircleWithHoles inside(20.0, nested);
+    const auto inner = topo::validateExact(inside.solid, kTol);
+    ASSERT_EQ(inner.size(), 1u);
+    EXPECT_EQ(inner[0].kind, ExactIssueKind::HoleInsideHole);
+    EXPECT_EQ(inner[0].detail, "inner loops 12 and 25 lie one inside the other");
+    // A hole moved out past the outer loop is outside it.
+    auto out = grid;
+    out[0].centre = {30.0, 0.0};
+    CircleWithHoles outside(20.0, out);
+    const auto beyond = topo::validateExact(outside.solid, kTol);
+    ASSERT_EQ(beyond.size(), 1u);
+    EXPECT_EQ(beyond[0].kind, ExactIssueKind::HoleOutsideOuterLoop);
 }

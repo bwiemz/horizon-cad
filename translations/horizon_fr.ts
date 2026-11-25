@@ -2661,7 +2661,7 @@ Les détails figurent dans le journal :
 <context>
     <name>hz::ui::DwgImport</name>
     <message>
-        <location filename="../src/ui/src/DwgImport.cpp" line="+72"/>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+79"/>
         <source>there was not memory enough to read it</source>
         <translation type="unfinished">la mémoire ne suffisait pas pour le lire</translation>
     </message>
@@ -2711,7 +2711,7 @@ Les détails figurent dans le journal :
         <translation type="unfinished">le fichier n&apos;a pas pu être lu (vérifiez ses autorisations)</translation>
     </message>
     <message>
-        <location line="+19"/>
+        <location line="+36"/>
         <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
         <translation type="unfinished">dwg2dxf de LibreDWG (%1) n&apos;a pas pu être lancé : %2</translation>
     </message>
@@ -2729,12 +2729,12 @@ Les détails figurent dans le journal :
         </translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+9"/>
         <source>LibreDWG stopped while reading it: the file may be damaged, or hold something LibreDWG cannot read yet</source>
         <translation type="unfinished">LibreDWG s&apos;est arrêté en le lisant : le fichier est peut-être endommagé, ou contient quelque chose que LibreDWG ne sait pas encore lire</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+24"/>
         <source>LibreDWG read it, but wrote nothing of it</source>
         <translation type="unfinished">LibreDWG l&apos;a lu, mais n&apos;en a rien écrit</translation>
     </message>
@@ -2899,7 +2899,7 @@ Les détails figurent dans le journal :
         </translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+10"/>
         <source>%1 export writes a part&apos;s body; this document has none</source>
         <translation type="unfinished">L&apos;export %1 écrit le corps d&apos;une pièce ; ce document n&apos;en a pas</translation>
     </message>
@@ -2933,8 +2933,8 @@ Les détails figurent dans le journal :
         <location line="-18"/>
         <location line="+28"/>
         <location line="+52"/>
-        <location line="+17"/>
         <location line="+18"/>
+        <location line="+17"/>
         <location line="+34"/>
         <location line="+134"/>
         <source>Could not export</source>
@@ -3548,7 +3548,7 @@ commencer à construire votre pièce.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+458"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+467"/>
         <source>&amp;File</source>
         <translation>&amp;Fichier</translation>
     </message>
@@ -3584,12 +3584,12 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">une face courbe de %1 facettes, autour de %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-286"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-294"/>
         <source>Close %1</source>
         <translation type="unfinished">Fermer %1</translation>
     </message>
     <message>
-        <location line="+900"/>
+        <location line="+908"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3811,12 +3811,12 @@ commencer à construire votre pièce.</translation>
         <location filename="../src/ui/src/MainWindow.cpp" line="-850"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1228"/>
+        <location line="+1236"/>
         <source>Drawing 1</source>
         <translation type="unfinished">Dessin 1</translation>
     </message>
     <message>
-        <location line="-1174"/>
+        <location line="-1182"/>
         <source>Command Palette…</source>
         <translation type="unfinished">Palette de commandes…</translation>
     </message>
@@ -4777,12 +4777,12 @@ commencer à construire votre pièce.</translation>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+211"/>
+        <location line="+219"/>
         <source>Select</source>
         <translation type="unfinished">Sélectionner</translation>
     </message>
     <message>
-        <location line="-208"/>
+        <location line="-216"/>
         <source>Fit All</source>
         <translation type="unfinished">Tout afficher</translation>
     </message>
@@ -4861,6 +4861,7 @@ commencer à construire votre pièce.</translation>
     <message>
         <location line="+3"/>
         <location line="+9"/>
+        <location line="+0"/>
         <location line="+13"/>
         <location line="+66"/>
         <source>Modify</source>
@@ -4981,7 +4982,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Développé</translation>
     </message>
     <message>
-        <location line="+1040"/>
+        <location line="+1068"/>
         <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">Tous les fichiers pris en charge (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Dessins Horizon CAD (*.hcad);;Pièces Horizon (*.hzpart);;Assemblages Horizon (*.hzasm);;Mises en plan Horizon (*.hzdwg);;Fichiers DXF (*.dxf);;Fichiers DWG (*.dwg);;Tous les fichiers (*)</translation>
     </message>
@@ -5004,7 +5005,35 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Rien de sélectionné pour zoomer : Tout afficher (F) montre tout</translation>
     </message>
     <message>
-        <location line="+679"/>
+        <location line="+614"/>
+        <source>The part&apos;s mass properties could not be worked out: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+60"/>
+        <source>Exact to %1 %2, as its file gives its edges (integrated on its faces as they were imported; its volume and area to within %3):
+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Exact (integrated on its faces as they were imported; its volume and area to within %1):
+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Exact (integrated on its faces as they were imported):
+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>exact</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+35"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -5050,12 +5079,17 @@ Its error is not estimated: it was measured once, not refined.</source>
 Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.</translation>
     </message>
     <message>
-        <location line="-2645"/>
+        <location line="-2715"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="-893"/>
+        <source>It could not be worked out: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+894"/>
         <source>Angular</source>
         <translation type="unfinished">Angulaire</translation>
     </message>
@@ -5273,19 +5307,19 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+7"/>
-        <location line="+89"/>
+        <location line="+97"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1063"/>
+        <location line="+1083"/>
         <location line="+502"/>
-        <location line="+936"/>
-        <location line="+601"/>
+        <location line="+977"/>
+        <location line="+600"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-3185"/>
+        <location line="-3253"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -5295,7 +5329,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Arrêter le travail en cours en arrière-plan</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+57"/>
         <source>%1 on</source>
         <translation type="unfinished">%1 activé</translation>
     </message>
@@ -5306,17 +5340,17 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2833"/>
+        <location line="+2893"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-2827"/>
+        <location line="-2887"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
     <message>
-        <location line="+377"/>
+        <location line="+397"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (récupéré)</translation>
     </message>
@@ -5892,7 +5926,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">X : %1  Y : %2</translation>
     </message>
     <message>
-        <location line="+763"/>
+        <location line="+803"/>
         <source>y:</source>
         <translation type="unfinished">y :</translation>
     </message>
@@ -5902,7 +5936,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">z :</translation>
     </message>
     <message>
-        <location line="-739"/>
+        <location line="-779"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">Un assemblage n&apos;a pas d&apos;esquisses : esquissez dans une pièce</translation>
     </message>
@@ -6148,12 +6182,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Matériau :</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+21"/>
         <source>The part&apos;s mass properties could not be worked out</source>
         <translation type="unfinished">Les propriétés de masse de la pièce n&apos;ont pas pu être calculées</translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+24"/>
         <source>Volume: %1 %2
 Surface area: %3 %4
 Centre of mass: %5 %6</source>
@@ -6194,7 +6228,7 @@ Masse : %1 g</translation>
 </translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+44"/>
         <source>
 
 Every face is flat, so the part is exactly as modelled.
@@ -6236,13 +6270,12 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">idéal</translation>
     </message>
     <message>
-        <location line="+10"/>
-        <location line="+54"/>
+        <location line="-3611"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">Le calcul n&apos;a pas abouti.</translation>
     </message>
     <message>
-        <location line="-50"/>
+        <location line="+3624"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">Les propriétés de masse sont déjà en cours de mesure</translation>
     </message>
@@ -6267,7 +6300,7 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Le calcul n&apos;a pas abouti : %1</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+9"/>
         <source>Section Plane</source>
         <translation type="unfinished">Plan de coupe</translation>
     </message>
@@ -6418,7 +6451,7 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-3201"/>
+        <location line="-3269"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>
@@ -6429,7 +6462,7 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Linéaire</translation>
     </message>
     <message>
-        <location line="+202"/>
+        <location line="+210"/>
         <source>1 selected</source>
         <translation>1 sélectionné</translation>
     </message>

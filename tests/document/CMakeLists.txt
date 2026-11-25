@@ -17,13 +17,21 @@ add_executable(hz_document_tests
     test_FeatureReasons.cpp
     test_ModelCommands.cpp
     test_EntityCommands.cpp
+    test_ExactCounterpart.cpp
 )
 
 target_link_libraries(hz_document_tests
     PRIVATE
         Horizon::Document
+        Horizon::FileIO
         GTest::gtest
         GTest::gtest_main
+)
+
+# The STEP text the reader's tests write, for parts of bodies imported as they are read.
+target_include_directories(hz_document_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/tests/fileio
 )
 
 include(GoogleTest)

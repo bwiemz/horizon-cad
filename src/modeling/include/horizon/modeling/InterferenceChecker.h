@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include "horizon/math/BoundingBox.h"
@@ -22,6 +23,11 @@ struct InterferencePair {
     /// (a degenerate, near-touching configuration); the pair is still
     /// reported, because the narrow phase found it, but @c volume is 0.
     bool volumeResolved = false;
+    /// Why the pair could not be worked out, when it could not: a face of
+    /// either that the read point cannot mesh, which face and why
+    /// (BoundaryMesh's reason). Such a pair is reported, to be looked at, not
+    /// passed as clear, with no volume. Empty otherwise.
+    std::string problem;
 };
 
 /// Detects overlapping solids in an assembly (world-space input).
@@ -42,8 +48,11 @@ public:
     static std::vector<InterferencePair> check(const std::vector<const topo::Solid*>& solids,
                                                const std::atomic<bool>* cancelled = nullptr);
 
-    /// True if two world-space solids share interior volume.
-    static bool solidsInterfere(const topo::Solid& a, const topo::Solid& b);
+    /// True if two world-space solids share interior volume. True too where
+    /// that cannot be worked out (a face the read point cannot mesh), with
+    /// why in @p problem: reported, to be looked at, not passed as clear.
+    static bool solidsInterfere(const topo::Solid& a, const topo::Solid& b,
+                                std::string* problem = nullptr);
 
     /// Axis-aligned bounds of a solid's vertices.
     static math::BoundingBox solidBounds(const topo::Solid& solid);

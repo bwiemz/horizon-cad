@@ -14,17 +14,22 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <ostream>
 #include <random>
 #include <set>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "StepAcceptance.h"
+#include "horizon/fileio/StepFormat.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 
 using hz::interop::CorpusEntry;
+using hz::interop::SolidReading;
 using hz::interop::StepSummary;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -101,6 +106,15 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
     const StepSummary s =
         hz::interop::summarize(corpusDir() / entry.file, work.path(), entry.unitIfUnnamed);
 
+    // Every solid read exact, or on the regression list (exact_failures) with why; and each
+    // exact solid's read-point mesh measuring its exact volume, within the mesh's allowance.
+    for (const std::string& problem : hz::interop::checkExactFailures(s, manifest)) {
+        ADD_FAILURE() << problem;
+    }
+    for (const std::string& problem : hz::interop::checkMeshAgainstMass(s)) {
+        ADD_FAILURE() << problem;
+    }
+
     // A known gap: it is still not read, and says why. Once it is, the
     // manifest says what it gives instead.
     if (manifest.contains("not_read")) {
@@ -109,6 +123,9 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
             << "it fails for another reason: " << s.error;
         return;
     }
+    // Not read because no solid of it is exact: the regression list, above, says whether that
+    // is known. There is nothing more to check until it reads.
+    if (!s.error.empty() && !s.solids.empty()) return;
     ASSERT_TRUE(s.error.empty()) << "not read: " << s.error;
 
     // As OpenCASCADE reads it. A check the manifest lists as a known gap
@@ -130,13 +147,17 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
         const auto want = expect[count].get<std::size_t>();
         check(count, got == want, std::to_string(got) + ", not " + std::to_string(want));
     }
+    // Its exact volume, integrated on its exact faces, OpenCASCADE's to a millionth unless the
+    // manifest says how near.
     if (expect.contains("volume")) {
         const double volume = expect["volume"].get<double>();
-        const double tolerance = expect.value("volume_tolerance", 1e-3);
+        const double tolerance = expect.value("volume_tolerance", 1e-6);
+        const double exact = hz::interop::exactVolume(s);
         std::ostringstream found;
-        found << s.idealVolume << " mm³ (faceted " << s.facetedVolume << "), not " << volume
-              << " within " << tolerance * 100 << "%";
-        check("volume", near(s.idealVolume, volume, tolerance), found.str());
+        found.precision(12);
+        found << exact << " mm³ exact, not " << volume << " within " << tolerance << " (relative "
+              << (exact - volume) / volume << ")";
+        check("volume", near(exact, volume, tolerance), found.str());
     }
     if (expect.contains("bounds")) {
         ASSERT_FALSE(s.bounds.empty);
@@ -190,9 +211,6 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
             << "it reopens now: take reopen out of known_gaps";
     } else {
         ASSERT_TRUE(s.reopenedVolume.has_value()) << "kept as a part: " << s.reopenError;
-        const double reopened = s.reopenedVolume.value_or(0.0);
-        EXPECT_TRUE(near(reopened, s.facetedVolume, 1e-9))
-            << "kept as a part and read back: " << reopened << " mm³, not " << s.facetedVolume;
     }
     if (s.parts > 0) {
         ASSERT_TRUE(s.keptComponents.has_value()) << "kept as an assembly: " << s.keepError;
@@ -201,9 +219,10 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
     }
     ASSERT_TRUE(s.reimportedBodies.has_value()) << "sent out as STEP: " << s.exportError;
     EXPECT_EQ(s.reimportedBodies.value_or(0), s.bodies) << "sent out as STEP and read back";
-    EXPECT_TRUE(near(s.reimportedVolume, s.facetedVolume, 2e-3))
-        << "sent out as STEP and read back: " << s.reimportedVolume << " mm³, not "
-        << s.facetedVolume;
+    // Kept as a part and sent out, each comes back exact (as the part is shown, measured and
+    // exported: its exact counterpart, never its faceted copy) and at the bodies' volume, to
+    // what that is known to.
+    for (const std::string& problem : hz::interop::checkReadBack(s)) ADD_FAILURE() << problem;
 }
 
 INSTANTIATE_TEST_SUITE_P(Corpus, StepCorpus, ::testing::ValuesIn(corpus()), testName);
@@ -228,6 +247,31 @@ TEST(StepCorpusManifest, EveryFileIsListedWithItsProvenance) {
                 EXPECT_FALSE(why.get<std::string>().empty()) << check << ": no why";
             }
         }
+        // A tolerance the manifest gives says why beside it.
+        if (entry.manifest.contains("expect")) {
+            for (const auto& [key, value] : entry.manifest["expect"].items()) {
+                const std::string suffix = "_tolerance";
+                if (key.size() <= suffix.size() ||
+                    key.compare(key.size() - suffix.size(), suffix.size(), suffix) != 0) {
+                    continue;
+                }
+                const json& expect = entry.manifest["expect"];
+                EXPECT_TRUE(expect.contains(key + "_why") && expect[key + "_why"].is_string() &&
+                            !expect[key + "_why"].get<std::string>().empty())
+                    << key << " " << value.dump() << " says no why (" << key << "_why)";
+            }
+        }
+        // The regression list: each solid with why, as the read names and says them.
+        if (entry.manifest.contains("exact_failures")) {
+            ASSERT_TRUE(entry.manifest["exact_failures"].is_array());
+            for (const json& failure : entry.manifest["exact_failures"]) {
+                for (const char* field : {"solid", "why"}) {
+                    EXPECT_TRUE(failure.contains(field) && failure[field].is_string() &&
+                                !failure[field].get<std::string>().empty())
+                        << "an exact failure with no " << field << ": " << failure.dump();
+                }
+            }
+        }
     }
     for (const auto& file : fs::directory_iterator(corpusDir())) {
         const std::string ext = file.path().extension().string();
@@ -236,4 +280,318 @@ TEST(StepCorpusManifest, EveryFileIsListedWithItsProvenance) {
                 << file.path().filename() << " is not in the manifest";
         }
     }
+}
+
+// --- The regression list and the read point's mesh, on summaries made here ---
+
+namespace {
+
+/// A solid read exact: @p volume mm³, its read-point mesh @p mesh mm³, allowed @p allowance.
+SolidReading exactSolid(const std::string& name, double volume, double mesh, double allowance) {
+    SolidReading solid;
+    solid.solid = name;
+    solid.exact = true;
+    solid.exactVolume = volume;
+    solid.meshVolume = mesh;
+    solid.meshAllowance = allowance;
+    return solid;
+}
+
+/// A solid the read left out for want of its exact form, with why.
+SolidReading leftOut(const std::string& name, const std::string& why) {
+    SolidReading solid;
+    solid.solid = name;
+    solid.exactProblem = why;
+    return solid;
+}
+
+/// A manifest entry whose regression list names each of @p failures (solid, why).
+json listing(const std::vector<std::pair<std::string, std::string>>& failures) {
+    json list = json::array();
+    for (const auto& [solid, why] : failures) list.push_back({{"solid", solid}, {"why", why}});
+    return {{"exact_failures", list}};
+}
+
+bool says(const std::string& text, const std::string& part) {
+    return text.find(part) != std::string::npos;
+}
+
+const std::string kTorus =
+    "its curve stands 3.09 off its face's surface, beyond the limit of 0.0508 (a thousandth of "
+    "the solid's size) (face #709, edge #426)";
+
+}  // namespace
+
+// A solid the list names that the read makes exact now is an error, as a known gap that closes
+// is: the list is to say so.
+TEST(StepCorpusRegressionList, AListedFailureThatReadsExactNowIsAnError) {
+    StepSummary s;
+    s.solids.push_back(exactSolid("solid 1", 3788.27, 3788.27, 1.0));
+    const auto problems =
+        hz::interop::checkExactFailures(s, listing({{"solid #12", "its curve stands 3.09 off"}}));
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_TRUE(says(problems[0], "solid #12")) << problems[0];
+    EXPECT_TRUE(says(problems[0], "take it out of exact_failures")) << problems[0];
+}
+
+TEST(StepCorpusRegressionList, AListedFailureThatStillFailsIsNoError) {
+    StepSummary s;
+    s.solids.push_back(leftOut("solid #12", kTorus));
+    EXPECT_TRUE(
+        hz::interop::checkExactFailures(s, listing({{"solid #12", "its curve stands 3.09 off"}}))
+            .empty());
+}
+
+// A solid left out that the list does not name is a regression, with why.
+TEST(StepCorpusRegressionList, AnUnlistedFailureIsAnError) {
+    StepSummary s;
+    s.solids.push_back(exactSolid("solid 1", 10.0, 10.0, 1.0));
+    s.solids.push_back(leftOut("solid 2", kTorus));
+    const auto problems = hz::interop::checkExactFailures(s, json::object());
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_TRUE(says(problems[0], "solid 2")) << problems[0];
+    EXPECT_TRUE(says(problems[0], kTorus)) << problems[0];
+}
+
+// The list holds why as well as which: the same solid failing another way is a change to look
+// at, the new why and the listed one both said.
+TEST(StepCorpusRegressionList, AListedFailureThatFailsForAnotherReasonIsAnError) {
+    StepSummary s;
+    s.solids.push_back(leftOut("solid #12", "its curve ends 0.374 from its vertex"));
+    const auto problems =
+        hz::interop::checkExactFailures(s, listing({{"solid #12", "its curve stands 3.09 off"}}));
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_TRUE(says(problems[0], "its curve ends 0.374 from its vertex")) << problems[0];
+    EXPECT_TRUE(says(problems[0], "its curve stands 3.09 off")) << problems[0];
+}
+
+// A solid read exact whose exact volume cannot be integrated is a failure of the exact path
+// too: on the list, or an error.
+TEST(StepCorpusRegressionList, AnExactSolidWhoseVolumeIsNotIntegratedIsAFailure) {
+    StepSummary s;
+    SolidReading solid = exactSolid("solid 3", 0.0, 0.0, 0.0);
+    solid.exactProblem = "its exact volume could not be integrated: face 7: no pcurve";
+    s.solids.push_back(solid);
+    EXPECT_EQ(hz::interop::checkExactFailures(s, json::object()).size(), 1u);
+    EXPECT_TRUE(
+        hz::interop::checkExactFailures(s, listing({{"solid 3", "face 7: no pcurve"}})).empty());
+}
+
+// Each exact solid's read-point mesh measures its exact volume to within its area times the
+// mesh's chord tolerance; nearer is not required, further is an error.
+TEST(StepCorpusMeshAgainstMass, AMeshWithinItsAllowanceAgrees) {
+    StepSummary s;
+    s.solids.push_back(exactSolid("solid 1", 1000.0, 1000.9, 1.0));
+    s.solids.push_back(exactSolid("solid 2", 1000.0, 999.1, 1.0));
+    EXPECT_TRUE(hz::interop::checkMeshAgainstMass(s).empty());
+}
+
+TEST(StepCorpusMeshAgainstMass, AMeshBeyondItsAllowanceIsAnError) {
+    StepSummary s;
+    s.solids.push_back(exactSolid("solid 1", 1000.0, 1000.5, 1.0));
+    s.solids.push_back(exactSolid("solid 2", 1000.0, 998.5, 1.0));
+    const auto problems = hz::interop::checkMeshAgainstMass(s);
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_TRUE(says(problems[0], "solid 2")) << problems[0];
+}
+
+TEST(StepCorpusMeshAgainstMass, AMeshThatCouldNotBeMadeIsAnError) {
+    StepSummary s;
+    SolidReading solid = exactSolid("solid 1", 1000.0, 0.0, 1.0);
+    solid.meshProblem = "step/solid:0/f:32040: a loop jumps in (u, v)";
+    s.solids.push_back(solid);
+    const auto problems = hz::interop::checkMeshAgainstMass(s);
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_TRUE(says(problems[0], solid.meshProblem)) << problems[0];
+}
+
+// The exact volume is known to its solids' own estimates, each weighed by its volume; a solid
+// left out adds nothing.
+TEST(StepCorpusReadBack, TheExactVolumeIsKnownToItsSolidsOwnEstimates) {
+    StepSummary s;
+    SolidReading tolerant = exactSolid("solid 1", 1000.0, 1000.0, 1.0);
+    tolerant.exactError = 1e-4;
+    s.solids.push_back(tolerant);
+    s.solids.push_back(exactSolid("solid 2", 3000.0, 3000.0, 1.0));
+    s.solids.push_back(leftOut("solid #12", kTorus));
+    EXPECT_NEAR(hz::interop::exactError(s), 1e-4 * 1000.0 / 4000.0, 1e-18);
+    EXPECT_EQ(hz::interop::exactError(StepSummary{}), 0.0);
+}
+
+namespace {
+
+/// A file read as one exact solid of 1000 mm³, known to @p error, kept as a part and sent out
+/// exact, each read back at exactly its volume.
+StepSummary readBackExactly(double error) {
+    StepSummary s;
+    SolidReading solid = exactSolid("solid 1", 1000.0, 1000.0, 1.0);
+    solid.exactError = error;
+    s.solids.push_back(solid);
+    s.facetedVolume = 1000.0;
+    s.reopenedVolume = 1000.0;
+    s.reopenedExact = true;
+    s.exportedExact = true;
+    s.reimportedBodies = 1;
+    s.reimportedVolume = 1000.0;
+    return s;
+}
+
+}  // namespace
+
+TEST(StepCorpusReadBack, ExactAndAtItsVolumeAgrees) {
+    EXPECT_TRUE(hz::interop::checkReadBack(readBackExactly(0.0)).empty());
+    StepSummary near = readBackExactly(1.69e-3);
+    near.reopenedVolume = 1001.0;
+    near.reimportedVolume = 999.0;
+    EXPECT_TRUE(hz::interop::checkReadBack(near).empty());
+}
+
+// A part reopened as its faceted copy (no exact counterpart, or measured without it) is an
+// error however near its volume: IronCAD's faceted copy is +3.8e-4 from its exact volume,
+// within the 1.69e-3 its file's edges leave it known to.
+TEST(StepCorpusReadBack, APartReopenedAsItsFacetedCopyIsAnErrorWhateverItsVolume) {
+    StepSummary s = readBackExactly(1.69e-3);
+    s.reopenedVolume = 1000.382;
+    s.reopenedExact = false;
+    s.reopenedExactNote = "exact form disagrees with its facets";
+    const auto problems = hz::interop::checkReadBack(s);
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_TRUE(says(problems[0], "kept as a part and read back")) << problems[0];
+    EXPECT_TRUE(says(problems[0], "faceted copy")) << problems[0];
+    EXPECT_TRUE(says(problems[0], s.reopenedExactNote)) << problems[0];
+}
+
+TEST(StepCorpusReadBack, AnExportOfTheFacetedCopyIsAnErrorWhateverItsVolume) {
+    StepSummary s = readBackExactly(1.69e-3);
+    s.exportedExact = false;
+    s.reimportedVolume = 1000.382;
+    const auto problems = hz::interop::checkReadBack(s);
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_TRUE(says(problems[0], "sent out as STEP")) << problems[0];
+    EXPECT_TRUE(says(problems[0], "faceted copy")) << problems[0];
+}
+
+// Exact, but further than it is known to: 1e-9 where its estimate is smaller.
+TEST(StepCorpusReadBack, AVolumeBeyondWhatItIsKnownToIsAnError) {
+    StepSummary s = readBackExactly(0.0);
+    s.reopenedVolume = 1000.0 * (1 + 1e-8);
+    s.reimportedVolume = 1000.0 * (1 - 1e-8);
+    const auto problems = hz::interop::checkReadBack(s);
+    ASSERT_EQ(problems.size(), 2u);
+    EXPECT_TRUE(says(problems[0], "kept as a part and read back")) << problems[0];
+    EXPECT_TRUE(says(problems[1], "sent out as STEP and read back")) << problems[1];
+    StepSummary tolerant = readBackExactly(1e-4);
+    tolerant.reopenedVolume = 1000.2;
+    EXPECT_EQ(hz::interop::checkReadBack(tolerant).size(), 1u);
+}
+
+// What was not kept, or not sent out, is said apart (the test asserts both were).
+TEST(StepCorpusReadBack, WhatWasNotReadBackIsNotLookedAt) {
+    StepSummary s = readBackExactly(0.0);
+    s.reopenedVolume.reset();
+    s.reopenedExact = false;
+    s.reimportedBodies.reset();
+    s.exportedExact = false;
+    EXPECT_TRUE(hz::interop::checkReadBack(s).empty());
+}
+
+// A solid left out has no mesh to measure: the regression list speaks for it.
+TEST(StepCorpusMeshAgainstMass, ASolidLeftOutHasNoMeshToCompare) {
+    StepSummary s;
+    s.solids.push_back(leftOut("solid #12", kTorus));
+    EXPECT_TRUE(hz::interop::checkMeshAgainstMass(s).empty());
+}
+
+namespace {
+
+/// @p text written to @p dir as @p name: its path.
+fs::path written(const fs::path& dir, const std::string& name, const std::string& text) {
+    const fs::path path = dir / name;
+    std::ofstream(path, std::ios::binary) << text;
+    return path;
+}
+
+/// The corner stepWithACornerOff raises, as it writes it.
+const std::string kCornerOff = "(7.,11.,13.2)";
+
+/// A 7 x 11 x 13 box written to STEP with its corner at (7, 11, 13) raised 0.2, off the planes
+/// of its faces: a solid the read cannot make exact (it says "beyond the limit"). With
+/// @p alsoGood, a 2 x 3 x 5 box beside it, written after it, which it can.
+std::string stepWithACornerOff(bool alsoGood) {
+    const auto off = hz::model::PrimitiveFactory::makeBox(7.0, 11.0, 13.0);
+    const auto good = hz::model::PrimitiveFactory::makeBox(2.0, 3.0, 5.0);
+    std::vector<const hz::topo::Solid*> solids{off.get()};
+    if (alsoGood) solids.push_back(good.get());
+    std::string text = hz::io::StepFormat::toString(solids);
+    const std::string corner = "(7.,11.,13.)";
+    const auto at = text.find(corner);
+    if (at != std::string::npos) text.replace(at, corner.size(), kCornerOff);
+    return text;
+}
+
+}  // namespace
+
+// A file some of whose solids are left out for want of their exact form: the summary names
+// each solid as the read does, the one left out with why, the one read with its exact volume and
+// its read-point mesh, which agrees with it.
+TEST(StepCorpusSummary, ASolidLeftOutForItsExactFormIsNamedWithWhy) {
+    WorkDir work;
+    const std::string text = stepWithACornerOff(true);
+    ASSERT_NE(text.find(kCornerOff), std::string::npos) << "the corner was not found to raise";
+    const fs::path step = written(work.path(), "two.step", text);
+    const StepSummary s = hz::interop::summarize(step, work.path() / "work");
+    ASSERT_TRUE(s.error.empty()) << s.error;
+    ASSERT_EQ(s.solids.size(), 2u);
+    const SolidReading& read = s.solids[0];
+    EXPECT_EQ(read.solid, "solid 2");
+    EXPECT_TRUE(read.exact);
+    EXPECT_TRUE(read.exactProblem.empty()) << read.exactProblem;
+    EXPECT_NEAR(read.exactVolume, 30.0, 1e-9);
+    EXPECT_NEAR(hz::interop::exactVolume(s), 30.0, 1e-9);
+    EXPECT_TRUE(read.meshProblem.empty()) << read.meshProblem;
+    EXPECT_GT(read.meshAllowance, 0.0);
+    // A box's flat faces, bounded by its edges to the resolution: its exact volume is known to
+    // 1e-9 or better, its own estimate says so, and the summary keeps it.
+    EXPECT_GE(read.exactError, 0.0);
+    EXPECT_LE(read.exactError, 1e-9);
+    EXPECT_EQ(hz::interop::toJson(s).at("solids")[0].at("exactError"), read.exactError);
+    EXPECT_NEAR(read.meshVolume, read.exactVolume, read.meshAllowance);
+    EXPECT_TRUE(hz::interop::checkMeshAgainstMass(s).empty());
+    const SolidReading& out = s.solids[1];
+    EXPECT_EQ(out.solid, "solid 1");
+    EXPECT_FALSE(out.exact);
+    EXPECT_TRUE(says(out.exactProblem, "beyond the limit")) << out.exactProblem;
+    // Kept as a part and read back, measured as the part is, and its faceted copy.
+    ASSERT_TRUE(s.reopenedVolume.has_value()) << s.reopenError;
+    EXPECT_NEAR(s.reopenedVolume.value_or(0.0), 30.0, 1e-9);
+    ASSERT_TRUE(s.reopenedFacetedVolume.has_value());
+    EXPECT_NEAR(s.reopenedFacetedVolume.value_or(0.0), 30.0, 1e-9);
+    // Reopened and sent out, it is its exact counterpart, never its faceted copy.
+    EXPECT_TRUE(s.reopenedExact) << s.reopenedExactNote;
+    EXPECT_TRUE(s.exportedExact) << s.exactNote;
+    EXPECT_TRUE(hz::interop::checkReadBack(s).empty());
+    // The regression list names it, or the summary disagrees with it.
+    EXPECT_EQ(hz::interop::checkExactFailures(s, json::object()).size(), 1u);
+    EXPECT_TRUE(
+        hz::interop::checkExactFailures(s, listing({{"solid 1", "beyond the limit"}})).empty());
+}
+
+// A file none of whose solids is read: the solid its error names, left out with why.
+TEST(StepCorpusSummary, AFileNoSolidOfWhichIsExactNamesTheOneItsErrorNames) {
+    WorkDir work;
+    const std::string text = stepWithACornerOff(false);
+    ASSERT_NE(text.find(kCornerOff), std::string::npos) << "the corner was not found to raise";
+    const fs::path step = written(work.path(), "one.step", text);
+    const StepSummary s = hz::interop::summarize(step, work.path() / "work");
+    ASSERT_FALSE(s.error.empty());
+    ASSERT_EQ(s.solids.size(), 1u);
+    const SolidReading& out = s.solids[0];
+    EXPECT_EQ(out.solid.rfind("solid #", 0), 0u) << out.solid;
+    EXPECT_FALSE(out.exact);
+    EXPECT_EQ(s.error, out.solid + " could not be made exact: " + out.exactProblem);
+    const json json = hz::interop::toJson(s);
+    ASSERT_EQ(json.at("solids").size(), 1u);
+    EXPECT_EQ(json["solids"][0].at("solid"), out.solid);
+    EXPECT_EQ(json["solids"][0].at("exact"), false);
+    EXPECT_EQ(json["solids"][0].at("exactProblem"), out.exactProblem);
 }

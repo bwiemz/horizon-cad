@@ -27,6 +27,7 @@
 namespace hz::doc {
 
 class Sketch;
+struct ExactCounterpart;
 
 /// Upper bounds on feature resolution and repetition. Feature parameters come
 /// from files as well as from the UI, and every step or instance costs memory
@@ -930,16 +931,41 @@ public:
     std::string name() const override { return "Imported"; }
     std::string featureID() const override { return m_featureID; }
     void restoreFeatureID(const std::string& id) override;
+    /// The body with its curved faces in facets, as every feature works on it
+    /// (the faceted copy; Phase 141).
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
     bool createsNewBody() const override { return true; }
 
+    /// The body as read, exact, for the part's exact counterpart
+    /// (BuildResult::exact): a copy whose faces are named as execute() names
+    /// them, `<featureID>/face:<i>`, the logical face of their facets there,
+    /// and whose edges are named by the same pass. So model::logicalEdge names
+    /// one curve from its chords there and from its edge here, or from its
+    /// pieces here where the body holds it in several (a rim a seam was
+    /// inserted on): `<edge>/chord:<k>` on both sides. Null when not every face
+    /// of it is exact: a body a part file kept as it was read before the exact
+    /// kernel (note() says why).
+    std::unique_ptr<topo::Solid> exactBody() const;
+
     const std::shared_ptr<const topo::Solid>& solid() const { return m_solid; }
     const std::string& source() const { return m_source; }
 
+    /// What its import said of a body that is not exact, as the import's
+    /// report said it (a part file saved before the exact kernel, whose body
+    /// no exact form holds: `imported body "<source>": not exact (<why>);
+    /// kept as it was`). Empty for an exact body. Not saved: it is said again
+    /// whenever the body is read.
+    const std::string& note() const { return m_note; }
+    void setNote(std::string note) { m_note = std::move(note); }
+
 private:
+    /// Its faces named `<featureID>/face:<i>`, by their order in the solid.
+    void nameFaces(topo::Solid& body) const;
+
     std::shared_ptr<const topo::Solid> m_solid;
     std::string m_source;
+    std::string m_note;
     std::string m_featureID;
 
     static math::IdCounter<int> s_nextID;
@@ -991,10 +1017,28 @@ struct BuildResult {
     /// feature (null if nothing before it made a solid), so the user sees
     /// what they had, not an empty viewport.
     std::unique_ptr<topo::Solid> solid;
+    /// The part's exact counterpart (stage 2), beside `solid`, its faceted
+    /// copy, which every feature, Boolean and reader of ideal labels works
+    /// on: while every feature that has made the part is an imported body
+    /// made a new body (ImportedBodyFeature::exactBody), those bodies as
+    /// read, exact, gathered as `solid` gathers their facets, named as its
+    /// facets' logical faces and edges are, and meshed once for the display.
+    /// Shared: a later build reuses it while the imports it was made from are
+    /// as they were (BuildOptions::previous). Null when the part has none by
+    /// design (no import, or any other feature or a Boolean after one) or the
+    /// build did not make one (BuildOptions::exactCounterpart). One that
+    /// could not be had (an import not exact, a face that could not be meshed
+    /// or measured, a volume other than its facets') holds no solid and says
+    /// why. Document::exactSolid(), exactMesh() and exactNote() read it.
+    std::shared_ptr<const ExactCounterpart> exact;
     int lastSuccessfulFeature = -1;
     std::string failureMessage;
     int failedFeatureIndex = -1;
     bool cancelled = false;  ///< stopped by BuildControl::cancel; no solid
+    /// Built without the exact counterpart it would have had (BuildOptions::
+    /// exactCounterpart false, the part made of imports alone): a part to be
+    /// built again before it is shown.
+    bool withoutExact = false;
     /// Where each sketch that follows a face was placed (Phase 157), by id:
     /// what a build of a copy (on a worker) gives the document it copied.
     std::map<uint64_t, draft::SketchPlane> placements;
@@ -1005,11 +1049,25 @@ struct BuildResult {
 
 /// How a build running on another thread says how far it has got, and learns
 /// it should stop. The build looks between features: a feature already
-/// running finishes first.
+/// running finishes first. The part's exact counterpart, when the build makes
+/// it, is a step of its own after the features (counted in `total` once it
+/// begins), and stops between faces.
 struct BuildControl {
     std::atomic<bool> cancel{false};
     std::atomic<int> done{0};   ///< features applied so far
     std::atomic<int> total{0};  ///< features the build will apply
+};
+
+/// What a build makes beside the part.
+struct BuildOptions {
+    /// Make the part's exact counterpart (BuildResult::exact). A reader that
+    /// draws and measures the faceted part alone (an assembly's component)
+    /// leaves it out, and does not pay for its mesh.
+    bool exactCounterpart = true;
+    /// A counterpart an earlier build made, reused where it was made from the
+    /// imports the part has now: a rebuild of an import-only part for any
+    /// other reason meshes nothing again.
+    std::shared_ptr<const ExactCounterpart> previous;
 };
 
 /// Ordered list of parametric features that can be replayed to rebuild a solid.
@@ -1068,8 +1126,10 @@ public:
     std::vector<std::unique_ptr<topo::Solid>> buildBodies() const;
 
     /// Rebuild with diagnostics: records which feature failed and why.
-    /// Respects the rollback index (features beyond it are skipped).
-    BuildResult buildWithDiagnostics(BuildControl* control = nullptr) const;
+    /// Respects the rollback index (features beyond it are skipped). Makes the
+    /// part's exact counterpart as @p options says.
+    BuildResult buildWithDiagnostics(BuildControl* control = nullptr,
+                                     const BuildOptions& options = {}) const;
 
     /// Rollback index: features after this index are suppressed.
     /// -1 means no rollback (all features active).

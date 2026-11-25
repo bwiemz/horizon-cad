@@ -2,6 +2,7 @@ add_library(hz_document STATIC
     src/Document.cpp
     src/CollaborationSession.cpp
     src/FeatureTree.cpp
+    src/ExactCounterpart.cpp
     src/SheetMetalFeature.cpp
     src/UndoStack.cpp
     src/Commands.cpp

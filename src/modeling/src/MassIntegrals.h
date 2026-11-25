@@ -1,9 +1,11 @@
 #pragma once
 
 #include <array>
+#include <vector>
 
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/topology/HalfEdge.h"
 
 namespace hz::model::detail {
 
@@ -15,6 +17,9 @@ namespace hz::model::detail {
 struct Measures {
     std::array<double, 10> sums{};
     double area = 0.0;
+    /// The point the sums' coordinates are taken from: 0 unless a measure is made about a point
+    /// near its solid, where the moments of a part far from the origin keep their precision.
+    math::Vec3 origin;
 
     /// Add a boundary triangle's volume terms (its winding gives their sign).
     void addVolume(const math::Vec3& p0, const math::Vec3& p1, const math::Vec3& p2);
@@ -24,8 +29,13 @@ struct Measures {
 };
 
 /// The mass properties the measures give, at @p density; the sums' sign is
-/// normalised so the volume is positive.
+/// normalised so the volume is positive. The centre of mass is the measures' origin plus the
+/// centre they give.
 MassProperties finish(const Measures& measures, double density);
+
+/// The triangles a face's loops make, as the polygon formulas sum them: its outer loop
+/// triangulated (its holes bridged in), wound as the loop runs. None for a face with no loop.
+std::vector<std::array<math::Vec3, 3>> faceTriangles(const topo::Face& face);
 
 /// The mass properties of @p solid's face loops, triangulated as they are:
 /// compute() without cutting a solid described by curves into facets.

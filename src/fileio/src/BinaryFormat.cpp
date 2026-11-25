@@ -9,7 +9,6 @@
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/geometry/MeshData.h"
-#include "horizon/modeling/SolidTessellator.h"
 #include "hzbinary_generated.h"
 
 namespace hz::io {
@@ -77,12 +76,10 @@ bool BinaryFormat::save(const std::string& filePath, const doc::Document& doc) {
     const std::string payload = NativeFormat::documentToJson(doc, /*includeTessellation=*/false);
     const std::string kind = doc.type() == doc::DocumentType::Part ? "hzpart" : "hcad";
 
-    geo::MeshData mesh;
-    const geo::MeshData* meshPtr = nullptr;
-    if (doc.solid() != nullptr) {
-        mesh = model::SolidTessellator::tessellate(*doc.solid());
-        if (!mesh.positions.empty()) meshPtr = &mesh;
-    }
+    // The part as it is shown: its exact counterpart's mesh, made by its
+    // build, where it has one.
+    const auto mesh = doc.exactOrFacetedMesh();
+    const geo::MeshData* meshPtr = mesh && !mesh->positions.empty() ? mesh.get() : nullptr;
     return writeDocumentBuffer(filePath, kind, payload, meshPtr);
 }
 

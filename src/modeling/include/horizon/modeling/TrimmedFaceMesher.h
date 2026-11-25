@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -16,18 +17,25 @@ struct MeshOptions {
     double maxAngle = 0.35;        // radians between neighbouring triangle normals on a face,
                                    // at most pi
     std::size_t maxTrianglesPerFace = 200000;
+    /// Looked at between faces: once set, meshing stops, and every face says "cancelled" and has
+    /// no triangles (no mesh is left partial).
+    const std::atomic<bool>* cancelled = nullptr;
 };
 
 struct FaceMesh {
     const topo::Face* face = nullptr;
     std::vector<math::Vec3> points;
-    std::vector<math::Vec3> normals;                      // the surface's, outward
+    /// The surface's, outward; where it has none (a cone's apex), or at a pole where it turns
+    /// from theirs by more than maxAngle (a B-spline row that collapses only within tolerance),
+    /// the mean of the triangles' there.
+    std::vector<math::Vec3> normals;
     std::vector<std::array<std::uint32_t, 3>> triangles;  // wound outward
     /// Empty when the face is meshed. Otherwise why it could not be (no exact geometry, an edge
-    /// with no twin, a loop that cannot be laid out in (u, v), a triangulation problem, boundary
-    /// points that meet in (u, v) at different positions, the triangle cap reached before the
-    /// tolerance was met), and the face has no triangles: a mesh is never partial or out of
-    /// tolerance.
+    /// with no twin, a loop that cannot be laid out in (u, v), a loop that jumps in (u, v) between
+    /// two edges along a stretch where its surface does not come to a point, a triangulation
+    /// problem, boundary points that meet in (u, v) at different positions, refinement that would
+    /// go below the model's resolution, the triangle cap reached before the tolerance was met),
+    /// and the face has no triangles: a mesh is never partial or out of tolerance.
     std::string problem;
 };
 
@@ -40,10 +48,17 @@ public:
     /// meshed (see FaceMesh::problem). The solid is expected to pass topo::validateExact: loops
     /// are laid out in (u, v) as the validator lays them out (horizon/topology/LoopUnwrap.h).
     /// A boundary vertex is the edge sample itself (a vertex's own point at an edge's ends), so
-    /// on a seam the two sides' vertices have the same position and distinct (u, v). Within
+    /// on a seam the two sides' vertices have the same position and distinct (u, v). Where a
+    /// loop runs along a pole or an apex (a stretch of (u, v) between two of its edges along
+    /// which the surface is the one point both reach: a sphere's pole, a cone's apex, a
+    /// B-spline's collapsed row), that point is one vertex of the face's mesh, every triangle
+    /// there fanned to it, and the triangles that would lie along the stretch are not made. Within
     /// each triangle the surface at its (u, v) centroid and edge midpoints is within
     /// chordTolerance of it, and the triangle faces the way the surface does at its centroid.
-    /// Triangles that share an edge of a face's mesh differ in normal by at most maxAngle.
+    /// Triangles that share an edge of a face's mesh differ in normal by at most maxAngle. The
+    /// last two hold outside each pole's disc: within the tolerance the pole was found by (the
+    /// larger of chordTolerance and its join's allowance) the surface is the pole, and its normal
+    /// there is not judged.
     /// chordTolerance is absolute: scale it with the part.
     static std::vector<FaceMesh> meshSolid(const topo::Solid& solid, const MeshOptions& options);
 };

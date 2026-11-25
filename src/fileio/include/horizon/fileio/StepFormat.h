@@ -29,10 +29,22 @@ struct StepReadOptions {
     /// say which unit it is in; taken as millimetres, a file in inches came
     /// in 25.4 times too small, with only a warning to say so.
     std::optional<math::LengthUnit> unknownLengthUnit;
+    /// For STEP embedded in native part files only (an imported body, saved before the exact
+    /// kernel read its faces): a solid whose exact form cannot be made is kept as it was read
+    /// before, its carriers alone and no exact fields, rather than left out. It is built from the
+    /// file as the file has it, with nothing a failed exact pass did to it (a seam inserted, an
+    /// edge split), and the read's ImportReport::converted says "solid <i>: not exact (<why>);
+    /// kept as it was". A STEP import never sets it: what cannot be exact is left out with why
+    /// (decision 1b). Facet approximations are not reported again: the import that made the body
+    /// reported them.
+    bool keepWhenNotExact = false;
 };
 
 /// What a write as designed could not do: the curved faces kept in
-/// facets, each with why; and, for an assembly, the occurrences left out.
+/// facets, each with why, and the exact faces and edges not written as their
+/// kind (a surface or curve whose numbers no STEP entity holds), each with
+/// why and what took its place; and, for an assembly, the occurrences left
+/// out.
 struct StepWriteReport {
     std::vector<std::string> faceted;
     std::vector<std::string> leftOut;
@@ -77,11 +89,20 @@ struct StepWritePart {
 /// STEP AP242 (ISO 10303-21) import/export of B-Rep solids.
 ///
 /// The writer emits every Horizon solid as one MANIFOLD_SOLID_BREP per shell
-/// (grouped in a shared ADVANCED_BREP_SHAPE_REPRESENTATION) whose faces and
-/// edges carry exact (rational) B-spline geometry. A curved face, modelled as
-/// facets that record their surface, is written as designed (Phase 151): one
-/// face on that surface, bounded by circles, where it can be; otherwise as
-/// its facets, and reported.  The reader parses a
+/// (grouped in a shared ADVANCED_BREP_SHAPE_REPRESENTATION). A face with an
+/// exact surface goes out as its kind: a PLANE, CYLINDRICAL_SURFACE,
+/// CONICAL_SURFACE, SPHERICAL_SURFACE or TOROIDAL_SURFACE placed by its frame
+/// (written as the geometry it makes: STEP's placements are right-handed and
+/// carry no parameter scale), or its B-spline; an edge with an exact curve as
+/// a LINE (its VECTOR's magnitude the line's scale), CIRCLE, ELLIPSE or
+/// B-spline, a closed edge running with its curve and an open one on a
+/// B-spline over its own span of it. No PCURVE is written. A flat face with
+/// none goes out on its own PLANE; another face with none on its carrier
+/// B-spline. A curved face, modelled as facets that record their surface, is
+/// written as designed (Phase 151): one face on that surface, bounded by
+/// circles, where it can be; otherwise as its facets, and reported. Each
+/// face's same_sense says truly which way it faces, and a body wound facing
+/// in (as the kernel's box is) goes out turned round, facing out.  The reader parses a
 /// practical AP242 subset: B-spline curves/surfaces (polynomial and rational),
 /// LINE and CIRCLE edge geometry (including OCC-style SURFACE_CURVE /
 /// SEAM_CURVE wrappers), PLANE / CYLINDRICAL_SURFACE face geometry, and the
@@ -96,6 +117,40 @@ struct StepWritePart {
 /// places its part in its assembly by the ITEM_DEFINED_TRANSFORMATION of its
 /// CONTEXT_DEPENDENT_SHAPE_REPRESENTATION, assemblies within assemblies
 /// compounded. The writer writes an assembly the same way.
+///
+/// Exact faces (the exact kernel, stage 2): each solid comes in with its exact form beside its
+/// carriers (Face::surface and Edge::curve, unchanged). A face keeps the surface its file gives
+/// it: a PLANE, CYLINDRICAL_SURFACE, CONICAL_SURFACE, SPHERICAL_SURFACE or TOROIDAL_SURFACE as
+/// that surface (STEP's parametrisations are the kernel's), and a B_SPLINE_SURFACE as that very
+/// B-spline, never recognised as a quadric. A SURFACE_OF_LINEAR_EXTRUSION is the one exception:
+/// with no typed extrusion yet, it comes in as its B-spline carrier. Its surface is never turned
+/// round: Face::reversed says which way the face faces. The reader's rule for it: on a surface
+/// where a loop determines the region it bounds (a plane, a cylinder, a cone, a swept surface's
+/// B-spline, a B-spline neither closed both ways nor coming to a pole), the face faces the way
+/// its outer loop runs, counter-clockwise in (u, v) about its outward normal: the loops are the
+/// topology and same_sense only repeats it, and Horizon's own writer wrote same_sense .T.
+/// whichever way a face's surface faced. On a sphere, a torus or a B-spline closed both ways or
+/// with a pole, a loop bounds two regions, so the face takes !same_sense with its shell's and
+/// bounds' flags; where its loop runs the other way, the face is the surface outside its loop
+/// (a ball's skin round a flat: it holds a pole or wraps the surface), which this stage cannot
+/// represent, and the solid is left out with why. A loop whose area says nothing (a seam joined
+/// at poles alone) leaves the face as its flags say. An edge keeps its curve (a LINE at its
+/// VECTOR's magnitude, a CIRCLE, an ELLIPSE, a B-spline) over the range its vertices invert to,
+/// the way its same_sense says, a closed edge a whole period. Each half-edge's pcurve is built
+/// (geo::pcurveOn), never read. Tolerances: each pcurve is fitted to the model resolution of the
+/// solid's size, or to its curve's own stand-off from its surface where that is larger (measured,
+/// never chased); each edge's and vertex's tolerance grows to cover how far the file has it
+/// stray (its gaps, its stand-off), as per-entity tolerances do, up to a thousandth of the
+/// solid's size, and the report says how exact a solid so read is. The file's
+/// UNCERTAINTY_MEASURE says only how near a closed B-spline curve's ends must be to join (and a
+/// vertex to be at the join), no coarser than a thousandth of the curve. A solid whose exact form
+/// cannot be made, strays beyond the limit, or does not hold together (topo::validateExact) is
+/// left out with why: nothing faceted comes in for it (StepReadOptions::keepWhenNotExact aside,
+/// for a native file's embedded STEP). A solid's shell written inside out (an outer shell whose
+/// faces face into it, consistently: the signed volume it encloses, integrated on its exact
+/// faces, is negative; or a void's facing out of the void) is turned round as it is read, its
+/// loops run the other way and its faces reversed, so that every solid comes in facing out and
+/// every void into itself.
 ///
 /// Faces keep their holes (FACE_BOUND). Solids come in in millimetres: the
 /// LENGTH_UNIT of each shape representation's context — an SI unit with any
@@ -130,8 +185,9 @@ public:
                                 const WriteOptions& options = {}, WriteReport* report = nullptr);
 
     /// Read all MANIFOLD_SOLID_BREP solids from a Part-21 file, in
-    /// millimetres whatever the file's length unit. A solid that cannot be
-    /// rebuilt is left out and named in @p report; the others still come in.
+    /// millimetres whatever the file's length unit, each with its exact form
+    /// (see above). A solid that cannot be rebuilt, or made exact, is left out
+    /// and named in @p report; the others still come in.
     /// Returns an empty vector when none can be read (see lastError()).
     ///
     /// @p cancelled, when given, is looked at all the way through: once it

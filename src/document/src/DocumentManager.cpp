@@ -9,7 +9,7 @@
 #include <string>
 #include <system_error>
 
-#include "horizon/modeling/SolidTessellator.h"
+#include "horizon/geometry/MeshData.h"
 
 namespace hz::doc {
 
@@ -145,6 +145,17 @@ std::vector<std::string> eraseEntriesFor(std::map<std::string, std::weak_ptr<T>>
     return erased;
 }
 
+/// A component's part that no tab shows is drawn and measured from its
+/// faceted part (Document::exactOrFacetedMesh of solid() alone): built
+/// without the exact counterpart, whose mesh would be made for it alone. Such
+/// a build leaves it to be built again (Document::needsBuild) before a tab
+/// shows it; one a tab shows is drawn with its counterpart's mesh.
+BuildOptions facetedOnly() {
+    BuildOptions options;
+    options.exactCounterpart = false;
+    return options;
+}
+
 }  // namespace
 
 bool DocumentManager::closeDocument(const std::shared_ptr<Document>& doc) {
@@ -246,11 +257,11 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
     // A mesh from a part's model is as new as its last build, of that
     // document (the file read again is another, built as often maybe); one
     // from the file (its cache, or a model built from it apart) as the file.
+    // A part built with its exact counterpart (one a tab shows) is drawn with
+    // the counterpart's mesh, made by that build.
     const auto modelMesh = [this, &key](const Document& part) {
-        return sharedMesh(key + "#model/" + std::to_string(part.serial()), part.builds(), [&part] {
-            return std::make_shared<const geo::MeshData>(
-                model::SolidTessellator::tessellate(*part.solid()));
-        });
+        return sharedMesh(key + "#model/" + std::to_string(part.serial()), part.builds(),
+                          [&part] { return part.exactOrFacetedMesh(); });
     };
     std::error_code timeError;
     const auto fileTime = fs::last_write_time(fullPath, timeError);
@@ -260,8 +271,12 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
     if (mode == ComponentState::Resolved) {
         auto part = openPart(fullPath, /*keep=*/false);
         if (!part) return false;
+        // Built for its components alone, without its exact counterpart; one
+        // the user has open in a tab, as the tab shows it.
         if (!part->solid() && part->featureTree().featureCount() > 0) {
-            part->rebuildModel();
+            const bool shown =
+                std::find(m_documents.begin(), m_documents.end(), part) != m_documents.end();
+            part->rebuildModel(shown ? BuildOptions{} : facetedOnly());
         }
         instance.resolvedPart = part;
         if (part->solid()) instance.cachedMesh = modelMesh(*part);
@@ -298,11 +313,8 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
         if (m_partLoader) {
             Document temp;
             if (m_partLoader(fullPath, temp)) {
-                temp.rebuildModel();
-                if (temp.solid()) {
-                    return std::make_shared<const geo::MeshData>(
-                        model::SolidTessellator::tessellate(*temp.solid()));
-                }
+                temp.rebuildModel(facetedOnly());
+                if (temp.solid()) return temp.exactOrFacetedMesh();
             }
         }
         return nullptr;

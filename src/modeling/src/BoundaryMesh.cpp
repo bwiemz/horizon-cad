@@ -478,19 +478,21 @@ double BoundaryMesh::signedVolume(const std::vector<BoundaryPolygon>& polygons) 
     return vol6 / 6.0;
 }
 
+double BoundaryMesh::defaultChordTolerance(const topo::Solid& solid) {
+    if (!topo::hasExactFaces(solid)) return 0.0;
+    // 1e-4 of the part's size, the size its model tolerance comes from.
+    const double size = topo::exactExtent(solid);
+    return size > 0.0 ? 1e-4 * size : 1e-4;
+}
+
 std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid& solid) {
-    double chordTolerance = 0.0;
-    if (topo::hasExactFaces(solid)) {
-        // 1e-4 of the part's size, the size its model tolerance comes from.
-        const double size = topo::exactExtent(solid);
-        chordTolerance = size > 0.0 ? 1e-4 * size : 1e-4;
-    }
-    return extractFacePolygons(solid, chordTolerance);
+    return extractFacePolygons(solid, defaultChordTolerance(solid));
 }
 
 std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid& solid,
                                                                double chordTolerance,
-                                                               std::string* problem) {
+                                                               std::string* problem,
+                                                               const std::atomic<bool>* cancelled) {
     if (problem != nullptr) problem->clear();
     std::vector<BoundaryPolygon> polygons;
     polygons.reserve(solid.faceCount());
@@ -501,6 +503,7 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
     if (topo::hasExactFaces(solid)) {
         MeshOptions options;
         options.chordTolerance = chordTolerance;
+        options.cancelled = cancelled;
         for (auto& mesh : TrimmedFaceMesher::meshSolid(solid, options)) {
             if (mesh.face == nullptr || !mesh.face->exactSurface) continue;
             if (!mesh.problem.empty() && firstProblem.empty()) {
@@ -518,9 +521,14 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
     for (const auto& face : solid.faces()) {
         if (const auto it = meshes.find(&face); it != meshes.end()) {
             const FaceMesh& mesh = it->second;
+            const bool shaded = mesh.normals.size() == mesh.points.size();
             for (const auto& tri : mesh.triangles) {
                 BoundaryPolygon poly;
                 poly.points = {mesh.points[tri[0]], mesh.points[tri[1]], mesh.points[tri[2]]};
+                if (shaded) {
+                    poly.normals = {mesh.normals[tri[0]], mesh.normals[tri[1]],
+                                    mesh.normals[tri[2]]};
+                }
                 poly.topoId = face.topoId;
                 poly.exactSurface = face.exactSurface;
                 polygons.push_back(std::move(poly));

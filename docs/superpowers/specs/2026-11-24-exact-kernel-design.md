@@ -304,6 +304,243 @@ a user can see. Each is several PRs.
    faces as they are; rendering and mass properties use the exact faces.
    *Seen:* an imported part's mass is exact, and a STEP round trip changes no
    surface.
+   *Landed:* the STEP reader keeps each solid's exact faces beside their
+   carriers: typed planes, cylinders, cones, spheres and tori, the file's own
+   B-splines, and an extrusion as a B-spline (goal 7's one exception). It
+   builds every pcurve itself, never reading the file's; lays a seam on a
+   periodic face that has none; grows each edge's tolerance to the gaps it
+   measures, up to a thousandth of the solid's size, and says "exact to" that;
+   turns a shell written inside out; and leaves out, with why, a solid it
+   cannot make exact. Mass properties are integrated over the trimmed faces,
+   with an error estimate that counts tolerant edges. The read point meshes
+   faces that come to a pole or an apex. The writer writes typed surfaces,
+   LINE, CIRCLE and ELLIPSE, a truthful `same_sense`, and scale factors folded
+   in. A part made only of imported bodies carries an exact counterpart beside
+   its facets, checked against their volume, meshed once and kept across
+   rebuilds; the display, the mass dialog, the AI and MCP mass tools and STEP
+   export read it, and the first other feature drops it. 62 of the interop
+   corpus's 64 solids come in exact; OpenCASCADE's volumes agree with theirs
+   to 2.4e-6 or better, and each export reads back exact, within its solid's
+   own error estimate. Old part files still open: a body whose exact form
+   fails opens as it did, and the load says so.
+
+   Stage 1's carries closed here: the read point refines in place and grades
+   tori (cones are staggered instead), seams, the callers' catches and one tag
+   per face, the mass reason, the validator's period bounds, the
+   triangulator's spread guard and fuzzer, the writer's scale factors and
+   `forExtent`'s huge extents. Three go on to stage 3 (below).
+
+   *Budgets,* measured once at the gate (Ruling 45): master's reader at
+   `7b381819` and stage 2's, built alike (Debug, the same flags), timed with
+   the same harness on the same texts, back to back, best of 3, twice.
+   - Importing each corpus file is within 2× master: the worst is IronCAD at
+     ×1.27, and the Moon buggy takes a tenth of master's time.
+   - Reading back the STEP Horizon wrote before stage 2 (its faceted part,
+     read as an import reads it) is within 2× master for 15 of the corpus's 18
+     parts. KiCad (×2.73), Shapr3D (×2.42) and ProE (×2.11) are over. The
+     time is the exact pass on B-spline faces: general-path pcurves (29–48% of
+     the read) and the validator (15–25%), which runs twice on these three
+     because its first pass finds last-bit rounding to take up (Ruling 66).
+   - An old part file holds each imported body as it was read, one B-spline
+     face per face, not that faceted export. Master's open parsed each body
+     and built its carriers, and faceted it in the build after. Stage 2's
+     open makes each body exact, at up to ×6.4 master's read per part (×3.7
+     over all 64 bodies): ProE's 14 bodies take 0.95 s (master 0.18 s),
+     IronCAD's 0.39 s (0.06 s). Only irnas (×1.97) and the emblem, which
+     fails at once, are within 2×. 60 of the 64 bodies reopen exact, and four
+     as they were (below).
+   - No ctest takes over 60 s; the slowest takes 35 s.
+
+   *Regression list,* 2 corpus solids and 12 shape classes: what master read
+   faceted and stage 2 leaves out, each with its reason (anti-goal "failures
+   nobody tracks"). The two solids are in 2 of the corpus's 20 files (the
+   manifest's `exact_failures`):
+   - `occt_euclid_screw`, solid #12: face #709 is a spindle torus (minor
+     radius 54.87, major 8.25), and `Torus::invert` takes every torus for a
+     ring. Stage 6, as stage 1 carried it.
+   - `creo_opencellular_emblem`, solid #119: Creo writes edge #2008's end
+     vertex 0.374 mm off its line, beyond the limit of 0.0853. The emblem's
+     twelve shells are one surface model, so all twelve bodies master read are
+     left out.
+
+   The classes, found by the stage's tests and probes. The first two are the
+   corpus solids'; the last is the corpus parts' own exports from before
+   stage 2:
+   - a spindle torus (stage 6);
+   - an edge, vertex or seam standing off its face beyond the limit, a
+     thousandth of the solid's size;
+   - a sphere, torus or closed B-spline face whose region holds a pole or
+     wraps the surface, so that its loops run against its `same_sense`: a
+     Parasolid-style ball with a flat, a torus cut into a patch and the rest
+     (Ruling 17);
+   - a ball split into two faces by two meridians;
+   - a hole within about 0.03 rad of a sphere's pole ("inner loop lies outside
+     the outer loop");
+   - a B-spline ball bounded by one pole-to-pole seam;
+   - a B-spline face whose pole row spreads 3e-6 or more ("closes only after
+     winding round");
+   - a B-spline sphere or torus face, or a B-spline face narrower than a
+     thousandth of its part, written with a careless `same_sense` (the reason
+     names both possibilities);
+   - a torus band whose loops wind round it both ways, as a helix does
+     (Ruling 29);
+   - a closed B-spline band on which no seam can be laid: its two loops wind
+     round it the same way, or its seam would cross where it closes (Ruling
+     27; old part files hold Onshape's and Solid Edge's bands so, below);
+   - a band rim tilted so that its gap peaks between the pcurve's samples
+     (Ruling 23's aliasing: a rim tilted 8e-4 strays 3.7e-7 past its
+     tolerance);
+   - STEP that Horizon exported before stage 2, wherever a round face's
+     radius is large beside its part: plain primitives as well as parts. The
+     old writer wrote each flat face as a bilinear B-spline patch sized to its
+     facet polygon, the 32-gon's oriented bounding box, whose half-side is
+     r·cos(π/32). A cap's true circular rim bulges past that patch by the
+     sagitta, r(1 − cos(π/32)) ≈ 0.0048 r, and the solid is left out once that
+     passes the limit, a thousandth of the solid's size: for a radius more
+     than about a fifth of the part's diagonal. A cylinder of radius 10 and
+     height 20 is left out ("its curve stands 0.0482 off its face's surface,
+     beyond the limit of 0.0346"), and so are a frustum (radius 6 to 2, height
+     9) and a tube; a box with a hole, a boss, a sphere, a torus and an apex
+     cone read. A pcurve straying from its edge on such a patch leaves a solid
+     out too. 5 of the 18 corpus parts' exports are left out so (Alibre,
+     build123d, FreeCAD, Fusion, the Moon buggy, the last 4.5 off at a limit
+     of 4.49). Such a file is a fresh STEP import, so decision 1b holds: left
+     out, with why. Old part files do not hold this text; they hold each body
+     as it was read (Ruling 10).
+
+   Changed, not left out: the faceted copy of a body, which features work on.
+   A band's changes with its new seam: Onshape's faceted volume is now 0.81%
+   under its exact one (it was 0.61%), Alibre's 0.63% (0.61%), and IronCAD's
+   shrinks too. This holds for old part files on open as well, so a saved
+   part's features rebuild on a different copy than they did. Of the corpus's
+   64 old-part bodies, 8 read exact with a faceted copy of another volume
+   (master's, then stage 2's):
+   - IronCAD, 7.0216778e7 → 7.0213538e7 (−4.6e-5);
+   - Alibre, 43.903179 → 43.895323 (−1.8e-4);
+   - the Prusa hinge, 8541.6114 → 8542.0277 (+4.9e-5);
+   - the NX plate, 35698.440 → 35698.696 (+7.2e-6);
+   - four Moon buggy bodies, 1022987.76 → 1023026.43 and 869544.08 →
+     869572.47 (+3.8e-5 and +3.3e-5), and two of 19181081.8 → 19181745.6
+     (+3.5e-5).
+   The Moon buggy bodies and the NX plate change with their new seams alone.
+   The hinge changes with the B-spline fixes alone: `NurbsSurface::locate`
+   and `project` (Ruling 12) place its facets' points otherwise. IronCAD and
+   Alibre change with both. The other 56 bodies' faceted copies keep their
+   volumes to 8.8e-8 or better, and the same edges and facets. Among them are
+   the two bodies kept as they were, Onshape's and Solid Edge's, which move
+   by the B-spline fixes alone (708529.956 → 708529.894, 684.443891 →
+   684.443858).
+
+   Carried to later stages:
+   - *Stage 3, transforms:* a non-similar transform converts the copy to NURBS
+     (stage 1's; no stage-2 path transforms an exact solid other than
+     similarly).
+   - *Stage 3, mixed solids:* orient the faceted subset of an exact plus
+     faceted solid (stage 1's; stage 2 makes none).
+   - *Stage 3, mesh cache:* each face's mesh cached (stage 1's). The display
+     meshes once per build and keeps the counterpart across rebuilds; exact
+     construction is what re-meshes faces.
+   - *Stage 3, bridge:* `facetCurved` for faces with no carrier (every
+     imported exact face keeps its carrier). `Pattern::bodyShells` tells voids
+     by their polygons or carriers, so a carrier-less exact solid with a void
+     could be misread.
+   - *Stage 3, poles* (stage 1's pole topology, now with its cost on the
+     regression list): faces whose region holds a pole or wraps the surface,
+     a ball of two meridian faces, a hole near a pole, a pole-to-pole seam on a
+     B-spline ball, spread pole rows. The mesher knows poles on the outer loop
+     only: a hole touching a pole, a zero-length edge along one, or an edge a
+     hair past an apex fails to mesh, saying so.
+   - *Stage 3, seams:* a torus band winding round both ways needs both seams,
+     which the joined loop's cancelling winding cannot place (Ruling 29).
+   - *Stage 3, pcurves:* a gap that peaks between `pcurveOn`'s samples reads up
+     to ~28% low, so an "exact to" can read low and a tilted band rim is left
+     out (Rulings 23 and 64); the fix belongs with the tolerance model.
+   - *Stage 3, assemblies:* exact STEP export of an assembly. Its components
+     are built without their counterparts, so it writes facets, as master does
+     (Ruling 56).
+   - *Stage 3, mirror:* `Pattern::transformed` with a reflection leaves a
+     cone's exact solid failing the validator ("closes only after winding
+     round the surface"). Stage 2 never reaches it, since a mirror drops the
+     counterpart (Ruling 47).
+   - *Stage 3, callers:* a script's mass properties are still faceted (the
+     dialog, the AI and MCP read the counterpart); an interference pair's
+     reason is not shown; the status line's exact note is not translated;
+     exact mass is integrated on the GUI thread under `RebuildMode::Always`
+     (IronCAD 391 ms, Debug); STL export meshes the kept counterpart again.
+   - *Stage 3, mass:* a dense B-spline face (~150 × 150 knots) can run out of
+     its evaluation budget; a thin part's estimate stops at Gauss–Kronrod's
+     floor.
+   - *Stage 3, old parts:* a body whose exact form fails opens from facets
+     with a note until format 32's migration (Ruling 10). Four of the
+     corpus's 64 bodies do: Onshape's and Solid Edge's seamless bands, which
+     the old writer wrote as closed B-splines ("its two loops wind round it
+     the same way"), a Moon buggy body ("its seam would cross where its
+     surface closes"), and the emblem (its vertex off its line).
+   - *Stage 3, speed:* the overshoot of budget 2, and of opening an old part,
+     is accepted for stage 2 (Ruling 67). Fresh imports, the main path, meet
+     budget 1 (the worst is ×1.27). Opening the corpus's largest old part takes
+     under 1 s in Debug, and the added time is the exact pass that is this
+     stage's purpose. The speed work goes to stage 3: general-path pcurves on
+     B-spline faces, the validator, and its second validation (Ruling 66 runs
+     it twice on six of the 18 old exports). Stage 3 migrates every old part
+     on open, so it meets this cost first. Two more costs, measured in Debug
+     with the same harness:
+     - *Open to display.* The first build after opening a part made of imports
+       also meshes and integrates its exact counterpart, where it faceted the
+       part alone before: the Moon buggy 1.35 → 4.83 s, IronCAD 0.23 → 1.35 s,
+       ProE 3.11 → 4.57 s, Shapr3D 0.20 → 0.29 s. Each later build reuses the
+       counterpart while the imports are as they were.
+     - *Each rebuild.* A worker's rebuild copied the part by writing its
+       imported bodies as STEP and reading them again through the exact pass,
+       and the copy, a last bit otherwise, meshed the counterpart again
+       whenever a build changed threads (Ruling 51's key). The copy now shares
+       the document's bodies, which nothing changes once read, so a rebuild
+       reads no STEP and either thread reuses the other's counterpart. Per
+       rebuild of an import-only part (copy, read and build, the document's
+       counterpart offered): IronCAD 1656 → 229 ms (master 478), the Moon
+       buggy 4991 → 1385 ms (master 9599), ProE 3484 → 3216 ms (master
+       3785), Shapr3D 338 → 201 ms (master 277), and IronCAD's old part
+       2050 → 228 ms (master 477).
+   - *Stage 3, platforms:* two results can differ by the last bits a
+     platform's maths library gives.
+     - A body's faceted copy can differ by one column of a band's facet grid
+       where the band's width divided by its column spacing is a whole number
+       but for rounding (`trimmedFacets`, as on master). The Solid Edge old
+       part gives 3,796 faces on one platform and 3,868 on another, its volume
+       1.7e-5 apart, within the facets' own error. Making the grid
+       deterministic would move the faceted copies of a dozen corpus bodies,
+       so it waits until the bridge's last users go; stage 7 deletes it.
+     - An edge whose stray sits on Ruling 66's rounding bound (16 units in the
+       last place of what its measure is computed from) can be taken up on
+       one platform and reported on another. No corpus file sits there: the
+       manifest, whose `exact_failures` is strict both ways, reads alike on
+       Linux, Windows and macOS.
+   - *Stage 5:* still no geometric orientation check in the validator; the
+     counterpart's volume check against its facets stands in for it.
+   - *Stage 6:* the spindle torus, unchanged (the screw is on the regression
+     list).
+   - *For the owner:* the display's 0.35 rad angle floor, not its chord
+     tolerance, sets the triangle count and the part-file cache (the Moon
+     buggy draws 329k triangles, and its cache grew from 5.8 to 26.7 MB). A
+     coarser angle shrinks both.
+
+   For the owner to check, the decisions stage 2's plan made:
+   - *The exact counterpart, not exact parts everywhere.* Operations and every
+     reader of ideal labels (mates, silhouettes, sketch on a face, fillets,
+     drawings) keep getting the faceted part; only rendering, mass and export
+     read the counterpart. It widens stage by stage until the faceted part is
+     deleted in stage 7.
+   - *The bridge stays `facetCurved` of the carriers,* since every imported
+     exact face keeps its carrier.
+   - *Pcurves are built, never read from the file:* one code path, as
+     exporters parametrise analytic surfaces' pcurves differently.
+   - *SURFACE_OF_LINEAR_EXTRUSION round-trips as a B-spline;* there is no
+     typed extrusion surface yet.
+   - *Old part files' embedded STEP is NURBS only,* so an imported body saved
+     before stage 2 reopens with exact B-spline faces, not typed ones: still
+     exact, and files saved between stages are best effort (decision 2).
+   - *Deferred to stage 3:* non-similar transforms, mixed solids and the
+     per-face mesh cache (above).
 3. **Exact construction.** Primitives, extrude, revolve (and with it holes,
    sheet metal's bends) build exact faces; migration of old parts; naming
    without facets. *Seen:* exact volumes, a cylinder of three faces, smooth

@@ -2,12 +2,28 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/fileio/ImportReport.h"
 
+namespace hz::topo {
+class Solid;
+}  // namespace hz::topo
+
 namespace hz::io {
+
+/// An imported body as a copy of a document shares it with the document it was copied from (a
+/// rebuild on a worker, ui::RebuildJob): the body as read, which is never changed once read, and
+/// what its read said of it (doc::ImportedBodyFeature::note).
+struct SharedImport {
+    std::shared_ptr<const topo::Solid> solid;
+    std::string note;
+};
+
+/// A document's shared imported bodies, by their feature's ID (doc::Feature::featureID()).
+using SharedImports = std::unordered_map<std::string, SharedImport>;
 
 /// Save/load Document to/from JSON-based native files.
 ///
@@ -50,11 +66,19 @@ public:
     /// Serialize the document envelope to a JSON string. BinaryFormat stores
     /// this payload inside its FlatBuffers container, with the tessellation
     /// cache carried as typed binary vectors instead of JSON numbers.
-    static std::string documentToJson(const doc::Document& doc, bool includeTessellation);
+    ///
+    /// With @p shared, a copy for this process alone: each imported body is
+    /// not written as STEP but put in @p shared by its feature's ID, for
+    /// documentFromJson to take as it is. Such a copy is no part file.
+    static std::string documentToJson(const doc::Document& doc, bool includeTessellation,
+                                      SharedImports* shared = nullptr);
 
-    /// Populate a Document from a JSON envelope string.
+    /// Populate a Document from a JSON envelope string. With @p shared, an
+    /// imported body found there by its feature's ID is that body, the very
+    /// one, and no STEP is read for it: a copy documentToJson made with them.
     static bool documentFromJson(const std::string& text, doc::Document& doc,
-                                 std::string* error = nullptr, ImportReport* report = nullptr);
+                                 std::string* error = nullptr, ImportReport* report = nullptr,
+                                 const SharedImports* shared = nullptr);
 
     /// Serialize the assembly envelope. @p filePath anchors relative component
     /// paths (pass the eventual on-disk location; empty keeps paths as-is).
