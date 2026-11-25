@@ -1197,3 +1197,21 @@ TEST(StepExact, ABandComesInExact) {
         EXPECT_NEAR(ideal.properties.volume, c.volume, c.volume * 1e-8);
     }
 }
+
+// Ruling 9 holds for what a seam is given: its tolerance covers how far its line passes from the
+// vertices it joins, and that is held to the solid's limit, a thousandth of its size, as every
+// tolerance grown from the file is. Rims 0.003 off a cylinder of radius 1.003 (within the limit
+// of 0.00346), the top rim's vertex 0.005 rad round from the bottom's: within its joins' allowance
+// of the seam's line, so the seam joins it there, and passes 0.0058 from it.
+TEST(StepExact, ASeamPastTheLimitLeavesItsSolidOut) {
+    const std::string text =
+        replaced(bandCylinder("1.003"), "#12 = CARTESIAN_POINT('',(1.,0.,2.));",
+                 "#12 = CARTESIAN_POINT('',(0.99998750002604,0.00499997916669,2.));");
+    ImportReport report;
+    EXPECT_TRUE(StepFormat::fromString(text, &report, nullptr, inMillimetres()).empty());
+    const std::string& why = StepFormat::lastError();
+    EXPECT_NE(why.find("its seam passes 0.00584 from a vertex it joins, beyond the limit of "
+                       "0.00346 (a thousandth of the solid's size) (face #27"),
+              std::string::npos)
+        << why;
+}

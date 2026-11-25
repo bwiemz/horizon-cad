@@ -822,7 +822,8 @@ std::string laySeam(Solid& solid, Face& face, int dir, double period, Loop& a, c
     const auto curve = isoCurve(s, dir, atNear);
     if (curve == nullptr) return kNoSeam + "its surface gives no exact curve along a seam";
 
-    // How far its line passes from the vertices it joins, for the seam's tolerance.
+    // How far its line passes from the vertices it joins: bounded here, and measured for the
+    // seam's tolerance once its pcurves are laid.
     const auto onLine = [&](double w) {
         const Vec2 uv = isoPoint(dir, atNear, w);
         return s.evaluate(uv.x, uv.y);
@@ -836,13 +837,11 @@ std::string laySeam(Solid& solid, Face& face, int dir, double period, Loop& a, c
         return kNoSeam + "its seam's line passes " + std::to_string(std::max(gapA, gapB)) +
                " from a vertex it joins";
     }
-    const double seamTolerance =
-        std::max(gapA, gapB) > tolerance.linear ? std::max(gapA, gapB) : 0.0;
+    Edge probe;
+    probe.tolerance = std::max(gapA, gapB) > tolerance.linear ? std::max(gapA, gapB) : 0.0;
 
     // Which way round: where the other parameter wraps too, the seam can run either way from
     // a to b, and runs the way that leaves the face on the side its sense says.
-    Edge probe;
-    probe.tolerance = seamTolerance;
     const double otherPeriod = periodOf(s, other);
     std::vector<double> ends{w1};
     if (otherPeriod > 0.0) {
@@ -913,6 +912,29 @@ std::string laySeam(Solid& solid, Face& face, int dir, double period, Loop& a, c
     }
     auto carrier = seamCarrier(*curve, from, to, va->point, vb->point);
 
+    // Its sides' pcurves, and its tolerance: how far their ends, sampled where the validator
+    // samples them, and its curve's ends lie from the vertices it joins.
+    const std::shared_ptr<const geo::Curve2D> upCurve =
+        std::make_shared<geo::Line2D>(isoPoint(dir, atFar, from), isoPoint(dir, atFar, to));
+    const std::shared_ptr<const geo::Curve2D> downCurve =
+        std::make_shared<geo::Line2D>(isoPoint(dir, atNear, to), isoPoint(dir, atNear, from));
+    double gap = std::max((curve->evaluate(from) - va->point).length(),
+                          (curve->evaluate(to) - vb->point).length());
+    const auto endsOf = [&](const std::shared_ptr<const geo::Curve2D>& pcurve, const Vertex& first,
+                            const Vertex& last) {
+        HalfEdge side;
+        side.pcurve = pcurve;
+        side.pcurveEnd = 1.0;
+        for (const int i : {0, topo::kLoopSamples - 1}) {
+            const Vec2 uv =
+                pcurve->evaluate(topo::loopSampleParameter(side, i, topo::kLoopSamples));
+            const Vertex& v = i == 0 ? first : last;
+            gap = std::max(gap, (s.evaluate(uv.x, uv.y) - v.point).length());
+        }
+    };
+    endsOf(upCurve, *va, *vb);
+    endsOf(downCurve, *vb, *va);
+
     // Joined: a from its crossing round to it, up the seam's far side to b, b round, and down
     // its near side back to a's start.
     HalfEdge* up = solid.allocHalfEdge();
@@ -923,7 +945,7 @@ std::string laySeam(Solid& solid, Face& face, int dir, double period, Loop& a, c
     seam->exactCurve = curve;
     seam->curveStart = from;
     seam->curveEnd = to;
-    seam->tolerance = seamTolerance;
+    seam->tolerance = gap > tolerance.linear ? gap : 0.0;
     seam->curve = std::move(carrier);
     up->origin = va;
     down->origin = vb;
@@ -931,11 +953,9 @@ std::string laySeam(Solid& solid, Face& face, int dir, double period, Loop& a, c
     down->twin = up;
     up->edge = down->edge = seam;
     up->face = down->face = &face;
-    up->pcurve =
-        std::make_shared<geo::Line2D>(isoPoint(dir, atFar, from), isoPoint(dir, atFar, to));
+    up->pcurve = upCurve;
     up->pcurveEnd = 1.0;
-    down->pcurve =
-        std::make_shared<geo::Line2D>(isoPoint(dir, atNear, to), isoPoint(dir, atNear, from));
+    down->pcurve = downCurve;
     down->pcurveEnd = 1.0;
     HalfEdge* beforeA = ringA.back();
     HalfEdge* beforeB = ringB.back();

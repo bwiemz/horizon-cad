@@ -4284,11 +4284,34 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
 
     // Each band given its seam, now that every face's pcurves exist (its seam splits edges that
     // faces built after it share), then its sense and its seams' layout, as every other face had.
+    // The tolerances its seam and splits are given, measured as grow measures, are held to the
+    // limit as every other is: the seam's, how far its line passes from the vertices it joins; a
+    // split's vertex's, how far its edge's pcurves have it.
     for (topo::Face* f : bands) {
         if (stop()) return read;
         if (std::string why = model::insertSeams(solid, *f, resolution); !why.empty()) {
             read.problem = why + whereIn(f, f->outerLoop->halfEdge->edge);
             return read;
+        }
+        std::vector<topo::Wire*> loops{f->outerLoop};
+        loops.insert(loops.end(), f->innerLoops.begin(), f->innerLoops.end());
+        for (topo::Wire* wire : loops) {
+            const std::vector<topo::HalfEdge*> ring =
+                wire != nullptr ? ringOf(*wire, 2 * solid.edges().size() + 1)
+                                : std::vector<topo::HalfEdge*>{};
+            for (const topo::HalfEdge* h : ring) {
+                if (h->edge->tolerance > limit) {
+                    read.problem = "its seam passes " + threeFigures(h->edge->tolerance) +
+                                   " from a vertex it joins, " + limitSays + whereIn(f, h->edge);
+                    return read;
+                }
+                if (h->origin->tolerance > limit) {
+                    read.problem = "its seam splits an edge where the edge's pcurves part by " +
+                                   threeFigures(h->origin->tolerance) + ", " + limitSays +
+                                   whereIn(f, h->edge);
+                    return read;
+                }
+            }
         }
     }
     const std::size_t limitSeamed = 2 * solid.edges().size() + 1;
