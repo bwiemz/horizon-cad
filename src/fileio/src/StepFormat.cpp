@@ -551,7 +551,8 @@ std::optional<std::pair<Vec3, Vec3>> flatPlaneOf(const topo::Face& f, double tol
         !topo::GeometryValidator::facePlane(f, carrierOrigin, carrierNormal)) {
         return std::nullopt;  // a curved carrier, whatever its corners do
     }
-    const auto& [normal, at] = *plane;
+    const Vec3& normal = plane->first;
+    const Vec3& at = plane->second;
     const auto on = [&](const Vec3& p) { return std::abs((p - at).dot(normal)) <= tolerance; };
     std::vector<const topo::Wire*> loops{f.outerLoop};
     loops.insert(loops.end(), f.innerLoops.begin(), f.innerLoops.end());
