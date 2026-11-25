@@ -234,6 +234,45 @@ std::string cylinderWithRimsOff(const Vec3& at, double radius, double surfaceRad
            "ENDSEC;\nEND-ISO-10303-21;\n";
 }
 
+/// A band (a cylinder of radius 1 and height 2 whose side is bounded by its two rims alone) whose
+/// top rim, a circle of radius 1, is tilted @p tilt off the cylinder's parallels, its axis leaning
+/// towards the angle @p lean about z, and its cap's plane with it. The rim's vertex is at @p at on
+/// its circle, the bottom rim's at angle 0, so the band's seam splits the top rim.
+std::string bandWithATiltedRim(double tilt, double lean, double at) {
+    const Vec3 axis{std::sin(tilt) * std::cos(lean), std::sin(tilt) * std::sin(lean),
+                    std::cos(tilt)};
+    Vec3 x = Vec3{1, 0, 0} - axis * axis.x;
+    x = x * (1.0 / x.length());
+    const Vec3 vertex = Vec3{0, 0, 2} + x * std::cos(at) + axis.cross(x) * std::sin(at);
+    const auto triple = [](const Vec3& v) {
+        return "(" + real(v.x) + "," + real(v.y) + "," + real(v.z) + ")";
+    };
+    return "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\nDATA;\n"
+           "#1 = CARTESIAN_POINT('',(0.,0.,0.));\n#2 = DIRECTION('',(0.,0.,1.));\n"
+           "#3 = DIRECTION('',(0.,1.,0.));\n#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);\n"
+           "#5 = CIRCLE('',#4,1.);\n#6 = CARTESIAN_POINT('',(1.,0.,0.));\n"
+           "#7 = VERTEX_POINT('',#6);\n#8 = CARTESIAN_POINT('',(0.,0.,2.));\n"
+           "#9 = DIRECTION('',(1.,0.,0.));\n#50 = DIRECTION(''," +
+           triple(axis) + ");\n#51 = DIRECTION(''," + triple(x) +
+           ");\n#10 = AXIS2_PLACEMENT_3D('',#8,#50,#51);\n#11 = CIRCLE('',#10,1.);\n"
+           "#12 = CARTESIAN_POINT(''," +
+           triple(vertex) +
+           ");\n#13 = VERTEX_POINT('',#12);\n#14 = EDGE_CURVE('',#7,#7,#5,.T.);\n"
+           "#15 = EDGE_CURVE('',#13,#13,#11,.T.);\n#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);\n"
+           "#20 = CYLINDRICAL_SURFACE('',#19,1.);\n#21 = ORIENTED_EDGE('',*,*,#14,.T.);\n"
+           "#22 = EDGE_LOOP('',(#21));\n#23 = FACE_OUTER_BOUND('',#22,.T.);\n"
+           "#24 = ORIENTED_EDGE('',*,*,#15,.F.);\n#25 = EDGE_LOOP('',(#24));\n"
+           "#26 = FACE_BOUND('',#25,.T.);\n#27 = ADVANCED_FACE('',(#23,#26),#20,.T.);\n"
+           "#28 = AXIS2_PLACEMENT_3D('',#8,#50,$);\n#29 = PLANE('',#28);\n"
+           "#30 = ORIENTED_EDGE('',*,*,#15,.T.);\n#31 = EDGE_LOOP('',(#30));\n"
+           "#32 = FACE_OUTER_BOUND('',#31,.T.);\n#33 = ADVANCED_FACE('',(#32),#29,.T.);\n"
+           "#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);\n#35 = PLANE('',#34);\n"
+           "#36 = ORIENTED_EDGE('',*,*,#14,.F.);\n#37 = EDGE_LOOP('',(#36));\n"
+           "#38 = FACE_OUTER_BOUND('',#37,.T.);\n#39 = ADVANCED_FACE('',(#38),#35,.F.);\n"
+           "#40 = CLOSED_SHELL('',(#27,#33,#39));\n#41 = MANIFOLD_SOLID_BREP('band',#40);\n"
+           "ENDSEC;\nEND-ISO-10303-21;\n";
+}
+
 }  // namespace
 
 // An OpenCASCADE cylinder: its side on its CYLINDRICAL_SURFACE, its caps on their PLANEs, each
@@ -374,7 +413,7 @@ TEST(StepExact, EdgesOffTheirSurfaceWithinTheFileTolerance) {
 // place of where it lies. Grown to the reader's own measure of the gap (pcurveOn's, at other
 // points and by another route), the tolerance came out a last bit short of the validator's for
 // 154 of these 960 cylinders on Linux, and on macOS, whose sin, cos and atan2 round differently,
-// for the cylinder of the test above.
+// for the cylinder of the test above; that last bit is rounding, and is taken up (Ruling 64).
 TEST(StepExact, RimsOffTheirSideAnywhereAreCoveredByTheirEdgesTolerance) {
     int read = 0;
     for (const bool band : {false, true}) {
@@ -451,6 +490,30 @@ TEST(StepExact, RimsAtTheLimitAreWithinItOrBeyondIt) {
     }
     EXPECT_GT(within, 0);
     EXPECT_GT(beyond, 0);
+}
+
+// A pcurve past its edge's tolerance by more than rounding strays, and is reported (Ruling 64):
+// only a last bit's difference between two measures of one gap is taken up into the tolerance. A
+// band's top rim is tilted 0.0008 off the cylinder's parallels, so its pcurve, a parallel taken
+// as a closed form, stands up to 0.0015 off it, within the limit; pcurveOn measured that at its
+// 49 points, and the edge's tolerance grew to it. The band's seam splits the rim, and the
+// validator, at its own 17 points on each piece, finds the pcurve 3.7e-7 farther off, where it
+// peaks between pcurveOn's points: over ten million times what rounding could part two measures
+// of one gap by. The solid is left out, and why says how far the pcurve strays.
+TEST(StepExact, ARimTiltedOffItsBandStraysPastItsToleranceAndIsReported) {
+    const auto solids = StepFormat::fromString(bandWithATiltedRim(8e-4, 0.27, 6.06), nullptr,
+                                               nullptr, inMillimetres());
+    EXPECT_TRUE(solids.empty()) << "a pcurve past its tolerance by 3.7e-7 is not rounding";
+    const std::string& why = StepFormat::lastError();
+    EXPECT_NE(why.find("could not be made exact: pcurve strays 0.0015"), std::string::npos) << why;
+    EXPECT_NE(why.find("from the edge's curve (face #27, edge #15"), std::string::npos) << why;
+
+    // Not tilted, the same band reads exact.
+    EXPECT_EQ(StepFormat::fromString(bandWithATiltedRim(0.0, 0.27, 6.06), nullptr, nullptr,
+                                     inMillimetres())
+                  .size(),
+              1u)
+        << StepFormat::lastError();
 }
 
 // Review Focus 3: a file in inches comes in in millimetres, its exact geometry with it: the
