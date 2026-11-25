@@ -203,15 +203,21 @@ double NurbsSurface::vMax() const {
 // three curves a row, for every row of the net): the same arithmetic, so the same point to the
 // last bit, and the same exception where a row is not finite (a NaN parameter).
 math::Vec3 NurbsSurface::evaluate(double u, double v) const {
-    u = roundTheSeam(u, uMin(), uMax(), m_closedU);
-    v = roundTheSeam(v, vMin(), vMax(), m_closedV);
+    const int countU = controlPointCountU();
+    const int countV = controlPointCountV();
+    const double uLo = m_knotsU[static_cast<size_t>(m_degreeU)];
+    const double uHi = m_knotsU[static_cast<size_t>(countU)];
+    const double vLo = m_knotsV[static_cast<size_t>(m_degreeV)];
+    const double vHi = m_knotsV[static_cast<size_t>(countV)];
+    u = roundTheSeam(u, uLo, uHi, m_closedU);
+    v = roundTheSeam(v, vLo, vHi, m_closedV);
     if (m_degreeU < kMaxOrder && m_degreeV < kMaxOrder) {
         const int p = m_degreeU;
         const int q = m_degreeV;
-        const double uc = std::clamp(u, uMin(), uMax());
-        const double vc = std::clamp(v, vMin(), vMax());
-        const int ku = findSpan(m_knotsU, controlPointCountU(), p, uc);
-        const int kv = findSpan(m_knotsV, controlPointCountV(), q, vc);
+        const double uc = std::clamp(u, uLo, uHi);
+        const double vc = std::clamp(v, vLo, vHi);
+        const int ku = findSpan(m_knotsU, countU, p, uc);
+        const int kv = findSpan(m_knotsV, countV, q, vc);
         std::array<math::Vec3, kMaxOrder> rowPoint{};
         std::array<double, kMaxOrder> rowWeight{};
         std::array<Homogeneous, kMaxOrder> d{};
@@ -403,8 +409,15 @@ void basisAndDerivatives(const std::vector<double>& knotVector, int span, int p,
 }  // namespace
 
 SurfacePoint NurbsSurface::evaluateWithDerivatives(double u, double v) const {
-    u = roundTheSeam(u, uMin(), uMax(), m_closedU);
-    v = roundTheSeam(v, vMin(), vMax(), m_closedV);
+    // The domain read once (a debug build pays for every accessor call; the values are the same).
+    const int countU = controlPointCountU();
+    const int countV = controlPointCountV();
+    const double uLo = m_knotsU[static_cast<size_t>(m_degreeU)];
+    const double uHi = m_knotsU[static_cast<size_t>(countU)];
+    const double vLo = m_knotsV[static_cast<size_t>(m_degreeV)];
+    const double vHi = m_knotsV[static_cast<size_t>(countV)];
+    u = roundTheSeam(u, uLo, uHi, m_closedU);
+    v = roundTheSeam(v, vLo, vHi, m_closedV);
     if (m_degreeU >= kMaxOrder || m_degreeV >= kMaxOrder) {
         // Past the fixed arrays: differences of evaluate(), one-sided at an
         // edge of the domain.
@@ -420,12 +433,12 @@ SurfacePoint NurbsSurface::evaluateWithDerivatives(double u, double v) const {
         return {evaluate(u, v), difference(u, uMin(), uMax(), alongU),
                 difference(v, vMin(), vMax(), alongV)};
     }
-    u = std::clamp(u, uMin(), uMax());
-    v = std::clamp(v, vMin(), vMax());
+    u = std::clamp(u, uLo, uHi);
+    v = std::clamp(v, vLo, vHi);
     const int p = m_degreeU;
     const int q = m_degreeV;
-    const int spanU = findSpan(m_knotsU, controlPointCountU(), p, u);
-    const int spanV = findSpan(m_knotsV, controlPointCountV(), q, v);
+    const int spanU = findSpan(m_knotsU, countU, p, u);
+    const int spanV = findSpan(m_knotsV, countV, q, v);
     double nu[kMaxOrder];
     double dnu[kMaxOrder];
     double nv[kMaxOrder];

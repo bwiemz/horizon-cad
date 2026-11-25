@@ -842,14 +842,20 @@ struct Measure {
     bool strict = false;
 };
 
-/// The fit's deviation inside each sample interval. Strict: at seven points of each, each
-/// distance found from the matched parameter and, where it nears @p target, in full, and what
-/// the fit strays beyond the curve's own gap counted kPeakMargin more; this is what a returned
-/// pcurve is measured by. Otherwise a quick look at three points, from the matched parameter
-/// alone, to steer refinement.
+/// A pcurve's deviation inside each sample interval, the pcurve given by @p at at the samples'
+/// parameters @p params. Strict: at seven points of each, each distance found from the matched
+/// parameter and, where it nears @p target, in full, and what the pcurve strays beyond the
+/// curve's own gap counted kPeakMargin more; this is what a returned pcurve is measured by.
+/// Otherwise a quick look at three points, from the matched parameter alone, to steer
+/// refinement. A fit passes through its samples, so its distance there is the samples' gap,
+/// already counted; a pcurve that does not (a parameter line, which its samples may stand off
+/// by up to the tolerance) is measured at each sample as well, in the interval it starts (the
+/// last sample in the last interval): where @p atSamples gives a sample a bound (not below 0),
+/// by that, else checked as the points between are.
 template <class At>
 Measure measureAlong(const Surface& s, const Curve3& c, const std::vector<Sample>& samples,
-                     const std::vector<double>& params, const At& at, bool strict, double target) {
+                     const std::vector<double>& params, const At& at, bool strict, double target,
+                     const std::vector<double>* atSamples) {
     Measure m;
     m.strict = strict;
     m.interval.assign(samples.size() - 1, 0.0);
@@ -858,7 +864,17 @@ Measure measureAlong(const Surface& s, const Curve3& c, const std::vector<Sample
     for (size_t i = 0; i + 1 < samples.size(); ++i) {
         const double lo = samples[i == 0 ? 0 : i - 1].t;
         const double hi = samples[std::min(i + 2, samples.size() - 1)].t;
-        for (int k = 1; k <= checks; ++k) {
+        // At samples, each once: an interval's start, and the last interval's end too.
+        const bool ends = atSamples != nullptr;
+        const int lastK = ends && i + 2 == samples.size() ? checks + 1 : checks;
+        for (int k = ends ? 0 : 1; k <= lastK; ++k) {
+            if (ends && (k == 0 || k == checks + 1)) {
+                const double bound = (*atSamples)[k == 0 ? i : i + 1];
+                if (bound >= 0.0) {
+                    m.interval[i] = std::max(m.interval[i], bound);
+                    continue;
+                }
+            }
             const double f = static_cast<double>(k) / (checks + 1);
             const double sp = params[i] + f * (params[i + 1] - params[i]);
             const Vec2 uv = at(sp);
@@ -881,13 +897,19 @@ Measure measureAlong(const Surface& s, const Curve3& c, const std::vector<Sample
 Measure measureFit(const Surface& s, const Curve3& c, const std::vector<Sample>& samples,
                    const Fit& fit, bool strict, double target) {
     return measureAlong(
-        s, c, samples, fit.params, [&fit](double sp) { return fit.at(sp); }, strict, target);
+        s, c, samples, fit.params, [&fit](double sp) { return fit.at(sp); }, strict, target,
+        nullptr);
 }
 
 /// A parameter line of the surface the samples keep to, and each sample's place along it.
 struct ParameterLine {
     std::shared_ptr<const Line2D> curve;
     std::vector<double> params;
+    /// How far each sample is off the line across the surface, to first order: its step in the
+    /// parameter that stays, times the surface's speed along that parameter there.
+    std::vector<double> off;
+    /// That step itself, in the parameter, over the size of the parameter (1 + |it|).
+    std::vector<double> step;
 };
 
 /// The line of the surface the samples keep to, if they do: each sample's v (or u) within
@@ -911,11 +933,18 @@ std::optional<ParameterLine> parameterLineOf(const std::vector<Sample>& samples,
     if (!std::isfinite(span) || span == 0.0) return std::nullopt;
     ParameterLine line;
     line.params.reserve(samples.size());
+    line.off.reserve(samples.size());
+    line.step.reserve(samples.size());
     for (size_t i = 0; i < samples.size(); ++i) {
         if (i > 0 && !((run(samples[i].uv) - run(samples[i - 1].uv)) * span > 0.0)) {
             return std::nullopt;
         }
         line.params.push_back((run(samples[i].uv) - run(a)) / span);
+        const Sample& smp = samples[i];
+        const double stay = oneV ? a.y : a.x;
+        const double d = std::abs((oneV ? smp.uv.y : smp.uv.x) - stay);
+        line.off.push_back(d * (oneV ? smp.speedV : smp.speedU));
+        line.step.push_back(d / (1.0 + std::abs(stay)));
     }
     line.params.back() = 1.0;
     const Vec2 b = oneV ? Vec2(samples.back().uv.x, a.y) : Vec2(a.x, samples.back().uv.y);
@@ -1120,9 +1149,24 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
     // Otherwise the samples go on to be fitted.
     if (dynamic_cast<const NurbsSurface*>(&s) != nullptr) {
         if (const std::optional<ParameterLine> line = parameterLineOf(samples, tolerance)) {
+            // The line does not pass through its samples: measured at them too. A sample on it
+            // and on its surface to rounding (a rim exactly on its surface: its step off the
+            // line a hair of its parameter, and that step and its gap each within a hundredth of
+            // the target) bounds the line's distance there, as tightly as a check would find
+            // it: the sample's own gap, its step off the line with 1% more for the surface's
+            // speed over so small a step, and rounding (1e-12 of the point's reach). The rest,
+            // a sample that stands off among them, are checked as the points between are.
+            std::vector<double> atSamples(samples.size(), -1.0);
+            for (size_t i = 0; i < samples.size(); ++i) {
+                if (line->step[i] <= 1e-12 && line->off[i] <= kSettle * target &&
+                    samples[i].gap <= kSettle * target) {
+                    atSamples[i] = samples[i].gap + 1.01 * line->off[i] +
+                                   1e-12 * (1.0 + samples[i].point.length());
+                }
+            }
             const Measure lm = measureAlong(
                 s, c, samples, line->params,
-                [&line](double sp) { return line->curve->evaluate(sp); }, true, target);
+                [&line](double sp) { return line->curve->evaluate(sp); }, true, target, &atSamples);
             allow(lm.maxGap);
             if (!(lm.maxGap > target) && std::max(lm.fitDeviation, lm.maxGap) <= target) {
                 out.curve = line->curve;

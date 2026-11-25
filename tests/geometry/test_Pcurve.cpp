@@ -1105,3 +1105,21 @@ TEST(Pcurve, AParameterLineIsTakenWithinTheLimitOnlyForItsGap) {
     EXPECT_LE(pb.deviation, tol);
     EXPECT_GE(pb.deviation, denseDeviation(s, bump, pb) * 0.999);
 }
+
+// Re-review C1 (rv_iso2): a parameter line may be taken with its samples off it by up to the
+// tolerance, and a fit, which passes through its samples, never needed them measured; the line
+// does not. A bump within the face 1e-5 high whose peak lands on a sample (t = 8/256) keeps the
+// samples within a tolerance of 1e-4 of the line: the line is taken, and the deviation it reports
+// covers the true one, the peak included, with or without a stand-off limit.
+TEST(Pcurve, AParameterLineIsMeasuredAtItsSamplesToo) {
+    const NurbsSurface s = flatDegreeTwo();
+    const NurbsCurve c = bumpedLine(1e-5);
+    for (const double limit : {0.0, 1e-2}) {
+        const Pcurve pc = pcurveOn(s, c, 0.0, 1.0, 1e-4, limit);
+        EXPECT_TRUE(pc.problem.empty()) << limit << ": " << pc.problem;
+        ASSERT_NE(pc.curve, nullptr);
+        const double truth = denseDeviation(s, c, pc);
+        EXPECT_GT(truth, 6e-6) << limit;
+        EXPECT_GE(pc.deviation, truth * 0.999) << limit;
+    }
+}
