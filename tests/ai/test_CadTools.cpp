@@ -356,6 +356,42 @@ TEST_F(CadToolsTest, HoleThroughAFace) {
     EXPECT_EQ(features.back()["parameters"]["type"]["choice"], "Counterbore");
 }
 
+// Seen in a local model (Qwen3.5 9B): a counterbore asked for with a
+// countersink's sink_diameter, and the bore's depth given as the hole's, so the
+// hole came out plain and 4 mm deep. A parameter of another kind of hole is
+// refused, naming the ones this kind takes.
+TEST_F(CadToolsTest, AHoleRefusesAnotherKindsParameters) {
+    box(20, 20, 10);
+    const std::string sinkOnBore = fails("add_hole", {{"face", "top"},
+                                                      {"position", {10, 10, 10}},
+                                                      {"diameter", 8},
+                                                      {"through_all", true},
+                                                      {"type", "counterbore"},
+                                                      {"sink_diameter", 14}});
+    EXPECT_NE(sinkOnBore.find("bore_diameter"), std::string::npos) << sinkOnBore;
+    const std::string boreOnSimple = fails("add_hole", {{"face", "top"},
+                                                        {"position", {10, 10, 10}},
+                                                        {"diameter", 3},
+                                                        {"through_all", true},
+                                                        {"bore_diameter", 6}});
+    EXPECT_NE(boreOnSimple.find("\"type\": \"counterbore\""), std::string::npos) << boreOnSimple;
+    const std::string angleOnSimple = fails("add_hole", {{"face", "top"},
+                                                         {"position", {10, 10, 10}},
+                                                         {"diameter", 3},
+                                                         {"depth", 4},
+                                                         {"sink_angle", 90}});
+    EXPECT_NE(angleOnSimple.find("\"type\": \"countersink\""), std::string::npos) << angleOnSimple;
+    // The hole as it was meant: 8 mm through, under a 14 mm bore 4 mm deep.
+    ok("add_hole", {{"face", "top"},
+                    {"position", {10, 10, 10}},
+                    {"diameter", 8},
+                    {"through_all", true},
+                    {"type", "counterbore"},
+                    {"bore_diameter", 14},
+                    {"bore_depth", 4}});
+    EXPECT_NEAR(volume(), 4000.0 - kPi * 16.0 * 10.0 - kPi * (49.0 - 16.0) * 4.0, 10.0);
+}
+
 TEST_F(CadToolsTest, FacesByTheirSide) {
     box(60, 40, 5);
     // A hole in "Top", as a model first asks for it.

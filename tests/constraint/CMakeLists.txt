@@ -16,7 +16,7 @@ target_link_libraries(hz_constraint_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_constraint_tests)
+gtest_discover_tests(hz_constraint_tests DISCOVERY_TIMEOUT 120)
 
 add_executable(hz_constraint_solve_helper_tests
     test_ConstraintSolveHelper.cpp
@@ -32,4 +32,4 @@ target_link_libraries(hz_constraint_solve_helper_tests
         GTest::gtest_main
 )
 
-gtest_discover_tests(hz_constraint_solve_helper_tests)
+gtest_discover_tests(hz_constraint_solve_helper_tests DISCOVERY_TIMEOUT 120)

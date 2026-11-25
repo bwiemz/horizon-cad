@@ -33,4 +33,4 @@ target_link_libraries(hz_ai_tests
 target_include_directories(hz_ai_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests/fileio)
 
 include(GoogleTest)
-gtest_discover_tests(hz_ai_tests)
+gtest_discover_tests(hz_ai_tests DISCOVERY_TIMEOUT 120)

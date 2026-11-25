@@ -65,4 +65,4 @@ target_include_directories(hz_modeling_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(hz_modeling_tests)
+gtest_discover_tests(hz_modeling_tests DISCOVERY_TIMEOUT 120)
