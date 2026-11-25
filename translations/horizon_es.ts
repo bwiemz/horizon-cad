@@ -3548,7 +3548,7 @@ empezar a construir su pieza.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+466"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+467"/>
         <source>&amp;File</source>
         <translation>&amp;Archivo</translation>
     </message>
@@ -5005,18 +5005,30 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">No hay nada seleccionado para hacer zoom: Ajustar todo (F) lo muestra todo</translation>
     </message>
     <message>
-        <location line="+608"/>
+        <location line="+614"/>
         <source>The part&apos;s mass properties could not be worked out: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+60"/>
+        <source>Exact to %1 %2, as its file gives its edges (integrated on its faces as they were imported; its volume and area to within %3):
+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Exact (integrated on its faces as they were imported; its volume and area to within %1):
+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
         <source>Exact (integrated on its faces as they were imported):
 </source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+4"/>
         <source>exact</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5067,7 +5079,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
-        <location line="-2687"/>
+        <location line="-2715"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -5300,14 +5312,14 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <location line="+10"/>
         <location line="+1083"/>
         <location line="+502"/>
-        <location line="+949"/>
+        <location line="+977"/>
         <location line="+600"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-3225"/>
+        <location line="-3253"/>
         <source>Cancel</source>
         <translation type="unfinished">Cancelar</translation>
     </message>
@@ -5328,12 +5340,12 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2865"/>
+        <location line="+2893"/>
         <source>None</source>
         <translation type="unfinished">Ninguno</translation>
     </message>
     <message>
-        <location line="-2859"/>
+        <location line="-2887"/>
         <source>%1 selected</source>
         <translation>%1 seleccionado(s)</translation>
     </message>
@@ -5914,7 +5926,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+775"/>
+        <location line="+803"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
@@ -5924,7 +5936,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-751"/>
+        <location line="-779"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">Un ensamblaje no tiene croquis: cree el croquis en una pieza</translation>
     </message>
@@ -6170,7 +6182,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Material:</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+21"/>
         <source>The part&apos;s mass properties could not be worked out</source>
         <translation type="unfinished">No se pudieron calcular las propiedades físicas de la pieza</translation>
     </message>
@@ -6216,7 +6228,7 @@ Masa: %1 g</translation>
 </translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+44"/>
         <source>
 
 Every face is flat, so the part is exactly as modelled.
@@ -6258,12 +6270,12 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">ideal</translation>
     </message>
     <message>
-        <location line="-3583"/>
+        <location line="-3611"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">No se pudo calcular.</translation>
     </message>
     <message>
-        <location line="+3596"/>
+        <location line="+3624"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">Ya se están midiendo las propiedades físicas</translation>
     </message>
@@ -6439,7 +6451,7 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">Reconstrucción cancelada: el modelo está como antes del último cambio.</translation>
     </message>
     <message>
-        <location line="-3241"/>
+        <location line="-3269"/>
         <source>0 selected</source>
         <translation>0 seleccionado</translation>
     </message>

@@ -3526,7 +3526,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+466"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+467"/>
         <source>&amp;File</source>
         <translation>文件(&amp;F)</translation>
     </message>
@@ -4982,18 +4982,30 @@ begin building your part.</source>
         <translation type="unfinished">没有可缩放的选择：整屏显示 (F) 显示全部</translation>
     </message>
     <message>
-        <location line="+608"/>
+        <location line="+614"/>
         <source>The part&apos;s mass properties could not be worked out: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+60"/>
+        <source>Exact to %1 %2, as its file gives its edges (integrated on its faces as they were imported; its volume and area to within %3):
+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Exact (integrated on its faces as they were imported; its volume and area to within %1):
+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
         <source>Exact (integrated on its faces as they were imported):
 </source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+4"/>
         <source>exact</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5042,7 +5054,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 未估计其误差：只测量了一次，未细分。</translation>
     </message>
     <message>
-        <location line="-2687"/>
+        <location line="-2715"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -5275,14 +5287,14 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+10"/>
         <location line="+1083"/>
         <location line="+502"/>
-        <location line="+949"/>
+        <location line="+977"/>
         <location line="+600"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-3225"/>
+        <location line="-3253"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -5303,12 +5315,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2865"/>
+        <location line="+2893"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-2859"/>
+        <location line="-2887"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
@@ -5887,7 +5899,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+775"/>
+        <location line="+803"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
@@ -5897,7 +5909,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-751"/>
+        <location line="-779"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">装配体中没有草图：请在零件中绘制草图</translation>
     </message>
@@ -6140,7 +6152,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">材料:</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+21"/>
         <source>The part&apos;s mass properties could not be worked out</source>
         <translation type="unfinished">无法计算零件的质量属性</translation>
     </message>
@@ -6186,7 +6198,7 @@ Mass: %1 g</source>
 </translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+44"/>
         <source>
 
 Every face is flat, so the part is exactly as modelled.
@@ -6228,12 +6240,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">理想值</translation>
     </message>
     <message>
-        <location line="-3583"/>
+        <location line="-3611"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">无法计算。</translation>
     </message>
     <message>
-        <location line="+3596"/>
+        <location line="+3624"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">已在测量质量属性</translation>
     </message>
@@ -6409,7 +6421,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
     </message>
     <message>
-        <location line="-3241"/>
+        <location line="-3269"/>
         <source>0 selected</source>
         <translation>已选择 0 个</translation>
     </message>
