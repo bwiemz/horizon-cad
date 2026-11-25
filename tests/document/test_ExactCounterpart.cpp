@@ -399,9 +399,11 @@ TEST(ExactCounterpart, OneThatCannotBeMeshedIsDroppedWithANote) {
 
 // Ruling 46. A face turned inside out by its flag alone is refused before it is compared: its
 // loop runs against its sense, and its exact mass says so. A body turned inside out whole holds
-// together, validates clean and meshes, but measures wrong. Imported after a cylinder, its
-// facets are gathered facing out, as their corners wind, and its exact form as its faces face;
-// the two disagree, and the counterpart is dropped with both figures.
+// together, validates clean and meshes, but measures wrong. A cylinder so turned, imported before
+// a larger clip: the facets are gathered facing out, as their corners wind, and the exact form as
+// its faces face, enclosing the clip less the cylinder; the two disagree, and the counterpart is
+// dropped with both figures. (Re-baselined for M6: the clip was the body turned, which left the
+// part's exact form facing inward, now said as such; the figures are the same.)
 TEST(ExactCounterpart, AnExactFormThatDisagreesWithItsFacetsIsDropped) {
     auto flipped = read(hz::step_text::externalStyleCylinder());
     ASSERT_NE(flipped, nullptr);
@@ -417,22 +419,23 @@ TEST(ExactCounterpart, AnExactFormThatDisagreesWithItsFacetsIsDropped) {
     EXPECT_EQ(one.exactNote().rfind("shown from facets: ", 0), 0u) << one.exactNote();
     EXPECT_NE(one.exactNote().find("runs against its sense"), std::string::npos) << one.exactNote();
 
-    auto clip = read(hz::step_text::cClip(Vec3(10, 0, 0)));
-    ASSERT_NE(clip, nullptr);
+    auto cylinder = read(hz::step_text::externalStyleCylinder());
+    ASSERT_NE(cylinder, nullptr);
     std::set<hz::topo::Face*> faces;
-    for (auto& face : clip->faces()) faces.insert(&face);
-    turnInsideOut(*clip, faces);
-    ASSERT_TRUE(hz::topo::validateExact(*clip, hz::topo::exactTolerance(*clip)).empty());
+    for (auto& face : cylinder->faces()) faces.insert(&face);
+    turnInsideOut(*cylinder, faces);
+    ASSERT_TRUE(hz::topo::validateExact(*cylinder, hz::topo::exactTolerance(*cylinder)).empty());
 
     Document part;
-    importInto(part, read(hz::step_text::externalStyleCylinder()));
-    part.featureTree().addFeature(imported(std::move(clip), "clip.step"));
+    importInto(part, std::move(cylinder));
+    part.featureTree().addFeature(
+        imported(read(hz::step_text::cClip(Vec3(10, 0, 0))), "clip.step"));
     ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
     EXPECT_EQ(part.exactSolid(), nullptr);
     EXPECT_FALSE(part.exactMesh());
     const std::string said = "exact form disagrees with its facets: ";
     ASSERT_EQ(part.exactNote().rfind(said, 0), 0u) << part.exactNote();
-    // "<exact> vs <faceted>": the cylinder less the clip, against both in facets.
+    // "<exact> vs <faceted>": the clip less the cylinder, against both in facets.
     const std::string figures = part.exactNote().substr(said.size());
     const auto vs = figures.find(" vs ");
     ASSERT_NE(vs, std::string::npos) << figures;
@@ -441,6 +444,30 @@ TEST(ExactCounterpart, AnExactFormThatDisagreesWithItsFacetsIsDropped) {
     const double faceted = volumeOf(*part.solid());
     EXPECT_NEAR(std::stod(figures.substr(vs + 4)), faceted, 1e-6 * faceted);
     EXPECT_NEAR(faceted, 4.5 * kPi, 4.5 * kPi * 1e-2);
+}
+
+// M6: a lone body turned inside out whole (each loop run the other way and each face's sense
+// turned with it) holds together and validates clean, and its facets, gathered by their corners,
+// face out and measure its volume: only its exact form's sign tells. A part of it alone encloses
+// a negative volume, said as its own note; it is shown from facets, never inside out.
+TEST(ExactCounterpart, ALoneBodyTurnedInsideOutIsSaidToFaceInward) {
+    auto clip = read(hz::step_text::cClip());
+    ASSERT_NE(clip, nullptr);
+    std::set<hz::topo::Face*> faces;
+    for (auto& face : clip->faces()) faces.insert(&face);
+    turnInsideOut(*clip, faces);
+    ASSERT_TRUE(hz::topo::validateExact(*clip, hz::topo::exactTolerance(*clip)).empty());
+
+    Document part;
+    importInto(part, std::move(clip));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr) << "shown inside out";
+    EXPECT_FALSE(part.exactMesh());
+    const std::string said = "shown from facets: the exact form faces inward (it encloses ";
+    ASSERT_EQ(part.exactNote().rfind(said, 0), 0u) << part.exactNote();
+    EXPECT_NEAR(std::stod(part.exactNote().substr(said.size())), -2.5 * kPi, 1e-6);
+    ASSERT_NE(part.solid(), nullptr);
+    EXPECT_NEAR(volumeOf(*part.solid()), 2.5 * kPi, 2.5 * kPi * 1e-2) << "its facets face out";
 }
 
 // Ruling 49: a part saved before stage 2 whose imported body's STEP no exact form holds opens

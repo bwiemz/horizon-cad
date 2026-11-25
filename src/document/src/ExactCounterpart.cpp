@@ -447,8 +447,22 @@ std::shared_ptr<const ExactCounterpart> ExactFollower::make(
                 (problem.empty() ? std::string("its exact form encloses nothing") : problem);
             return made;
         }
+        // Signed as its faces face: each body faces out as its own faces say (Pattern::append
+        // copies an exact body as it is), so the part encloses a positive volume. A negative one,
+        // beyond its error, is a part whose exact form faces into what it bounds (a body written
+        // inside out that its reader did not turn): its facets, gathered by their corners, face
+        // out and measure the same volume positive, so only its sign tells.
         double exactVolume = 0.0;
-        for (const auto& shell : shells) exactVolume += shell.volume;
+        double exactError = 0.0;
+        for (const auto& shell : shells) {
+            exactVolume += shell.volume;
+            exactError += shell.error;
+        }
+        if (exactVolume < 0.0 && -exactVolume > exactError) {
+            made->note = "shown from facets: the exact form faces inward (it encloses " +
+                         figure(exactVolume) + ")";
+            return made;
+        }
         exactVolume = std::abs(exactVolume);
         const auto facets = model::MassPropertiesCalculator::compute(faceted);
         if (!facets.valid) {

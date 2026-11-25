@@ -26,8 +26,9 @@ struct ExactCounterpart {
     /// face, by its name; its edges but its seams, along their curves. Set with `solid`, null
     /// with it.
     std::shared_ptr<const geo::MeshData> mesh;
-    /// Why there is no `solid`: "shown from facets: <why>", "exact form not checked: <why>" or
-    /// "exact form disagrees with its facets: <exact> vs <faceted>". Empty with a solid.
+    /// Why there is no `solid`: "shown from facets: <why>" ("the exact form faces inward (it
+    /// encloses <volume>)" among them), "exact form not checked: <why>" or "exact form disagrees
+    /// with its facets: <exact> vs <faceted>". Empty with a solid.
     std::string note;
     /// What it was made from: each import that made the part, in order, by its feature, its
     /// naming and its body's definition. A build whose imports say the same reuses it. Empty for
