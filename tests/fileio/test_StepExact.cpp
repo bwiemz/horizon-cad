@@ -234,6 +234,50 @@ std::string cylinderWithRimsOff(const Vec3& at, double radius, double surfaceRad
            "ENDSEC;\nEND-ISO-10303-21;\n";
 }
 
+/// A seamed cylinder of radius @p radius and height twice that, its axis leaning (0.6, 0, 0.8)
+/// through (0.3, -0.2, 0.1), as OpenCASCADE writes one, but with its side's surface (of radius
+/// @p surfaceRadius, so its rims stand off it by the difference) placed @p along its axis from
+/// the bottom rim's centre, and its seam LINE's point too: each is evaluated from terms of that
+/// size, which cancel to the part's.
+std::string cylinderFarAlongItsAxis(double along, double radius, double surfaceRadius) {
+    const Vec3 axis{0.6, 0.0, 0.8};
+    const Vec3 x{0.8, 0.0, -0.6};
+    const Vec3 bottom{0.3, -0.2, 0.1};
+    const Vec3 top = bottom + axis * (2.0 * radius);
+    const auto point = [](const Vec3& v) {
+        return "CARTESIAN_POINT('',(" + real(v.x) + "," + real(v.y) + "," + real(v.z) + "))";
+    };
+    const auto direction = [](const Vec3& v) {
+        return "DIRECTION('',(" + real(v.x) + "," + real(v.y) + "," + real(v.z) + "))";
+    };
+    const std::string r = real(radius);
+    return "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\nDATA;\n#1 = " +
+           point(bottom) + ";\n#2 = " + direction(axis) + ";\n#3 = " + direction(x) +
+           ";\n#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);\n#5 = CIRCLE('',#4," + r +
+           ");\n#6 = " + point(bottom + x * radius) +
+           ";\n#7 = VERTEX_POINT('',#6);\n#8 = " + point(top) +
+           ";\n#10 = AXIS2_PLACEMENT_3D('',#8,#2,#3);\n#11 = CIRCLE('',#10," + r +
+           ");\n#12 = " + point(top + x * radius) +
+           ";\n#13 = VERTEX_POINT('',#12);\n#14 = EDGE_CURVE('',#7,#7,#5,.T.);\n"
+           "#15 = EDGE_CURVE('',#13,#13,#11,.T.);\n#17 = " +
+           point(bottom + x * radius + axis * along) +
+           ";\n#16 = LINE('',#17,VECTOR('',#2,1.));\n#18 = EDGE_CURVE('',#7,#13,#16,.T.);\n#60 = " +
+           point(bottom + axis * along) +
+           ";\n#19 = AXIS2_PLACEMENT_3D('',#60,#2,#3);\n#20 = CYLINDRICAL_SURFACE('',#19," +
+           real(surfaceRadius) +
+           ");\n#21 = ORIENTED_EDGE('',*,*,#14,.T.);\n#22 = ORIENTED_EDGE('',*,*,#18,.T.);\n"
+           "#23 = ORIENTED_EDGE('',*,*,#15,.F.);\n#24 = ORIENTED_EDGE('',*,*,#18,.F.);\n"
+           "#25 = EDGE_LOOP('',(#21,#22,#23,#24));\n#26 = FACE_OUTER_BOUND('',#25,.T.);\n"
+           "#27 = ADVANCED_FACE('',(#26),#20,.T.);\n#28 = AXIS2_PLACEMENT_3D('',#8,#2,$);\n"
+           "#29 = PLANE('',#28);\n#30 = ORIENTED_EDGE('',*,*,#15,.T.);\n"
+           "#31 = EDGE_LOOP('',(#30));\n#32 = FACE_OUTER_BOUND('',#31,.T.);\n"
+           "#33 = ADVANCED_FACE('',(#32),#29,.T.);\n#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);\n"
+           "#35 = PLANE('',#34);\n#36 = ORIENTED_EDGE('',*,*,#14,.F.);\n"
+           "#37 = EDGE_LOOP('',(#36));\n#38 = FACE_OUTER_BOUND('',#37,.T.);\n"
+           "#39 = ADVANCED_FACE('',(#38),#35,.F.);\n#40 = CLOSED_SHELL('',(#27,#33,#39));\n"
+           "#41 = MANIFOLD_SOLID_BREP('cyl',#40);\nENDSEC;\nEND-ISO-10303-21;\n";
+}
+
 /// A band (a cylinder of radius 1 and height 2 whose side is bounded by its two rims alone) whose
 /// top rim, a circle of radius 1, is tilted @p tilt off the cylinder's parallels, its axis leaning
 /// towards the angle @p lean about z, and its cap's plane with it. The rim's vertex is at @p at on
@@ -514,6 +558,39 @@ TEST(StepExact, ARimTiltedOffItsBandStraysPastItsToleranceAndIsReported) {
                   .size(),
               1u)
         << StepFormat::lastError();
+}
+
+// A last bit's disagreement is measured against the magnitudes a measure is computed from, not only
+// the part's (Ruling 66). This cylinder's side is placed a million along its own axis from its
+// rims, and its seam LINE's point too: each point is a difference of terms a million long, so two
+// measures of one gap part by units in the last place of a million, not of the part. Each reads,
+// and how exact it is, is its gap to that rounding. Measured against the part's size and place
+// alone, 33 of these 60 were left out, "pcurve strays ... from the edge's curve" at the seam:
+// macOS's symptom brought back by size.
+TEST(StepExact, ACylinderFarAlongItsAxisStillReads) {
+    int read = 0;
+    for (const double along : {1e6 + 0.37, -1e6 - 0.37}) {
+        for (const double radius : {1.0, 0.7, 3.3}) {
+            for (const double off : {1e-6, 2.3e-6, 5e-6, 1e-5, 1e-4}) {
+                for (const double sign : {1.0, -1.0}) {
+                    const double surfaceRadius = radius * (1.0 + sign * off);
+                    const std::string what = "along " + real(along) + ", radius " + real(radius) +
+                                             ", surface " + real(surfaceRadius);
+                    const auto solids = StepFormat::fromString(
+                        cylinderFarAlongItsAxis(along, radius, surfaceRadius), nullptr, nullptr,
+                        inMillimetres());
+                    ASSERT_EQ(solids.size(), 1u) << what << ": " << StepFormat::lastError();
+                    ++read;
+                    EXPECT_EQ(firstIssue(*solids[0]), "") << what;
+                    const double ulp = std::numeric_limits<double>::epsilon() * std::abs(along);
+                    EXPECT_NEAR(largestEdgeTolerance(*solids[0]), std::abs(surfaceRadius - radius),
+                                16.0 * ulp)
+                        << what;
+                }
+            }
+        }
+    }
+    EXPECT_EQ(read, 60);
 }
 
 // Review Focus 3: a file in inches comes in in millimetres, its exact geometry with it: the

@@ -4520,82 +4520,6 @@ std::string layOutSeams(topo::Face& face, const math::ModelTolerance& tolerance,
     return {};
 }
 
-/// How many units in the last place of a solid's coordinates two measures of one gap may part by
-/// in rounding alone (roundingOf).
-constexpr double kRoundingUlps = 16.0;
-
-/// The most two measures of one gap on @p solid, of size @p extent, can differ by in rounding
-/// alone: kRoundingUlps units in the last place of how far its points lie from the origin (its
-/// farthest vertex's distance and its size; a pcurve check's samples lie within its edges'
-/// tolerances of its curves, so within that too, but for a thousandth). Each measure evaluates a
-/// surface and a curve at such points, a handful of products and sums each within half a unit in
-/// the last place, and sin, cos and atan2 within one on every platform's library, so two measures
-/// part by a few units (by about one in the cylinder sweeps of test_StepExact.cpp). Zero where
-/// that is not finite, so that nothing is taken for rounding.
-double roundingOf(const topo::Solid& solid, double extent) {
-    double farthest = 0.0;
-    for (const auto& v : solid.vertices()) {
-        if (v.alive) farthest = std::max(farthest, v.point.length());
-    }
-    const double rounding =
-        kRoundingUlps * std::numeric_limits<double>::epsilon() * (farthest + extent);
-    return std::isfinite(rounding) ? rounding : 0.0;
-}
-
-/// An edge whose tolerance validateExact found a pcurve of a last bit past, and the figure the
-/// tolerance is to grow to: the validator's own measure.
-struct Shortfall {
-    topo::Edge* edge = nullptr;
-    double to = 0.0;
-    const topo::Face* face = nullptr;
-    bool ends = false;  ///< a pcurve's ends from its vertices, not its course from the curve
-};
-
-/// The pcurves @p issues find past their tolerances by @p rounding at most (Ruling 64): for each,
-/// its edge and the validator's own measure of it (topo::pcurveGaps, on the half-edge the issue
-/// names), compared with what the check allowed. A pcurve past them by more, or a measure that is
-/// not a number, is not among them and stays reported; so does every other kind of issue, and a
-/// pcurve that runs against its curve (an issue of the same kind whose measure is within).
-std::vector<Shortfall> roundingShortfalls(const std::vector<topo::ExactIssue>& issues,
-                                          const math::ModelTolerance& resolution, double rounding) {
-    struct Compared {
-        double measured;
-        double allowed;
-    };
-    std::vector<Shortfall> out;
-    for (const topo::ExactIssue& issue : issues) {
-        const bool offCurve = issue.kind == topo::ExactIssueKind::PcurveOffCurve;
-        if ((!offCurve && issue.kind != topo::ExactIssueKind::PcurveOffVertex) ||
-            issue.halfEdge == nullptr || issue.halfEdge->edge == nullptr) {
-            continue;
-        }
-        const topo::HalfEdge& h = *issue.halfEdge;
-        topo::Edge& e = *h.edge;
-        const topo::PcurveGaps gaps = topo::pcurveGaps(h, resolution);
-        std::vector<Compared> compared;
-        if (offCurve) {
-            compared.push_back({gaps.strays, resolution.effective(e.tolerance)});
-        } else {
-            compared.push_back(
-                {gaps.start, resolution.effective(std::max(e.tolerance, h.origin->tolerance))});
-            compared.push_back(
-                {gaps.end, resolution.effective(std::max(e.tolerance, h.next->origin->tolerance))});
-        }
-        double to = 0.0;
-        bool beyond = false;
-        for (const Compared& c : compared) {
-            if (c.measured <= c.allowed) continue;
-            if (c.measured - c.allowed <= rounding) {
-                to = std::max(to, c.measured);
-            } else {
-                beyond = true;  // also a measure that is not a number
-            }
-        }
-        if (!beyond && to > 0.0) out.push_back({&e, to, issue.face, !offCurve});
-    }
-    return out;
-}
-
 /// What making a solid's exact form came to: why it could not be made, or how exact it is.
 struct ExactRead {
     std::string problem;      ///< empty when the solid is exact
@@ -4620,10 +4544,11 @@ std::string threeFigures(double x) {
 /// resolution, one that stands off to its gap. As an OpenCASCADE reader's per-entity tolerances
 /// do, each edge's tolerance (and each vertex's) grows to cover what is measured, its vertices'
 /// gaps, its pcurves' deviations and stand-offs, up to the limit of a thousandth of the solid's
-/// size (the resolution, where its size cannot be measured), and where the validator's measure of
-/// a pcurve exceeds that by rounding alone, to the validator's (Ruling 64). Past the limit the
-/// solid is not exact, and the problem says so; so it does for a problem the validator finds, or a
-/// pcurve that cannot be built. The file's UNCERTAINTY_MEASURE sets neither.
+/// size (the resolution, where its size cannot be measured), and where every pcurve the validator
+/// finds past its tolerances is past them by rounding alone, to the validator's measure (Rulings 64
+/// and 66, topo::roundingShortfalls). Past the limit the solid is not exact, and the problem says
+/// so; so it does for a problem the validator finds, or a pcurve that cannot be built. The file's
+/// UNCERTAINTY_MEASURE sets neither.
 ///
 /// A periodic face whose loops wind round its surface with no seam (a band between two rims) is
 /// given one by model::insertSeams once every face's pcurves exist, for its seam splits edges
@@ -4802,26 +4727,30 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
 
     if (stop()) return read;
     auto issues = topo::validateExact(solid, resolution);
-    // A pcurve the validator finds past its edge's tolerance by rounding alone (Ruling 64): the
-    // tolerance was grown to pcurveOn's measure of the gap, at its own points and by its own
-    // route, of a pcurve that may since have been reversed for a seam's other side, moved a
+    // Where the validator finds pcurves past their tolerances by rounding alone (Rulings 64 and
+    // 66): each tolerance was grown to pcurveOn's measure of the gap, at its own points and by its
+    // own route, of a pcurve that may since have been reversed for a seam's other side, moved a
     // period, or split by a band's seam, and the validator's measure of the same gap can come out
-    // a last bit larger (where sin, cos and atan2 round otherwise, as macOS's do). Its edge's
-    // tolerance grows to the validator's own measure, held to the limit as every other gap is,
-    // and the solid is validated again. A pcurve past its tolerance by more strays, and is
-    // reported as ever.
+    // a last bit larger (where sin, cos and atan2 round otherwise, as macOS's do). Only where every
+    // issue is such a shortfall does each tolerance grow to the validator's own measure, held to
+    // the limit as every other gap is, and the solid is validated again; otherwise the first issue
+    // that is not one is reported as ever, and nothing is taken up, so that no shortfall's growth
+    // covers a pcurve that strays beside it.
     if (!issues.empty()) {
-        const std::vector<Shortfall> shortfalls =
-            roundingShortfalls(issues, resolution, roundingOf(solid, extent));
-        for (const Shortfall& s : shortfalls) {
-            grow(s.edge->tolerance, s.to, s.ends ? "its pcurve ends" : "its pcurve strays",
-                 s.ends ? "from its vertex" : "from its curve", s.face, s.edge);
+        const topo::RoundingTakeUp takeUp = topo::roundingShortfalls(solid, issues, resolution);
+        if (takeUp.beyond != nullptr) {
+            read.problem =
+                takeUp.beyond->detail + whereIn(takeUp.beyond->face, takeUp.beyond->edge);
+            return read;
+        }
+        for (const topo::RoundingShortfall& s : takeUp.shortfalls) {
+            const bool stray = s.issue->kind == topo::ExactIssueKind::PcurveOffCurve;
+            grow(*s.tolerance, s.measured, stray ? "its pcurve strays" : "its pcurve ends",
+                 stray ? "from its curve" : "from its vertex", s.issue->face, s.issue->edge);
         }
         if (!read.problem.empty()) return read;
-        if (!shortfalls.empty()) {
-            if (stop()) return read;
-            issues = topo::validateExact(solid, resolution);
-        }
+        if (stop()) return read;
+        issues = topo::validateExact(solid, resolution);
     }
     if (!issues.empty()) {
         read.problem = issues.front().detail + whereIn(issues.front().face, issues.front().edge);
