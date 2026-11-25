@@ -34,6 +34,7 @@
 using hz::io::ImportReport;
 using hz::io::StepFormat;
 using hz::math::Vec3;
+using hz::step_text::bandCylinder;
 using hz::step_text::cone;
 using hz::step_text::externalStyleCylinder;
 using hz::step_text::sphere;
@@ -1089,5 +1090,110 @@ TEST(StepExact, ASeamedCapIsExactWhereverItsLoopStarts) {
         ASSERT_NE(cap, nullptr) << order;
         EXPECT_GT(outward(*cap, Vec3{0, 0, 10}).z, 0.99) << order;
         EXPECT_GT(outward(*cap, Vec3{10, 0, 0}).x, 0.99) << order;
+    }
+}
+
+namespace {
+
+/// A cylinder of radius 1.15 along x from -3.8 to 3.8, its rims written as Solid Edge writes the
+/// bore of the corpus's knife holder (face #665): its surface's frame along x with its x along
+/// -z; each rim's CIRCLE facing the other way along the axis, each EDGE_CURVE against its circle
+/// (.F.), and the side's two loops plain FACE_BOUNDs using both rims forward. The rims' vertices
+/// are half a turn apart.
+std::string solidEdgeCylinder() {
+    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(-14.8812075884992,2.5,-0.5));
+#2 = DIRECTION('',(1.,0.,0.));
+#3 = DIRECTION('',(0.,0.,-1.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CYLINDRICAL_SURFACE('',#4,1.15);
+#6 = CARTESIAN_POINT('',(3.8,2.5,-0.5));
+#7 = DIRECTION('',(0.,0.,1.));
+#8 = AXIS2_PLACEMENT_3D('',#6,#2,#7);
+#9 = CIRCLE('',#8,1.15);
+#10 = CARTESIAN_POINT('',(-3.8,2.5,-0.5));
+#11 = DIRECTION('',(-1.,0.,0.));
+#12 = AXIS2_PLACEMENT_3D('',#10,#11,#3);
+#13 = CIRCLE('',#12,1.15);
+#14 = CARTESIAN_POINT('',(3.8,2.5,0.65));
+#15 = VERTEX_POINT('',#14);
+#16 = CARTESIAN_POINT('',(-3.8,2.5,-1.65));
+#17 = VERTEX_POINT('',#16);
+#18 = EDGE_CURVE('',#15,#15,#9,.F.);
+#19 = EDGE_CURVE('',#17,#17,#13,.F.);
+#20 = ORIENTED_EDGE('',*,*,#18,.T.);
+#21 = EDGE_LOOP('',(#20));
+#22 = FACE_BOUND('',#21,.T.);
+#23 = ORIENTED_EDGE('',*,*,#19,.T.);
+#24 = EDGE_LOOP('',(#23));
+#25 = FACE_BOUND('',#24,.T.);
+#26 = ADVANCED_FACE('',(#22,#25),#5,.T.);
+#27 = AXIS2_PLACEMENT_3D('',#6,#2,#7);
+#28 = PLANE('',#27);
+#29 = ORIENTED_EDGE('',*,*,#18,.F.);
+#30 = EDGE_LOOP('',(#29));
+#31 = FACE_OUTER_BOUND('',#30,.T.);
+#32 = ADVANCED_FACE('',(#31),#28,.T.);
+#33 = AXIS2_PLACEMENT_3D('',#10,#11,#3);
+#34 = PLANE('',#33);
+#35 = ORIENTED_EDGE('',*,*,#19,.F.);
+#36 = EDGE_LOOP('',(#35));
+#37 = FACE_OUTER_BOUND('',#36,.T.);
+#38 = ADVANCED_FACE('',(#37),#34,.T.);
+#39 = CLOSED_SHELL('',(#26,#32,#38));
+#40 = MANIFOLD_SOLID_BREP('bore',#39);
+)");
+}
+
+}  // namespace
+
+// Review Focus 2: a periodic face that is a band between two rims, with no seam, comes in exact
+// with a seam inserted: test_StepCurved's band (its rims' vertices in line, so the seam joins
+// them), and Solid Edge's (both loops forward, its vertices half a turn apart, so a rim is split
+// where the seam crosses it). The seam is a line up the side, named as the reader names its
+// seams; every edge keeps a carrier, and the faceted copy measures the cylinder over them.
+TEST(StepExact, ABandComesInExact) {
+    struct Case {
+        const char* what;
+        std::string text;
+        double volume;
+        std::size_t vertices;
+        const char* side;  // the side's ADVANCED_FACE, which names its seam
+    };
+    const Case cases[] = {
+        {"test_StepCurved's band", bandCylinder(), 2.0 * hz::math::kPi, 2, "/f:27/seam"},
+        {"Solid Edge's", solidEdgeCylinder(), hz::math::kPi * 1.15 * 1.15 * 7.6, 3, "/f:26/seam"},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        ImportReport report;
+        const auto solids = StepFormat::fromString(c.text, &report, nullptr, inMillimetres());
+        ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+        EXPECT_TRUE(report.skipped.empty()) << report.skipped.front();
+        const topo::Solid& solid = *solids[0];
+        const topo::Face* side = faceOfKind(solid, geo::SurfaceKind::Cylinder);
+        ASSERT_NE(side, nullptr);
+        EXPECT_TRUE(side->innerLoops.empty()) << "its rims are one loop with its seam";
+        std::vector<const topo::Edge*> seams;
+        const topo::HalfEdge* h = side->outerLoop->halfEdge;
+        do {
+            if (h->twin->face == side && h == h->edge->halfEdge) seams.push_back(h->edge);
+            h = h->next;
+        } while (h != side->outerLoop->halfEdge);
+        ASSERT_EQ(seams.size(), 1u);
+        EXPECT_EQ(seams[0]->exactCurve->kind(), geo::CurveKind::Line);
+        EXPECT_NE(seams[0]->topoId.tag().find(c.side), std::string::npos) << seams[0]->topoId.tag();
+        EXPECT_EQ(solid.vertexCount(), c.vertices);
+        expectExactEdges(solid);
+        EXPECT_EQ(firstIssue(solid), "");
+        std::string problem;
+        hz::model::BoundaryMesh::extractFacePolygons(solid, 1e-3, &problem);
+        EXPECT_EQ(problem, "");
+        // The read point's mesh, to its own error until Task 7, which tightens this to 1e-9.
+        EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(solid).volume, c.volume,
+                    c.volume * 1e-3);
+        // The faceted copy, over the carriers split with the exact edges.
+        const auto ideal = hz::model::MassPropertiesCalculator::computeIdeal(solid);
+        EXPECT_TRUE(ideal.onIdealSurfaces);
+        EXPECT_NEAR(ideal.properties.volume, c.volume, c.volume * 1e-8);
     }
 }

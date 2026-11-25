@@ -920,15 +920,24 @@ TEST(StepCurvedTest, ASideBetweenTwoRimsWithNoSeamIsCutIntoFacets) {
 // micrometres in the corpus (Onshape; SolidWorks, Shapr3D and Pro/ENGINEER
 // less). Within ten micrometres, and a thousandth of the surface's size, a
 // rim still bounds its face; beyond, it does not: this cylinder's thousandth
-// is under 3 micrometres, and a rim 10 off is not on it.
+// is under 3.5 micrometres, and a rim 10 off is not on it. Re-baselined at
+// Task 6 (exact exchange): that solid came in faceted, its side one outlined
+// facet; now seamed or not its rims stand off beyond the solid's limit, so
+// it is left out, and the reason says how far.
 TEST(StepCurvedTest, ARimAMicrometreOffItsSurfaceStillBoundsIt) {
     const auto near = measure(bandCylinder("1.0005"));
     EXPECT_EQ(near.outlined, 0u) << "half a micrometre off";
     expectRelative(near.modelled, 2.0 * kPi, 0.01, "its facets, within 1 %");
     EXPECT_EQ(importedBuildProblem(bandCylinder("1.0005")), "");
 
-    const auto far = measure(bandCylinder("1.01"));
-    EXPECT_EQ(far.outlined, 1u) << "ten micrometres off: not on it";
+    hz::io::ImportReport report;
+    EXPECT_TRUE(
+        StepFormat::fromString(bandCylinder("1.01"), &report, nullptr, inMillimetres()).empty())
+        << "ten micrometres off: not on it";
+    const std::string& why = StepFormat::lastError();
+    EXPECT_NE(why.find("its curve stands 0.01 off its face's surface, beyond the limit of 0.00346"),
+              std::string::npos)
+        << why;
 }
 
 // A face whose loops are all plain FACE_BOUNDs has for its outline the one

@@ -41,6 +41,7 @@
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
+#include "horizon/modeling/SeamInsertion.h"
 #include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/LoopUnwrap.h"
@@ -4048,9 +4049,9 @@ bool loopsDetermineRegion(const geo::Surface& s, double near) {
 /// the pole it runs is the next pcurve's window's, not the file's; stage 3's pole topology.)
 ///
 /// An outer loop with no seam that closes only after winding round the surface (a band) says so
-/// in the validator's words, kWindsRound, to be placed as the validator places it (at the face
-/// and its outer loop's first edge): unwrapped here anyway, it is found as soon as the face's
-/// pcurves exist, not after every other face's are built.
+/// in the validator's words, kWindsRound, and leaves the face as it was: finishExact gives it its
+/// seam and asks again. Said of a face that still has none, it is placed as the validator places
+/// it (at the face and its outer loop's first edge).
 std::string faceSense(topo::Face& face, const math::ModelTolerance& tolerance, std::size_t limit,
                       double near) {
     if (face.outerLoop == nullptr) return {};
@@ -4166,6 +4167,11 @@ std::string threeFigures(double x) {
 /// size (the resolution, where its size cannot be measured). Past the limit the solid is not
 /// exact, and the problem says so; so it does for a problem the validator finds, or a pcurve
 /// that cannot be built. The file's UNCERTAINTY_MEASURE sets neither.
+///
+/// A periodic face whose loops wind round its surface with no seam (a band between two rims) is
+/// given one by model::insertSeams once every face's pcurves exist, for its seam splits edges
+/// the faces after it share; its sense and its seams' layout follow. Every other face's problem
+/// leaves the solid out as soon as that face's pcurves are built.
 ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     ExactRead read;
     const double extent = topo::exactExtent(solid);
@@ -4214,6 +4220,7 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     // Each half-edge's course on its face, built (a file's PCURVEs are not read): from its
     // origin's parameter on its edge's curve to its next's.
     const std::size_t limitHalfEdges = 2 * solid.edges().size() + 1;
+    std::vector<topo::Face*> bands;
     for (auto& f : solid.faces()) {
         if (stop()) return read;
         if (!f.alive) continue;
@@ -4274,16 +4281,41 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
             }
         }
         // The face's sense, and its seams laid out, as soon as its pcurves exist: a face that
-        // cannot have them (a band among them, which the validator would find only after every
-        // face was built) leaves the solid out before the faces after it are built. A seam a
-        // band needs must be in place before this.
+        // cannot have them leaves the solid out before the faces after it are built. A band
+        // waits for its seam, below.
         if (std::string why = faceSense(f, resolution, limitHalfEdges, limit); !why.empty()) {
-            const topo::Edge* first = why == kWindsRound ? f.outerLoop->halfEdge->edge : nullptr;
-            read.problem = why + whereIn(&f, first);
+            if (why == kWindsRound) {
+                bands.push_back(&f);
+                continue;
+            }
+            read.problem = why + whereIn(&f, nullptr);
             return read;
         }
         if (std::string why = layOutSeams(f, resolution, limitHalfEdges, cancelled); !why.empty()) {
             read.problem = why == kCancelled ? why : why + whereIn(&f, nullptr);
+            return read;
+        }
+    }
+
+    // Each band given its seam, now that every face's pcurves exist (its seam splits edges that
+    // faces built after it share), then its sense and its seams' layout, as every other face had.
+    for (topo::Face* f : bands) {
+        if (stop()) return read;
+        if (std::string why = model::insertSeams(solid, *f, resolution); !why.empty()) {
+            read.problem = why + whereIn(f, f->outerLoop->halfEdge->edge);
+            return read;
+        }
+    }
+    const std::size_t limitSeamed = 2 * solid.edges().size() + 1;
+    for (topo::Face* f : bands) {
+        if (stop()) return read;
+        if (std::string why = faceSense(*f, resolution, limitSeamed, limit); !why.empty()) {
+            const topo::Edge* first = why == kWindsRound ? f->outerLoop->halfEdge->edge : nullptr;
+            read.problem = why + whereIn(f, first);
+            return read;
+        }
+        if (std::string why = layOutSeams(*f, resolution, limitSeamed, cancelled); !why.empty()) {
+            read.problem = why == kCancelled ? why : why + whereIn(f, nullptr);
             return read;
         }
     }

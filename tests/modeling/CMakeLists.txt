@@ -2,6 +2,7 @@ add_executable(hz_modeling_tests
     test_PrimitiveFactory.cpp
     test_ExactPrimitives.cpp
     test_ExactValidator.cpp
+    test_SeamInsertion.cpp
     test_TrimmedFaceMesher.cpp
     test_ExactReadPoint.cpp
     test_ProfileValidator.cpp
