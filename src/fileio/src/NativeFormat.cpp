@@ -1888,19 +1888,23 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                                                     StepFormat::lastError());
                     }
                     const std::string source = fObj.value("source", "");
-                    if (report != nullptr) {
-                        // "solid 1: not exact (…); kept as it was", said of the body.
-                        for (const std::string& line : bodyReport.converted) {
-                            const auto colon = line.find(": not exact (");
-                            if (line.rfind("solid ", 0) != 0 || colon == std::string::npos) {
-                                continue;
-                            }
-                            report->converted.push_back("imported body \"" + source + "\"" +
-                                                        line.substr(colon));
+                    // "solid 1: not exact (…); kept as it was", said of the
+                    // body: in the report, and by the body, for the part's
+                    // exact counterpart it has none of.
+                    std::string note;
+                    for (const std::string& line : bodyReport.converted) {
+                        const auto colon = line.find(": not exact (");
+                        if (line.rfind("solid ", 0) != 0 || colon == std::string::npos) {
+                            continue;
                         }
+                        const std::string said =
+                            "imported body \"" + source + "\"" + line.substr(colon);
+                        if (report != nullptr) report->converted.push_back(said);
+                        if (note.empty()) note = said;
                     }
                     auto feat = std::make_unique<doc::ImportedBodyFeature>(
                         std::shared_ptr<const topo::Solid>(std::move(solids.front())), source);
+                    feat->setNote(std::move(note));
                     feat->restoreFeatureID(persistedId);
                     addLoaded(std::move(feat));
                     continue;

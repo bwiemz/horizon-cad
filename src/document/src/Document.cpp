@@ -114,6 +114,9 @@ void Document::clear() {
 
     m_featureTree.clear();
     m_solid.reset();
+    m_exactSolid.reset();
+    m_exactMesh.reset();
+    m_exactNote.clear();
     m_lastBuildMessage.clear();
     m_failedFeatureIndex = -1;
     m_built = false;
@@ -226,6 +229,9 @@ bool Document::applyBuild(BuildResult result) {
     if (result.cancelled) return m_failedFeatureIndex < 0;
     ++m_builds;
     m_solid = std::move(result.solid);
+    m_exactSolid = std::move(result.exactSolid);
+    m_exactMesh = std::move(result.exactMesh);
+    m_exactNote = std::move(result.exactNote);
     m_lastBuildMessage = result.failureMessage;
     m_failedFeatureIndex = result.failedFeatureIndex;
     m_built = true;

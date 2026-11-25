@@ -160,10 +160,27 @@ public:
     const topo::Solid* solid() const { return m_solid.get(); }
     topo::Solid* solid() { return m_solid.get(); }
 
+    /// The part's exact counterpart from the last build (BuildResult::exactSolid):
+    /// its imported bodies as read, exact, beside solid(), their faceted copy,
+    /// while only imports have made the part. Null when it has none.
+    const topo::Solid* exactSolid() const { return m_exactSolid.get(); }
+    /// Its mesh, made once by that build at kExactMeshTolerance
+    /// (BuildResult::exactMesh): what the display draws it from without
+    /// meshing it again. Null with exactSolid().
+    const std::shared_ptr<const std::vector<model::BoundaryPolygon>>& exactMesh() const {
+        return m_exactMesh;
+    }
+    /// Why the part has no exact counterpart where its imports would give it
+    /// one (BuildResult::exactNote); empty otherwise.
+    const std::string& exactNote() const { return m_exactNote; }
+
     /// Take ownership of the built solid (e.g. loaded from a cache): a new
-    /// solid, counted as a build.
+    /// solid, counted as a build. It has no exact counterpart.
     void setSolid(std::unique_ptr<topo::Solid> solid) {
         m_solid = std::move(solid);
+        m_exactSolid.reset();
+        m_exactMesh.reset();
+        m_exactNote.clear();
         ++m_builds;
     }
 
@@ -257,6 +274,9 @@ private:
     std::shared_ptr<Sketch> m_editedSketch;
     FeatureTree m_featureTree;
     std::unique_ptr<topo::Solid> m_solid;
+    std::unique_ptr<topo::Solid> m_exactSolid;
+    std::shared_ptr<const std::vector<model::BoundaryPolygon>> m_exactMesh;
+    std::string m_exactNote;
     std::string m_lastBuildMessage;
     int m_failedFeatureIndex = -1;
     std::uint64_t m_builds = 0;

@@ -14,6 +14,7 @@
 #include "horizon/math/IdCounter.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -930,16 +931,41 @@ public:
     std::string name() const override { return "Imported"; }
     std::string featureID() const override { return m_featureID; }
     void restoreFeatureID(const std::string& id) override;
+    /// The body with its curved faces in facets, as every feature works on it
+    /// (the faceted copy; Phase 141).
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
     bool createsNewBody() const override { return true; }
 
+    /// The body as read, exact, for the part's exact counterpart
+    /// (BuildResult::exactSolid): a copy whose faces are named as execute()
+    /// names them, `<featureID>/face:<i>`, the logical face of their facets
+    /// there, and whose edges are named by the same pass, so a curve parted
+    /// into chords there is one edge here. A curve the body holds in pieces
+    /// (a rim a seam was inserted on) is `<edge>/piece:<k>`, where its chords
+    /// are `<edge>/chord:<k>`. Null when not every face of it is exact: a body
+    /// a part file kept as it was read before the exact kernel (note() says
+    /// why).
+    std::unique_ptr<topo::Solid> exactBody() const;
+
     const std::shared_ptr<const topo::Solid>& solid() const { return m_solid; }
     const std::string& source() const { return m_source; }
 
+    /// What its import said of a body that is not exact, as the import's
+    /// report said it (a part file saved before the exact kernel, whose body
+    /// no exact form holds: `imported body "<source>": not exact (<why>);
+    /// kept as it was`). Empty for an exact body. Not saved: it is said again
+    /// whenever the body is read.
+    const std::string& note() const { return m_note; }
+    void setNote(std::string note) { m_note = std::move(note); }
+
 private:
+    /// Its faces named `<featureID>/face:<i>`, by their order in the solid.
+    void nameFaces(topo::Solid& body) const;
+
     std::shared_ptr<const topo::Solid> m_solid;
     std::string m_source;
+    std::string m_note;
     std::string m_featureID;
 
     static math::IdCounter<int> s_nextID;
@@ -985,12 +1011,41 @@ private:
     static math::IdCounter<int> s_nextID;
 };
 
+/// The chord tolerance the part's exact counterpart is meshed at
+/// (BuildResult::exactMesh): the display's, which the viewport tessellates a
+/// part's curved faces at (model::SolidTessellator's default). Absolute, in
+/// model units.
+inline constexpr double kExactMeshTolerance = 0.1;
+
 /// Result of building the feature tree with diagnostics.
 struct BuildResult {
     /// The part. When a feature fails, the part as it stands before that
     /// feature (null if nothing before it made a solid), so the user sees
     /// what they had, not an empty viewport.
     std::unique_ptr<topo::Solid> solid;
+    /// The part's exact counterpart (stage 2), beside `solid`, its faceted
+    /// copy, which every feature, Boolean and reader of ideal labels works
+    /// on: while every feature that has made the part is an imported body
+    /// made a new body (ImportedBodyFeature::exactBody), those bodies as
+    /// read, exact, gathered as `solid` gathers their facets, named as its
+    /// facets' logical faces and edges are. Null when the part has none: any
+    /// other feature or a Boolean has changed it, an import is not exact, or
+    /// its exact form could not be meshed, could not be measured, or measures
+    /// other than its facets (exactNote says which).
+    std::unique_ptr<topo::Solid> exactSolid;
+    /// Its mesh, made once by the build at kExactMeshTolerance through the
+    /// read point (model::BoundaryMesh::extractFacePolygons): one triangle a
+    /// polygon, wound outward, each with its face's topoId and exact surface,
+    /// in the counterpart's face order. What the display draws it from. Null
+    /// with exactSolid.
+    std::shared_ptr<const std::vector<model::BoundaryPolygon>> exactMesh;
+    /// Why the part has no exact counterpart where its imports would give it
+    /// one: "shown from facets: <why>" (a body not exact, with its import's
+    /// note; a face that could not be meshed or measured, with the read
+    /// point's reason) or "exact form disagrees with its facets: <exact> vs
+    /// <faceted>" (volumes). Empty when it has one, and when it has none by
+    /// design (no import, or a feature after one).
+    std::string exactNote;
     int lastSuccessfulFeature = -1;
     std::string failureMessage;
     int failedFeatureIndex = -1;
