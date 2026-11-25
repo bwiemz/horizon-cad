@@ -16,16 +16,21 @@ a user's would be, and checked two ways:
   approximating must be as many items as the manifest says. Every solid must
   be read exact, or be on the regression list (below). Each exact solid's
   read-point mesh must measure its exact volume to within the mesh's own
-  allowance, its area times its chord tolerance.
+  allowance, its area times its chord tolerance. Kept as a part or sent out,
+  and read back, its exact volume must come back to 1e-9, or, where its
+  file's edges stand off their faces, to the exact volume's own estimate
+  (`exactError` in `summary.json`).
 - **Against OpenCASCADE, an independent reader, in CI** (the STEP interop
   job, `tools/interop/occt_check.py`). OpenCASCADE reads each original file,
   and must find the same solids, volume and box. It then reads Horizon CAD's
   export of the file (what File ▸ Export writes of the part imported from
-  it), and must find a valid shape with as many solids, the volume, and as
-  many faces of each kind of surface as the original. A surface of linear
-  extrusion may go out as a B-spline, since Horizon CAD has no typed extrusion
-  yet. `--kept occt.json` runs the same comparison on what a CI run's
-  OpenCASCADE found, on a machine without it.
+  it), and must find a valid shape with as many solids, Horizon CAD's exact
+  volume (to the same tolerance as the original's), and as many faces of each
+  kind of surface as the original. A surface of linear extrusion may go out as
+  a B-spline, since Horizon CAD has no typed extrusion yet. A face with no
+  surface is not compared: CATIA's tessellated copy of its plate, which
+  Horizon CAD reads no body of. `--kept occt.json` runs the same comparison on
+  what a CI run's OpenCASCADE found, on a machine without it.
 
 The expected numbers are OpenCASCADE's, never Horizon CAD's own: a reader
 that agrees with itself proves nothing.

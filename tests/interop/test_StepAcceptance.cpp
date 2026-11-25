@@ -206,17 +206,27 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
         EXPECT_TRUE(s.importBuildError.empty())
             << "imported, it does not build: " << s.importBuildError;
     }
+    // Read back from STEP text (a part file keeps an imported body as STEP, and an export is
+    // STEP), its exact volume is the same to within what it is known to: its own estimate, where
+    // its file's edges stand off their faces and their pcurves are fitted again on each read;
+    // else to 1e-9, the writer's numbers reading back as written.
+    const double readBack = std::max(1e-9, hz::interop::exactError(s));
+    const auto readBackFound = [&](double volume) {
+        std::ostringstream found;
+        found.precision(12);
+        found << volume << " mm³, not " << s.facetedVolume << " (relative "
+              << (volume - s.facetedVolume) / s.facetedVolume << ", over " << readBack << ")";
+        return found.str();
+    };
     if (knownGap(manifest, "reopen")) {
         EXPECT_FALSE(s.reopenedVolume.has_value())
             << "it reopens now: take reopen out of known_gaps";
     } else {
-        // Measured as the part is shown, measured and exported: its exact counterpart. A part
-        // file keeps an imported body as STEP, so its exact faces are read again from the text
-        // written, as an export's are, and to the same millionth.
+        // Measured as the part is shown, measured and exported: its exact counterpart.
         ASSERT_TRUE(s.reopenedVolume.has_value()) << "kept as a part: " << s.reopenError;
         const double reopened = s.reopenedVolume.value_or(0.0);
-        EXPECT_TRUE(near(reopened, s.facetedVolume, 1e-6))
-            << "kept as a part and read back: " << reopened << " mm³, not " << s.facetedVolume;
+        EXPECT_TRUE(near(reopened, s.facetedVolume, readBack))
+            << "kept as a part and read back: " << readBackFound(reopened);
     }
     if (s.parts > 0) {
         ASSERT_TRUE(s.keptComponents.has_value()) << "kept as an assembly: " << s.keepError;
@@ -224,12 +234,11 @@ TEST_P(StepCorpus, IsReadAsItsManifestSaysAndComesThroughUnchanged) {
             << "kept as an assembly and read back";
     }
     // Sent out exact (its exact counterpart, its faces as their kinds), it reads back as the
-    // bodies read, to a millionth.
+    // bodies read.
     ASSERT_TRUE(s.reimportedBodies.has_value()) << "sent out as STEP: " << s.exportError;
     EXPECT_EQ(s.reimportedBodies.value_or(0), s.bodies) << "sent out as STEP and read back";
-    EXPECT_TRUE(near(s.reimportedVolume, s.facetedVolume, 1e-6))
-        << "sent out as STEP and read back: " << s.reimportedVolume << " mm³, not "
-        << s.facetedVolume;
+    EXPECT_TRUE(near(s.reimportedVolume, s.facetedVolume, readBack))
+        << "sent out as STEP and read back: " << readBackFound(s.reimportedVolume);
 }
 
 INSTANTIATE_TEST_SUITE_P(Corpus, StepCorpus, ::testing::ValuesIn(corpus()), testName);
@@ -252,6 +261,20 @@ TEST(StepCorpusManifest, EveryFileIsListedWithItsProvenance) {
         if (entry.manifest.contains("known_gaps")) {
             for (const auto& [check, why] : entry.manifest["known_gaps"].items()) {
                 EXPECT_FALSE(why.get<std::string>().empty()) << check << ": no why";
+            }
+        }
+        // A tolerance the manifest gives says why beside it.
+        if (entry.manifest.contains("expect")) {
+            for (const auto& [key, value] : entry.manifest["expect"].items()) {
+                const std::string suffix = "_tolerance";
+                if (key.size() <= suffix.size() ||
+                    key.compare(key.size() - suffix.size(), suffix.size(), suffix) != 0) {
+                    continue;
+                }
+                const json& expect = entry.manifest["expect"];
+                EXPECT_TRUE(expect.contains(key + "_why") && expect[key + "_why"].is_string() &&
+                            !expect[key + "_why"].get<std::string>().empty())
+                    << key << " " << value.dump() << " says no why (" << key << "_why)";
             }
         }
         // The regression list: each solid with why, as the read names and says them.
@@ -398,6 +421,19 @@ TEST(StepCorpusMeshAgainstMass, AMeshThatCouldNotBeMadeIsAnError) {
     EXPECT_TRUE(says(problems[0], solid.meshProblem)) << problems[0];
 }
 
+// The exact volume is known to its solids' own estimates, each weighed by its volume; a solid
+// left out adds nothing.
+TEST(StepCorpusReadBack, TheExactVolumeIsKnownToItsSolidsOwnEstimates) {
+    StepSummary s;
+    SolidReading tolerant = exactSolid("solid 1", 1000.0, 1000.0, 1.0);
+    tolerant.exactError = 1e-4;
+    s.solids.push_back(tolerant);
+    s.solids.push_back(exactSolid("solid 2", 3000.0, 3000.0, 1.0));
+    s.solids.push_back(leftOut("solid #12", kTorus));
+    EXPECT_NEAR(hz::interop::exactError(s), 1e-4 * 1000.0 / 4000.0, 1e-18);
+    EXPECT_EQ(hz::interop::exactError(StepSummary{}), 0.0);
+}
+
 // A solid left out has no mesh to measure: the regression list speaks for it.
 TEST(StepCorpusMeshAgainstMass, ASolidLeftOutHasNoMeshToCompare) {
     StepSummary s;
@@ -417,6 +453,8 @@ fs::path written(const fs::path& dir, const std::string& name, const std::string
 /// A 7 x 11 x 13 box written to STEP with its corner at (7, 11, 13) raised 0.2, off the planes
 /// of its faces: a solid the read cannot make exact (it says "beyond the limit"). With
 /// @p alsoGood, a 2 x 3 x 5 box beside it, written after it, which it can.
+const std::string kCornerOff = "(7.,11.,13.2)";
+
 std::string stepWithACornerOff(bool alsoGood) {
     const auto off = hz::model::PrimitiveFactory::makeBox(7.0, 11.0, 13.0);
     const auto good = hz::model::PrimitiveFactory::makeBox(2.0, 3.0, 5.0);
@@ -425,7 +463,7 @@ std::string stepWithACornerOff(bool alsoGood) {
     std::string text = hz::io::StepFormat::toString(solids);
     const std::string corner = "(7.,11.,13.)";
     const auto at = text.find(corner);
-    if (at != std::string::npos) text.replace(at, corner.size(), "(7.,11.,13.2)");
+    if (at != std::string::npos) text.replace(at, corner.size(), kCornerOff);
     return text;
 }
 
@@ -436,7 +474,9 @@ std::string stepWithACornerOff(bool alsoGood) {
 // its read-point mesh, which agrees with it.
 TEST(StepCorpusSummary, ASolidLeftOutForItsExactFormIsNamedWithWhy) {
     WorkDir work;
-    const fs::path step = written(work.path(), "two.step", stepWithACornerOff(true));
+    const std::string text = stepWithACornerOff(true);
+    ASSERT_NE(text.find(kCornerOff), std::string::npos) << "the corner was not found to raise";
+    const fs::path step = written(work.path(), "two.step", text);
     const StepSummary s = hz::interop::summarize(step, work.path() / "work");
     ASSERT_TRUE(s.error.empty()) << s.error;
     ASSERT_EQ(s.solids.size(), 2u);
@@ -448,6 +488,11 @@ TEST(StepCorpusSummary, ASolidLeftOutForItsExactFormIsNamedWithWhy) {
     EXPECT_NEAR(hz::interop::exactVolume(s), 30.0, 1e-9);
     EXPECT_TRUE(read.meshProblem.empty()) << read.meshProblem;
     EXPECT_GT(read.meshAllowance, 0.0);
+    // A box's flat faces, bounded by its edges to the resolution: its exact volume is known to
+    // 1e-9 or better, its own estimate says so, and the summary keeps it.
+    EXPECT_GE(read.exactError, 0.0);
+    EXPECT_LE(read.exactError, 1e-9);
+    EXPECT_EQ(hz::interop::toJson(s).at("solids")[0].at("exactError"), read.exactError);
     EXPECT_NEAR(read.meshVolume, read.exactVolume, read.meshAllowance);
     EXPECT_TRUE(hz::interop::checkMeshAgainstMass(s).empty());
     const SolidReading& out = s.solids[1];
@@ -468,7 +513,9 @@ TEST(StepCorpusSummary, ASolidLeftOutForItsExactFormIsNamedWithWhy) {
 // A file none of whose solids is read: the solid its error names, left out with why.
 TEST(StepCorpusSummary, AFileNoSolidOfWhichIsExactNamesTheOneItsErrorNames) {
     WorkDir work;
-    const fs::path step = written(work.path(), "one.step", stepWithACornerOff(false));
+    const std::string text = stepWithACornerOff(false);
+    ASSERT_NE(text.find(kCornerOff), std::string::npos) << "the corner was not found to raise";
+    const fs::path step = written(work.path(), "one.step", text);
     const StepSummary s = hz::interop::summarize(step, work.path() / "work");
     ASSERT_FALSE(s.error.empty());
     ASSERT_EQ(s.solids.size(), 1u);

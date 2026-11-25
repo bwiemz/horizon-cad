@@ -22,7 +22,6 @@
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Pattern.h"
-#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::interop {
@@ -136,11 +135,12 @@ SolidReading reading(const topo::Solid& solid, const model::MassProperties& mass
         return out;
     }
     out.exactVolume = mass.volume;
-    // At the read point's own tolerance, 1e-4 of the solid's size (BoundaryMesh's default),
-    // where each triangle lies within it of the surface: the mesh's volume within its area
-    // times that of the exact one.
-    const double size = topo::exactExtent(solid);
-    const double tolerance = size > 0.0 ? 1e-4 * size : 1e-4;
+    // The same integration's own estimate of its error (computeIdeal at its default tolerance
+    // integrates an exact solid as compute() does).
+    out.exactError = MassPropertiesCalculator::computeIdeal(solid).estimatedError;
+    // At the read point's own tolerance, where each triangle lies within it of the surface: the
+    // mesh's volume within its area times that of the exact one.
+    const double tolerance = model::BoundaryMesh::defaultChordTolerance(solid);
     const auto mesh =
         model::BoundaryMesh::extractFacePolygons(solid, tolerance, &out.meshProblem, nullptr);
     out.meshVolume = model::BoundaryMesh::signedVolume(mesh);
@@ -154,6 +154,7 @@ json toJson(const SolidReading& s) {
         {"exact", s.exact},
         {"exactVolume", s.exactVolume},
         {"exactProblem", s.exactProblem},
+        {"exactError", s.exactError},
         {"meshVolume", s.meshVolume},
         {"meshAllowance", s.meshAllowance},
         {"meshProblem", s.meshProblem},
@@ -360,6 +361,17 @@ double exactVolume(const StepSummary& summary) {
         if (solid.exact) volume += solid.exactVolume;
     }
     return volume;
+}
+
+double exactError(const StepSummary& summary) {
+    double volume = 0.0;
+    double error = 0.0;
+    for (const SolidReading& solid : summary.solids) {
+        if (!solid.exact) continue;
+        volume += std::abs(solid.exactVolume);
+        error += solid.exactError * std::abs(solid.exactVolume);
+    }
+    return volume > 0.0 ? error / volume : 0.0;
 }
 
 std::vector<std::string> checkExactFailures(const StepSummary& summary, const json& manifest) {

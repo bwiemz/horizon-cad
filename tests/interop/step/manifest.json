@@ -1,5 +1,5 @@
 {
-  "_comment": "The external STEP corpus (README.md). expect.bodies, volume and bounds are OpenCASCADE's reading of each file (tools/interop/occt_check.py merge), never Horizon CAD's own; skipped and approximated are how many items Horizon CAD reports. known_gaps names the checks a file still fails, each with why: the test fails when one of them passes, so the entry is updated. exact_failures is the regression list: each solid not read exact (or whose exact volume cannot be integrated), named as the read names it, with why as it says it and the cause; the test fails when another fails, or a listed one reads exact. volume_tolerance, where given, says why beside it.",
+  "_comment": "The external STEP corpus (README.md). expect.bodies, volume and bounds are OpenCASCADE's reading of each file (tools/interop/occt_check.py merge), never Horizon CAD's own; skipped and approximated are how many items Horizon CAD reports. known_gaps names the checks a file still fails, each with why: the test fails when one of them passes, so the entry is updated. exact_failures is the regression list: each solid not read exact (or whose exact volume cannot be integrated), named as the read names it, with why as it says it and the cause; the test fails when another fails, or a listed one reads exact. A tolerance, where given, says why beside it (<key>_why), as does a figure that cannot be measured while its file is not read.",
   "files": [
     {
       "file": "alibre_jacktheripper_guide.stp",
@@ -91,7 +91,9 @@
         ],
         "skipped": 0,
         "approximated": 0,
-        "export_faceted": 23
+        "export_faceted": 23,
+        "export_faceted_why": "not measurable while the file is not read (exact_failures): the faceted export's count before stage 2, which kept 23 curved faces in facets; an exact export keeps none",
+        "volume_why": "not measurable while the file is not read (exact_failures): its bodies and volume are Horizon CAD's faceted reading before stage 2 (OpenCASCADE reads its shells as surfaces, no solid), not an exact volume"
       },
       "occt_reads_surfaces": "its twelve shells close, but are written as a surface model's open shells, which OpenCASCADE reads as surfaces, not solids: its bodies and volume are Horizon CAD's, its bounds OpenCASCADE's",
       "exact_failures": [
@@ -129,7 +131,7 @@
       "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
       "expect": {
         "bodies": 1,
-        "volume": 70186580.126763,
+        "volume": 70186586.267101,
         "bounds": [
           [
             -461.962963,
@@ -146,7 +148,7 @@
         "approximated": 0,
         "export_faceted": 0,
         "volume_tolerance": 5e-06,
-        "volume_tolerance_why": "its exact volume and OpenCASCADE's (adaptive, to 1e-6) differ by 2.4e-6; the file's edges stand up to 0.0437 mm off its B-spline faces, which leaves its volume uncertain to 1.7e-3 of it"
+        "volume_tolerance_why": "its exact volume (summary.json: the solids' exactVolume) is +2.27e-6 from OpenCASCADE's, file and export alike (CI run 45608244764, adaptive to 1e-6, its own estimate 8.6e-10); the file's edges stand up to 0.0437 mm off its B-spline faces, so the exact volume's own estimate (the solids' exactError) is 1.69e-3"
       }
     },
     {
@@ -165,7 +167,7 @@
         "approximated": 0,
         "export_faceted": 0,
         "bodies": 14,
-        "volume": 76444937.223998,
+        "volume": 76444937.154635,
         "bounds": [
           [
             -500.38,
@@ -193,7 +195,7 @@
       "attribution": "NIST Engineering Design Model Repository (Regli & Gaines 1997, Computer-Aided Design 29(12):895-905). NIST asserts the collection is in the public domain; it was gathered in the 1990s from industrial contributors.",
       "expect": {
         "bodies": 19,
-        "volume": 1889144085.224341,
+        "volume": 1889143804.56798,
         "bounds": [
           [
             -1460.5,
@@ -258,7 +260,7 @@
         "approximated": 0,
         "export_faceted": 0,
         "bodies": 9,
-        "volume": 159968.99787,
+        "volume": 159968.997426,
         "bounds": [
           [
             -49.81679,
@@ -286,7 +288,7 @@
       "attribution": "Original Prusa Enclosure, Prusa Research, GPL-3.0",
       "expect": {
         "bodies": 1,
-        "volume": 8544.581776,
+        "volume": 8544.582601,
         "bounds": [
           [
             -4.0,
@@ -320,7 +322,7 @@
         "approximated": 0,
         "export_faceted": 0,
         "bodies": 6,
-        "volume": 40459.278227,
+        "volume": 40459.26919,
         "bounds": [
           [
             16.654016,
@@ -476,7 +478,7 @@
       "attribution": "Open CASCADE Technology sample data, (c) OPEN CASCADE SAS (LICENSES/OCCT-LGPL-exception.txt)",
       "expect": {
         "bodies": 1,
-        "volume": 3788.270593,
+        "volume": 3788.274017,
         "bounds": [
           [
             -27.819681,
@@ -491,7 +493,8 @@
         ],
         "skipped": 0,
         "approximated": 0,
-        "export_faceted": 6
+        "export_faceted": 6,
+        "export_faceted_why": "not measurable while the file is not read (exact_failures): the faceted export's count before stage 2, which kept 6 curved faces in facets; an exact export keeps none"
       },
       "exact_failures": [
         {
@@ -517,7 +520,7 @@
         "approximated": 0,
         "export_faceted": 0,
         "bodies": 1,
-        "volume": 712989.578317,
+        "volume": 712989.786731,
         "bounds": [
           [
             -50.8,
@@ -531,7 +534,7 @@
           ]
         ],
         "volume_tolerance": 5e-06,
-        "volume_tolerance_why": "its exact volume and OpenCASCADE's (adaptive, to 1e-6) differ by 2.0e-6; the file's edges stand up to 0.00638 mm off its faces, which leaves its volume uncertain to 3.1e-5 of it"
+        "volume_tolerance_why": "its exact volume (summary.json: the solids' exactVolume) is +1.66e-6 from OpenCASCADE's reading of the file and +1.84e-6 from its reading of the export (CI run 45608244764, adaptive to 1e-6, its own estimate 6.9e-7); the file's edges stand up to 0.00638 mm off its faces, so the exact volume's own estimate (the solids' exactError) is 3.06e-5"
       }
     },
     {
@@ -564,7 +567,7 @@
         "approximated": 0,
         "export_faceted": 0,
         "bodies": 1,
-        "volume": 7556.510756,
+        "volume": 7556.510653,
         "bounds": [
           [
             69.0,

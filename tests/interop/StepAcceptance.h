@@ -35,6 +35,10 @@ struct SolidReading {
     /// Empty when neither. Where it is not, the solid is one for the corpus's regression list
     /// (the manifest's exact_failures).
     std::string exactProblem;
+    /// The exact volume's own estimate of its relative error (computeIdeal's estimatedError at
+    /// its default tolerance, the integration compute() makes): the quadrature's, and what its
+    /// edges standing off their surfaces leave uncertain. 0 when not exact.
+    double exactError = 0.0;
     /// The read point's mesh of an exact solid (BoundaryMesh::extractFacePolygons at a chord
     /// tolerance of 1e-4 of its size): its volume, mm³; the most that may differ from
     /// exactVolume, its area times that tolerance; and the face it could not mesh, with why
@@ -129,6 +133,10 @@ nlohmann::json toJson(const StepSummary& summary);
 
 /// mm³: the exact volume of what @p summary read, its exact solids' exactVolume summed.
 double exactVolume(const StepSummary& summary);
+
+/// The relative error @p summary's exact volume is known to: its exact solids' own estimates
+/// (SolidReading::exactError), each weighed by its volume.
+double exactError(const StepSummary& summary);
 
 /// Where @p summary disagrees with the corpus's regression list, @p manifest's exact_failures
 /// (each {"solid", "why"}, as the read names the solid and says why): a solid not exact, or
