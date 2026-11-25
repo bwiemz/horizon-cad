@@ -1726,8 +1726,11 @@ Vec3 placed(const Vec3& p) {
     return placement().transformPoint(p);
 }
 
+#if HZ_TIME_LIMITS
 /// The time limit the brief sets on meshing a face that comes to a point, or failing it: @p ms
 /// in an optimised build. An unoptimised one is given an order of magnitude more (TimeLimits.h).
+/// It is defined only where time limits hold: under a sanitizer nothing calls it, and an unused
+/// function fails a -Werror build.
 double meshingLimit(double ms) {
 #ifdef NDEBUG
     return ms;
@@ -1735,6 +1738,7 @@ double meshingLimit(double ms) {
     return 10.0 * ms * HZ_UNOPTIMIZED_SLOWDOWN;
 #endif
 }
+#endif
 
 /// Each of @p poles is one vertex of every face mesh that reaches it, every triangle there fanned
 /// to it (three or more of them), and some face reaches it.
