@@ -8,12 +8,26 @@
 #include <stdexcept>
 #include <string>
 
+#include "../NurbsKnots.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Constants.h"
 
 namespace hz::geo {
 
 namespace {
+
+/// The most degree + 1 evaluation holds on the stack (degree 15); beyond, evaluate() builds its
+/// row curves, and the derivatives are differences of evaluate().
+constexpr int kMaxOrder = 16;
+
+using detail::Homogeneous;
+
+/// The span [knots[s], knots[s + 1]) holding @p t, for @p count control points of degree @p p
+/// (The NURBS Book, A2.1); the last span that is not empty at the end: detail::knotSpan, the
+/// span every NURBS evaluation here shares.
+int findSpan(const std::vector<double>& knots, int count, int p, double t) {
+    return detail::knotSpan(knots.data(), count, p, t);
+}
 
 /// @p t brought round a closed direction's seam into [lo, hi]: past either end of a surface that
 /// closes is the same point a period back, as a periodic Surface's parameters are. Within the
@@ -184,48 +198,6 @@ double NurbsSurface::vMax() const {
 // evaluate — tensor-product De Boor (two-pass)
 // ---------------------------------------------------------------------------
 
-namespace {
-
-/// The most degree + 1 the evaluation below holds on the stack; beyond, evaluate() builds its
-/// row curves as it always did.
-constexpr int kStackOrder = 16;
-
-using Homogeneous = std::array<double, 4>;
-
-/// The knot span NurbsCurve::findKnotSpan finds for @p t (already clamped into the domain), for
-/// @p count control points of degree @p p.
-int curveSpan(const std::vector<double>& knots, int count, int p, double t) {
-    const auto at = [&knots](int i) { return knots[static_cast<size_t>(i)]; };
-    if (t >= at(count)) {
-        int k = count - 1;
-        while (k > p && !(at(k) < at(k + 1))) --k;
-        return k;
-    }
-    for (int i = p; i < count; ++i) {
-        if (t < at(i + 1)) return i;
-    }
-    return count - 1;
-}
-
-/// De Boor's algorithm in homogeneous coordinates on @p d (its p + 1 points of span @p k), at
-/// @p t, step for step as NurbsCurve::evaluate runs it, so the result (left in d[p]) is the same
-/// to the last bit.
-void deBoor(Homogeneous* d, const std::vector<double>& knots, int k, int p, double t) {
-    for (int r = 1; r <= p; ++r) {
-        for (int j = p; j >= r; --j) {
-            const int i = k - p + j;
-            const double denom =
-                knots[static_cast<size_t>(i + p + 1 - r)] - knots[static_cast<size_t>(i)];
-            double alpha = 0.0;
-            if (denom > 0.0) alpha = (t - knots[static_cast<size_t>(i)]) / denom;
-            const double oneMinusAlpha = 1.0 - alpha;
-            for (size_t c = 0; c < 4; ++c) d[j][c] = oneMinusAlpha * d[j - 1][c] + alpha * d[j][c];
-        }
-    }
-}
-
-}  // namespace
-
 // Only the p + 1 rows of u's knot span count, and each row's curve, its weights' curve and the
 // curve through the rows are evaluated as the NurbsCurve each was built as before (it allocated
 // three curves a row, for every row of the net): the same arithmetic, so the same point to the
@@ -233,35 +205,35 @@ void deBoor(Homogeneous* d, const std::vector<double>& knots, int k, int p, doub
 math::Vec3 NurbsSurface::evaluate(double u, double v) const {
     u = roundTheSeam(u, uMin(), uMax(), m_closedU);
     v = roundTheSeam(v, vMin(), vMax(), m_closedV);
-    if (m_degreeU < kStackOrder && m_degreeV < kStackOrder) {
+    if (m_degreeU < kMaxOrder && m_degreeV < kMaxOrder) {
         const int p = m_degreeU;
         const int q = m_degreeV;
         const double uc = std::clamp(u, uMin(), uMax());
         const double vc = std::clamp(v, vMin(), vMax());
-        const int ku = curveSpan(m_knotsU, controlPointCountU(), p, uc);
-        const int kv = curveSpan(m_knotsV, controlPointCountV(), q, vc);
-        std::array<math::Vec3, kStackOrder> rowPoint{};
-        std::array<double, kStackOrder> rowWeight{};
-        std::array<Homogeneous, kStackOrder> d{};
+        const int ku = findSpan(m_knotsU, controlPointCountU(), p, uc);
+        const int kv = findSpan(m_knotsV, controlPointCountV(), q, vc);
+        std::array<math::Vec3, kMaxOrder> rowPoint{};
+        std::array<double, kMaxOrder> rowWeight{};
+        std::array<Homogeneous, kMaxOrder> d{};
         for (int a = 0; a <= p; ++a) {
             const auto row = static_cast<size_t>(ku - p + a);
-            const auto& pts = m_controlPoints[row];
-            const auto& ws = m_weights[row];
+            const math::Vec3* pts = m_controlPoints[row].data();
+            const double* ws = m_weights[row].data();
             for (int j = 0; j <= q; ++j) {
-                const auto col = static_cast<size_t>(kv - q + j);
+                const int col = kv - q + j;
                 const double w = ws[col];
                 d[static_cast<size_t>(j)] = {pts[col].x * w, pts[col].y * w, pts[col].z * w, w};
             }
-            deBoor(d.data(), m_knotsV, kv, q, vc);
+            detail::deBoor(d.data(), m_knotsV.data(), kv, q, vc);
             const Homogeneous& h = d[static_cast<size_t>(q)];
             const double wInv = 1.0 / h[3];
             rowPoint[static_cast<size_t>(a)] = {h[0] * wInv, h[1] * wInv, h[2] * wInv};
             // The row's weight: the plain B-spline of its weights, a curve of points (w, 0, 0).
             for (int j = 0; j <= q; ++j) {
-                const double w = ws[static_cast<size_t>(kv - q + j)];
+                const double w = ws[kv - q + j];
                 d[static_cast<size_t>(j)] = {w * 1.0, 0.0 * 1.0, 0.0 * 1.0, 1.0};
             }
-            deBoor(d.data(), m_knotsV, kv, q, vc);
+            detail::deBoor(d.data(), m_knotsV.data(), kv, q, vc);
             const Homogeneous& hw = d[static_cast<size_t>(q)];
             rowWeight[static_cast<size_t>(a)] = hw[0] * (1.0 / hw[3]);
         }
@@ -283,7 +255,7 @@ math::Vec3 NurbsSurface::evaluate(double u, double v) const {
             const double w = rowWeight[static_cast<size_t>(a)];
             d[static_cast<size_t>(a)] = {pt.x * w, pt.y * w, pt.z * w, w};
         }
-        deBoor(d.data(), m_knotsU, ku, p, uc);
+        detail::deBoor(d.data(), m_knotsU.data(), ku, p, uc);
         const Homogeneous& h = d[static_cast<size_t>(p)];
         const double wInv = 1.0 / h[3];
         return {h[0] * wInv, h[1] * wInv, h[2] * wInv};
@@ -375,47 +347,41 @@ math::Vec3 NurbsSurface::normal(double u, double v) const {
 
 namespace {
 
-constexpr int kMaxOrder = 16;  // degree 15
-
-/// The span [knots[s], knots[s + 1]) holding @p t, for @p count control
-/// points of degree @p p (The NURBS Book, A2.1); the last span at the end.
-int findSpan(const std::vector<double>& knots, int count, int p, double t) {
-    if (t >= knots[static_cast<size_t>(count)]) {
-        // The last non-empty span.
-        int s = count - 1;
-        while (s > p && knots[static_cast<size_t>(s)] >= knots[static_cast<size_t>(s) + 1]) --s;
-        return s;
-    }
-    if (t <= knots[static_cast<size_t>(p)]) {
-        int s = p;
-        while (s < count - 1 && knots[static_cast<size_t>(s) + 1] <= t) ++s;
-        return s;
-    }
-    int low = p;
-    int high = count;
-    int mid = (low + high) / 2;
-    while (t < knots[static_cast<size_t>(mid)] || t >= knots[static_cast<size_t>(mid) + 1]) {
-        if (t < knots[static_cast<size_t>(mid)]) {
-            high = mid;
-        } else {
-            low = mid;
-        }
-        mid = (low + high) / 2;
-    }
-    return mid;
-}
-
-/// The p + 1 basis functions non-zero at @p t in @p span, and their first
-/// derivatives (The NURBS Book, A2.2 and A2.3 to the first derivative).
-void basisAndDerivatives(const std::vector<double>& knots, int span, int p, double t, double* n,
-                         double* dn) {
+/// The p + 1 basis functions non-zero at @p t in @p span alone: basisAndDerivatives' n, by its
+/// steps (the derivatives come after, from the same table, and change nothing of it).
+void basisOnly(const std::vector<double>& knotVector, int span, int p, double t, double* n) {
+    const double* knots = knotVector.data();
     double ndu[kMaxOrder][kMaxOrder];
     double left[kMaxOrder];
     double right[kMaxOrder];
     ndu[0][0] = 1.0;
     for (int j = 1; j <= p; ++j) {
-        left[j] = t - knots[static_cast<size_t>(span + 1 - j)];
-        right[j] = knots[static_cast<size_t>(span + j)] - t;
+        left[j] = t - knots[span + 1 - j];
+        right[j] = knots[span + j] - t;
+        double saved = 0.0;
+        for (int r = 0; r < j; ++r) {
+            ndu[j][r] = right[r + 1] + left[j - r];
+            const double temp = ndu[r][j - 1] / ndu[j][r];
+            ndu[r][j] = saved + right[r + 1] * temp;
+            saved = left[j - r] * temp;
+        }
+        ndu[j][j] = saved;
+    }
+    for (int r = 0; r <= p; ++r) n[r] = ndu[r][p];
+}
+
+/// The p + 1 basis functions non-zero at @p t in @p span, and their first
+/// derivatives (The NURBS Book, A2.2 and A2.3 to the first derivative).
+void basisAndDerivatives(const std::vector<double>& knotVector, int span, int p, double t,
+                         double* n, double* dn) {
+    const double* knots = knotVector.data();
+    double ndu[kMaxOrder][kMaxOrder];
+    double left[kMaxOrder];
+    double right[kMaxOrder];
+    ndu[0][0] = 1.0;
+    for (int j = 1; j <= p; ++j) {
+        left[j] = t - knots[span + 1 - j];
+        right[j] = knots[span + j] - t;
         double saved = 0.0;
         for (int r = 0; r < j; ++r) {
             ndu[j][r] = right[r + 1] + left[j - r];  // knot differences, below
@@ -471,10 +437,10 @@ SurfacePoint NurbsSurface::evaluateWithDerivatives(double u, double v) const {
     math::Vec3 a, au, av;
     double w = 0.0, wu = 0.0, wv = 0.0;
     for (int i = 0; i <= p; ++i) {
-        const auto& row = m_controlPoints[static_cast<size_t>(spanU - p + i)];
-        const auto& rowW = m_weights[static_cast<size_t>(spanU - p + i)];
+        const math::Vec3* row = m_controlPoints[static_cast<size_t>(spanU - p + i)].data();
+        const double* rowW = m_weights[static_cast<size_t>(spanU - p + i)].data();
         for (int j = 0; j <= q; ++j) {
-            const size_t col = static_cast<size_t>(spanV - q + j);
+            const int col = spanV - q + j;
             const double weight = rowW[col];
             const math::Vec3 wp = row[col] * weight;
             const double b = nu[i] * nv[j];
@@ -549,6 +515,38 @@ std::pair<double, double> NurbsSurface::project(const math::Vec3& point, double 
 std::pair<double, double> NurbsSurface::locate(const math::Vec3& point) const {
     constexpr int kGrid = 16;
     constexpr size_t kStarts = 4;
+    // evaluateWithDerivatives(u, v).point, by its steps without the derivatives: the same point
+    // to the last bit, at half the cost, for the 256 points of the grid.
+    const auto pointAt = [this](double u, double v) {
+        u = roundTheSeam(u, uMin(), uMax(), m_closedU);
+        v = roundTheSeam(v, vMin(), vMax(), m_closedV);
+        if (m_degreeU >= kMaxOrder || m_degreeV >= kMaxOrder) return evaluate(u, v);
+        u = std::clamp(u, uMin(), uMax());
+        v = std::clamp(v, vMin(), vMax());
+        const int p = m_degreeU;
+        const int q = m_degreeV;
+        const int spanU = findSpan(m_knotsU, controlPointCountU(), p, u);
+        const int spanV = findSpan(m_knotsV, controlPointCountV(), q, v);
+        double nu[kMaxOrder];
+        double nv[kMaxOrder];
+        basisOnly(m_knotsU, spanU, p, u, nu);
+        basisOnly(m_knotsV, spanV, q, v, nv);
+        math::Vec3 a;
+        double w = 0.0;
+        for (int i = 0; i <= p; ++i) {
+            const auto& row = m_controlPoints[static_cast<size_t>(spanU - p + i)];
+            const auto& rowW = m_weights[static_cast<size_t>(spanU - p + i)];
+            for (int j = 0; j <= q; ++j) {
+                const size_t col = static_cast<size_t>(spanV - q + j);
+                const double weight = rowW[col];
+                const math::Vec3 wp = row[col] * weight;
+                const double b = nu[i] * nv[j];
+                a += wp * b;
+                w += weight * b;
+            }
+        }
+        return a * (1.0 / w);
+    };
     struct Start {
         double distance;
         double u;
@@ -562,7 +560,7 @@ std::pair<double, double> NurbsSurface::locate(const math::Vec3& point) const {
         for (int j = 0; j < kGrid; ++j) {
             const double u = uMin() + du * (i + 0.5);
             const double v = vMin() + dv * (j + 0.5);
-            starts.push_back({(evaluateWithDerivatives(u, v).point - point).lengthSquared(), u, v});
+            starts.push_back({(pointAt(u, v) - point).lengthSquared(), u, v});
         }
     }
     std::partial_sort(starts.begin(), starts.begin() + static_cast<std::ptrdiff_t>(kStarts),
@@ -572,8 +570,7 @@ std::pair<double, double> NurbsSurface::locate(const math::Vec3& point) const {
     double bestDistance = std::numeric_limits<double>::infinity();
     for (size_t k = 0; k < kStarts; ++k) {
         const auto uv = project(point, starts[k].u, starts[k].v);
-        const double d =
-            (evaluateWithDerivatives(uv.first, uv.second).point - point).lengthSquared();
+        const double d = (pointAt(uv.first, uv.second) - point).lengthSquared();
         if (d < bestDistance) {
             bestDistance = d;
             best = uv;

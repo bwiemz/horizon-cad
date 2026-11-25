@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "AngleWrap.h"
+#include "NurbsKnots.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Circle2D.h"
 #include "horizon/geometry/curves/Line2D.h"
@@ -70,10 +71,6 @@ struct Form {
     /// A bound on the deviation, known from how the form was built, never below the true one;
     /// negative where the form is measured instead.
     double bound = -1.0;
-    /// Where the pcurve parameter is not affine in t: pairs (s, t) along it, s increasing, that
-    /// put a check at s near the curve's t (between them, t is taken linearly). Empty: the
-    /// check's nearest point is searched for along the whole curve.
-    std::vector<std::pair<double, double>> guide;
 };
 
 /// What rounding may add to a form found by mapping points (mapping them into (u, v), and
@@ -234,72 +231,6 @@ std::optional<Form> patchForm(const NurbsSurface& s, const Curve3& c, double t0,
     }
     const double tw = twist.length();
     f.bound += tw * mostU * mostV + outU * (a.length() + tw) + outV * (b.length() + tw);
-    return f;
-}
-
-/// The (u, v) of the nearest representative of @p uv to @p prev, on a surface periodic in u
-/// or v.
-Vec2 nearestTo(const Surface& s, Vec2 uv, const Vec2& prev) {
-    if (s.periodicU()) {
-        const Interval r = s.uRange();
-        uv.x = nearestRepresentative(uv.x, prev.x, r.max - r.min);
-    }
-    if (s.periodicV()) {
-        const Interval r = s.vRange();
-        uv.y = nearestRepresentative(uv.y, prev.y, r.max - r.min);
-    }
-    return uv;
-}
-
-/// How many steps the curve is inverted at to see whether it is a parameter line.
-constexpr int kIsoSteps = 8;
-
-/// A curve that is a parameter line of a NURBS surface: a rim of a surface of revolution written
-/// as a B-spline surface (one v), a generator of one (one u), an edge along a patch's own edge.
-/// Its (u, v), inverted at kIsoSteps + 1 points along it (each from the one before, the first
-/// from scratch, which @p startUV receives for the general path), keeps one v, or one u, to
-/// within @p tolerance across the surface, while the other runs one way: the pcurve is the
-/// Line2D from its start's (u, v) to its end's along that line, unwrapped through the points
-/// between (so across the seam). Its parameter is not the curve's: each check is measured from
-/// the curve parameter the points between give it (the form's guide).
-std::optional<Form> isoForm(const NurbsSurface& s, const Curve3& c, double t0, double t1,
-                            double tolerance, Vec2& startUV) {
-    std::array<Vec2, kIsoSteps + 1> uv{};
-    std::array<double, kIsoSteps + 1> ts{};
-    uv[0] = s.invert(c.evaluate(t0));
-    startUV = uv[0];
-    ts[0] = t0;
-    bool oneV = true;  // u runs, v stays
-    bool oneU = true;  // v runs, u stays
-    for (int k = 1; k <= kIsoSteps; ++k) {
-        const auto i = static_cast<size_t>(k);
-        ts[i] = t0 + (t1 - t0) * static_cast<double>(k) / kIsoSteps;
-        const auto r = s.project(c.evaluate(ts[i]), uv[i - 1].x, uv[i - 1].y);
-        uv[i] = nearestTo(s, Vec2(r.first, r.second), uv[i - 1]);
-        // How far the point is, across the line, from the start's: the step in the parameter
-        // that should stay, times the surface's speed along it here.
-        const SurfacePoint at = s.evaluateWithDerivatives(uv[i].x, uv[i].y);
-        if (std::abs(uv[i].y - uv[0].y) * at.dv.length() > tolerance) oneV = false;
-        if (std::abs(uv[i].x - uv[0].x) * at.du.length() > tolerance) oneU = false;
-        if (!oneV && !oneU) return std::nullopt;
-    }
-    if (oneV == oneU) return std::nullopt;  // it stays at one point, or the surface is singular
-    const auto run = [oneV](const Vec2& p) { return oneV ? p.x : p.y; };
-    const double span = run(uv[kIsoSteps]) - run(uv[0]);
-    if (!std::isfinite(span) || span == 0.0) return std::nullopt;
-    for (size_t i = 1; i < uv.size(); ++i) {
-        if (!((run(uv[i]) - run(uv[i - 1])) * span > 0.0)) return std::nullopt;
-    }
-    Form f;
-    const Vec2 a = uv[0];
-    const Vec2 b = oneV ? Vec2(uv[kIsoSteps].x, a.y) : Vec2(a.x, uv[kIsoSteps].y);
-    f.curve = std::make_shared<Line2D>(a, b);
-    f.start = 0.0;
-    f.end = 1.0;
-    f.affine = false;
-    f.guide.reserve(uv.size());
-    for (size_t i = 0; i < uv.size(); ++i)
-        f.guide.emplace_back((run(uv[i]) - run(a)) / span, ts[i]);
     return f;
 }
 
@@ -475,11 +406,9 @@ std::optional<Form> circleOnRevolved(const Surface& s, const Frame& fr, const Ci
     return f;
 }
 
-/// The closed form @p c has on @p s, if any (still to be measured or bounded). On a NURBS
-/// surface, where the start had to be inverted from scratch to look for a parameter line,
-/// @p startUV receives its (u, v) for the general path.
+/// The closed form @p c has on @p s, if any (still to be measured or bounded).
 std::optional<Form> closedFormCandidate(const Surface& s, const Curve3& c, double t0, double t1,
-                                        double tolerance, std::optional<Vec2>& startUV) {
+                                        double tolerance) {
     switch (s.kind()) {
         case SurfaceKind::Plane:
             return planeForm(static_cast<const Plane&>(s), c, t0, t1, tolerance);
@@ -509,41 +438,16 @@ std::optional<Form> closedFormCandidate(const Surface& s, const Curve3& c, doubl
         }
         case SurfaceKind::Nurbs:
             if (const auto* nurbs = dynamic_cast<const NurbsSurface*>(&s)) {
-                if (std::optional<Form> patch = patchForm(*nurbs, c, t0, t1)) return patch;
-                Vec2 first;
-                std::optional<Form> iso = isoForm(*nurbs, c, t0, t1, tolerance, first);
-                startUV = first;
-                return iso;
+                return patchForm(*nurbs, c, t0, t1);
             }
             return std::nullopt;
     }
     return std::nullopt;
 }
 
-double distanceNear(const Curve3& c, const Vec3& p, double guess, double lo, double hi,
-                    double settle);
-
-/// The curve parameter @p f's guide gives the point @p lambda of the way along its pcurve.
-double guided(const Form& f, double lambda) {
-    const auto& g = f.guide;
-    const auto above =
-        std::upper_bound(g.begin(), g.end(), lambda,
-                         [](double l, const std::pair<double, double>& e) { return l < e.first; });
-    if (above == g.begin()) return g.front().second;
-    if (above == g.end()) return g.back().second;
-    const auto& lo = *(above - 1);
-    const auto& hi = *above;
-    const double w = (lambda - lo.first) / (hi.first - lo.first);
-    return lo.second + w * (hi.second - lo.second);
-}
-
 /// The largest distance between the closed form's image and the curve, along it and at its
-/// ends. Where its parameter is the curve's (affine), each check is against the curve's point
-/// there; where a guide puts it near the curve's, against the point Newton's method finds from
-/// there (it stops once within @p settle, and reads high, never low); else against the curve's
-/// nearest point.
-double measureForm(const Surface& s, const Curve3& c, const Form& f, double t0, double t1,
-                   double settle) {
+/// ends.
+double measureForm(const Surface& s, const Curve3& c, const Form& f, double t0, double t1) {
     constexpr int kChecks = 48;
     double dev = 0.0;
     for (int k = 0; k <= kChecks; ++k) {
@@ -553,8 +457,6 @@ double measureForm(const Surface& s, const Curve3& c, const Form& f, double t0, 
         double d = 0.0;
         if (f.affine) {
             d = (p - c.evaluate(t0 + lambda * (t1 - t0))).length();
-        } else if (!f.guide.empty()) {
-            d = distanceNear(c, p, guided(f, lambda), std::min(t0, t1), std::max(t0, t1), settle);
         } else {
             d = (p - c.evaluate(c.closestParameter(p))).length();
         }
@@ -581,6 +483,9 @@ struct Sample {
     double gap = 0.0;
     /// The surface's unit normal at uv (where du x dv vanishes, Surface::normal's limit).
     Vec3 normal;
+    /// |dS/du| and |dS/dv| at uv: how far a step in u or v moves across the surface.
+    double speedU = 0.0;
+    double speedV = 0.0;
     bool singular = false;
 };
 
@@ -588,9 +493,8 @@ struct Sample {
 /// evaluation of the surface there gives the gap, whether u means anything, and the normal.
 class Inverter {
 public:
-    /// @p first, when given, is the (u, v) of the curve's first point, already inverted.
-    Inverter(const Surface& s, const Curve3& c, const Vec2* first)
-        : s_(s), c_(c), nurbs_(dynamic_cast<const NurbsSurface*>(&s)), first_(first) {}
+    Inverter(const Surface& s, const Curve3& c)
+        : s_(s), c_(c), nurbs_(dynamic_cast<const NurbsSurface*>(&s)) {}
 
     /// A sample at @p t, placed from @p prev.
     Sample at(double t, const Sample* prev) const { return at(t, c_.derivatives(t), prev); }
@@ -613,8 +517,6 @@ public:
         if (nurbs_ != nullptr && prev != nullptr) {
             const auto r = nurbs_->project(p, prev->uv.x, prev->uv.y);
             uv = Vec2(r.first, r.second);
-        } else if (prev == nullptr && first_ != nullptr) {
-            uv = *first_;
         } else {
             uv = s_.invert(p);
         }
@@ -637,6 +539,8 @@ public:
         }
         smp.uv = uv;
         smp.gap = (here.point - p).length();
+        smp.speedU = here.du.length();
+        smp.speedV = here.dv.length();
         const Vec3 cross = here.du.cross(here.dv);
         const double len = cross.length();
         const double scale = std::max(here.du.length(), here.dv.length());
@@ -664,7 +568,6 @@ private:
     const Surface& s_;
     const Curve3& c_;
     const NurbsSurface* nurbs_;
-    const Vec2* first_;
 };
 
 /// Whether the interval between @p a and @p b turns the curve or the surface too far, or steps
@@ -694,23 +597,6 @@ double chord(const Vec2& a, const Vec2& b) {
 
 bool tooClose(const Vec2& a, const Vec2& b) {
     return chord(a, b) <= 1e-12 * (1.0 + std::abs(a.x) + std::abs(a.y));
-}
-
-int findSpan(int n, int p, double u, const std::vector<double>& knots) {
-    if (u >= knots[static_cast<size_t>(n) + 1]) return n;
-    if (u <= knots[static_cast<size_t>(p)]) return p;
-    int lo = p;
-    int hi = n + 1;
-    int mid = (lo + hi) / 2;
-    while (u < knots[static_cast<size_t>(mid)] || u >= knots[static_cast<size_t>(mid) + 1]) {
-        if (u < knots[static_cast<size_t>(mid)]) {
-            hi = mid;
-        } else {
-            lo = mid;
-        }
-        mid = (lo + hi) / 2;
-    }
-    return mid;
 }
 
 /// The p + 1 B-spline basis functions that are non-zero at @p u, in @p span (A2.2).
@@ -744,44 +630,21 @@ struct Fit {
     std::vector<double> params;
     bool ok = false;
 
-    /// The fit at @p s, by the steps NurbsCurve::evaluate takes for the Nurbs2D made of it
-    /// (unit weights in homogeneous coordinates, the same span), so the same point to the last
-    /// bit, without allocating or searching the knots one by one.
+    /// The fit at @p s, by the steps NurbsCurve::evaluate takes for the Nurbs2D made of it: its
+    /// points (x, y, 0) of weight 1 in homogeneous coordinates, through the same detail::knotSpan
+    /// and detail::deBoor, so the same point by construction, without making the Nurbs2D.
     Vec2 at(double s) const {
         const int p = degree;
         const auto n = static_cast<int>(ctrl.size());
         const double t =
             std::clamp(s, knots[static_cast<size_t>(p)], knots[static_cast<size_t>(n)]);
-        int k = 0;
-        if (t >= knots[static_cast<size_t>(n)]) {
-            k = n - 1;
-            while (k > p && !(knots[static_cast<size_t>(k)] < knots[static_cast<size_t>(k) + 1])) {
-                --k;
-            }
-        } else {
-            const auto first = knots.begin() + p + 1;
-            k = static_cast<int>(std::upper_bound(first, knots.begin() + n + 1, t) -
-                                 knots.begin()) -
-                1;
-        }
-        std::array<std::array<double, 4>, 4> d{};
+        const int k = detail::knotSpan(knots.data(), n, p, t);
+        std::array<detail::Homogeneous, 4> d{};
         for (int j = 0; j <= p; ++j) {
             const Vec2& c = ctrl[static_cast<size_t>(k - p + j)];
             d[static_cast<size_t>(j)] = {c.x * 1.0, c.y * 1.0, 0.0 * 1.0, 1.0};
         }
-        for (int r = 1; r <= p; ++r) {
-            for (int j = p; j >= r; --j) {
-                const int i = k - p + j;
-                const double denom =
-                    knots[static_cast<size_t>(i + p + 1 - r)] - knots[static_cast<size_t>(i)];
-                double alpha = 0.0;
-                if (denom > 0.0) alpha = (t - knots[static_cast<size_t>(i)]) / denom;
-                const double oneMinusAlpha = 1.0 - alpha;
-                auto& dj = d[static_cast<size_t>(j)];
-                const auto& dprev = d[static_cast<size_t>(j - 1)];
-                for (size_t c = 0; c < 4; ++c) dj[c] = oneMinusAlpha * dprev[c] + alpha * dj[c];
-            }
-        }
+        detail::deBoor(d.data(), knots.data(), k, p, t);
         const auto& h = d[static_cast<size_t>(p)];
         const double wInv = 1.0 / h[3];
         return {h[0] * wInv, h[1] * wInv};
@@ -824,7 +687,7 @@ Fit fitCubic(const std::vector<Sample>& samples) {
     };
     for (int i = 0; i <= n; ++i) {
         const double u = fit.params[static_cast<size_t>(i)];
-        const int span = findSpan(n, p, u, knots);
+        const int span = detail::knotSpan(knots.data(), n + 1, p, u);
         const std::array<double, 4> basis = basisFunctions(span, u, p, knots);
         for (int r = 0; r <= p; ++r) {
             const int col = span - p + r;
@@ -984,8 +847,9 @@ struct Measure {
 /// the fit strays beyond the curve's own gap counted kPeakMargin more; this is what a returned
 /// pcurve is measured by. Otherwise a quick look at three points, from the matched parameter
 /// alone, to steer refinement.
-Measure measureFit(const Surface& s, const Curve3& c, const std::vector<Sample>& samples,
-                   const Fit& fit, bool strict, double target) {
+template <class At>
+Measure measureAlong(const Surface& s, const Curve3& c, const std::vector<Sample>& samples,
+                     const std::vector<double>& params, const At& at, bool strict, double target) {
     Measure m;
     m.strict = strict;
     m.interval.assign(samples.size() - 1, 0.0);
@@ -996,8 +860,8 @@ Measure measureFit(const Surface& s, const Curve3& c, const std::vector<Sample>&
         const double hi = samples[std::min(i + 2, samples.size() - 1)].t;
         for (int k = 1; k <= checks; ++k) {
             const double f = static_cast<double>(k) / (checks + 1);
-            const double sp = fit.params[i] + f * (fit.params[i + 1] - fit.params[i]);
-            const Vec2 uv = fit.at(sp);
+            const double sp = params[i] + f * (params[i + 1] - params[i]);
+            const Vec2 uv = at(sp);
             const Vec3 p = s.evaluate(uv.x, uv.y);
             const double guess = samples[i].t + f * (samples[i + 1].t - samples[i].t);
             double d = distanceNear(c, p, guess, lo, hi, kSettle * target);
@@ -1011,6 +875,52 @@ Measure measureFit(const Surface& s, const Curve3& c, const std::vector<Sample>&
         m.fitDeviation = std::max(m.fitDeviation, m.interval[i]);
     }
     return m;
+}
+
+/// measureAlong for a fit: at its samples' chord-length parameters, by Fit::at.
+Measure measureFit(const Surface& s, const Curve3& c, const std::vector<Sample>& samples,
+                   const Fit& fit, bool strict, double target) {
+    return measureAlong(
+        s, c, samples, fit.params, [&fit](double sp) { return fit.at(sp); }, strict, target);
+}
+
+/// A parameter line of the surface the samples keep to, and each sample's place along it.
+struct ParameterLine {
+    std::shared_ptr<const Line2D> curve;
+    std::vector<double> params;
+};
+
+/// The line of the surface the samples keep to, if they do: each sample's v (or u) within
+/// @p tolerance, across the surface, of the first sample's, while the other parameter runs one
+/// way. Then the Line2D from the first sample's (u, v) to the last's along that line, and each
+/// sample's fraction of the way. A rim of a surface of revolution written as a B-spline surface
+/// keeps one v, a generator one u, an edge along a patch's own edge either.
+std::optional<ParameterLine> parameterLineOf(const std::vector<Sample>& samples, double tolerance) {
+    if (samples.size() < 2) return std::nullopt;
+    const Vec2 a = samples.front().uv;
+    bool oneV = true;  // u runs, v stays
+    bool oneU = true;  // v runs, u stays
+    for (const Sample& smp : samples) {
+        if (!(std::abs(smp.uv.y - a.y) * smp.speedV <= tolerance)) oneV = false;
+        if (!(std::abs(smp.uv.x - a.x) * smp.speedU <= tolerance)) oneU = false;
+        if (!oneV && !oneU) return std::nullopt;
+    }
+    if (oneV == oneU) return std::nullopt;  // it stays at one point, or the surface is singular
+    const auto run = [oneV](const Vec2& p) { return oneV ? p.x : p.y; };
+    const double span = run(samples.back().uv) - run(a);
+    if (!std::isfinite(span) || span == 0.0) return std::nullopt;
+    ParameterLine line;
+    line.params.reserve(samples.size());
+    for (size_t i = 0; i < samples.size(); ++i) {
+        if (i > 0 && !((run(samples[i].uv) - run(samples[i - 1].uv)) * span > 0.0)) {
+            return std::nullopt;
+        }
+        line.params.push_back((run(samples[i].uv) - run(a)) / span);
+    }
+    line.params.back() = 1.0;
+    const Vec2 b = oneV ? Vec2(samples.back().uv.x, a.y) : Vec2(a.x, samples.back().uv.y);
+    line.curve = std::make_shared<Line2D>(a, b);
+    return line;
 }
 
 /// The problem of a pcurve that strays @p deviation, beyond @p tolerance: where the curve itself
@@ -1105,11 +1015,8 @@ Start initialIntervals(const Curve3& c, double t0, double t1) {
     return start;
 }
 
-/// Places every sample again in order, each from the one before it, so that u and v stay
-/// continuous with the samples between them, and gives a pole or an apex at the start the first
-/// regular u.
-void rechain(const Inverter& inv, std::vector<Sample>& samples) {
-    for (size_t i = 1; i < samples.size(); ++i) inv.place(samples[i], &samples[i - 1]);
+/// Gives a pole or an apex at the start the first regular sample's u.
+void fixSingularStart(std::vector<Sample>& samples) {
     const auto regular = std::find_if(samples.begin(), samples.end(),
                                       [](const Sample& smp) { return !smp.singular; });
     for (auto it = samples.begin(); it != regular && regular != samples.end(); ++it) {
@@ -1117,12 +1024,20 @@ void rechain(const Inverter& inv, std::vector<Sample>& samples) {
     }
 }
 
+/// Places every sample again in order, each from the one before it, so that u and v stay
+/// continuous with the samples between them, and gives a pole or an apex at the start the first
+/// regular u.
+void rechain(const Inverter& inv, std::vector<Sample>& samples) {
+    for (size_t i = 1; i < samples.size(); ++i) inv.place(samples[i], &samples[i - 1]);
+    fixSingularStart(samples);
+}
+
 /// The most fit-and-measure rounds the general method takes.
 constexpr int kMaxRounds = 64;
 
 Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, double tolerance,
-                     double limit, const Vec2* firstUV) {
-    const Inverter inv(s, c, firstUV);
+                     double limit) {
+    const Inverter inv(s, c);
     std::vector<Sample> samples;
     samples.reserve(kMaxSamples);
     const Start start = initialIntervals(c, t0, t1);
@@ -1133,7 +1048,9 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
         samples.push_back(start.at.empty() ? inv.at(t, prev)
                                            : inv.at(t, start.at[static_cast<size_t>(k)], prev));
     }
-    rechain(inv, samples);
+    // Each was placed from the one before it, as rechain would place it again: only a pole at
+    // the start is left to give its u.
+    fixSingularStart(samples);
 
     // Subdivide where the curve or the surface turns, or a periodic parameter steps far.
     for (int pass = 0; pass < 16 && samples.size() < kMaxCriteriaSamples; ++pass) {
@@ -1194,6 +1111,28 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
         out.standOff = baseGap;
         if (baseGap > target) out.problem = describe(baseGap, target, 1, baseGap);
         return out;
+    }
+
+    // On a NURBS surface, samples that keep to one parameter line (a rim or a generator of a
+    // surface of revolution written as a B-spline surface, an edge along a patch's own edge) are
+    // tried as that line: measured as strictly as a fit, at these samples, and taken as a fit
+    // would be (an error within the surface to the tolerance, a gap off it to the limit).
+    // Otherwise the samples go on to be fitted.
+    if (dynamic_cast<const NurbsSurface*>(&s) != nullptr) {
+        if (const std::optional<ParameterLine> line = parameterLineOf(samples, tolerance)) {
+            const Measure lm = measureAlong(
+                s, c, samples, line->params,
+                [&line](double sp) { return line->curve->evaluate(sp); }, true, target);
+            allow(lm.maxGap);
+            if (!(lm.maxGap > target) && std::max(lm.fitDeviation, lm.maxGap) <= target) {
+                out.curve = line->curve;
+                out.start = 0.0;
+                out.end = 1.0;
+                out.deviation = std::max({lm.fitDeviation, lm.maxGap, baseGap});
+                out.standOff = std::max(lm.maxGap, baseGap);
+                return out;
+            }
+        }
     }
 
     // The first fit is measured strictly (on the samples the curve's turning asked for, it is
@@ -1285,14 +1224,11 @@ Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t
     // How far the curve may stand off the surface and still be taken.
     const double limit =
         std::isfinite(standOffLimit) && standOffLimit > tolerance ? standOffLimit : tolerance;
-    std::optional<Vec2> startUV;
-    if (const std::optional<Form> form =
-            closedFormCandidate(surface, curve, t0, t1, tolerance, startUV)) {
+    if (const std::optional<Form> form = closedFormCandidate(surface, curve, t0, t1, tolerance)) {
         // A bounded form is taken within the tolerance: a curve that stands off its plane by
         // more is measured on the general path, which finds its gap rather than bounding it.
-        const double dev = form->bound >= 0.0
-                               ? form->bound
-                               : measureForm(surface, curve, *form, t0, t1, kSettle * tolerance);
+        const double dev =
+            form->bound >= 0.0 ? form->bound : measureForm(surface, curve, *form, t0, t1);
         if (std::isfinite(dev) && dev <= (form->bound >= 0.0 ? tolerance : limit)) {
             Pcurve pc;
             pc.curve = form->curve;
@@ -1303,7 +1239,7 @@ Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t
             return pc;
         }
     }
-    return generalPcurve(surface, curve, t0, t1, tolerance, limit, startUV ? &*startUV : nullptr);
+    return generalPcurve(surface, curve, t0, t1, tolerance, limit);
 }
 
 }  // namespace hz::geo

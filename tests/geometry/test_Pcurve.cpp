@@ -926,7 +926,9 @@ TEST(Pcurve, AParameterLineOfASplineFaceIsALine) {
         const Line2D* l2 = as<Line2D>(pc);
         ASSERT_NE(l2, nullptr) << t0 << " " << pc.problem;
         EXPECT_NEAR(l2->start().y, l2->end().y, 1e-12);
-        expectFollows(cyl, rim, t0, t1, pc, 1e-9);
+        // Measured as strictly as a fit, its deviation reads at most 1% of the tolerance (where
+        // each check's Newton stops) and 3% over that: never below the truth, here about 0.
+        expectFollows(cyl, rim, t0, t1, pc, 2e-9);
         EXPECT_GE(pc.deviation, closestDeviation(cyl, rim, pc) * 0.999);
     }
     // A generator, as a straight B-spline.
@@ -937,7 +939,7 @@ TEST(Pcurve, AParameterLineOfASplineFaceIsALine) {
     const Line2D* lg = as<Line2D>(pg);
     ASSERT_NE(lg, nullptr) << pg.problem;
     EXPECT_NEAR(lg->start().x, lg->end().x, 1e-12);
-    expectFollows(cyl, gen, 1.0, 0.0, pg, 1e-9);
+    expectFollows(cyl, gen, 1.0, 0.0, pg, 2e-9);
     // A circle that is not a parameter line (tilted) is fitted as before.
     const CircleCurve tiltedRim(Frame::fromAxis({1, 2, 6}, {0.05, 0, 1}), 4.0);
     const Pcurve pt = pcurveOn(cyl, tiltedRim, 0.0, 1.0, tol);
@@ -1030,4 +1032,76 @@ TEST(Pcurve, ACircleInAParallelogramPatchIsItsEllipseInUV) {
     // A rim that leaves the patch is no closed form of it.
     const CircleCurve wide(Frame::fromAxis(centre, n, sk.a), 30.0);
     EXPECT_FALSE(pcurveOn(patch, wide, 0.0, 1.0, tol).problem.empty());
+}
+
+namespace {
+
+/// The flat face S(u, v) = (100 u, 100 v, 0), of degree 2 both ways (so no bilinear patch).
+NurbsSurface flatDegreeTwo() {
+    std::vector<std::vector<math::Vec3>> net(3, std::vector<math::Vec3>(3));
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            net[i][j] =
+                math::Vec3(50.0 * static_cast<double>(i), 50.0 * static_cast<double>(j), 0.0);
+        }
+    }
+    return NurbsSurface(net, std::vector<std::vector<double>>(3, std::vector<double>(3, 1.0)),
+                        {0, 0, 0, 1, 1, 1}, {0, 0, 0, 1, 1, 1}, 2, 2);
+}
+
+/// A cubic of 256 uniform spans lying in that face along v = 0.5, but for its control point 9
+/// raised @p h within the face: a bump peaking 2h/3 off the line between t = 6/256 and 10/256.
+NurbsCurve bumpedLine(double h) {
+    constexpr int kSpans = 256;
+    std::vector<double> knots = {0, 0, 0};
+    for (int k = 0; k <= kSpans; ++k) knots.push_back(static_cast<double>(k) / kSpans);
+    knots.insert(knots.end(), {1, 1, 1});
+    std::vector<math::Vec3> pts;
+    for (int i = 0; i < kSpans + 3; ++i) {
+        const auto k = static_cast<size_t>(i);
+        const double g = (knots[k + 1] + knots[k + 2] + knots[k + 3]) / 3.0;
+        pts.emplace_back(100.0 * g, 50.0 + (i == 9 ? h : 0.0), 0.0);
+    }
+    return NurbsCurve(pts, std::vector<double>(pts.size(), 1.0), knots, 3);
+}
+
+}  // namespace
+
+// Review C1 (the reviewer's probe): a curve that lies in its B-spline face along a parameter line
+// but for a narrow bump within the face is no parameter line: its pcurve follows the bump, and
+// the deviation it reports is never below the true one.
+TEST(Pcurve, ACurveThatLeavesAParameterLineBetweenItsPointsIsFollowed) {
+    const NurbsSurface s = flatDegreeTwo();
+    const NurbsCurve c = bumpedLine(0.1);
+    ASSERT_GT(c.evaluate(8.0 / 256).y - 50.0, 0.06);
+    for (const double tol : {1e-6, 1e-4}) {
+        const Pcurve pc = pcurveOn(s, c, 0.0, 1.0, tol);
+        EXPECT_TRUE(pc.problem.empty()) << tol << ": " << pc.problem;
+        ASSERT_NE(pc.curve, nullptr);
+        const double truth = denseDeviation(s, c, pc);
+        EXPECT_LE(truth, tol) << tol;
+        EXPECT_GE(pc.deviation, truth * 0.999) << tol;
+    }
+}
+
+// Only a gap off the surface may use the limit, never error within it: a parameter line standing
+// 1e-5 off its face is the line, its deviation its gap; the same bump 1e-5 high within the face
+// is fitted to the tolerance, never taken as the line with its error allowed for.
+TEST(Pcurve, AParameterLineIsTakenWithinTheLimitOnlyForItsGap) {
+    const NurbsSurface s = flatDegreeTwo();
+    const double tol = 1e-7;
+    const NurbsCurve off({{10, 50, 1e-5}, {40, 50, 1e-5}, {90, 50, 1e-5}}, {1, 1, 1},
+                         {0, 0, 0, 1, 1, 1}, 2);
+    const Pcurve pc = pcurveOn(s, off, 0.0, 1.0, tol, 1e-2);
+    EXPECT_TRUE(pc.problem.empty()) << pc.problem;
+    EXPECT_NE(as<Line2D>(pc), nullptr);
+    EXPECT_GE(pc.deviation, 1e-5 * (1.0 - 1e-9));
+    EXPECT_LE(pc.deviation, 2e-5 + tol);
+
+    const NurbsCurve bump = bumpedLine(1.5e-5);
+    const Pcurve pb = pcurveOn(s, bump, 0.0, 1.0, tol, 1e-2);
+    EXPECT_TRUE(pb.problem.empty()) << pb.problem;
+    EXPECT_EQ(as<Line2D>(pb), nullptr);
+    EXPECT_LE(pb.deviation, tol);
+    EXPECT_GE(pb.deviation, denseDeviation(s, bump, pb) * 0.999);
 }

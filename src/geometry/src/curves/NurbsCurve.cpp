@@ -7,6 +7,7 @@
 #include <limits>
 #include <stdexcept>
 
+#include "../NurbsKnots.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Tolerance.h"
 
@@ -257,27 +258,11 @@ double NurbsCurve::tMax() const {
 // ---------------------------------------------------------------------------
 
 int NurbsCurve::findKnotSpan(double t) const {
-    const int n = static_cast<int>(m_controlPoints.size());
-
-    // Special case: t at or beyond the end of the domain: the last span that
-    // is not empty, so a curve whose end knot is repeated more than its
-    // degree still has one to evaluate in.
-    if (t >= m_knots[n]) {
-        int k = n - 1;
-        while (k > m_degree && !(m_knots[k] < m_knots[k + 1])) --k;
-        return k;
-    }
-
-    // The first span [knots[i], knots[i+1]) from the degree's with t < knots[i+1]: the knots do
-    // not decrease, so a binary search for the first knot above t finds the span a search one
-    // by one from the degree's stops at (a fitted pcurve has a knot for each of up to 2048
-    // samples). No knot is above a NaN; the search one by one then ran to its end.
-    if (std::isnan(t)) return n - 1;
-    const auto first = m_knots.begin() + m_degree + 1;
-    const auto last = m_knots.begin() + n + 1;
-    const auto above = std::upper_bound(first, last, t);
-    if (above == last) return n - 1;  // not reached: t < knots[n] here
-    return static_cast<int>(above - m_knots.begin()) - 1;
+    // The first span from the degree's with t < knots[i + 1], by bisection (a fitted pcurve has a
+    // knot for each of up to 2048 samples); at or beyond the end of the domain, the last span
+    // that is not empty, so a curve whose end knot is repeated more than its degree still has
+    // one to evaluate in. detail::knotSpan, which every NURBS evaluation here shares.
+    return detail::knotSpan(m_knots.data(), static_cast<int>(m_controlPoints.size()), m_degree, t);
 }
 
 // ---------------------------------------------------------------------------
@@ -296,10 +281,10 @@ math::Vec3 NurbsCurve::evaluate(double t) const {
     // We store them as 4-component arrays: [wx, wy, wz, w], on the stack up to
     // kStackOrder of them.
     const int count = p + 1;
-    std::array<std::array<double, 4>, kStackOrder> onStack{};
-    std::vector<std::array<double, 4>> onHeap;
+    std::array<detail::Homogeneous, kStackOrder> onStack{};
+    std::vector<detail::Homogeneous> onHeap;
     if (count > kStackOrder) onHeap.resize(static_cast<size_t>(count));
-    std::array<double, 4>* const d = count > kStackOrder ? onHeap.data() : onStack.data();
+    detail::Homogeneous* const d = count > kStackOrder ? onHeap.data() : onStack.data();
 
     for (int j = 0; j < count; ++j) {
         const int idx = k - p + j;
@@ -308,25 +293,8 @@ math::Vec3 NurbsCurve::evaluate(double t) const {
         d[j] = {pt.x * w, pt.y * w, pt.z * w, w};
     }
 
-    // De Boor triangular computation.
-    for (int r = 1; r <= p; ++r) {
-        for (int j = count - 1; j >= r; --j) {
-            const int i = k - p + j;  // original control-point index
-            // Positive for every i of a span that is not empty, however close
-            // its knots: against a length tolerance (1e-7) as it was, knots
-            // 1e-8 apart read as one and the curve evaluated to its first
-            // control point between them.
-            const double denom = m_knots[i + p + 1 - r] - m_knots[i];
-            double alpha = 0.0;
-            if (denom > 0.0) {
-                alpha = (t - m_knots[i]) / denom;
-            }
-            const double oneMinusAlpha = 1.0 - alpha;
-            for (int c = 0; c < 4; ++c) {
-                d[j][c] = oneMinusAlpha * d[j - 1][c] + alpha * d[j][c];
-            }
-        }
-    }
+    // De Boor triangular computation (detail::deBoor, shared by every NURBS evaluation here).
+    detail::deBoor(d, m_knots.data(), k, p, t);
 
     // The result is in d[count-1].  Dehomogenise.
     const auto& h = d[count - 1];
