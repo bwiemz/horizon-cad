@@ -678,7 +678,8 @@ static std::vector<std::string> blocksInReadingOrder(const draft::BlockTable& ta
     return ordered;
 }
 
-static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation) {
+static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation,
+                              SharedImports* shared = nullptr) {
     json root;
     root["version"] = kFormatVersion;
     root["type"] = doc.type() == doc::DocumentType::Part ? "hzpart" : "hcad";
@@ -931,7 +932,17 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
             // does not depend on the file it was imported from.
             fObj["type"] = "imported";
             fObj["source"] = imported->source();
-            if (imported->solid()) fObj["step"] = StepFormat::toString({imported->solid().get()});
+            // A copy for this process shares it instead (one body a feature ID: a second
+            // feature of the same ID, which a damaged file may hold, is written as ever).
+            if (shared != nullptr && imported->solid() &&
+                shared
+                    ->emplace(imported->featureID(),
+                              SharedImport{imported->solid(), imported->note()})
+                    .second) {
+                fObj["shared"] = true;
+            } else if (imported->solid()) {
+                fObj["step"] = StepFormat::toString({imported->solid().get()});
+            }
         } else if (const auto* datum = dynamic_cast<const doc::DatumFeature*>(feat)) {
             fObj["type"] = "datum";
             switch (datum->datumKind()) {
@@ -1051,8 +1062,9 @@ bool NativeFormat::save(const std::string& filePath, const doc::Document& doc, s
     return writeFileAtomically(pathFromUtf8(filePath), dumpJson(root, indent), error);
 }
 
-std::string NativeFormat::documentToJson(const doc::Document& doc, bool includeTessellation) {
-    return dumpJson(buildDocumentRoot(doc, includeTessellation), -1);
+std::string NativeFormat::documentToJson(const doc::Document& doc, bool includeTessellation,
+                                         SharedImports* shared) {
+    return dumpJson(buildDocumentRoot(doc, includeTessellation, shared), -1);
 }
 
 // ---------------------------------------------------------------------------
@@ -1252,7 +1264,8 @@ static void noteSkipped(ImportReport* report, const std::string& kind, size_t in
 
 /// Populate a Document from a parsed envelope. Shared by load() and
 /// BinaryFormat.
-static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport* report) {
+static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport* report,
+                             const SharedImports* shared) {
     if (!root.contains("version") || !root.contains("entities")) return false;
 
     doc.draftDocument().clear();
@@ -1877,6 +1890,31 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                     continue;
                 }
                 if (ftype == "imported") {
+                    const std::string source = fObj.value("source", "");
+                    // A copy that shares the document's imported bodies (a
+                    // rebuild on a worker): the body is the document's own,
+                    // as read, and nothing is read again.
+                    if (fObj.value("shared", false)) {
+                        const SharedImport* body = nullptr;
+                        if (shared != nullptr) {
+                            const auto found = shared->find(persistedId);
+                            if (found != shared->end() && found->second.solid) {
+                                body = &found->second;
+                            }
+                        }
+                        if (body == nullptr) {
+                            throw std::invalid_argument(
+                                "its body is shared, and was not given with the copy");
+                        }
+                        if (report != nullptr && !body->note.empty()) {
+                            report->converted.push_back(body->note);
+                        }
+                        auto feat = std::make_unique<doc::ImportedBodyFeature>(body->solid, source);
+                        feat->setNote(body->note);
+                        feat->restoreFeatureID(persistedId);
+                        addLoaded(std::move(feat));
+                        continue;
+                    }
                     // Written by this program, in millimetres; one written
                     // before it named its unit is too. A body saved before the
                     // reader read faces exactly may hold no exact form (a band
@@ -1892,7 +1930,6 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
                         throw std::invalid_argument("its body could not be read: " +
                                                     StepFormat::lastError());
                     }
-                    const std::string source = fObj.value("source", "");
                     // "solid 1: not exact (…); kept as it was", said of the
                     // body: in the report, and by the body, for the part's
                     // exact counterpart it has none of.
@@ -2080,7 +2117,7 @@ static bool checkVersion(const json& root, std::string* error) {
 }
 
 static bool loadDocumentChecked(const json& root, doc::Document& doc, std::string* error,
-                                ImportReport* report) {
+                                ImportReport* report, const SharedImports* shared = nullptr) {
     if (!root.is_object() || !root.contains("version") || !root.contains("entities")) {
         return fail(error, "this is not a Horizon document (it has no version or entity list)");
     }
@@ -2092,7 +2129,7 @@ static bool loadDocumentChecked(const json& root, doc::Document& doc, std::strin
     ImportReport& noted = report != nullptr ? *report : own;
     const auto before = static_cast<std::ptrdiff_t>(noted.skipped.size());
     try {
-        if (loadDocumentRoot(root, doc, &noted)) {
+        if (loadDocumentRoot(root, doc, &noted, shared)) {
             doc.setLeftOut({noted.skipped.begin() + before, noted.skipped.end()});
             return true;
         }
@@ -2118,14 +2155,14 @@ bool NativeFormat::load(const std::string& filePath, doc::Document& doc, std::st
 }
 
 bool NativeFormat::documentFromJson(const std::string& text, doc::Document& doc, std::string* error,
-                                    ImportReport* report) {
+                                    ImportReport* report, const SharedImports* shared) {
     json root;
     try {
         root = json::parse(text);
     } catch (const std::exception& e) {
         return fail(error, "the document is not valid JSON: " + jsonMessage(e));
     }
-    return loadDocumentChecked(root, doc, error, report);
+    return loadDocumentChecked(root, doc, error, report, shared);
 }
 
 // ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ RebuildJob::Stamp RebuildJob::stampOf(const doc::Document& doc) {
 }
 
 RebuildJob::RebuildJob(const doc::Document& doc)
-    : m_snapshot(io::NativeFormat::documentToJson(doc, false)),
+    : m_snapshot(io::NativeFormat::documentToJson(doc, false, &m_imports)),
       m_exact(doc.exactCounterpart()),
       m_stamp(stampOf(doc)) {}
 
@@ -35,10 +35,10 @@ void RebuildJob::run() {
     try {
         doc::Document copy;
         std::string error;
-        if (io::NativeFormat::documentFromJson(m_snapshot, copy, &error)) {
+        if (io::NativeFormat::documentFromJson(m_snapshot, copy, &error, nullptr, &m_imports)) {
             // The document's exact counterpart reused while its imports are
-            // as they were: the copy reads them again from the part's STEP
-            // text, and they are the same.
+            // as they were: the copy's are the document's own bodies, so a
+            // counterpart either made is the other's.
             doc::BuildOptions options;
             options.previous = m_exact;
             m_result = copy.buildWithDiagnostics(&m_control, options);

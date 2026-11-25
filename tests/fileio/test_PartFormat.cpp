@@ -1399,6 +1399,60 @@ TEST(PartFormat, AnOldImportedBodyThatCannotBeExactStillOpens) {
     EXPECT_TRUE(report.empty()) << "nothing was left out";
 }
 
+// A copy of a part for this process (a rebuild on a worker) shares its imported bodies: the copy
+// holds no STEP to read, and its imports are the document's very bodies, each with what its read
+// said of it. Without them, the copy does not make up a body it was not given.
+TEST(PartFormat, ACopyThatSharesItsImportsHoldsTheDocumentsOwnBodiesAndNoStep) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto read = hz::io::StepFormat::fromString(hz::step_text::externalStyleCylinder(), nullptr,
+                                               nullptr, inMillimetres);
+    ASSERT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    Document original;
+    original.setType(DocumentType::Part);
+    auto cylinder = std::make_unique<ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(read[0])), "cylinder.step");
+    auto box = std::make_unique<ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(hz::model::PrimitiveFactory::makeBox(1, 2, 3)),
+        "old.step");
+    box->setNote("imported body \"old.step\": not exact (as it was saved); kept as it was");
+    const ImportedBodyFeature* const imports[] = {cylinder.get(), box.get()};
+    original.featureTree().addFeature(std::move(cylinder));
+    original.featureTree().addFeature(std::move(box));
+
+    hz::io::SharedImports shared;
+    const std::string copy = NativeFormat::documentToJson(original, false, &shared);
+    EXPECT_EQ(copy.find("ISO-10303-21"), std::string::npos) << "no STEP to read";
+    ASSERT_EQ(shared.size(), 2u);
+
+    Document worker;
+    std::string error;
+    hz::io::ImportReport report;
+    ASSERT_TRUE(NativeFormat::documentFromJson(copy, worker, &error, &report, &shared)) << error;
+    ASSERT_EQ(worker.featureTree().featureCount(), 2u);
+    for (std::size_t i = 0; i < 2; ++i) {
+        const auto* imported =
+            dynamic_cast<const ImportedBodyFeature*>(worker.featureTree().feature(i));
+        ASSERT_NE(imported, nullptr);
+        EXPECT_EQ(imported->featureID(), imports[i]->featureID());
+        EXPECT_EQ(imported->solid(), imports[i]->solid()) << "the document's own body";
+        EXPECT_EQ(imported->note(), imports[i]->note());
+        EXPECT_EQ(imported->source(), imports[i]->source());
+    }
+    EXPECT_TRUE(report.empty());
+    EXPECT_EQ(report.converted, std::vector<std::string>{imports[1]->note()}) << "said as read";
+
+    // Not given the bodies, the copy has none: each import is left out, and says why.
+    Document alone;
+    hz::io::ImportReport leftOut;
+    ASSERT_TRUE(NativeFormat::documentFromJson(copy, alone, &error, &leftOut)) << error;
+    EXPECT_EQ(alone.featureTree().featureCount(), 0u);
+    ASSERT_EQ(leftOut.skipped.size(), 2u);
+    EXPECT_NE(leftOut.skipped.front().find("its body is shared, and was not given with the copy"),
+              std::string::npos)
+        << leftOut.skipped.front();
+}
+
 // A body that can be exact opens with its exact faces, and nothing is said of it.
 TEST(PartFormat, AnImportedBodyThatCanBeExactOpensExact) {
     hz::io::StepReadOptions inMillimetres;

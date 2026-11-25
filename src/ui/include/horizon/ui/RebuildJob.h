@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "horizon/document/FeatureTree.h"
+#include "horizon/fileio/NativeFormat.h"
 
 namespace hz::doc {
 class Document;
@@ -17,9 +18,13 @@ namespace hz::ui {
 /// A model rebuild on a worker thread, so a long one does not freeze the
 /// window. The document is snapshotted — as its native JSON — on the thread
 /// that makes the job; the worker loads the snapshot into a document of its
-/// own and rebuilds that, so nothing it reads can change under it. The result
-/// is taken back on the GUI thread and applied only if the document has not
-/// changed since the snapshot (see Stamp).
+/// own and rebuilds that, so nothing it reads can change under it. Its
+/// imported bodies are not written into the snapshot and read again: the copy
+/// shares the document's own (io::SharedImports), which no one changes once
+/// read, so a rebuild reads no STEP, and the bodies are the document's, the
+/// counterpart made from them reused by the worker and the window alike. The
+/// result is taken back on the GUI thread and applied only if the document
+/// has not changed since the snapshot (see Stamp).
 class RebuildJob {
 public:
     /// What the snapshot was taken of. A result is current only while the
@@ -59,6 +64,9 @@ public:
 private:
     void run();
 
+    /// The document's imported bodies, which the copy shares (declared
+    /// before the snapshot, which fills them).
+    io::SharedImports m_imports;
     std::string m_snapshot;
     /// The document's exact counterpart, for the copy's build to reuse.
     std::shared_ptr<const doc::ExactCounterpart> m_exact;

@@ -12,8 +12,11 @@
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <memory>
+#include <string>
+#include <thread>
 
 #include "UiTestSupport.h"
 #include "horizon/document/Commands.h"
@@ -23,11 +26,16 @@
 #include "horizon/document/UndoStack.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/Frame.h"
+#include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/Solid.h"
 #include "horizon/ui/MainWindow.h"
+#include "horizon/ui/RebuildJob.h"
 
 using hz::doc::Document;
+using hz::doc::ImportedBodyFeature;
 using hz::doc::PrimitiveFeature;
 using hz::test::FormAnswers;
 using hz::test::FormFiller;
@@ -50,7 +58,107 @@ bool waitFor(Done done, int ms = 20000) {
     return done();
 }
 
+/// A part of one imported body, @p body, from @p source; with @p note, what its read said of it.
+std::unique_ptr<Document> partOf(std::unique_ptr<hz::topo::Solid> body, const std::string& source,
+                                 const std::string& note = {}) {
+    auto part = std::make_unique<Document>();
+    part->setType(hz::doc::DocumentType::Part);
+    auto imported = std::make_unique<ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(body)), source);
+    imported->setNote(note);
+    part->featureTree().addFeature(std::move(imported));
+    return part;
+}
+
+/// A cylinder on a tilted axis, from a file drawn in inches, read as File ▸ Import ▸ STEP reads
+/// it. Kept in a part file and read back, it is defined a last bit otherwise (its frames, scaled
+/// into millimetres, are renormalised): what a worker's copy read again from its STEP held.
+std::unique_ptr<hz::topo::Solid> importedCylinderInInches() {
+    const hz::math::Vec3 axis = hz::math::Vec3(1.0, 2.0, 3.0).normalized();
+    const auto cylinder =
+        hz::model::exact::makeCylinder(hz::geo::Frame::fromAxis({0.3, 0.7, -1.1}, axis), 1.3, 2.9);
+    std::string text = hz::io::StepFormat::toString({cylinder.get()});
+    const std::string millimetres = "SI_UNIT(.MILLI.,.METRE.)";
+    const auto unit = text.find(millimetres);
+    const auto data = text.find("ENDSEC;", text.find("DATA;"));
+    EXPECT_NE(unit, std::string::npos);
+    EXPECT_NE(data, std::string::npos);
+    if (unit == std::string::npos || data == std::string::npos) return nullptr;
+    text.insert(data,
+                "#9998 = (LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.));\n"
+                "#9999 = LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(25.4),#9998);\n");
+    text.replace(unit, millimetres.size(), "CONVERSION_BASED_UNIT('INCH',#9999)");
+    auto read = hz::io::StepFormat::fromString(text);
+    EXPECT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    return read.empty() ? nullptr : std::move(read.front());
+}
+
+/// @p job's result, once its worker is done with it.
+hz::doc::BuildResult ranOnItsWorker(hz::ui::RebuildJob& job) {
+    job.start();
+    for (int i = 0; i < 12000 && !job.finished(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_TRUE(job.finished());
+    return job.takeResult();
+}
+
 }  // namespace
+
+// A worker's copy of a part shares the document's imported bodies (I4), so a counterpart made on
+// either thread is the other's: a worker's build after the window's reuses the window's, and the
+// window's after a worker's reuses the worker's. Neither meshes the bodies again. (A copy that
+// read its bodies again from their STEP held this cylinder a last bit otherwise, and each switch
+// between the threads meshed it again.)
+TEST(RebuildJobTest, AWorkerAndTheWindowReuseEachOthersExactCounterpart) {
+    {
+        SCOPED_TRACE("the window's build first");
+        const auto part = partOf(importedCylinderInInches(), "cylinder.step");
+        ASSERT_TRUE(part->rebuildModel()) << part->lastBuildMessage();
+        ASSERT_NE(part->exactSolid(), nullptr) << part->exactNote();
+        const auto made = part->exactCounterpart();
+        hz::ui::RebuildJob job(*part);
+        const hz::doc::BuildResult result = ranOnItsWorker(job);
+        EXPECT_EQ(result.failedFeatureIndex, -1) << result.failureMessage;
+        EXPECT_EQ(result.exact, made) << "the window's counterpart, reused";
+    }
+    {
+        SCOPED_TRACE("a worker's build first");
+        const auto part = partOf(importedCylinderInInches(), "cylinder.step");
+        hz::ui::RebuildJob job(*part);
+        ASSERT_TRUE(part->applyBuild(ranOnItsWorker(job))) << part->lastBuildMessage();
+        ASSERT_NE(part->exactSolid(), nullptr) << part->exactNote();
+        const auto made = part->exactCounterpart();
+        const hz::topo::Solid* const shown = part->exactSolid();
+        ASSERT_TRUE(part->rebuildModel()) << part->lastBuildMessage();
+        EXPECT_EQ(part->exactCounterpart(), made) << "the worker's counterpart, reused";
+        EXPECT_EQ(part->exactSolid(), shown);
+    }
+}
+
+// A worker's rebuild of a part made of imports reads no STEP (I4): its copy's bodies are the
+// document's own. A body kept without its exact form, its carriers and a note saying why (as a
+// part file saved before stage 2 may keep one), is the body the worker builds, and the counterpart
+// the window made of it, which says why it is shown from facets, is the worker's too. Its STEP read
+// again would have come in exact: a box's faces are planes.
+TEST(RebuildJobTest, AWorkersRebuildOfImportsReadsNoStep) {
+    const std::string note =
+        "imported body \"old.step\": not exact (as it was saved); kept as it was";
+    const auto part = partOf(hz::model::PrimitiveFactory::makeBox(2, 3, 4), "old.step", note);
+    ASSERT_TRUE(part->rebuildModel()) << part->lastBuildMessage();
+    ASSERT_EQ(part->exactSolid(), nullptr);
+    EXPECT_EQ(part->exactNote(), "shown from facets: " + note);
+    const auto made = part->exactCounterpart();
+    ASSERT_NE(made, nullptr);
+
+    hz::ui::RebuildJob job(*part);
+    hz::doc::BuildResult result = ranOnItsWorker(job);
+    EXPECT_EQ(result.exact, made) << "the window's counterpart, made of the same body";
+    ASSERT_TRUE(part->applyBuild(std::move(result))) << part->lastBuildMessage();
+    EXPECT_EQ(part->exactSolid(), nullptr) << "a box read again from its STEP comes in exact";
+    EXPECT_EQ(part->exactNote(), "shown from facets: " + note);
+    EXPECT_NEAR(volumeOf(*part), 24.0, 1e-9);
+}
 
 TEST(RebuildJobTest, TheWindowAppliesAWorkersRebuild) {
     MainWindow w;
