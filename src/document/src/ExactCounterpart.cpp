@@ -348,6 +348,19 @@ Check holdToFacets(const topo::Solid& exact, double exactVolume, const topo::Sol
     return check;
 }
 
+/// A counterpart that could not be made because something threw, saying @p why: shown from facets,
+/// and not kept for reuse (no madeFrom), since what threw (memory, say) may not again. Null only
+/// where even that cannot be made.
+std::shared_ptr<const ExactCounterpart> unmade(const char* why) noexcept {
+    try {
+        auto failed = std::make_shared<ExactCounterpart>();
+        failed->note = std::string("shown from facets: ") + why;
+        return failed;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
 }  // namespace
 
 void ExactFollower::follow(const Feature& feature, bool first) noexcept {
@@ -487,16 +500,9 @@ std::shared_ptr<const ExactCounterpart> ExactFollower::make(
         made->mesh = std::move(shown);
         return made;
     } catch (const std::exception& e) {
-        // Said, but not kept for reuse (no madeFrom): what threw (memory, say) may not again.
-        try {
-            auto failed = std::make_shared<ExactCounterpart>();
-            failed->note = std::string("shown from facets: ") + e.what();
-            return failed;
-        } catch (...) {
-            return nullptr;
-        }
+        return unmade(e.what());
     } catch (...) {
-        return nullptr;
+        return unmade("its exact form could not be made");
     }
 }
 

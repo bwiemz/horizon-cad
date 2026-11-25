@@ -53,7 +53,8 @@ public:
     /// otherwise made now. Made now, it is a step of the build's own on @p control (a meshing
     /// that takes seconds is not shown as done), and it stops between faces when the build is
     /// cancelled: null then, with @p cancelled set. Null too when the part has none by design.
-    /// A counterpart that cannot be had is one with its note, kept for reuse as one that can.
+    /// A counterpart that cannot be had is one with its note, kept for reuse as one that can;
+    /// one whose making threw, whatever it threw, says so in its note and is not kept for reuse.
     /// Never throws.
     std::shared_ptr<const ExactCounterpart> make(
         const topo::Solid& faceted, const std::shared_ptr<const ExactCounterpart>& previous,
