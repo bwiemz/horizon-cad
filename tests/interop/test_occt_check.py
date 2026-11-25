@@ -93,11 +93,11 @@ def reading(volume: float, kinds: dict[str, int] | None = None) -> dict[str, Any
 
 class Corpus:
     """A corpus as check reads it: its manifest, Horizon CAD's summary.json and
-    the occt.json a run kept, in a folder of their own. The STEP files
-    themselves are never opened."""
+    the occt.json a run kept, in @folder. The STEP files themselves are never
+    opened."""
 
-    def __init__(self) -> None:
-        self.dir: Path = Path(tempfile.mkdtemp())
+    def __init__(self, folder: Path) -> None:
+        self.dir: Path = folder
         self.entries: list[dict[str, Any]] = []
         self.summary: list[dict[str, Any]] = []
         self.kept: dict[str, Any] = {}
@@ -139,6 +139,18 @@ def exported(
     return kept
 
 
+class FolderTest(unittest.TestCase):
+    """A test with folders of its own, removed after it."""
+
+    def folder(self) -> Path:
+        made = tempfile.TemporaryDirectory()
+        self.addCleanup(made.cleanup)
+        return Path(made.name)
+
+    def corpus(self) -> Corpus:
+        return Corpus(self.folder())
+
+
 class KindsTest(unittest.TestCase):
     def test_the_same_faces_agree(self) -> None:
         self.assertIsNone(
@@ -167,22 +179,31 @@ class KindsTest(unittest.TestCase):
         self.assertIn("BSplineSurface 2, not 1", off)
         self.assertIn("Plane 5, not 6", off)
 
+    def test_faces_with_no_surface_are_not_compared(self) -> None:
+        # A tessellated copy beside the part (CATIA's): its faces have no
+        # surface, and Horizon CAD reads no body of it.
+        self.assertIsNone(
+            oc.kinds_off(
+                {"Plane": 7, "Cylinder": 2, "none": 9}, {"Plane": 7, "Cylinder": 2}
+            )
+        )
+
     def test_no_more_extrusions_than_the_original(self) -> None:
         off = oc.kinds_off({"Plane": 6}, {"Plane": 6, "SurfaceOfExtrusion": 1})
         assert off is not None
         self.assertIn("SurfaceOfExtrusion 1, not 0 or fewer", off)
 
 
-class CheckTest(unittest.TestCase):
+class CheckTest(FolderTest):
     def test_an_exact_volume_within_a_millionth_agrees(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         corpus.add("a.step", read("a.step", 1000.0005), exported(reading(1000.0)))
         code, printed = corpus.check()
         self.assertEqual(code, 0, printed)
         self.assertIn("| a.step |", printed)
 
     def test_an_exact_volume_further_off_fails(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         corpus.add("a.step", read("a.step", 1000.002), exported(reading(1000.0)))
         code, printed = corpus.check()
         self.assertEqual(code, 1, printed)
@@ -190,7 +211,7 @@ class CheckTest(unittest.TestCase):
         self.assertIn("its own error estimate 1e-07", printed)
 
     def test_the_manifests_tolerance_is_taken(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         corpus.add(
             "a.step",
             read("a.step", 1000.002),
@@ -201,7 +222,7 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(code, 0, printed)
 
     def test_a_file_not_read_for_its_listed_solids_is_a_known_gap(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         error = f"solid #12 could not be made exact: {TORUS}"
         corpus.add(
             "screw.step",
@@ -214,7 +235,7 @@ class CheckTest(unittest.TestCase):
         self.assertIn("known gap: Horizon CAD did not read it", printed)
 
     def test_a_file_not_read_for_an_unlisted_solid_fails(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         error = f"solid #12 could not be made exact: {TORUS}"
         corpus.add(
             "screw.step",
@@ -227,7 +248,7 @@ class CheckTest(unittest.TestCase):
         self.assertIn("**Horizon CAD did not read it", printed)
 
     def test_an_export_whose_faces_change_kind_fails(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         original = reading(1000.0, {"Plane": 4, "Cylinder": 2})
         corpus.add(
             "a.step",
@@ -239,7 +260,7 @@ class CheckTest(unittest.TestCase):
         self.assertIn("Cylinder 0, not 2", printed)
 
     def test_an_extrusion_written_as_a_bspline_agrees(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         original = reading(1000.0, {"Plane": 4, "SurfaceOfExtrusion": 1})
         corpus.add(
             "a.step",
@@ -250,7 +271,7 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(code, 0, printed)
 
     def test_a_known_gap_that_closes_fails(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         original = reading(1000.0, {"Plane": 4, "Cylinder": 2})
         corpus.add(
             "a.step",
@@ -263,20 +284,90 @@ class CheckTest(unittest.TestCase):
         self.assertIn("export-kinds is as OpenCASCADE reads it now", printed)
 
     def test_a_known_gap_is_reported_not_failed(self) -> None:
-        corpus = Corpus()
-        original = reading(1000.0, {"Plane": 4, "Cylinder": 2, "none": 9})
+        corpus = self.corpus()
+        original = reading(1000.0, {"Plane": 4, "Cylinder": 2})
         corpus.add(
             "a.step",
             read("a.step", 1000.0),
-            exported(original, {"Plane": 4, "Cylinder": 2}),
-            known_gaps={"export-kinds": "a tessellated copy OpenCASCADE alone reads"},
+            exported(original, {"Plane": 4, "BSplineSurface": 2}),
+            known_gaps={"export-kinds": "its cylinders go out as B-splines"},
         )
         code, printed = corpus.check()
         self.assertEqual(code, 0, printed)
-        self.assertIn("known gap: the export's faces by kind: none 0, not 9", printed)
+        self.assertIn(
+            "known gap: the export's faces by kind: BSplineSurface 2, not 0; "
+            "Cylinder 0, not 2",
+            printed,
+        )
+
+    def test_a_tessellated_copys_faces_are_not_compared(self) -> None:
+        corpus = self.corpus()
+        original = reading(1000.0, {"Plane": 7, "Cylinder": 2, "none": 9})
+        corpus.add(
+            "plate.stp",
+            read("plate.stp", 1000.0),
+            exported(original, {"Plane": 7, "Cylinder": 2}),
+        )
+        code, printed = corpus.check()
+        self.assertEqual(code, 0, printed)
+
+    def test_an_export_read_back_further_off_fails(self) -> None:
+        # OpenCASCADE's reading of the export against Horizon CAD's exact
+        # volume, to a millionth, as the original's is.
+        corpus = self.corpus()
+        original = reading(1000.0)
+        kept = exported(original)
+        kept["export"]["volume"] = 1000.002
+        corpus.add("a.step", read("a.step", 1000.0), kept)
+        code, printed = corpus.check()
+        self.assertEqual(code, 1, printed)
+        self.assertIn("the export's volume 1000.002", printed)
+
+    def test_an_export_read_back_within_a_millionth_agrees(self) -> None:
+        corpus = self.corpus()
+        kept = exported(reading(1000.0))
+        kept["export"]["volume"] = 1000.0009
+        corpus.add("a.step", read("a.step", 1000.0), kept)
+        code, printed = corpus.check()
+        self.assertEqual(code, 0, printed)
+
+    def test_the_manifests_tolerance_is_taken_for_the_export(self) -> None:
+        corpus = self.corpus()
+        kept = exported(reading(1000.0))
+        kept["export"]["volume"] = 1000.002
+        corpus.add(
+            "a.step",
+            read("a.step", 1000.0),
+            kept,
+            expect={"volume_tolerance": 5e-6},
+        )
+        code, printed = corpus.check()
+        self.assertEqual(code, 0, printed)
+
+    def test_an_export_read_where_the_file_is_not_is_kept_and_merged(self) -> None:
+        # OpenCASCADE reads the export but not the file: what it keeps holds the
+        # export alone, and is read again, and merged, without a reading of the
+        # file.
+        corpus = self.corpus()
+        corpus.add("a.step", read("a.step", 1000.0), {"export": reading(1000.0)})
+        again = corpus.dir / "again.json"
+        code, printed = corpus.check(out=again)
+        self.assertEqual(code, 1, printed)
+        self.assertIn("OpenCASCADE cannot read it", printed)
+        self.assertEqual(
+            json.loads(again.read_text(encoding="utf-8"))["files"],
+            {"a.step": {"export": reading(1000.0)}},
+        )
+        self.assertIsNone(oc.Reading.from_json({"export": reading(1000.0)}))
+        manifest = corpus.dir / "manifest.json"
+        before = manifest.read_text(encoding="utf-8")
+        self.assertEqual(oc.merge(again, manifest), 0)
+        self.assertEqual(
+            json.loads(manifest.read_text(encoding="utf-8")), json.loads(before)
+        )
 
     def test_a_reading_older_than_kinds_compares_no_kinds(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         original = reading(1000.0)
         original["kinds"] = None
         corpus.add("a.step", read("a.step", 1000.0), exported(original))
@@ -284,7 +375,7 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(code, 0, printed)
 
     def test_what_it_keeps_reads_back_the_same(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         original = reading(1000.0, {"Plane": 4, "SurfaceOfExtrusion": 1})
         corpus.add(
             "a.step",
@@ -299,7 +390,7 @@ class CheckTest(unittest.TestCase):
         )
 
     def test_it_needs_no_opencascade(self) -> None:
-        corpus = Corpus()
+        corpus = self.corpus()
         corpus.add("a.step", read("a.step", 1000.0), exported(reading(1000.0)))
         _ = corpus.check()
         self.assertNotIn("OCP", sys.modules)
@@ -321,9 +412,9 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
 
-class MergeTest(unittest.TestCase):
+class MergeTest(FolderTest):
     def test_it_writes_what_opencascade_found(self) -> None:
-        folder = Path(tempfile.mkdtemp())
+        folder = self.folder()
         manifest = folder / "manifest.json"
         _ = manifest.write_text(
             json.dumps(

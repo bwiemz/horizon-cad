@@ -13,9 +13,11 @@ compares what it finds with what hz_step_acceptance wrote in summary.json:
   their exact faces, to a millionth of OpenCASCADE's unless the manifest's
   volume_tolerance says otherwise) and bounds;
 - Horizon CAD's export of it: OpenCASCADE must read it, find it valid, with
-  as many solids, a volume between Horizon CAD's faceted and ideal ones, and
-  as many faces of each kind of surface as the original. A surface of linear
+  as many solids, Horizon CAD's exact volume (to the same tolerance), and as
+  many faces of each kind of surface as the original. A surface of linear
   extrusion may go out as a B-spline: Horizon CAD has no typed extrusion yet.
+  A face with no surface (a tessellated copy beside the part, which Horizon
+  CAD reads no body of) is not compared.
 
 A surface model the manifest marks occt_reads_surfaces (its shells close,
 but OpenCASCADE makes no solids of them) has its bounds compared, not its
@@ -54,10 +56,10 @@ from pathlib import Path
 from typing import Any
 
 # Relative, when the manifest gives no volume_tolerance: Horizon CAD's exact volume
-# against OpenCASCADE's, which it integrates to INTEGRATION_EPS.
+# against OpenCASCADE's reading of the file, and of Horizon CAD's export of it,
+# which it integrates to INTEGRATION_EPS.
 EXACT_VOLUME_TOLERANCE = 1e-6
 BOUNDS_TOLERANCE = 0.005  # of the box's diagonal, when the manifest gives none
-EXPORT_SLACK = 1e-3  # relative, around Horizon CAD's faceted..ideal volumes
 # Volumes and areas integrated adaptively, to this relative error. OpenCASCADE's
 # default, a Gauss rule of fixed points, measures an analytic surface exactly
 # but a rational B-spline one (an export's cylinder) a little out, and a part
@@ -65,9 +67,10 @@ EXPORT_SLACK = 1e-3  # relative, around Horizon CAD's faceted..ideal volumes
 INTEGRATION_EPS = 1e-6
 # The kinds of surface (OpenCASCADE's GeomAbs_SurfaceType, without its prefix)
 # an export may change: Horizon CAD writes a surface of linear extrusion as
-# its B-spline.
+# its B-spline. A face with no surface has no kind ("none").
 EXTRUSION = "SurfaceOfExtrusion"
 BSPLINE = "BSplineSurface"
+NO_SURFACE = "none"
 
 
 @dataclass
@@ -101,8 +104,10 @@ class Reading:
 
     @staticmethod
     def from_json(data: dict[str, Any] | None) -> Reading | None:
-        """A reading as to_json wrote it; None for none."""
-        if data is None:
+        """A reading as to_json wrote it; None for none, and for an entry that
+        holds the export's reading alone (OpenCASCADE could not read the
+        file)."""
+        if data is None or "solids" not in data:
             return None
         return Reading(
             solids=int(data["solids"]),
@@ -281,10 +286,12 @@ def bounds_off(
 def kinds_off(original: dict[str, int], export: dict[str, int]) -> str | None:
     """Where @export's faces, counted by the kind of their surface, are not
     @original's; None where they are. A surface of linear extrusion may go out
-    as a B-spline: so many fewer extrusions, so many more B-splines."""
+    as a B-spline: so many fewer extrusions, so many more B-splines. Faces with
+    no surface are not compared: a tessellated copy beside the part (CATIA
+    writes one), which Horizon CAD reads no body of."""
     moved = original.get(EXTRUSION, 0) - export.get(EXTRUSION, 0)
     off: list[str] = []
-    for kind in sorted(original.keys() | export.keys()):
+    for kind in sorted((original.keys() | export.keys()) - {NO_SURFACE}):
         want = original.get(kind, 0)
         got = export.get(kind, 0)
         if kind == EXTRUSION:
@@ -299,6 +306,21 @@ def kinds_off(original: dict[str, int], export: dict[str, int]) -> str | None:
         return None
     note = f" ({EXTRUSION} may go out as {BSPLINE})" if original.get(EXTRUSION) else ""
     return "the export's faces by kind: " + "; ".join(off) + note
+
+
+def volume_off(exact: float, reading: Reading, tolerance: float) -> str | None:
+    """@reading's volume, how far from @exact, and OpenCASCADE's own estimate
+    of its error, where it is further than @tolerance, relative; None where it
+    is not."""
+    if near(exact, reading.volume, tolerance):
+        return None
+    apart = (exact - reading.volume) / reading.volume if reading.volume else math.inf
+    own = (
+        f", its own error estimate {reading.volume_error:.2g}"
+        if reading.volume_error is not None
+        else ""
+    )
+    return f"{reading.volume:.12g}{own}: {apart:+.3g} apart, over {tolerance:g}"
 
 
 def exact_volume(ours: dict[str, Any]) -> float:
@@ -342,6 +364,8 @@ def compare(
         problems["read"] = f"Horizon CAD did not read it: {ours['error']}"
         return problems, checked
     expect: dict[str, Any] = entry.get("expect", {})
+    tolerance: float = expect.get("volume_tolerance", EXACT_VOLUME_TOLERANCE)
+    exact = exact_volume(ours)
     if theirs is not None:
         checked.update({"bodies", "volume", "bounds"})
         # A surface model whose shells close: solids to Horizon CAD,
@@ -349,21 +373,9 @@ def compare(
         surfaces = "occt_reads_surfaces" in entry
         if not surfaces and ours["bodies"] != theirs.solids:
             problems["bodies"] = f"bodies {ours['bodies']}, OpenCASCADE {theirs.solids}"
-        tolerance = expect.get("volume_tolerance", EXACT_VOLUME_TOLERANCE)
-        exact = exact_volume(ours)
-        if not surfaces and not near(exact, theirs.volume, tolerance):
-            apart = (
-                (exact - theirs.volume) / theirs.volume if theirs.volume else math.inf
-            )
-            own = (
-                f", its own error estimate {theirs.volume_error:.2g}"
-                if theirs.volume_error is not None
-                else ""
-            )
-            problems["volume"] = (
-                f"exact volume {exact:.12g}, OpenCASCADE {theirs.volume:.12g}{own}: "
-                f"{apart:+.3g} apart, over {tolerance:g}"
-            )
+        off = None if surfaces else volume_off(exact, theirs, tolerance)
+        if off is not None:
+            problems["volume"] = f"exact volume {exact:.12g}, OpenCASCADE {off}"
         if ours["bounds"] and theirs.bounds:
             off = bounds_off(
                 ours["bounds"],
@@ -378,15 +390,14 @@ def compare(
     if exported is None:
         problems["export"] = "OpenCASCADE cannot read the export"
         return problems, checked
-    low = min(ours["facetedVolume"], ours["idealVolume"]) * (1 - EXPORT_SLACK)
-    high = max(ours["facetedVolume"], ours["idealVolume"]) * (1 + EXPORT_SLACK)
     if not exported.valid:
         problems["export-valid"] = "the export is not a valid shape to OpenCASCADE"
     if exported.solids != ours["bodies"]:
         problems["export-bodies"] = f"the export has {exported.solids} solids"
-    if not low <= exported.volume <= high:
+    off = volume_off(exact, exported, tolerance)
+    if off is not None:
         problems["export-volume"] = (
-            f"the export's volume {exported.volume:.6g} is outside {low:.6g}..{high:.6g}"
+            f"exact volume {exact:.12g}, the export's volume {off}"
         )
     if theirs is not None and theirs.kinds is not None and exported.kinds is not None:
         checked.add("export-kinds")
@@ -506,7 +517,9 @@ def merge(occt_path: Path, manifest_path: Path) -> int:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     for entry in manifest["files"]:
         reading = found.get(entry["file"])
-        if reading is None or "not_read" in entry:
+        # An entry with the export's reading alone: OpenCASCADE could not read
+        # the file, and there is nothing of it to write.
+        if reading is None or "solids" not in reading or "not_read" in entry:
             continue
         expect = entry.setdefault("expect", {})
         # A surface model OpenCASCADE makes no solids of keeps Horizon CAD's
