@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <deque>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -171,8 +172,17 @@ std::unique_ptr<topo::Solid> BooleanOp::execute(const topo::Solid& solidA,
         return result;
     };
 
-    auto polysA = BoundaryMesh::extractFacePolygons(solidA);
-    auto polysB = BoundaryMesh::extractFacePolygons(solidB);
+    // An operand with exact faces is read as their meshes; one that cannot be meshed fails the
+    // operation with the read point's reason (which face, and why), never as an exception.
+    std::vector<BoundaryPolygon> polysA;
+    std::vector<BoundaryPolygon> polysB;
+    try {
+        polysA = BoundaryMesh::extractFacePolygons(solidA);
+        polysB = BoundaryMesh::extractFacePolygons(solidB);
+    } catch (const std::runtime_error& e) {
+        if (reason) *reason = e.what();
+        return nullptr;
+    }
     if (polysA.empty() || polysB.empty()) return fail("one of the bodies has no faces");
     // The tolerances from the operands' size, not absolute (Phase 142).
     BoundingBox both = boundsOf(polysA);

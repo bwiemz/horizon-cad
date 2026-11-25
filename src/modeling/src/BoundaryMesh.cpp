@@ -520,9 +520,14 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
     for (const auto& face : solid.faces()) {
         if (const auto it = meshes.find(&face); it != meshes.end()) {
             const FaceMesh& mesh = it->second;
+            const bool shaded = mesh.normals.size() == mesh.points.size();
             for (const auto& tri : mesh.triangles) {
                 BoundaryPolygon poly;
                 poly.points = {mesh.points[tri[0]], mesh.points[tri[1]], mesh.points[tri[2]]};
+                if (shaded) {
+                    poly.normals = {mesh.normals[tri[0]], mesh.normals[tri[1]],
+                                    mesh.normals[tri[2]]};
+                }
                 poly.topoId = face.topoId;
                 poly.exactSurface = face.exactSurface;
                 polygons.push_back(std::move(poly));

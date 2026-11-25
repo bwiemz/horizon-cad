@@ -39,6 +39,9 @@ struct BoundaryPolygon {
     /// Source face's exact surface (topo::Face::exactSurface), set on the triangles an exact
     /// face reads as; null for every other polygon.
     std::shared_ptr<const geo::Surface> exactSurface;
+    /// An exact face's triangle: the surface's outward normal at each of `points`, as the mesher
+    /// found it (FaceMesh::normals), what a display shades it by. Empty for every other polygon.
+    std::vector<math::Vec3> normals;
 };
 
 /// Faithful boundary evaluation of a B-Rep solid from its face loops.

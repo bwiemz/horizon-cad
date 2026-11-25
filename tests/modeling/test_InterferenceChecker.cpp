@@ -4,9 +4,14 @@
 #include <cmath>
 #include <deque>
 #include <memory>
+#include <string>
 
+#include "horizon/geometry/Frame.h"
+#include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/InterferenceChecker.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
 
 using namespace hz::model;
@@ -19,6 +24,19 @@ void translate(hz::topo::Solid& solid, const Vec3& d) {
     for (auto& v : const_cast<std::deque<hz::topo::Vertex>&>(solid.vertices())) {
         v.point = v.point + d;
     }
+}
+
+/// An exact cylinder of radius 2 and height 4 about +z whose side the read point cannot mesh (a
+/// half-edge of it has no pcurve to lay it out by), and that side's name in @p side.
+std::unique_ptr<hz::topo::Solid> unmeshableCylinder(std::string& side) {
+    auto cylinder =
+        hz::model::exact::makeCylinder(hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 2.0, 4.0);
+    for (auto& face : cylinder->faces()) {
+        if (face.topoId.tag().find("side") == std::string::npos) continue;
+        face.outerLoop->halfEdge->pcurve = nullptr;
+        side = face.topoId.tag();
+    }
+    return cylinder;
 }
 
 }  // namespace
@@ -200,4 +218,40 @@ TEST(InterferenceCheckerTest, InterferenceIsFoundAtAnyScaleAndPlace) {
                 << "scale " << by << ", at x " << at.x;
         }
     }
+}
+
+// -- Exact operands whose faces cannot be meshed (stage 2) --------------------
+
+// A Boolean of an operand with an exact face the read point cannot mesh fails with the read
+// point's reason, naming the face; it does not throw.
+TEST(BooleanOpTest, AnExactFaceThatCannotBeMeshedFailsWithWhy) {
+    std::string side;
+    const auto cylinder = unmeshableCylinder(side);
+    ASSERT_FALSE(side.empty());
+    const auto box = PrimitiveFactory::makeBox(2, 2, 2);
+    std::string reason;
+    std::unique_ptr<hz::topo::Solid> result;
+    EXPECT_NO_THROW(result = BooleanOp::execute(*cylinder, *box, BooleanType::Subtract, &reason));
+    EXPECT_EQ(result, nullptr);
+    EXPECT_EQ(reason.rfind(side + ": ", 0), 0u) << reason;
+}
+
+// An interference check of such an operand does not throw: the pair is reported, to be looked
+// at, not passed as clear, with why it could not be worked out.
+TEST(InterferenceCheckerTest, AnExactFaceThatCannotBeMeshedIsReportedWithWhy) {
+    std::string side;
+    const auto cylinder = unmeshableCylinder(side);
+    // The broad phase boxes a solid by its vertices: the cylinder's two lie on its seam, x = 2,
+    // y = 0, at z = 0 and 4. The box straddles that line.
+    auto box = PrimitiveFactory::makeBox(2, 2, 2);
+    translate(*box, Vec3(1, -1, 1));
+    const std::vector<const hz::topo::Solid*> solids = {cylinder.get(), box.get()};
+    std::vector<InterferencePair> pairs;
+    EXPECT_NO_THROW(pairs = InterferenceChecker::check(solids));
+    ASSERT_EQ(pairs.size(), 1u);
+    EXPECT_FALSE(pairs[0].volumeResolved);
+    EXPECT_EQ(pairs[0].problem.rfind(side + ": ", 0), 0u) << pairs[0].problem;
+    std::string why;
+    EXPECT_TRUE(InterferenceChecker::solidsInterfere(*cylinder, *box, &why));
+    EXPECT_EQ(why, pairs[0].problem);
 }
