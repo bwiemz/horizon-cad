@@ -120,7 +120,8 @@ public:
     EdgeSampler(const topo::Solid& solid, const MeshOptions& options)
         : solid_(solid), opt_(options) {}
 
-    /// Plans every live face's grid, then samples every live edge.
+    /// Plans every live face's grid, then samples every live edge. Stops part way once
+    /// MeshOptions::cancelled is set: the mesher then meshes nothing.
     void sampleEdges();
 
     /// Halves the given segments of each edge, for both its faces, and suits the edge to them

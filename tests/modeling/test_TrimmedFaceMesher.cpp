@@ -2242,3 +2242,32 @@ TEST(TrimmedFaceMesher, WhatItCannotMeshFailsFast) {
 #endif
     }
 }
+
+// Task 9 (Ruling 51): a cancel is looked at between faces. Once set, no face is meshed: each says
+// "cancelled" and has no triangles, so no mesh is left partial; the read point says so of its
+// first exact face.
+TEST(TrimmedFaceMesher, ACancelStopsItBetweenFaces) {
+    const auto block = model::exact::makeBlock({0, 0, 0}, {4, 3, 2});
+    ASSERT_NE(block, nullptr);
+    const std::atomic<bool> cancelled{true};
+    MeshOptions options;
+    options.chordTolerance = 1e-3;
+    options.cancelled = &cancelled;
+    const auto meshes = TrimmedFaceMesher::meshSolid(*block, options);
+    ASSERT_EQ(meshes.size(), 6u);
+    for (const FaceMesh& mesh : meshes) {
+        EXPECT_EQ(mesh.problem, "cancelled");
+        EXPECT_TRUE(mesh.triangles.empty());
+    }
+    std::string problem;
+    const auto polygons =
+        model::BoundaryMesh::extractFacePolygons(*block, 1e-3, &problem, &cancelled);
+    EXPECT_TRUE(polygons.empty());
+    EXPECT_EQ(problem, block->faces().front().topoId.tag() + ": cancelled");
+
+    const std::atomic<bool> going{false};
+    options.cancelled = &going;
+    for (const FaceMesh& mesh : TrimmedFaceMesher::meshSolid(*block, options)) {
+        EXPECT_TRUE(mesh.problem.empty()) << mesh.problem;
+    }
+}

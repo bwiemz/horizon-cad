@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -16,6 +17,9 @@ struct MeshOptions {
     double maxAngle = 0.35;        // radians between neighbouring triangle normals on a face,
                                    // at most pi
     std::size_t maxTrianglesPerFace = 200000;
+    /// Looked at between faces: once set, meshing stops, and every face says "cancelled" and has
+    /// no triangles (no mesh is left partial).
+    const std::atomic<bool>* cancelled = nullptr;
 };
 
 struct FaceMesh {

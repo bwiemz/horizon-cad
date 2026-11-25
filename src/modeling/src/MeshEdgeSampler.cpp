@@ -170,10 +170,15 @@ Join joinOf(const geo::Surface& s, const Spacing& sp, const Vec2& end, const Vec
 
 void EdgeSampler::sampleEdges() {
     tol_ = topo::exactTolerance(solid_);
+    const auto cancelled = [this] {
+        return opt_.cancelled != nullptr && opt_.cancelled->load(std::memory_order_relaxed);
+    };
     for (const Face& f : solid_.faces()) {
+        if (cancelled()) return;
         if (f.alive && f.exactSurface) planFace(f);
     }
     for (const Edge& e : solid_.edges()) {
+        if (cancelled()) return;
         if (!e.alive || !e.halfEdge) continue;
         if (!e.halfEdge->twin) {
             edges_[&e].problem = "an edge of the face has no twin";

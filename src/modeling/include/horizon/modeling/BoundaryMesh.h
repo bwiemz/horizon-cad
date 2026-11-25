@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -70,9 +71,11 @@ public:
     /// such face's topoId tag and the mesher's reason ("<tag>: <reason>"; empty when every
     /// exact face meshed) and the faces that could be read still are, the failed face
     /// contributing nothing. With @p problem null, std::runtime_error is thrown with that text.
-    static std::vector<BoundaryPolygon> extractFacePolygons(const topo::Solid& solid,
-                                                            double chordTolerance,
-                                                            std::string* problem = nullptr);
+    /// @p cancelled is looked at between faces (MeshOptions::cancelled): once set, no exact face
+    /// is meshed, and the first's reason is "cancelled".
+    static std::vector<BoundaryPolygon> extractFacePolygons(
+        const topo::Solid& solid, double chordTolerance, std::string* problem = nullptr,
+        const std::atomic<bool>* cancelled = nullptr);
 
     /// Triangulate a planar (or near-planar) polygon by ear clipping in its
     /// dominant plane, preserving winding.  Handles non-convex polygons.

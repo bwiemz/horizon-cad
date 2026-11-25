@@ -652,6 +652,16 @@ private:
 /// its options are found sound.
 std::vector<FaceMesh> meshFaces(const topo::Solid& solid, const MeshOptions& options,
                                 const std::vector<const Face*>& faces) {
+    const auto cancelled = [&options] {
+        return options.cancelled != nullptr && options.cancelled->load(std::memory_order_relaxed);
+    };
+    const auto stopped = [&faces] {
+        std::vector<FaceMesh> out;
+        out.reserve(faces.size());
+        for (const Face* f : faces) out.push_back(FaceMesh{f, {}, {}, {}, "cancelled"});
+        return out;
+    };
+    if (cancelled()) return stopped();
     detail::EdgeSampler edges(solid, options);
     edges.sampleEdges();
     const FaceMesher mesher(solid, options, edges);
@@ -664,6 +674,7 @@ std::vector<FaceMesh> meshFaces(const topo::Solid& solid, const MeshOptions& opt
         std::unordered_set<const Face*> asking;
         for (std::size_t i = 0; i < faces.size(); ++i) {
             if (todo.count(faces[i]) == 0) continue;
+            if (cancelled()) return stopped();
             std::vector<detail::Segment> segments;
             out[i] = mesher.meshFace(*faces[i], segments);
             if (!segments.empty()) {

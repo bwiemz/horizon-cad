@@ -13,9 +13,13 @@ namespace hz::model {
 /// surface tessellation for smooth shading.
 class SolidTessellator {
 public:
+    /// The chord tolerance a part is drawn at: the viewport's for curved faces, in model units.
+    /// The part's exact counterpart (doc::BuildResult::exact) is meshed at it once.
+    static constexpr double kDisplayTolerance = 0.1;
+
     /// Tessellate all faces of @p solid and return a merged mesh.
     /// @param tolerance  Tessellation chord-height tolerance (curved faces).
-    static geo::MeshData tessellate(const topo::Solid& solid, double tolerance = 0.1);
+    static geo::MeshData tessellate(const topo::Solid& solid, double tolerance = kDisplayTolerance);
 };
 
 }  // namespace hz::model
