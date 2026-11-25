@@ -18,6 +18,7 @@
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/Curve2D.h"
+#include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Mat4.h"
@@ -672,6 +673,24 @@ TEST(ExactMass, AnObliqueCutIsExactOnACylinderOfAnySize) {
         EXPECT_NEAR((props.centerOfMass - centre).length(), 0.0, 1e-9 * centre.length());
         expectIdealIsTheSame(*cut, props);
     }
+}
+
+// An edge said to lie on its surface (its tolerance the resolution) whose curve does not is not
+// integrated where its points land: the ellipse moved a hundredth off the cylinder is a stated
+// problem, naming the edge.
+TEST(ExactMass, AnEdgeThatCannotBePutOnItsSurfaceGivesWhy) {
+    auto cut = readOne(obliquelyCutCylinder(1.0));
+    ASSERT_NE(cut, nullptr);
+    topo::Edge* rim = nullptr;
+    for (auto& e : cut->edges()) {
+        if (e.exactCurve && e.exactCurve->kind() == geo::CurveKind::Ellipse) rim = &e;
+    }
+    ASSERT_NE(rim, nullptr);
+    ASSERT_EQ(rim->tolerance, 0.0);
+    rim->exactCurve = rim->exactCurve->transformed(hz::math::Mat4::translation({0.01, 0, 0}));
+    const MassProperties props = MassPropertiesCalculator::compute(*cut);
+    EXPECT_FALSE(props.valid);
+    EXPECT_NE(props.problem.find("off its surface"), std::string::npos) << props.problem;
 }
 
 // Thinner still: a coin a hundred thousandth as thick as it is wide, whose estimate no pass can
