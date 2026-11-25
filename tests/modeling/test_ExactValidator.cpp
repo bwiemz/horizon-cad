@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <set>
 #include <string>
@@ -847,6 +848,68 @@ TEST(ExactValidator, AStraightSplineEdgeJustOffItsPcurvesIsReportedWithHowFar) {
         EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve);
         EXPECT_EQ(i.edge, past.edge);
         EXPECT_EQ(i.detail, "pcurve strays 4.5e-05 from the edge's curve");
+    }
+}
+
+namespace {
+
+/// The most topo::pcurveGaps measures on either half-edge of @p e.
+double mostMeasured(const topo::Edge& e) {
+    double most = 0.0;
+    for (const topo::HalfEdge* h : {e.halfEdge, e.halfEdge->twin}) {
+        const topo::PcurveGaps gaps = topo::pcurveGaps(*h, kTol);
+        most = std::max({most, gaps.start, gaps.end, gaps.strays});
+    }
+    return most;
+}
+
+/// With @p e's tolerance @p measured, @p solid is clean; with it a last bit lower, its only issues
+/// are @p e's pcurves straying.
+void expectStraysOnlyPast(topo::Solid& solid, topo::Edge& e, double measured) {
+    e.tolerance = measured;
+    EXPECT_TRUE(topo::validateExact(solid, kTol).empty()) << "a tolerance of the measure";
+    e.tolerance = std::nextafter(measured, 0.0);
+    const auto issues = topo::validateExact(solid, kTol);
+    EXPECT_FALSE(issues.empty()) << "a tolerance a last bit below it";
+    for (const auto& i : issues) {
+        EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve) << i.detail;
+        EXPECT_EQ(i.edge, &e);
+    }
+}
+
+}  // namespace
+
+// The STEP reader grows an edge's tolerance from topo::pcurveGaps, so it is what validateExact
+// measures, to the last bit: on a cylinder whose rim's circle is moved out from its side (each
+// sample's nearest point on the circle searched for) and on a straight B-spline edge moved off its
+// faces (the fast path's segment), a tolerance of the measure is clean, and one a last bit below
+// it is reported as the pcurves straying. Where the fast path accepts a pcurve as it stands,
+// there is nothing to cover.
+TEST(ExactValidator, PcurveGapsIsWhatItMeasures) {
+    auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({3, -2, 7}, {0, 0, 1}), 5.0, 10.0);
+    topo::Edge* rim = nullptr;
+    for (auto& e : cyl->edges()) {
+        if (const auto* c = dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get())) {
+            e.exactCurve = std::make_shared<geo::CircleCurve>(c->frame(), c->radius() + 1e-3);
+            rim = &e;
+            break;
+        }
+    }
+    ASSERT_NE(rim, nullptr);
+    const double onTheRim = mostMeasured(*rim);
+    EXPECT_NEAR(onTheRim, 1e-3, 1e-12);
+    expectStraysOnlyPast(*cyl, *rim, onTheRim);
+
+    StraightSplineEdge off(1.5 * kTol.linear);
+    ASSERT_NE(off.edge, nullptr);
+    const double onTheSegment = mostMeasured(*off.edge);
+    EXPECT_NEAR(onTheSegment, 1.5 * kTol.linear, 1e-12);
+    expectStraysOnlyPast(*off.block, *off.edge, onTheSegment);
+
+    StraightSplineEdge within(0.5 * kTol.linear);
+    ASSERT_NE(within.edge, nullptr);
+    for (const topo::HalfEdge* h : {within.edge->halfEdge, within.edge->halfEdge->twin}) {
+        EXPECT_EQ(topo::pcurveGaps(*h, kTol).strays, 0.0);
     }
 }
 

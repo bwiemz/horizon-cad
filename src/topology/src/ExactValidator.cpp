@@ -31,6 +31,98 @@ std::string num(double x) {
     return buf;
 }
 
+// A pcurve's sample at index i of kSamples, at the unwrapping's own parameters.
+Vec2 sample(const HalfEdge& h, int i) {
+    return h.pcurve->evaluate(loopSampleParameter(h, i, kSamples));
+}
+
+/// @p c as a straight segment its parameter runs along at one speed (a NURBS of degree 1,
+/// two points of one weight, as Horizon writes its edges), or null. Along it a point's
+/// distance has one minimum, at its projection held to the segment, which is where
+/// NurbsCurve::closestParameter's search ends too (to rounding): Newton's step is exact on
+/// it, from any start, unless the curve's speed squared is below its 1e-15, where it keeps a
+/// sample of 21 instead; so a segment that slow is not one here.
+const geo::NurbsCurve* straightSegment(const geo::Curve3& c) {
+    const auto* n = dynamic_cast<const geo::NurbsCurve*>(&c);
+    if (n == nullptr || n->degree() != 1 || n->controlPointCount() != 2) return nullptr;
+    if (!(n->weights()[0] == n->weights()[1])) return nullptr;
+    const double span = n->tMax() - n->tMin();
+    const Vec3 d = n->controlPoints()[1] - n->controlPoints()[0];
+    const double speed2 = d.dot(d) / (span * span);
+    if (!std::isfinite(speed2) || !(speed2 > 1e-12)) return nullptr;
+    return n;
+}
+
+/// Whether checkPcurve's search, on an edge that is a straight segment, would find @p h's
+/// pcurve on the curve and running with it: each sample's projection onto the segment is
+/// within the tolerance by a margin far above rounding (the search's own point is the same
+/// one, to rounding, so its distance is too), and the projections advance by the order test
+/// with half its slack (rounding cannot move a step across the other half). It only ever
+/// accepts: anything else is left to the search, so what is reported, and how far a pcurve
+/// strays, are the search's, as ever.
+bool passesOnASegment(const Edge& e, const HalfEdge& h, const math::ModelTolerance& tol) {
+    const geo::NurbsCurve* seg = straightSegment(*e.exactCurve);
+    if (seg == nullptr) return false;
+    const geo::Surface& s = *h.face->exactSurface;
+    const Vec3 p0 = seg->controlPoints()[0];
+    const Vec3 d = seg->controlPoints()[1] - p0;
+    const double len2 = d.dot(d);
+    const double t0 = seg->tMin();
+    const double span = seg->tMax() - t0;
+    const double reach = p0.length() + seg->controlPoints()[1].length();
+    std::vector<double> params;
+    params.reserve(kSamples);
+    for (int i = 0; i < kSamples; ++i) {
+        const Vec2 uv = sample(h, i);
+        const Vec3 p = s.evaluate(uv.x, uv.y);
+        const double along = std::clamp((p - p0).dot(d) / len2, 0.0, 1.0);
+        const double t = t0 + along * span;
+        const double dist = (e.exactCurve->evaluate(t) - p).length();
+        const double margin = 1e-12 * (reach + p.length());
+        if (!std::isfinite(dist) || !tol.within(dist + margin, e.tolerance)) return false;
+        params.push_back(t);
+    }
+    const bool forward = &h == e.halfEdge;
+    params.front() = forward ? e.curveStart : e.curveEnd;
+    params.back() = forward ? e.curveEnd : e.curveStart;
+    const double dir = ((e.curveEnd >= e.curveStart) ? 1.0 : -1.0) * (forward ? 1.0 : -1.0);
+    double sum = 0.0;
+    double slackSum = 0.0;
+    for (size_t i = 0; i + 1 < params.size(); ++i) {
+        const double step = (params[i + 1] - params[i]) * dir;
+        const double speed = e.exactCurve->derivatives(params[i]).d1.length();
+        const double slack = speed > 0.0 ? tol.effective(e.tolerance) / speed : 0.0;
+        if (!(step >= -0.5 * slack)) return false;
+        sum += step;
+        slackSum += slack;
+    }
+    return std::fabs(sum - std::fabs(e.curveEnd - e.curveStart)) <= 0.5 * slackSum;
+}
+
+/// What checkPcurve measures on @p h's pcurve (pcurveGaps), and, where it searched the curve for
+/// each sample's nearest point (not on a segment the fast path accepts), the parameters found
+/// in @p params, in sample order.
+PcurveGaps measurePcurve(const Edge& e, const HalfEdge& h, const math::ModelTolerance& tol,
+                         std::vector<double>& params) {
+    const geo::Surface& s = *h.face->exactSurface;
+    PcurveGaps gaps;
+    const Vec2 a = sample(h, 0);
+    const Vec2 b = sample(h, kSamples - 1);
+    gaps.start = (s.evaluate(a.x, a.y) - h.origin->point).length();
+    gaps.end = (s.evaluate(b.x, b.y) - h.next->origin->point).length();
+    params.clear();
+    if (!e.exactCurve || passesOnASegment(e, h, tol)) return gaps;
+    for (int i = 0; i < kSamples; ++i) {
+        const Vec2 uv = sample(h, i);
+        const Vec3 p = s.evaluate(uv.x, uv.y);
+        // The pcurve and the curve need not share parameters: measure to the nearest point.
+        const double t = e.exactCurve->closestParameter(p);
+        params.push_back(t);
+        gaps.strays = std::max(gaps.strays, (e.exactCurve->evaluate(t) - p).length());
+    }
+    return gaps;
+}
+
 struct Checker {
     const Solid& solid;
     const math::ModelTolerance& tol;
@@ -38,11 +130,6 @@ struct Checker {
 
     void report(ExactIssueKind kind, const Face* f, const Edge* e, std::string detail) {
         issues.push_back({kind, f, e, std::move(detail)});
-    }
-
-    // A pcurve's sample at index i of kSamples, at the unwrapping's own parameters.
-    static Vec2 sample(const HalfEdge& h, int i) {
-        return h.pcurve->evaluate(loopSampleParameter(h, i, kSamples));
     }
 
     void checkEdge(const Edge& e) {
@@ -111,101 +198,25 @@ struct Checker {
                over(hi.y - lo.y, periodV, d.dv.length());
     }
 
-    /// @p c as a straight segment its parameter runs along at one speed (a NURBS of degree 1,
-    /// two points of one weight, as Horizon writes its edges), or null. Along it a point's
-    /// distance has one minimum, at its projection held to the segment, which is where
-    /// NurbsCurve::closestParameter's search ends too (to rounding): Newton's step is exact on
-    /// it, from any start, unless the curve's speed squared is below its 1e-15, where it keeps a
-    /// sample of 21 instead; so a segment that slow is not one here.
-    static const geo::NurbsCurve* straightSegment(const geo::Curve3& c) {
-        const auto* n = dynamic_cast<const geo::NurbsCurve*>(&c);
-        if (n == nullptr || n->degree() != 1 || n->controlPointCount() != 2) return nullptr;
-        if (!(n->weights()[0] == n->weights()[1])) return nullptr;
-        const double span = n->tMax() - n->tMin();
-        const Vec3 d = n->controlPoints()[1] - n->controlPoints()[0];
-        const double speed2 = d.dot(d) / (span * span);
-        if (!std::isfinite(speed2) || !(speed2 > 1e-12)) return nullptr;
-        return n;
-    }
-
-    /// Whether checkPcurve's search, on an edge that is a straight segment, would find @p h's
-    /// pcurve on the curve and running with it: each sample's projection onto the segment is
-    /// within the tolerance by a margin far above rounding (the search's own point is the same
-    /// one, to rounding, so its distance is too), and the projections advance by the order test
-    /// with half its slack (rounding cannot move a step across the other half). It only ever
-    /// accepts: anything else is left to the search, so what is reported, and how far a pcurve
-    /// strays, are the search's, as ever.
-    bool passesOnASegment(const Edge& e, const HalfEdge& h) const {
-        const geo::NurbsCurve* seg = straightSegment(*e.exactCurve);
-        if (seg == nullptr) return false;
-        const geo::Surface& s = *h.face->exactSurface;
-        const Vec3 p0 = seg->controlPoints()[0];
-        const Vec3 d = seg->controlPoints()[1] - p0;
-        const double len2 = d.dot(d);
-        const double t0 = seg->tMin();
-        const double span = seg->tMax() - t0;
-        const double reach = p0.length() + seg->controlPoints()[1].length();
-        std::vector<double> params;
-        params.reserve(kSamples);
-        for (int i = 0; i < kSamples; ++i) {
-            const Vec2 uv = sample(h, i);
-            const Vec3 p = s.evaluate(uv.x, uv.y);
-            const double along = std::clamp((p - p0).dot(d) / len2, 0.0, 1.0);
-            const double t = t0 + along * span;
-            const double dist = (e.exactCurve->evaluate(t) - p).length();
-            const double margin = 1e-12 * (reach + p.length());
-            if (!std::isfinite(dist) || !tol.within(dist + margin, e.tolerance)) return false;
-            params.push_back(t);
-        }
-        const bool forward = &h == e.halfEdge;
-        params.front() = forward ? e.curveStart : e.curveEnd;
-        params.back() = forward ? e.curveEnd : e.curveStart;
-        const double dir = ((e.curveEnd >= e.curveStart) ? 1.0 : -1.0) * (forward ? 1.0 : -1.0);
-        double sum = 0.0;
-        double slackSum = 0.0;
-        for (size_t i = 0; i + 1 < params.size(); ++i) {
-            const double step = (params[i + 1] - params[i]) * dir;
-            const double speed = e.exactCurve->derivatives(params[i]).d1.length();
-            const double slack = speed > 0.0 ? tol.effective(e.tolerance) / speed : 0.0;
-            if (!(step >= -0.5 * slack)) return false;
-            sum += step;
-            slackSum += slack;
-        }
-        return std::fabs(sum - std::fabs(e.curveEnd - e.curveStart)) <= 0.5 * slackSum;
-    }
-
     void checkPcurve(const Edge& e, const HalfEdge& h) {
-        const geo::Surface& s = *h.face->exactSurface;
-        const Vec2 a = sample(h, 0);
-        const Vec2 b = sample(h, kSamples - 1);
-        const double da = (s.evaluate(a.x, a.y) - h.origin->point).length();
-        const double db = (s.evaluate(b.x, b.y) - h.next->origin->point).length();
-        if (!tol.within(da, std::max(e.tolerance, h.origin->tolerance)) ||
-            !tol.within(db, std::max(e.tolerance, h.next->origin->tolerance))) {
-            report(ExactIssueKind::PcurveOffVertex, h.face, &e,
-                   "pcurve ends are " + num(da) + " and " + num(db) + " from their vertices");
-        }
-        if (!e.exactCurve) return;
-        if (passesOnASegment(e, h)) return;
-        double worst = 0.0;
         std::vector<double> params;
-        for (int i = 0; i < kSamples; ++i) {
-            const Vec2 uv = sample(h, i);
-            const Vec3 p = s.evaluate(uv.x, uv.y);
-            // The pcurve and the curve need not share parameters: measure to the nearest point.
-            const double t = e.exactCurve->closestParameter(p);
-            params.push_back(t);
-            worst = std::max(worst, (e.exactCurve->evaluate(t) - p).length());
+        const PcurveGaps gaps = measurePcurve(e, h, tol, params);
+        if (!tol.within(gaps.start, std::max(e.tolerance, h.origin->tolerance)) ||
+            !tol.within(gaps.end, std::max(e.tolerance, h.next->origin->tolerance))) {
+            report(ExactIssueKind::PcurveOffVertex, h.face, &e,
+                   "pcurve ends are " + num(gaps.start) + " and " + num(gaps.end) +
+                       " from their vertices");
         }
+        if (params.empty()) return;  // no curve, or the segment's fast path accepts it
         // The ends are known: the vertices (checked above) sit at curveStart and curveEnd. Using
         // them, not projections, keeps a closed curve's end samples from projecting to the other
         // end of its range.
         const bool forward = &h == e.halfEdge;
         params.front() = forward ? e.curveStart : e.curveEnd;
         params.back() = forward ? e.curveEnd : e.curveStart;
-        if (!tol.within(worst, e.tolerance)) {
+        if (!tol.within(gaps.strays, e.tolerance)) {
             report(ExactIssueKind::PcurveOffCurve, h.face, &e,
-                   "pcurve strays " + num(worst) + " from the edge's curve");
+                   "pcurve strays " + num(gaps.strays) + " from the edge's curve");
         } else if (!advancesWithCurve(e, forward, params)) {
             report(ExactIssueKind::PcurveOffCurve, h.face, &e,
                    "pcurve runs against, or winds differently round, the edge's curve");
@@ -421,6 +432,12 @@ std::vector<ExactIssue> validateExact(const Solid& solid, const math::ModelToler
     }
     std::vector<ExactIssue> out = std::move(c.issues);
     return out;
+}
+
+PcurveGaps pcurveGaps(const HalfEdge& h, const math::ModelTolerance& tolerance) {
+    if (!h.pcurve || h.edge == nullptr || h.face == nullptr || !h.face->exactSurface) return {};
+    std::vector<double> params;
+    return measurePcurve(*h.edge, h, tolerance, params);
 }
 
 }  // namespace hz::topo

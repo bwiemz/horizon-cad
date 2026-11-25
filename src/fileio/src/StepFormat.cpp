@@ -4543,8 +4543,9 @@ std::string threeFigures(double x) {
 /// curve's own stand-off from its surface (measured, never chased): a clean edge to the
 /// resolution, one that stands off to its gap. As an OpenCASCADE reader's per-entity tolerances
 /// do, each edge's tolerance (and each vertex's) grows to cover what is measured, its vertices'
-/// gaps, its pcurves' deviations and stand-offs, up to the limit of a thousandth of the solid's
-/// size (the resolution, where its size cannot be measured). Past the limit the solid is not
+/// gaps, its pcurves' deviations and stand-offs, and last what the validator itself measures of
+/// its pcurves (topo::pcurveGaps), up to the limit of a thousandth of the solid's size (the
+/// resolution, where its size cannot be measured). Past the limit the solid is not
 /// exact, and the problem says so; so it does for a problem the validator finds, or a pcurve
 /// that cannot be built. The file's UNCERTAINTY_MEASURE sets neither.
 ///
@@ -4722,6 +4723,26 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
             return read;
         }
     }
+
+    // Each edge's tolerance covers what the validator measures of its pcurves as they now stand,
+    // by the validator's own measure (topo::pcurveGaps), up to the limit as every other gap is.
+    // What was grown above was pcurveOn's measure, at its own points and by its own route, of a
+    // pcurve that may since have been reversed for a seam's other side, moved a period, or split
+    // by a band's seam. The validator's measure of the same gap can come out a last bit larger
+    // (where sin, cos and atan2 round otherwise, as macOS's do), and a tolerance equal to the
+    // reader's measure then left the solid out.
+    for (auto& e : solid.edges()) {
+        if (!e.alive || e.halfEdge == nullptr || e.halfEdge->twin == nullptr) continue;
+        for (const topo::HalfEdge* h : {e.halfEdge, e.halfEdge->twin}) {
+            if (stop()) return read;
+            if (h->face == nullptr || !h->alive || !h->pcurve || !h->face->exactSurface) continue;
+            const topo::PcurveGaps gaps = topo::pcurveGaps(*h, resolution);
+            grow(e.tolerance, gaps.start, "its pcurve ends", "from its vertex", h->face, &e);
+            grow(e.tolerance, gaps.end, "its pcurve ends", "from its vertex", h->face, &e);
+            grow(e.tolerance, gaps.strays, "its pcurve strays", "from its curve", h->face, &e);
+        }
+    }
+    if (!read.problem.empty()) return read;
 
     if (stop()) return read;
     const auto issues = topo::validateExact(solid, resolution);

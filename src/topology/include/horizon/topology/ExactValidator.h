@@ -39,4 +39,22 @@ struct ExactIssue {
 /// one point pass here but are reported by the mesher.
 std::vector<ExactIssue> validateExact(const Solid& solid, const math::ModelTolerance& tolerance);
 
+/// The distances validateExact measures on a half-edge's pcurve and compares with its edge's
+/// tolerance.
+struct PcurveGaps {
+    double start = 0.0;   ///< the pcurve's start, on its face's surface, from its origin vertex
+    double end = 0.0;     ///< its end from its next half-edge's origin vertex
+    double strays = 0.0;  ///< the farthest of its samples, on the surface, from the edge's curve
+};
+
+/// What validateExact measures on @p h's pcurve with @p tolerance, by the same code on the same
+/// geometry, so that a tolerance grown to cover it passes those checks on every platform (two
+/// measures of one distance at other points, or by another route, can differ in the last bit).
+/// On a straight edge whose pcurve the validator accepts without searching the curve (it lies
+/// well within the edge's tolerance as it stands), @c strays is 0; a larger tolerance accepts it
+/// too. With no exact curve on its edge, @c strays is 0, as the validator measures no stray then;
+/// with no pcurve, or no face with an exact surface, all three are 0 (the validator reports those
+/// as missing geometry).
+PcurveGaps pcurveGaps(const HalfEdge& h, const math::ModelTolerance& tolerance);
+
 }  // namespace hz::topo

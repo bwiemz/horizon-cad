@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <set>
 #include <string>
@@ -185,6 +186,54 @@ bool anySays(const std::vector<std::string>& lines, const std::string& what) {
     });
 }
 
+/// A cylinder of radius @p radius and height twice that, its axis along z through @p at: its side
+/// seamed, as OpenCASCADE writes one, or with @p band bounded by its two rims alone, as Solid Edge
+/// does. Its side's surface has radius @p surfaceRadius, so its rims' circles stand off it by the
+/// difference.
+std::string cylinderWithRimsOff(const Vec3& at, double radius, double surfaceRadius, bool band) {
+    const auto point = [&](double x, double z) {
+        return "CARTESIAN_POINT('',(" + real(at.x + x) + "," + real(at.y) + "," + real(at.z + z) +
+               "))";
+    };
+    const std::string r = real(radius);
+    std::string side;
+    if (band) {
+        side =
+            "#21 = ORIENTED_EDGE('',*,*,#14,.T.);\n#22 = EDGE_LOOP('',(#21));\n"
+            "#23 = FACE_OUTER_BOUND('',#22,.T.);\n#24 = ORIENTED_EDGE('',*,*,#15,.F.);\n"
+            "#25 = EDGE_LOOP('',(#24));\n#26 = FACE_BOUND('',#25,.T.);\n"
+            "#27 = ADVANCED_FACE('',(#23,#26),#20,.T.);\n";
+    } else {
+        side =
+            "#21 = ORIENTED_EDGE('',*,*,#14,.T.);\n#22 = ORIENTED_EDGE('',*,*,#18,.T.);\n"
+            "#23 = ORIENTED_EDGE('',*,*,#15,.F.);\n#24 = ORIENTED_EDGE('',*,*,#18,.F.);\n"
+            "#25 = EDGE_LOOP('',(#21,#22,#23,#24));\n#26 = FACE_OUTER_BOUND('',#25,.T.);\n"
+            "#27 = ADVANCED_FACE('',(#26),#20,.T.);\n";
+    }
+    return "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\nDATA;\n#1 = " +
+           point(0.0, 0.0) +
+           ";\n#2 = DIRECTION('',(0.,0.,1.));\n#3 = DIRECTION('',(0.,1.,0.));\n"
+           "#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);\n#5 = CIRCLE('',#4," +
+           r + ");\n#6 = " + point(radius, 0.0) +
+           ";\n#7 = VERTEX_POINT('',#6);\n#8 = " + point(0.0, 2.0 * radius) +
+           ";\n#9 = DIRECTION('',(1.,0.,0.));\n#10 = AXIS2_PLACEMENT_3D('',#8,#2,#9);\n"
+           "#11 = CIRCLE('',#10," +
+           r + ");\n#12 = " + point(radius, 2.0 * radius) +
+           ";\n#13 = VERTEX_POINT('',#12);\n#14 = EDGE_CURVE('',#7,#7,#5,.T.);\n"
+           "#15 = EDGE_CURVE('',#13,#13,#11,.T.);\n#16 = LINE('',#6,VECTOR('',#2,1.));\n"
+           "#17 = SURFACE_CURVE('',#16,(),.CURVE_3D.);\n#18 = EDGE_CURVE('',#7,#13,#17,.T.);\n"
+           "#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);\n#20 = CYLINDRICAL_SURFACE('',#19," +
+           real(surfaceRadius) + ");\n" + side +
+           "#28 = AXIS2_PLACEMENT_3D('',#8,#2,$);\n#29 = PLANE('',#28);\n"
+           "#30 = ORIENTED_EDGE('',*,*,#15,.T.);\n#31 = EDGE_LOOP('',(#30));\n"
+           "#32 = FACE_OUTER_BOUND('',#31,.T.);\n#33 = ADVANCED_FACE('',(#32),#29,.T.);\n"
+           "#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);\n#35 = PLANE('',#34);\n"
+           "#36 = ORIENTED_EDGE('',*,*,#14,.F.);\n#37 = EDGE_LOOP('',(#36));\n"
+           "#38 = FACE_OUTER_BOUND('',#37,.T.);\n#39 = ADVANCED_FACE('',(#38),#35,.F.);\n"
+           "#40 = CLOSED_SHELL('',(#27,#33,#39));\n#41 = MANIFOLD_SOLID_BREP('cyl',#40);\n"
+           "ENDSEC;\nEND-ISO-10303-21;\n";
+}
+
 }  // namespace
 
 // An OpenCASCADE cylinder: its side on its CYLINDRICAL_SURFACE, its caps on their PLANEs, each
@@ -316,6 +365,92 @@ TEST(StepExact, EdgesOffTheirSurfaceWithinTheFileTolerance) {
     std::string problem;
     hz::model::BoundaryMesh::extractFacePolygons(*solids[0], 1e-3, &problem);
     EXPECT_EQ(problem, "");
+}
+
+// An edge's tolerance covers what the validator measures, on every platform. A cylinder's rims
+// stand off its side by a gap within the limit, the cylinder of any size and anywhere, seamed or
+// a band: each reads exact, every pcurve lies within its edge's tolerance by the validator's own
+// measure (topo::pcurveGaps), and how exact the solid is, is its gap, to 16 units in the last
+// place of where it lies. Grown to the reader's own measure of the gap (pcurveOn's, at other
+// points and by another route), the tolerance came out a last bit short of the validator's for
+// 154 of these 960 cylinders on Linux, and on macOS, whose sin, cos and atan2 round differently,
+// for the cylinder of the test above.
+TEST(StepExact, RimsOffTheirSideAnywhereAreCoveredByTheirEdgesTolerance) {
+    int read = 0;
+    for (const bool band : {false, true}) {
+        for (const double at : {0.0, 0.3, 1.7, 13.0, 123.456, -987.6}) {
+            for (const double radius : {1.0, 0.7, 2.5, 3.3, 17.0}) {
+                for (const double off : {5e-7, 1e-6, 2.3e-6, 5e-6, 7.7e-6, 1e-5, 1e-4, 5e-4}) {
+                    for (const double sign : {1.0, -1.0}) {
+                        const Vec3 where{at, -0.5 * at, 0.25 * at};
+                        const double surfaceRadius = radius * (1.0 + sign * off);
+                        const std::string what = std::string(band ? "band" : "seamed") + " at " +
+                                                 real(at) + ", radius " + real(radius) +
+                                                 ", surface " + real(surfaceRadius);
+                        const auto solids = StepFormat::fromString(
+                            cylinderWithRimsOff(where, radius, surfaceRadius, band), nullptr,
+                            nullptr, inMillimetres());
+                        ASSERT_EQ(solids.size(), 1u) << what << ": " << StepFormat::lastError();
+                        ++read;
+                        const topo::Solid& solid = *solids[0];
+                        const auto tolerance = topo::exactTolerance(solid);
+                        for (const auto& e : solid.edges()) {
+                            if (!e.alive) continue;
+                            for (const topo::HalfEdge* h : {e.halfEdge, e.halfEdge->twin}) {
+                                const topo::PcurveGaps gaps = topo::pcurveGaps(*h, tolerance);
+                                for (const double gap : {gaps.start, gaps.end, gaps.strays}) {
+                                    EXPECT_TRUE(tolerance.within(gap, e.tolerance))
+                                        << what << ": " << gap << " against " << e.tolerance;
+                                }
+                            }
+                        }
+                        EXPECT_EQ(firstIssue(solid), "") << what;
+                        // The report's "exact to" figure. The radii's difference is exact
+                        // (Sterbenz), and each measure of it rounds where the rims lie.
+                        const double ulp =
+                            std::numeric_limits<double>::epsilon() * (where.length() + radius);
+                        EXPECT_NEAR(largestEdgeTolerance(solid), std::abs(surfaceRadius - radius),
+                                    16.0 * ulp)
+                            << what;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_EQ(read, 960);
+}
+
+// At the limit (a thousandth of the solid's size), rims are within it by every measure, the
+// validator's too, or left out as beyond it: never left out by the validator for straying past a
+// tolerance the limit would have allowed, as 32 of the 80 within it were when the tolerance was
+// the reader's own measure. The gaps step by a few units in the last place across the limit of the
+// cylinder of radius 1 and height 2, its size the diagonal of its box.
+TEST(StepExact, RimsAtTheLimitAreWithinItOrBeyondIt) {
+    const double limit = 1e-3 * 2.0 * std::sqrt(3.0);
+    int within = 0;
+    int beyond = 0;
+    for (const bool band : {false, true}) {
+        for (int k = -40; k <= 40; ++k) {
+            const double surfaceRadius = 1.0 + limit * (1.0 + k * 1e-13);
+            const std::string what =
+                std::string(band ? "band" : "seamed") + ", surface " + real(surfaceRadius);
+            const auto solids =
+                StepFormat::fromString(cylinderWithRimsOff({}, 1.0, surfaceRadius, band), nullptr,
+                                       nullptr, inMillimetres());
+            if (solids.size() == 1) {
+                ++within;
+                EXPECT_EQ(firstIssue(*solids[0]), "") << what;
+                EXPECT_LE(largestEdgeTolerance(*solids[0]), limit * (1.0 + 1e-12)) << what;
+            } else {
+                ++beyond;
+                EXPECT_NE(StepFormat::lastError().find("beyond the limit of 0.00346"),
+                          std::string::npos)
+                    << what << ": " << StepFormat::lastError();
+            }
+        }
+    }
+    EXPECT_GT(within, 0);
+    EXPECT_GT(beyond, 0);
 }
 
 // Review Focus 3: a file in inches comes in in millimetres, its exact geometry with it: the
