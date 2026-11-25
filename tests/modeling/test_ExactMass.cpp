@@ -589,6 +589,115 @@ TEST(ExactMass, AThinWalledPartIsWithinTheDefaultTolerance) {
     EXPECT_LE(ideal.estimatedError, 1e-10);
 }
 
+namespace {
+
+/// A cylinder of radius @p r, its foot the circle at z = 0 and its top cut by the plane
+/// z = 2r + x/2 (the reviewer's probe): the top rim is an ELLIPSE whose course on the cylinder,
+/// a sinusoid in (u, v), is a fitted pcurve, integrated on the ellipse itself. u is an angle and v
+/// a length, so the smaller the radius the more lopsided the surface's metric.
+std::string obliquelyCutCylinder(double r) {
+    using hz::step_text::real;
+    std::string text = R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(0.,1.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CIRCLE('',#4,@R@);
+#6 = CARTESIAN_POINT('',(@R@,0.,0.));
+#7 = VERTEX_POINT('',#6);
+#8 = CARTESIAN_POINT('',(0.,0.,@2R@));
+#9 = DIRECTION('',(1.,0.,0.));
+#50 = DIRECTION('',(-0.44721359549995793,0.,0.89442719099991586));
+#51 = DIRECTION('',(0.89442719099991586,0.,0.44721359549995793));
+#10 = AXIS2_PLACEMENT_3D('',#8,#50,#51);
+#11 = ELLIPSE('',#10,@A@,@R@);
+#12 = CARTESIAN_POINT('',(@R@,0.,@TOP@));
+#13 = VERTEX_POINT('',#12);
+#14 = EDGE_CURVE('',#7,#7,#5,.T.);
+#15 = EDGE_CURVE('',#13,#13,#11,.T.);
+#16 = LINE('',#6,VECTOR('',#2,1.));
+#17 = SURFACE_CURVE('',#16,(),.CURVE_3D.);
+#18 = EDGE_CURVE('',#7,#13,#17,.T.);
+#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);
+#20 = CYLINDRICAL_SURFACE('',#19,@R@);
+#21 = ORIENTED_EDGE('',*,*,#14,.T.);
+#22 = ORIENTED_EDGE('',*,*,#18,.T.);
+#23 = ORIENTED_EDGE('',*,*,#15,.F.);
+#24 = ORIENTED_EDGE('',*,*,#18,.F.);
+#25 = EDGE_LOOP('',(#21,#22,#23,#24));
+#26 = FACE_OUTER_BOUND('',#25,.T.);
+#27 = ADVANCED_FACE('',(#26),#20,.T.);
+#28 = AXIS2_PLACEMENT_3D('',#8,#50,#51);
+#29 = PLANE('',#28);
+#30 = ORIENTED_EDGE('',*,*,#15,.T.);
+#31 = EDGE_LOOP('',(#30));
+#32 = FACE_OUTER_BOUND('',#31,.T.);
+#33 = ADVANCED_FACE('',(#32),#29,.T.);
+#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);
+#35 = PLANE('',#34);
+#36 = ORIENTED_EDGE('',*,*,#14,.F.);
+#37 = EDGE_LOOP('',(#36));
+#38 = FACE_OUTER_BOUND('',#37,.T.);
+#39 = ADVANCED_FACE('',(#38),#35,.F.);
+#40 = CLOSED_SHELL('',(#27,#33,#39));
+#41 = MANIFOLD_SOLID_BREP('oblique',#40);
+)";
+    const auto put = [&text](const std::string& name, double value) {
+        for (auto at = text.find(name); at != std::string::npos; at = text.find(name)) {
+            text.replace(at, name.size(), real(value));
+        }
+    };
+    put("@2R@", 2.0 * r);
+    put("@A@", std::sqrt(1.25) * r);
+    put("@TOP@", 2.5 * r);
+    put("@R@", r);
+    return hz::step_text::stepFile(text);
+}
+
+}  // namespace
+
+// The oblique cut's rim on a cylinder of radius 1, a hundredth and a thousandth: integrated on
+// the ellipse, each point's course on the cylinder resolved without regard to the metric's
+// proportions, it is exact at every size.
+TEST(ExactMass, AnObliqueCutIsExactOnACylinderOfAnySize) {
+    for (const double r : {1.0, 0.01, 0.001}) {
+        SCOPED_TRACE("radius " + std::to_string(r));
+        const auto cut = readOne(obliquelyCutCylinder(r));
+        ASSERT_NE(cut, nullptr);
+        const MassProperties props = MassPropertiesCalculator::compute(*cut);
+        ASSERT_TRUE(props.valid) << props.problem;
+        expectRelative(props.volume, 2.0 * kPi * r * r * r, 1e-9, "its volume");
+        expectRelative(props.surfaceArea, (5.0 * kPi + kPi * std::sqrt(1.25)) * r * r, 1e-9,
+                       "its area");
+        const Vec3 centre = Vec3{1.0 / 16.0, 0.0, 1.0 + 1.0 / 64.0} * r;
+        EXPECT_NEAR((props.centerOfMass - centre).length(), 0.0, 1e-9 * centre.length());
+        expectIdealIsTheSame(*cut, props);
+    }
+}
+
+// Thinner still: a coin a hundred thousandth as thick as it is wide, whose estimate no pass can
+// bring under the default tolerance, is measured all the same, valid, its estimate honest; and a
+// tolerance finer than the default does not make a valid result invalid either.
+TEST(ExactMass, ATighterTargetNeverMakesAValidResultInvalid) {
+    const auto coin =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {1, 1, 0}), 10.0, 1e-4);
+    ASSERT_NE(coin, nullptr);
+    const MassProperties props = MassPropertiesCalculator::compute(*coin);
+    ASSERT_TRUE(props.valid) << props.problem;
+    expectRelative(props.volume, kPi * 100.0 * 1e-4, 1e-9, "its volume");
+    const IdealMassProperties ideal = MassPropertiesCalculator::computeIdeal(*coin);
+    ASSERT_TRUE(ideal.properties.valid) << ideal.properties.problem;
+    EXPECT_EQ(ideal.withinTolerance, ideal.estimatedError <= 1e-10) << ideal.estimatedError;
+
+    const auto thicker =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {1, 1, 0}), 10.0, 1e-2);
+    ASSERT_NE(thicker, nullptr);
+    const IdealMassProperties fine =
+        MassPropertiesCalculator::computeIdeal(*thicker, nullptr, 1e-12);
+    ASSERT_TRUE(fine.properties.valid) << fine.properties.problem;
+    expectRelative(fine.properties.volume, kPi * 100.0 * 1e-2, 1e-9, "the thicker coin");
+    EXPECT_EQ(fine.withinTolerance, fine.estimatedError <= 1e-12) << fine.estimatedError;
+}
+
 // A part so large that its second moments pass the largest double is not reported valid with
 // infinite inertia: every sum is checked.
 TEST(ExactMass, MomentsBeyondTheLargestNumberAreNotValid) {

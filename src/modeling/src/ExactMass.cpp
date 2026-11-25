@@ -55,9 +55,10 @@ using Terms = std::array<double, kTerms>;
 /// integral of the absolute value of any of its integrands along its boundary. Where the solid's
 /// estimate summed over its faces is still above the tolerance asked for (a thin wall, whose
 /// faces are large beside its volume), every face is taken again, tighter, as far as this floor:
-/// the Gauss–Kronrod estimate's own (50 ulps of each span's magnitude) is near 1e-14.
+/// some nine times the Gauss–Kronrod estimate's own (50 ulps of each span's magnitude, 1.1e-14),
+/// which no refinement goes below, so that a face can always reach it.
 constexpr double kRelativeAccuracy = 1e-11;
-constexpr double kFinestAccuracy = 1e-14;
+constexpr double kFinestAccuracy = 1e-13;
 
 /// An edge's march: the points of its exact curve put on the face's surface, one after another,
 /// from which each quadrature point's Newton step starts. Twice as many as its fitted pcurve has
@@ -367,6 +368,7 @@ struct Stretch {
     /// Where the pcurve is fitted: the edge's exact curve, integrated in its own parameter, each
     /// point put on the surface (Newton, from the march's (u, v) at that parameter).
     const geo::Curve3* edge = nullptr;
+    const topo::Edge* edgeOf = nullptr;  ///< the topological edge whose curve that is
     double t0 = 0.0;  ///< the march: from the edge's parameter t0 to t1, evenly, its points'
     double t1 = 0.0;  ///< (u, v) on the surface
     std::vector<Vec2> march;
@@ -594,7 +596,7 @@ private:
         if (s.edge != nullptr) {
             const geo::CurveDerivatives c = s.edge->derivatives(t);
             uv = marchAt(s, t);
-            return putOnSurface(c.point, c.d1, uv, &d);
+            return putOnSurface(*s.edgeOf, c.point, c.d1, uv, &d);
         }
         if (s.curve != nullptr) {
             uv = s.curve->evaluate(t) + s.shift;
@@ -628,6 +630,7 @@ private:
         const topo::Edge& e = *h.edge;
         const bool along = e.halfEdge == &h;
         s.edge = e.exactCurve.get();
+        s.edgeOf = &e;
         s.t0 = along ? e.curveStart : e.curveEnd;
         s.t1 = along ? e.curveEnd : e.curveStart;
         if (!std::isfinite(s.t0) || !std::isfinite(s.t1)) {
@@ -652,7 +655,7 @@ private:
                 const Vec2 next = n >= 2 ? s.march[n - 1] * 2.0 - s.march[n - 2] : s.march[n - 1];
                 if (distanceTo(next, p) < distanceTo(own, p)) uv = next;
             }
-            if (!putOnSurface(p, Vec3{}, uv, nullptr)) return false;
+            if (!putOnSurface(e, p, Vec3{}, uv, nullptr)) return false;
             s.march.push_back(uv);
         }
         return true;
@@ -675,26 +678,20 @@ private:
         return s.march[m] * (1.0 - w) + s.march[m + 1] * w;
     }
 
-    /// Puts @p p on the surface: Gauss–Newton from @p uv, each step taken only where it brings
-    /// the surface nearer, the normal equations held off singular (a pole, an apex) by a
-    /// millionth of a millionth of their trace, so that a parameter that means nothing there is
-    /// left as it was. With @p d, also the (u, v) course of a curve through @p p along
-    /// @p tangent: the tangent resolved onto S_u and S_v. False (and why_) where the surface is
-    /// not finite.
-    bool putOnSurface(const Vec3& p, const Vec3& tangent, Vec2& uv, Vec2* d) {
+    /// Puts @p p, a point of @p edge, on the surface: Gauss–Newton from @p uv, each step taken
+    /// only where it brings the surface nearer, each solved on the surface's metric (solveMetric).
+    /// With @p d, also the (u, v) course of the edge through @p p along @p tangent: the tangent
+    /// resolved onto S_u and S_v. False (and why_) where the surface is not finite, or where the
+    /// point is left farther off the surface than twice the edge's effective tolerance: an edge
+    /// that lies on its surface (the only kind put on it) is never that far, the reader having
+    /// measured its gap at samples, which may read it short between them.
+    bool putOnSurface(const topo::Edge& edge, const Vec3& p, const Vec3& tangent, Vec2& uv,
+                      Vec2* d) {
         geo::SurfaceDerivatives here = surface_.derivativesAt(uv);
         double gap = (here.point - p).length();
         for (int step = 0; step < kInversionSteps && std::isfinite(gap); ++step) {
             const Vec3 r = here.point - p;
-            const double a = here.du.dot(here.du);
-            const double b = here.du.dot(here.dv);
-            const double c = here.dv.dot(here.dv);
-            const double hold = 1e-12 * (a + c);
-            const double det = (a + hold) * (c + hold) - b * b;
-            if (!(det > 0.0)) break;
-            const double gu = here.du.dot(r);
-            const double gv = here.dv.dot(r);
-            const Vec2 move(-((c + hold) * gu - b * gv) / det, -((a + hold) * gv - b * gu) / det);
+            const Vec2 move = solveMetric(here, -here.du.dot(r), -here.dv.dot(r));
             const Vec2 next = surface_.withinDomain(uv + move);
             const geo::SurfaceDerivatives there = surface_.derivativesAt(next);
             const double nextGap = (there.point - p).length();
@@ -709,17 +706,16 @@ private:
             why_ = notFiniteAt(uv);
             return false;
         }
+        const double allowed = 2.0 * tolerance_.effective(edge.tolerance);
+        if (gap > allowed) {
+            why_ = "a point of its edge " +
+                   (edge.topoId.isValid() ? edge.topoId.tag() : std::to_string(edge.id)) +
+                   " is left " + num(gap) + " off its surface, more than twice its tolerance (" +
+                   num(allowed) + ")";
+            return false;
+        }
         if (d != nullptr) {
-            const double a = here.du.dot(here.du);
-            const double b = here.du.dot(here.dv);
-            const double c = here.dv.dot(here.dv);
-            const double hold = 1e-12 * (a + c);
-            const double det = (a + hold) * (c + hold) - b * b;
-            const double tu = here.du.dot(tangent);
-            const double tv = here.dv.dot(tangent);
-            *d = det > 0.0
-                     ? Vec2(((c + hold) * tu - b * tv) / det, ((a + hold) * tv - b * tu) / det)
-                     : Vec2();
+            *d = solveMetric(here, here.du.dot(tangent), here.dv.dot(tangent));
             if (!finite(*d)) {
                 why_ = notFiniteAt(uv);
                 return false;
@@ -728,13 +724,37 @@ private:
         return true;
     }
 
-    /// What @p h's edge leaves uncertain of the face: an edge that stands off its surface by its
-    /// tolerance beyond the resolution bounds a region known only to that much, which no
-    /// integration removes. That width, times the edge's length, times the largest of each
-    /// integrand (over a unit normal) along it, is added to the face's estimate.
+    /// The (x, y) with M (x, y) = (p, q), M the surface's metric at @p at ([S_u·S_u, S_u·S_v;
+    /// S_u·S_v, S_v·S_v]). Solved exactly where M is well conditioned, whatever the proportions
+    /// of u and v (an angle beside a length): no term may be biased by the other's scale. Where it
+    /// is not (a pole or an apex, where S_u or S_v vanishes, or the two nearly parallel), each
+    /// diagonal entry is held off zero by a millionth of a millionth of itself, and of the trace by
+    /// 1e-30, so that a parameter that means nothing there takes no part.
+    static Vec2 solveMetric(const geo::SurfaceDerivatives& at, double p, double q) {
+        const double a = at.du.dot(at.du);
+        const double b = at.du.dot(at.dv);
+        const double c = at.dv.dot(at.dv);
+        const double det = a * c - b * b;
+        if (det > 1e-10 * a * c && det > 0.0) {
+            return {(c * p - b * q) / det, (a * q - b * p) / det};
+        }
+        const double floor = 1e-30 * (a + c);
+        const double ha = a + 1e-12 * a + floor;
+        const double hc = c + 1e-12 * c + floor;
+        const double held = ha * hc - b * b;
+        if (!(held > 0.0)) return {};
+        return {(hc * p - b * q) / held, (ha * q - b * p) / held};
+    }
+
+    /// What @p h's edge leaves uncertain of the face: an edge whose tolerance is beyond the
+    /// resolution stands off its surface and keeps its pcurve, fitted to within that tolerance,
+    /// so it bounds a region known only to that much, which no integration removes. Its
+    /// tolerance, times the edge's length, times the largest of each integrand (over a unit
+    /// normal) seen at five points along it, its ends among them, is added to the face's
+    /// estimate: an estimate, as the largest is looked for, not found.
     bool addUncertainty(const HalfEdge& h, const Vec2& shift) {
-        const double beyond = h.edge->tolerance - tolerance_.linear;
-        if (!(beyond > 0.0)) return true;
+        const double tolerance = h.edge->tolerance;
+        if (!(tolerance > tolerance_.linear)) return true;
         double length = 0.0;
         if (h.edge->exactCurve != nullptr) {
             const GaussRule& rule = gaussRule(16);
@@ -751,7 +771,7 @@ private:
         most[kArea] = 1.0;
         constexpr int kLooks = 5;
         for (int i = 0; i < kLooks; ++i) {
-            const double f = (i + 0.5) / kLooks;
+            const double f = static_cast<double>(i) / (kLooks - 1);
             const Vec2 uv =
                 h.pcurve->evaluate(h.pcurveStart + (h.pcurveEnd - h.pcurveStart) * f) + shift;
             Terms t{};
@@ -764,7 +784,7 @@ private:
                 most[k] = std::max(most[k], std::fabs(t[k]) / t[kArea]);
             }
         }
-        const double width = beyond / size_ * (length / size_);
+        const double width = tolerance / size_ * (length / size_);
         if (!std::isfinite(width)) {
             why_ = "an edge of it has a tolerance or a length that is not finite";
             return false;
@@ -1221,14 +1241,19 @@ ExactMeasure measure(const topo::Solid& solid, const Material* material,
     if (!pass.problem.empty()) return notValid(density, pass.problem);
     // A face's estimate is relative to its own size; summed over faces far larger than the
     // volume they bound (a thin wall) it may still exceed the target. Taken again as much
-    // tighter as that needs, to the floor: the second pass's estimate is what is said.
+    // tighter as that needs, to the floor: the second pass's estimate is what is said. A tighter
+    // pass that does not settle (a budget spent) leaves the first, valid, its estimate as it
+    // was: asking for more never makes a measured solid unmeasured.
     const double quadrature = relative(pass, pass.volumeError, pass.areaError);
     if (quadrature > 0.5 * target && std::isfinite(quadrature)) {
         const double accuracy =
             std::max(kFinestAccuracy, kRelativeAccuracy * 0.25 * target / quadrature);
         if (accuracy < kRelativeAccuracy) {
-            pass = integrateFaces(solid, origin, size, tolerance, accuracy, cancelled);
-            if (!pass.problem.empty()) return notValid(density, pass.problem);
+            Pass tighter = integrateFaces(solid, origin, size, tolerance, accuracy, cancelled);
+            if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
+                return notValid(density, "stopped");
+            }
+            if (tighter.problem.empty()) pass = std::move(tighter);
         }
     }
 
