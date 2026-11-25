@@ -31,10 +31,12 @@ struct StepReadOptions {
     std::optional<math::LengthUnit> unknownLengthUnit;
     /// For STEP embedded in native part files only (an imported body, saved before the exact
     /// kernel read its faces): a solid whose exact form cannot be made is kept as it was read
-    /// before, its carriers alone and no exact fields, rather than left out, and the read's
-    /// ImportReport::converted says "solid <i>: not exact (<why>); kept as it was". A STEP
-    /// import never sets it: what cannot be exact is left out with why (decision 1b). Facet
-    /// approximations are not reported again: the import that made the body reported them.
+    /// before, its carriers alone and no exact fields, rather than left out. It is built from the
+    /// file as the file has it, with nothing a failed exact pass did to it (a seam inserted, an
+    /// edge split), and the read's ImportReport::converted says "solid <i>: not exact (<why>);
+    /// kept as it was". A STEP import never sets it: what cannot be exact is left out with why
+    /// (decision 1b). Facet approximations are not reported again: the import that made the body
+    /// reported them.
     bool keepWhenNotExact = false;
 };
 

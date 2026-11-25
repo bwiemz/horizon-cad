@@ -4872,9 +4872,18 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
         // How far the file says its geometry may stray, in millimetres.
         const double uncertainty =
             group.context != 0 ? contextUncertaintyMillimetres(parser, group.context, mm) : 0.0;
-        SolidBuilder builder(parser, static_cast<int>(index), cancelled,
-                             group.context != 0 ? contextRadians(parser, group.context) : 1.0,
-                             uncertainty / mm);
+        const double radians = group.context != 0 ? contextRadians(parser, group.context) : 1.0;
+        SolidBuilder builder(parser, static_cast<int>(index), cancelled, radians, uncertainty / mm);
+        // The solid as the file has it, in millimetres, built by @p from: its topology and
+        // carriers, and the exact fields read with them, as no exact pass has yet changed them.
+        // Throws as the geometry constructors do.
+        const auto asTheFileHasIt = [&](SolidBuilder& from, std::string& why) {
+            std::unique_ptr<topo::Solid> built = from.build(group.msbs, group.surfaces, why);
+            if (built != nullptr && mm != 1.0) {
+                built = model::Pattern::transformed(*built, math::Mat4::scale(mm));
+            }
+            return built;
+        };
         // Its exact form, or nothing (decision 1b): a solid whose faces or edges cannot be read
         // exactly, or whose exact form does not hold together, is left out, with why. Nothing
         // faceted comes in in its place. (STEP embedded in a native part file is kept as it was
@@ -4885,12 +4894,8 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
         std::string notExact;
         ExactRead exact;
         try {
-            solid = builder.build(group.msbs, group.surfaces, error);
-            if (solid != nullptr) {
-                notExact = builder.exactProblem();
-                // Into millimetres.
-                if (mm != 1.0) solid = model::Pattern::transformed(*solid, math::Mat4::scale(mm));
-            }
+            solid = asTheFileHasIt(builder, error);
+            if (solid != nullptr) notExact = builder.exactProblem();
         } catch (const std::exception& e) {
             // The geometry constructors throw on inputs the reader's own
             // checks let through (a degree-0 B-spline, ragged control rows,
@@ -4898,7 +4903,10 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
             error = e.what();
             solid = nullptr;
         }
-        if (solid != nullptr && notExact.empty()) {
+        // Whether the exact pass ran on the solid, which changes its topology as it goes (a band's
+        // seam inserted, the rims it crosses split) and may fail after it has.
+        const bool exactPassRan = solid != nullptr && notExact.empty();
+        if (exactPassRan) {
             // A throw making the exact form leaves the solid, as read, without one: left out of
             // an import, kept as it was in a native file's embedded STEP.
             try {
@@ -4959,6 +4967,34 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
                 }
                 built.failures.push_back(solidN + ": " + notExact);
                 continue;
+            }
+            // Kept as master read it: as the file has it, untouched by an exact pass that failed
+            // part way (Ruling 10). What the pass changed is not the file's, and may not even hold
+            // together (a seam inserted on one band and the next refused, a ring left merged by
+            // a split that threw): the solid is built again from the file, and the exact fields
+            // the builder reads with it cleared.
+            if (exactPassRan) {
+                std::string why;
+                try {
+                    SolidBuilder again(parser, static_cast<int>(index), cancelled, radians,
+                                       uncertainty / mm);
+                    solid = asTheFileHasIt(again, why);
+                } catch (const std::exception& e) {
+                    why = e.what();
+                    solid = nullptr;
+                }
+                if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
+                    return built;
+                }
+                if (solid == nullptr) {
+                    // It built once from the same file: not reached, yet said if it is.
+                    if (built.firstError.empty()) {
+                        built.firstError = "failed to reconstruct solid #" +
+                                           std::to_string(group.msbs.front()) + ": " + why;
+                    }
+                    built.failures.push_back(which + ": " + why);
+                    continue;
+                }
             }
             clearExact(*solid);
             built.keptAsItWas.push_back(solidN + ": not exact (" + notExact + "); kept as it was");

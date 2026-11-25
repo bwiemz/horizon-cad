@@ -560,6 +560,72 @@ TEST(StepExact, ARimTiltedOffItsBandStraysPastItsToleranceAndIsReported) {
         << StepFormat::lastError();
 }
 
+// Ruling 10: a body an old part file holds, whose exact form fails after the exact pass has given
+// a band its seam, is kept as the file has it, not as the pass left it. The tilted rim's band is
+// seamed, the seam splitting the top rim, and then refused by the validator; the band whose seam
+// passes past the limit is seamed, and then refused. Each is kept with the file's two vertices and
+// two edges, no seam and no piece of a rim, its side bounded by its two rims as two loops, and no
+// exact field: the solid the file's entities build.
+TEST(StepExact, ABodyKeptAsItWasIsTheFilesWhateverTheExactPassDidBeforeItFailed) {
+    struct Case {
+        const char* what;
+        std::string text;
+        const char* why;
+    };
+    const Case cases[] = {
+        {"a rim tilted off its band", bandWithATiltedRim(8e-4, 0.27, 6.06),
+         "solid 1: not exact (pcurve strays 0.0015"},
+        {"a seam past the limit",
+         replaced(bandCylinder("1.003"), "#12 = CARTESIAN_POINT('',(1.,0.,2.));",
+                  "#12 = CARTESIAN_POINT('',(0.99998750002604,0.00499997916669,2.));"),
+         "solid 1: not exact (its seam passes 0.00584 from a vertex it joins"},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        EXPECT_TRUE(StepFormat::fromString(c.text, nullptr, nullptr, inMillimetres()).empty())
+            << "a STEP import leaves it out";
+        hz::io::StepReadOptions keep = inMillimetres();
+        keep.keepWhenNotExact = true;
+        ImportReport report;
+        const auto kept = StepFormat::fromString(c.text, &report, nullptr, keep);
+        ASSERT_EQ(kept.size(), 1u) << StepFormat::lastError();
+        const bool said =
+            std::any_of(report.converted.begin(), report.converted.end(),
+                        [&c](const std::string& line) { return line.rfind(c.why, 0) == 0; });
+        EXPECT_TRUE(said) << c.why;
+
+        const topo::Solid& solid = *kept[0];
+        EXPECT_EQ(solid.vertexCount(), 2u);
+        EXPECT_EQ(solid.edgeCount(), 2u);
+        EXPECT_EQ(solid.faceCount(), 3u);
+        EXPECT_FALSE(topo::hasExactFaces(solid));
+        for (const auto& e : solid.edges()) {
+            const std::string name = e.topoId.tag();
+            EXPECT_EQ(name.find("/seam"), std::string::npos) << name;
+            EXPECT_EQ(name.find("/piece:"), std::string::npos) << name;
+            EXPECT_EQ(e.exactCurve, nullptr) << name;
+            EXPECT_EQ(e.tolerance, 0.0) << name;
+            EXPECT_NE(e.halfEdge->twin, nullptr) << name;
+            EXPECT_NE(e.halfEdge->twin->face, e.halfEdge->face) << name << " is no seam";
+        }
+        for (const auto& v : solid.vertices()) EXPECT_EQ(v.tolerance, 0.0);
+        for (const auto& f : solid.faces()) {
+            EXPECT_NE(f.surface, nullptr) << "its carrier";
+            EXPECT_EQ(f.outerLoop->halfEdge->next, f.outerLoop->halfEdge) << "one rim a loop";
+            EXPECT_EQ(f.outerLoop->halfEdge->pcurve, nullptr);
+        }
+        const topo::Face* side = nullptr;
+        for (const auto& f : solid.faces()) {
+            if (!f.innerLoops.empty()) side = &f;
+        }
+        ASSERT_NE(side, nullptr) << "the side keeps its two rims as two loops";
+        EXPECT_EQ(side->innerLoops.size(), 1u);
+        EXPECT_TRUE(solid.isValid()) << solid.validationReport();
+        const auto faceted = hz::model::facetCurved(solid);
+        EXPECT_NE(faceted.solid, nullptr) << faceted.error;
+    }
+}
+
 // A last bit's disagreement is measured against the magnitudes a measure is computed from, not only
 // the part's (Ruling 66). This cylinder's side is placed a million along its own axis from its
 // rims, and its seam LINE's point too: each point is a difference of terms a million long, so two

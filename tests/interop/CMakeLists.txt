@@ -15,9 +15,11 @@ target_link_libraries(hz_step_acceptance_lib
 add_executable(hz_step_acceptance step_acceptance_main.cpp)
 target_link_libraries(hz_step_acceptance PRIVATE hz_step_acceptance_lib)
 
-add_executable(hz_interop_tests test_StepAcceptance.cpp)
+add_executable(hz_interop_tests test_StepAcceptance.cpp test_OldParts.cpp)
 target_compile_definitions(hz_interop_tests
-    PRIVATE HZ_STEP_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/step")
+    PRIVATE
+        HZ_STEP_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/step"
+        HZ_OLD_PART_DIR="${CMAKE_CURRENT_SOURCE_DIR}/old_parts")
 target_link_libraries(hz_interop_tests
     PRIVATE
         hz_step_acceptance_lib
