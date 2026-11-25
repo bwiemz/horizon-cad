@@ -14,7 +14,6 @@
 #include "horizon/math/IdCounter.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
-#include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -28,6 +27,7 @@
 namespace hz::doc {
 
 class Sketch;
+struct ExactCounterpart;
 
 /// Upper bounds on feature resolution and repetition. Feature parameters come
 /// from files as well as from the UI, and every step or instance costs memory
@@ -938,14 +938,14 @@ public:
     bool createsNewBody() const override { return true; }
 
     /// The body as read, exact, for the part's exact counterpart
-    /// (BuildResult::exactSolid): a copy whose faces are named as execute()
-    /// names them, `<featureID>/face:<i>`, the logical face of their facets
-    /// there, and whose edges are named by the same pass, so a curve parted
-    /// into chords there is one edge here. A curve the body holds in pieces
-    /// (a rim a seam was inserted on) is `<edge>/piece:<k>`, where its chords
-    /// are `<edge>/chord:<k>`. Null when not every face of it is exact: a body
-    /// a part file kept as it was read before the exact kernel (note() says
-    /// why).
+    /// (BuildResult::exact): a copy whose faces are named as execute() names
+    /// them, `<featureID>/face:<i>`, the logical face of their facets there,
+    /// and whose edges are named by the same pass. So model::logicalEdge names
+    /// one curve from its chords there and from its edge here, or from its
+    /// pieces here where the body holds it in several (a rim a seam was
+    /// inserted on): `<edge>/chord:<k>` on both sides. Null when not every face
+    /// of it is exact: a body a part file kept as it was read before the exact
+    /// kernel (note() says why).
     std::unique_ptr<topo::Solid> exactBody() const;
 
     const std::shared_ptr<const topo::Solid>& solid() const { return m_solid; }
@@ -1011,12 +1011,6 @@ private:
     static math::IdCounter<int> s_nextID;
 };
 
-/// The chord tolerance the part's exact counterpart is meshed at
-/// (BuildResult::exactMesh): the display's, which the viewport tessellates a
-/// part's curved faces at (model::SolidTessellator's default). Absolute, in
-/// model units.
-inline constexpr double kExactMeshTolerance = 0.1;
-
 /// Result of building the feature tree with diagnostics.
 struct BuildResult {
     /// The part. When a feature fails, the part as it stands before that
@@ -1028,24 +1022,15 @@ struct BuildResult {
     /// on: while every feature that has made the part is an imported body
     /// made a new body (ImportedBodyFeature::exactBody), those bodies as
     /// read, exact, gathered as `solid` gathers their facets, named as its
-    /// facets' logical faces and edges are. Null when the part has none: any
-    /// other feature or a Boolean has changed it, an import is not exact, or
-    /// its exact form could not be meshed, could not be measured, or measures
-    /// other than its facets (exactNote says which).
-    std::unique_ptr<topo::Solid> exactSolid;
-    /// Its mesh, made once by the build at kExactMeshTolerance through the
-    /// read point (model::BoundaryMesh::extractFacePolygons): one triangle a
-    /// polygon, wound outward, each with its face's topoId and exact surface,
-    /// in the counterpart's face order. What the display draws it from. Null
-    /// with exactSolid.
-    std::shared_ptr<const std::vector<model::BoundaryPolygon>> exactMesh;
-    /// Why the part has no exact counterpart where its imports would give it
-    /// one: "shown from facets: <why>" (a body not exact, with its import's
-    /// note; a face that could not be meshed or measured, with the read
-    /// point's reason) or "exact form disagrees with its facets: <exact> vs
-    /// <faceted>" (volumes). Empty when it has one, and when it has none by
-    /// design (no import, or a feature after one).
-    std::string exactNote;
+    /// facets' logical faces and edges are, and meshed once for the display.
+    /// Shared: a later build reuses it while the imports it was made from are
+    /// as they were (BuildOptions::previous). Null when the part has none by
+    /// design (no import, or any other feature or a Boolean after one) or the
+    /// build did not make one (BuildOptions::exactCounterpart). One that
+    /// could not be had (an import not exact, a face that could not be meshed
+    /// or measured, a volume other than its facets') holds no solid and says
+    /// why. Document::exactSolid(), exactMesh() and exactNote() read it.
+    std::shared_ptr<const ExactCounterpart> exact;
     int lastSuccessfulFeature = -1;
     std::string failureMessage;
     int failedFeatureIndex = -1;
@@ -1060,11 +1045,25 @@ struct BuildResult {
 
 /// How a build running on another thread says how far it has got, and learns
 /// it should stop. The build looks between features: a feature already
-/// running finishes first.
+/// running finishes first. The part's exact counterpart, when the build makes
+/// it, is a step of its own after the features (counted in `total` once it
+/// begins), and stops between faces.
 struct BuildControl {
     std::atomic<bool> cancel{false};
     std::atomic<int> done{0};   ///< features applied so far
     std::atomic<int> total{0};  ///< features the build will apply
+};
+
+/// What a build makes beside the part.
+struct BuildOptions {
+    /// Make the part's exact counterpart (BuildResult::exact). A reader that
+    /// draws and measures the faceted part alone (an assembly's component)
+    /// leaves it out, and does not pay for its mesh.
+    bool exactCounterpart = true;
+    /// A counterpart an earlier build made, reused where it was made from the
+    /// imports the part has now: a rebuild of an import-only part for any
+    /// other reason meshes nothing again.
+    std::shared_ptr<const ExactCounterpart> previous;
 };
 
 /// Ordered list of parametric features that can be replayed to rebuild a solid.
@@ -1123,8 +1122,10 @@ public:
     std::vector<std::unique_ptr<topo::Solid>> buildBodies() const;
 
     /// Rebuild with diagnostics: records which feature failed and why.
-    /// Respects the rollback index (features beyond it are skipped).
-    BuildResult buildWithDiagnostics(BuildControl* control = nullptr) const;
+    /// Respects the rollback index (features beyond it are skipped). Makes the
+    /// part's exact counterpart as @p options says.
+    BuildResult buildWithDiagnostics(BuildControl* control = nullptr,
+                                     const BuildOptions& options = {}) const;
 
     /// Rollback index: features after this index are suppressed.
     /// -1 means no rollback (all features active).

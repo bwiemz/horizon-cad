@@ -5,21 +5,18 @@
 #include <charconv>
 #include <cmath>
 #include <exception>
-#include <iomanip>
 #include <limits>
 #include <map>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <system_error>
-#include <unordered_map>
 
+#include "ExactCounterpart.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
-#include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
@@ -34,7 +31,6 @@
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/Loft.h"
-#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -1381,20 +1377,10 @@ std::unique_ptr<topo::Solid> ImportedBodyFeature::exactBody() const {
     }
     auto body = model::Pattern::transformed(*m_solid, math::Mat4::identity());
     nameFaces(*body);
-    if (naming() != model::NamingScheme::Stable) {
+    if (naming() == model::NamingScheme::Stable) {
+        model::nameEdgesLogically(*body);
+    } else {
         model::nameEdgesByFaces(*body);
-        return body;
-    }
-    model::nameEdgesLogically(*body);
-    // Several edges between two faces are pieces of one curve here, not its
-    // chords: the curve's name is theirs, as it is its chords' in facets.
-    static constexpr std::string_view kChord = "/chord:";
-    for (auto& edge : body->edges()) {
-        std::string tag = edge.topoId.tag();
-        const size_t at = tag.rfind(kChord);
-        if (at == std::string::npos) continue;
-        tag.replace(at, kChord.size(), "/piece:");
-        edge.topoId = topo::TopologyID::fromTag(tag);
     }
     return body;
 }
@@ -2315,195 +2301,6 @@ std::optional<BodyOperation> bodyOperationFromName(std::string_view name) {
     return std::nullopt;
 }
 
-namespace {
-
-/// The part's exact counterpart as a build makes it (BuildResult::exactSolid):
-/// kept while every feature that has changed the part is an imported body made
-/// a new body, and gathered as the part gathers their facets.
-struct Counterpart {
-    std::unique_ptr<topo::Solid> solid;
-    std::string note;
-    bool open = true;  ///< no feature has changed the part otherwise yet
-
-    void close(std::string why) {
-        open = false;
-        solid.reset();
-        note = std::move(why);
-    }
-
-    /// Follow @p feature, just applied to the part; @p first when there was
-    /// no part before it (the body is the part, whatever its operation).
-    void follow(const Feature& feature, bool first) {
-        const auto* imported = dynamic_cast<const ImportedBodyFeature*>(&feature);
-        if (imported == nullptr || (!first && feature.operation() != BodyOperation::NewBody)) {
-            close({});  // the part is no longer only bodies as read: none, by design
-            return;
-        }
-        if (!open) return;
-        auto body = imported->exactBody();
-        if (!body) {
-            close("shown from facets: " +
-                  (imported->note().empty()
-                       ? "imported body \"" + imported->source() + "\" has no exact form"
-                       : imported->note()));
-            return;
-        }
-        if (!solid) {
-            solid = std::move(body);
-        } else {
-            model::Pattern::append(*solid, *body, math::Mat4::identity());
-        }
-    }
-};
-
-/// A volume as a note says it.
-std::string figure(double value) {
-    std::ostringstream out;
-    out << std::setprecision(10) << value;
-    return out.str();
-}
-
-/// Whether @p faceted, the part's faceted copy, measures as @p exact, its
-/// exact counterpart, does: their volumes within what the faceting itself
-/// may move a volume by.
-///
-/// The bound. A curved face's facets (model::facetCurved) are flat polygons
-/// whose corners lie on its surface. The material between a facet and the
-/// surface over it is at most the facet's area A times how far the surface
-/// stands off it, d: the slab of thickness d over it (between a chord and its
-/// arc it is two thirds of that). An inscribed facet stands off its surface
-/// most at its middle, where the surface has curved furthest from its
-/// corners: at its centre for a facet about as long as it is wide, at the
-/// middle of its longest side for a sliver. d is measured at both, as the
-/// distance to the nearest point of the counterpart's face of the same
-/// logical name, and doubled for the curving between: 2 A d a facet. Flat
-/// faces are not faceted, and add nothing. To the sum is added the exact
-/// integration's own error, 1e-9 of its volume (spec goal 6). On the corpus
-/// the facets' volumes stand at most a third of this bound from the exact
-/// ones (a chord's sagitta closes two thirds of A d). What it catches is a
-/// measure, not a shape: the distance it is measured by already holds any
-/// surface standing off its facets, so it is a sign that is wrong (a body
-/// turned inside out, which moves the volume by twice its own) or an
-/// integration, far beyond the bound.
-///
-/// The bound is summed until it covers the difference, the closed-form
-/// surfaces' facets first (their nearest points are cheap, a B-spline's a
-/// search), so a counterpart that agrees seldom measures every facet.
-bool facetsAgree(const topo::Solid& exact, double exactVolume, const topo::Solid& faceted,
-                 double facetedVolume) {
-    const double difference = std::abs(exactVolume - facetedVolume);
-    double bound = 1e-9 * std::abs(exactVolume);
-    if (difference <= bound) return true;
-    std::unordered_map<std::string, const geo::Surface*> surfaces;
-    for (const auto& face : exact.faces()) {
-        if (face.alive && face.exactSurface) {
-            surfaces.emplace(face.topoId.tag(), face.exactSurface.get());
-        }
-    }
-    for (const bool spline : {false, true}) {
-        for (const auto& facet : faceted.faces()) {
-            if (!facet.alive || !facet.analyticSurface || facet.outerLoop == nullptr ||
-                facet.outerLoop->halfEdge == nullptr) {
-                continue;  // a flat face: not faceted
-            }
-            const auto found = surfaces.find(model::logicalFace(facet.topoId.tag()));
-            const geo::Surface* surface = found != surfaces.end() ? found->second : nullptr;
-            if ((surface != nullptr && surface->kind() == geo::SurfaceKind::Nurbs) != spline) {
-                continue;
-            }
-            // Its corners, area (Newell), centre, longest side and widest span.
-            std::vector<math::Vec3> corners;
-            const topo::HalfEdge* start = facet.outerLoop->halfEdge;
-            const topo::HalfEdge* he = start;
-            do {
-                if (he->origin == nullptr) break;
-                corners.push_back(he->origin->point);
-                he = he->next;
-            } while (he != nullptr && he != start && corners.size() <= faceted.edges().size());
-            if (corners.size() < 3) continue;
-            math::Vec3 normal;
-            math::Vec3 centre;
-            math::Vec3 longestMiddle = corners[0];
-            double longest = -1.0;
-            double widest = 0.0;
-            for (size_t i = 0; i < corners.size(); ++i) {
-                const math::Vec3& a = corners[i];
-                const math::Vec3& b = corners[(i + 1) % corners.size()];
-                normal = normal + (a - corners[0]).cross(b - corners[0]);
-                centre = centre + a;
-                if ((b - a).length() > longest) {
-                    longest = (b - a).length();
-                    longestMiddle = (a + b) * 0.5;
-                }
-                for (const math::Vec3& c : corners) widest = std::max(widest, (c - a).length());
-            }
-            centre = centre / static_cast<double>(corners.size());
-            const double area = 0.5 * normal.length();
-            // Off its surface, measured; without a face of its name to measure
-            // it on (none is expected), as far as it is wide.
-            double off = widest;
-            if (surface != nullptr) {
-                const auto distance = [surface](const math::Vec3& at) {
-                    const math::Vec2 uv = surface->invert(at);
-                    return (surface->evaluate(uv.x, uv.y) - at).length();
-                };
-                const double measured = std::max(distance(centre), distance(longestMiddle));
-                if (std::isfinite(measured)) off = measured;
-            }
-            bound += 2.0 * area * off;
-            if (bound >= difference) return true;
-        }
-    }
-    return false;
-}
-
-/// Make @p counterpart ready as the counterpart of the part @p result holds:
-/// meshed once, at the display's tolerance, through the read point; measured
-/// exactly; and held to the part's facets (facetsAgree). Any of them failing
-/// drops it, with why, and never fails the build or throws: the faceted part
-/// is what the user has. False when @p control cancelled it part way.
-bool finish(Counterpart& counterpart, BuildResult& result, const BuildControl* control) {
-    result.exactNote = counterpart.note;
-    if (!counterpart.solid || !result.solid) return true;
-    const auto cancelled = [control] { return control != nullptr && control->cancel; };
-    const auto drop = [&result](std::string why) { result.exactNote = std::move(why); };
-    if (cancelled()) return false;
-    try {
-        std::string problem;
-        auto mesh = model::BoundaryMesh::extractFacePolygons(*counterpart.solid,
-                                                             kExactMeshTolerance, &problem);
-        if (!problem.empty()) {
-            drop("shown from facets: " + problem);
-            return true;
-        }
-        if (cancelled()) return false;
-        const auto exact = model::MassPropertiesCalculator::compute(*counterpart.solid);
-        if (!exact.valid) {
-            drop("shown from facets: " + (exact.problem.empty()
-                                              ? std::string("its exact form encloses nothing")
-                                              : exact.problem));
-            return true;
-        }
-        const auto faceted = model::MassPropertiesCalculator::compute(*result.solid);
-        if (cancelled()) return false;
-        if (!facetsAgree(*counterpart.solid, exact.volume, *result.solid, faceted.volume)) {
-            drop("exact form disagrees with its facets: " + figure(exact.volume) + " vs " +
-                 figure(faceted.volume));
-            return true;
-        }
-        result.exactSolid = std::move(counterpart.solid);
-        result.exactMesh =
-            std::make_shared<const std::vector<model::BoundaryPolygon>>(std::move(mesh));
-    } catch (const std::exception& e) {
-        drop(std::string("shown from facets: ") + e.what());
-    } catch (...) {
-        drop("shown from facets: its exact form could not be meshed");
-    }
-    return true;
-}
-
-}  // namespace
-
 std::unique_ptr<topo::Solid> FeatureTree::build() const {
     if (m_features.empty()) {
         return nullptr;
@@ -2568,7 +2365,8 @@ std::vector<std::unique_ptr<topo::Solid>> FeatureTree::buildBodies() const {
     return bodies;
 }
 
-BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
+BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
+                                              const BuildOptions& options) const {
     BuildResult result;
     if (m_features.empty()) {
         return result;
@@ -2580,7 +2378,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
     if (control) control->total = limit;
 
     std::unique_ptr<topo::Solid> solid;
-    Counterpart counterpart;
+    ExactFollower exact;
     std::vector<const Feature*> before;
     Placed placed;
     // Where each sketch was placed, and the edges projected into it as they
@@ -2593,6 +2391,18 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
                 if (!entity->sourceEdge().empty()) projected.push_back(entity);
             }
             if (projected.empty()) result.projections.erase(id);
+        }
+    };
+    // The part's exact counterpart, made (or reused) for the part as it
+    // stands; a cancel while it is made leaves a cancelled build, no part.
+    const auto finishExact = [&exact, &options, &result, control] {
+        if (!options.exactCounterpart || !result.solid || result.cancelled) return;
+        bool cancelled = false;
+        result.exact = exact.make(*result.solid, options.previous, control, cancelled);
+        if (cancelled) {
+            result.cancelled = true;
+            result.solid.reset();
+            result.exact.reset();
         }
     };
     // A Boolean in it stops as soon as the build is cancelled, not only the
@@ -2627,27 +2437,19 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control) const {
             // nothing. Its exact counterpart is the one so far.
             result.solid = replayUpTo(i, control);
             if (control && control->cancel) result.cancelled = true;
-            if (!result.cancelled && !finish(counterpart, result, control)) {
-                result.cancelled = true;
-            }
+            finishExact();
             report();
             return result;
         }
         solid = std::move(next);
-        try {
-            counterpart.follow(feature, first);
-        } catch (const std::exception& e) {
-            counterpart.close(std::string("shown from facets: ") + e.what());
-        } catch (...) {
-            counterpart.close("shown from facets: its exact form could not be gathered");
-        }
+        exact.follow(feature, first);
         before.push_back(&feature);
         result.lastSuccessfulFeature = i;
     }
 
     if (control) control->done = limit;
     result.solid = std::move(solid);
-    if (!finish(counterpart, result, control)) result.cancelled = true;
+    finishExact();
     report();
     return result;
 }

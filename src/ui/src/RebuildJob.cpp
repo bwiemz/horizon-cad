@@ -15,7 +15,9 @@ RebuildJob::Stamp RebuildJob::stampOf(const doc::Document& doc) {
 }
 
 RebuildJob::RebuildJob(const doc::Document& doc)
-    : m_snapshot(io::NativeFormat::documentToJson(doc, false)), m_stamp(stampOf(doc)) {}
+    : m_snapshot(io::NativeFormat::documentToJson(doc, false)),
+      m_exact(doc.exactCounterpart()),
+      m_stamp(stampOf(doc)) {}
 
 RebuildJob::~RebuildJob() {
     cancel();
@@ -34,7 +36,12 @@ void RebuildJob::run() {
         doc::Document copy;
         std::string error;
         if (io::NativeFormat::documentFromJson(m_snapshot, copy, &error)) {
-            m_result = copy.buildWithDiagnostics(&m_control);
+            // The document's exact counterpart reused while its imports are
+            // as they were: the copy reads them again from the part's STEP
+            // text, and they are the same.
+            doc::BuildOptions options;
+            options.previous = m_exact;
+            m_result = copy.buildWithDiagnostics(&m_control, options);
         } else {
             m_result.failedFeatureIndex = 0;
             m_result.failureMessage = "the model could not be copied for rebuilding: " + error;

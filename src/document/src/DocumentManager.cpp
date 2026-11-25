@@ -145,6 +145,15 @@ std::vector<std::string> eraseEntriesFor(std::map<std::string, std::weak_ptr<T>>
     return erased;
 }
 
+/// A component's part is drawn and measured from its faceted part
+/// (SolidTessellator of solid()): built without the exact counterpart, whose
+/// mesh it would never use.
+BuildOptions facetedOnly() {
+    BuildOptions options;
+    options.exactCounterpart = false;
+    return options;
+}
+
 }  // namespace
 
 bool DocumentManager::closeDocument(const std::shared_ptr<Document>& doc) {
@@ -261,7 +270,7 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
         auto part = openPart(fullPath, /*keep=*/false);
         if (!part) return false;
         if (!part->solid() && part->featureTree().featureCount() > 0) {
-            part->rebuildModel();
+            part->rebuildModel(facetedOnly());
         }
         instance.resolvedPart = part;
         if (part->solid()) instance.cachedMesh = modelMesh(*part);
@@ -298,7 +307,7 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
         if (m_partLoader) {
             Document temp;
             if (m_partLoader(fullPath, temp)) {
-                temp.rebuildModel();
+                temp.rebuildModel(facetedOnly());
                 if (temp.solid()) {
                     return std::make_shared<const geo::MeshData>(
                         model::SolidTessellator::tessellate(*temp.solid()));

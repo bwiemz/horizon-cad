@@ -17,6 +17,10 @@
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Units.h"
 
+namespace hz::model {
+struct BoundaryPolygon;
+}  // namespace hz::model
+
 namespace hz::doc {
 
 class UndoStack;
@@ -137,8 +141,9 @@ public:
     /// Rebuild the solid by replaying the feature tree.
     /// Stores the result (and failure diagnostics) on the document.
     /// Returns true when no feature failed. An empty tree succeeds
-    /// with a null solid.
-    bool rebuildModel();
+    /// with a null solid. The part's exact counterpart as @p options says,
+    /// the document's own reused (exactCounterpart()).
+    bool rebuildModel(const BuildOptions& options = {});
 
     /// Each feature's parameter expressions worked out against the
     /// document's variables, and its parameters set to them (Phase 155).
@@ -147,8 +152,11 @@ public:
     void applyExpressions();
 
     /// The part built, its expressions first worked out: what
-    /// rebuildModel() applies, and a worker builds from a snapshot.
-    BuildResult buildWithDiagnostics(BuildControl* control = nullptr);
+    /// rebuildModel() applies, and a worker builds from a snapshot. With
+    /// @p options naming no counterpart to reuse, the document's own
+    /// (exactCounterpart()) is: a worker's copy has none, and is given its
+    /// document's.
+    BuildResult buildWithDiagnostics(BuildControl* control = nullptr, BuildOptions options = {});
 
     /// Take the result of a build made elsewhere (a worker's, from a
     /// snapshot of this document), as rebuildModel() takes its own. A
@@ -160,27 +168,28 @@ public:
     const topo::Solid* solid() const { return m_solid.get(); }
     topo::Solid* solid() { return m_solid.get(); }
 
-    /// The part's exact counterpart from the last build (BuildResult::exactSolid):
+    /// The part's exact counterpart from the last build (BuildResult::exact):
     /// its imported bodies as read, exact, beside solid(), their faceted copy,
     /// while only imports have made the part. Null when it has none.
-    const topo::Solid* exactSolid() const { return m_exactSolid.get(); }
-    /// Its mesh, made once by that build at kExactMeshTolerance
-    /// (BuildResult::exactMesh): what the display draws it from without
-    /// meshing it again. Null with exactSolid().
-    const std::shared_ptr<const std::vector<model::BoundaryPolygon>>& exactMesh() const {
-        return m_exactMesh;
-    }
+    const topo::Solid* exactSolid() const;
+    /// Its mesh, made once at model::SolidTessellator::kDisplayTolerance:
+    /// what the display draws it from without meshing it again. Null with
+    /// exactSolid().
+    std::shared_ptr<const std::vector<model::BoundaryPolygon>> exactMesh() const;
     /// Why the part has no exact counterpart where its imports would give it
-    /// one (BuildResult::exactNote); empty otherwise.
-    const std::string& exactNote() const { return m_exactNote; }
+    /// one (ExactCounterpart::note); empty otherwise.
+    const std::string& exactNote() const;
+    /// The last counterpart a build made, shown or not (a feature after the
+    /// imports hides it, and its undo shows it again): what the next build of
+    /// this document, or of a copy of it, reuses while the imports it was made
+    /// from are the part's still (BuildOptions::previous).
+    const std::shared_ptr<const ExactCounterpart>& exactCounterpart() const { return m_exactKept; }
 
     /// Take ownership of the built solid (e.g. loaded from a cache): a new
     /// solid, counted as a build. It has no exact counterpart.
     void setSolid(std::unique_ptr<topo::Solid> solid) {
         m_solid = std::move(solid);
-        m_exactSolid.reset();
-        m_exactMesh.reset();
-        m_exactNote.clear();
+        m_exact.reset();
         ++m_builds;
     }
 
@@ -274,9 +283,8 @@ private:
     std::shared_ptr<Sketch> m_editedSketch;
     FeatureTree m_featureTree;
     std::unique_ptr<topo::Solid> m_solid;
-    std::unique_ptr<topo::Solid> m_exactSolid;
-    std::shared_ptr<const std::vector<model::BoundaryPolygon>> m_exactMesh;
-    std::string m_exactNote;
+    std::shared_ptr<const ExactCounterpart> m_exact;      ///< shown: the last build's
+    std::shared_ptr<const ExactCounterpart> m_exactKept;  ///< kept: the last one made
     std::string m_lastBuildMessage;
     int m_failedFeatureIndex = -1;
     std::uint64_t m_builds = 0;

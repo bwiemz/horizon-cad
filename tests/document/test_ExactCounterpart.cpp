@@ -5,14 +5,19 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
+#include "../TimeLimits.h"
 #include "StepTestText.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
@@ -24,10 +29,12 @@
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Units.h"
 #include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/HalfEdge.h"
@@ -98,23 +105,30 @@ std::set<std::string> logicalFaces(const hz::topo::Solid& solid) {
     return names;
 }
 
-/// Every face's name the faceted part has as a logical face, every edge's that parts two faces
-/// as a logical edge, and every face exact: the counterpart a pick on it resolves in the part.
+/// The logical edges of @p solid's edges that part two logical faces (model::logicalEdge): a
+/// curve's chords, or its pieces, its one; a seam, or a line between two facets of one face, none.
+std::set<std::string> logicalEdges(const hz::topo::Solid& solid) {
+    std::set<std::string> names;
+    for (const auto& edge : solid.edges()) {
+        const hz::topo::HalfEdge* he = edge.halfEdge;
+        if (he == nullptr || he->twin == nullptr || he->face == nullptr ||
+            he->twin->face == nullptr) {
+            continue;
+        }
+        if (hz::model::logicalFace(he->face->topoId.tag()) ==
+            hz::model::logicalFace(he->twin->face->topoId.tag())) {
+            continue;
+        }
+        names.insert(hz::model::logicalEdge(edge.topoId.tag()));
+    }
+    return names;
+}
+
+/// The counterpart named as the faceted part is: the same logical faces and the same logical
+/// edges between them, so a pick on either resolves in the other; and every face exact.
 void expectNamedAsItsFacets(const hz::topo::Solid& exact, const hz::topo::Solid& faceted) {
     EXPECT_EQ(faceNames(exact), logicalFaces(faceted));
-    std::set<std::string> edges;
-    for (const auto& edge : faceted.edges()) {
-        edges.insert(hz::model::logicalEdge(edge.topoId.tag()));
-    }
-    for (const auto& edge : exact.edges()) {
-        std::string name = edge.topoId.tag();
-        if (name.find("/seam:") != std::string::npos) continue;  // one face's own
-        // A piece of a curve, where the facets have the curve.
-        if (const auto piece = name.rfind("/piece:"); piece != std::string::npos) {
-            name.erase(piece);
-        }
-        EXPECT_EQ(edges.count(name), 1u) << name << " is no logical edge of the facets";
-    }
+    EXPECT_EQ(logicalEdges(exact), logicalEdges(faceted));
     for (const auto& face : exact.faces()) {
         EXPECT_NE(face.exactSurface, nullptr) << face.topoId.tag();
     }
@@ -136,7 +150,7 @@ void expectMeshed(const Document& part, double volume) {
     }
     EXPECT_EQ(meshed, faceNames(*part.exactSolid()));
     EXPECT_NEAR(hz::model::BoundaryMesh::signedVolume(polygons), volume,
-                area * hz::doc::kExactMeshTolerance);
+                area * hz::model::SolidTessellator::kDisplayTolerance);
 }
 
 /// @p faces of @p solid, a closed shell of it, turned inside out as an exact solid can be and still
@@ -206,7 +220,8 @@ TEST(ExactCounterpart, AnImportedBodyHasOne) {
     EXPECT_EQ(volumeOf(*part.solid()), volumeOf(*built));
 
     // A band with no seam, its top rim's vertex two radians round: the seam inserted as it is
-    // read splits the top rim in two, each a piece of the curve the facets name.
+    // read splits the top rim in two. Each is a chord of the one curve, as its facets' are, and
+    // model::logicalEdge names the curve from either.
     std::string band = hz::step_text::bandCylinder();
     const std::string top = "#12 = CARTESIAN_POINT('',(1.,0.,2.));";
     ASSERT_NE(band.find(top), std::string::npos);
@@ -218,15 +233,43 @@ TEST(ExactCounterpart, AnImportedBodyHasOne) {
     ASSERT_TRUE(seamed.rebuildModel()) << seamed.lastBuildMessage();
     ASSERT_NE(seamed.exactSolid(), nullptr) << seamed.exactNote();
     expectNamedAsItsFacets(*seamed.exactSolid(), *seamed.solid());
-    std::set<std::string> pieces;
+    std::map<std::string, std::set<std::string>> pieces;
     for (const auto& edge : seamed.exactSolid()->edges()) {
         const std::string& name = edge.topoId.tag();
-        if (name.find("/piece:") != std::string::npos) pieces.insert(name);
+        pieces[hz::model::logicalEdge(name)].insert(name);
     }
-    ASSERT_EQ(pieces.size(), 2u);
-    const std::string rim = pieces.begin()->substr(0, pieces.begin()->rfind("/piece:"));
-    EXPECT_EQ(pieces, (std::set<std::string>{rim + "/piece:0", rim + "/piece:1"}));
+    const auto split = std::find_if(pieces.begin(), pieces.end(),
+                                    [](const auto& curve) { return curve.second.size() == 2; });
+    ASSERT_NE(split, pieces.end()) << "the top rim in two";
+    EXPECT_EQ(split->second,
+              (std::set<std::string>{split->first + "/chord:0", split->first + "/chord:1"}));
     EXPECT_NEAR(volumeOf(*seamed.exactSolid()), 2.0 * kPi, 2.0 * kPi * 1e-9);
+}
+
+// Fix round 1 (review): a part of flat faces whose corner stands off its faces' planes, by what
+// its reader accepted as a gap, keeps its counterpart. Its facets' polygons stand off the exact
+// planes by that much, and the bound holds it. A 4 mm block and a 4 inch one, each with a corner
+// 1e-7 and 1e-5 (in its unit) high.
+TEST(ExactCounterpart, AFlatPartWithAGapItsReaderAcceptedKeepsIt) {
+    const std::string corner = "CARTESIAN_POINT('',(4.,4.,4.))";
+    for (const auto unit : {hz::math::LengthUnit::Millimetre, hz::math::LengthUnit::Inch}) {
+        for (const std::string raised : {"4.0000001", "4.00001"}) {
+            std::string text = hz::step_text::block(false);
+            ASSERT_NE(text.find(corner), std::string::npos);
+            text.replace(text.find(corner), corner.size(),
+                         "CARTESIAN_POINT('',(4.,4.," + raised + "))");
+            hz::io::StepReadOptions options;
+            options.unknownLengthUnit = unit;
+            auto solids = hz::io::StepFormat::fromString(text, nullptr, nullptr, options);
+            ASSERT_EQ(solids.size(), 1u) << hz::io::StepFormat::lastError();
+            Document part;
+            importInto(part, std::move(solids.front()));
+            ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+            EXPECT_NE(part.exactSolid(), nullptr)
+                << raised << " " << hz::math::symbolOf(unit) << ": " << part.exactNote();
+            EXPECT_TRUE(part.exactNote().empty()) << part.exactNote();
+        }
+    }
 }
 
 // Review focus 5: a cut after the import runs on the faceted copy exactly as on master, and the
@@ -439,4 +482,136 @@ TEST(ExactCounterpart, AnUndoAfterAFeatureBringsItBack) {
     EXPECT_EQ(part.exactSolid(), nullptr);
     EXPECT_FALSE(part.exactMesh());
     EXPECT_TRUE(part.exactNote().empty());
+}
+
+// Ruling 51: the counterpart is made once, and reused while the imports it was made from are as
+// they were. A rebuild for anything else (a datum added, an edit marked) gives the same object;
+// so does an undo of a feature that dropped it. A changed import makes it again.
+TEST(ExactCounterpart, ARebuildWithItsImportsUnchangedReusesIt) {
+    Document part;
+    importInto(part, read(hz::step_text::externalStyleCylinder()));
+    part.featureTree().addFeature(imported(read(hz::step_text::cClip(Vec3(10, 0, 0))), "clip"));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    const hz::topo::Solid* made = part.exactSolid();
+    ASSERT_NE(made, nullptr) << part.exactNote();
+    const auto* mesh = part.exactMesh().get();
+    ASSERT_NE(mesh, nullptr);
+
+    part.featureTree().markChanged();
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), made) << "made again for no change to its imports";
+    EXPECT_EQ(part.exactMesh().get(), mesh);
+
+    part.featureTree().addFeature(hz::doc::DatumFeature::makePlane(
+        hz::model::DatumPlane{Vec3(0, 0, 5), Vec3(0, 0, 1), Vec3(1, 0, 0)}));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), made);
+
+    part.undoStack().push(
+        std::make_unique<hz::doc::AddFeatureCommand>(part, cut(0, -2, 2, 2, 1.0)));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    part.undoStack().undo();
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), made) << "the one made before the cut, not made again";
+    EXPECT_EQ(part.exactMesh().get(), mesh);
+
+    // A worker's build of a copy, its imports read again from the part's STEP text, reuses it.
+    Document copy;
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(
+        hz::io::NativeFormat::documentToJson(part, false), copy, &error))
+        << error;
+    hz::doc::BuildOptions options;
+    options.previous = part.exactCounterpart();
+    ASSERT_TRUE(copy.applyBuild(copy.buildWithDiagnostics(nullptr, options)))
+        << copy.lastBuildMessage();
+    EXPECT_EQ(copy.exactSolid(), made) << "made again for a copy of the same imports";
+
+    // Another body under the same feature's name is not taken for it.
+    Document other;
+    importInto(other, read(hz::step_text::block(false)));
+    other.featureTree().feature(0)->restoreFeatureID(part.featureTree().feature(0)->featureID());
+    Document cylinder;
+    importInto(cylinder, read(hz::step_text::externalStyleCylinder()));
+    cylinder.featureTree().feature(0)->restoreFeatureID(part.featureTree().feature(0)->featureID());
+    ASSERT_TRUE(cylinder.rebuildModel()) << cylinder.lastBuildMessage();
+    ASSERT_NE(cylinder.exactSolid(), nullptr) << cylinder.exactNote();
+    options.previous = cylinder.exactCounterpart();
+    ASSERT_TRUE(other.applyBuild(other.buildWithDiagnostics(nullptr, options)))
+        << other.lastBuildMessage();
+    ASSERT_NE(other.exactSolid(), nullptr) << other.exactNote();
+    EXPECT_NE(other.exactSolid(), cylinder.exactSolid());
+    EXPECT_EQ(other.exactSolid()->faceCount(), 6u);
+
+    // The clip suppressed: the cylinder alone, made again; and back, made again with both.
+    part.featureTree().feature(1)->setSuppressed(true);
+    part.featureTree().markChanged();
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    EXPECT_NE(part.exactSolid(), made);
+    EXPECT_EQ(part.exactSolid()->faceCount(), 3u);
+    part.featureTree().feature(1)->setSuppressed(false);
+    part.featureTree().markChanged();
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    EXPECT_EQ(part.exactSolid()->faceCount(), 9u);
+    expectNamedAsItsFacets(*part.exactSolid(), *part.solid());
+}
+
+// Ruling 51: a cancel while the counterpart is being made stops it between faces, promptly. The
+// build counts the counterpart as a step of its own (what the cancel waits for), and a cancelled
+// build has no part.
+TEST(ExactCounterpart, ACancelWhileItIsMadeReturnsPromptly) {
+    hz::io::StepReadOptions inMetres;
+    inMetres.unknownLengthUnit = hz::math::LengthUnit::Metre;
+    const std::string clip = hz::step_text::cClip();
+    Document part;
+    part.setType(DocumentType::Part);
+    constexpr int kBodies = 24;
+    for (int k = 0; k < kBodies; ++k) {
+        auto solids = hz::io::StepFormat::fromString(clip, nullptr, nullptr, inMetres);
+        ASSERT_EQ(solids.size(), 1u) << hz::io::StepFormat::lastError();
+        part.featureTree().addFeature(imported(std::move(solids.front())));
+    }
+    hz::doc::BuildControl control;
+    hz::doc::BuildResult result;
+    std::atomic<bool> finished{false};
+    std::thread worker([&] {
+        result = part.buildWithDiagnostics(&control);
+        finished = true;
+    });
+    // Until its features are built and the counterpart's step has begun, and a little into its
+    // meshing (about a second of it, here).
+    while (!finished && control.total.load() <= kBodies) std::this_thread::yield();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    const auto cancelledAt = std::chrono::steady_clock::now();
+    control.cancel = true;
+    worker.join();
+    const double ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - cancelledAt)
+            .count();
+    EXPECT_EQ(control.total.load(), kBodies + 1) << "the counterpart a step of its own";
+    EXPECT_TRUE(result.cancelled) << "finished before the cancel";
+    EXPECT_EQ(result.solid.get(), nullptr) << "a cancelled build has no part";
+    if (HZ_TIME_LIMITS) {
+        EXPECT_LT(ms, 500.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "the cancel waited for the whole mesh";
+    }
+}
+
+// Review (Minor 5): a build for what draws the faceted part alone (an assembly's component, its
+// mesh made from solid()) makes no counterpart, and pays for no mesh.
+TEST(ExactCounterpart, ABuildThatAsksForNoneMakesNone) {
+    Document part;
+    importInto(part, read(hz::step_text::externalStyleCylinder()));
+    hz::doc::BuildControl control;
+    hz::doc::BuildOptions none;
+    none.exactCounterpart = false;
+    ASSERT_TRUE(part.applyBuild(part.buildWithDiagnostics(&control, none)))
+        << part.lastBuildMessage();
+    ASSERT_NE(part.solid(), nullptr);
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    EXPECT_TRUE(part.exactNote().empty()) << part.exactNote();
+    EXPECT_EQ(control.total.load(), 1) << "no step for a counterpart";
+    EXPECT_EQ(part.exactCounterpart(), nullptr);
 }

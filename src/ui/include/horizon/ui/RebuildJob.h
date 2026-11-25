@@ -60,6 +60,8 @@ private:
     void run();
 
     std::string m_snapshot;
+    /// The document's exact counterpart, for the copy's build to reuse.
+    std::shared_ptr<const doc::ExactCounterpart> m_exact;
     Stamp m_stamp;
     doc::BuildControl m_control;
     doc::BuildResult m_result;
