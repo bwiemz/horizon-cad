@@ -26,10 +26,10 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/MeshData.h"
 #include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Units.h"
-#include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -133,23 +133,29 @@ void expectNamedAsItsFacets(const hz::topo::Solid& exact, const hz::topo::Solid&
     }
 }
 
-/// The counterpart's kept mesh covers each of its faces and encloses its exact volume within
-/// the mesh's own error, its area times its tolerance.
+/// The counterpart's kept mesh, as the display draws it, covers each of its faces, one entry of
+/// faceTags a face, and encloses its exact volume within the mesh's own error, its area times its
+/// tolerance.
 void expectMeshed(const Document& part, double volume) {
     ASSERT_NE(part.exactMesh(), nullptr);
-    const auto& polygons = *part.exactMesh();
-    std::set<std::string> meshed;
+    const hz::geo::MeshData& mesh = *part.exactMesh();
+    ASSERT_TRUE(mesh.hasFaces());
+    EXPECT_EQ(mesh.faceTags.size(), part.exactSolid()->faceCount());
+    EXPECT_EQ(std::set<std::string>(mesh.faceTags.begin(), mesh.faceTags.end()),
+              faceNames(*part.exactSolid()));
+    double vol6 = 0.0;
     double area = 0.0;
-    for (const auto& polygon : polygons) {
-        meshed.insert(polygon.topoId.tag());
-        ASSERT_EQ(polygon.points.size(), 3u);
-        area += 0.5 * (polygon.points[1] - polygon.points[0])
-                          .cross(polygon.points[2] - polygon.points[0])
-                          .length();
+    const auto corner = [&mesh](std::size_t i) {
+        return Vec3(mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]);
+    };
+    for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+        const Vec3 a = corner(mesh.indices[t]);
+        const Vec3 b = corner(mesh.indices[t + 1]);
+        const Vec3 c = corner(mesh.indices[t + 2]);
+        vol6 += a.dot(b.cross(c));
+        area += 0.5 * (b - a).cross(c - a).length();
     }
-    EXPECT_EQ(meshed, faceNames(*part.exactSolid()));
-    EXPECT_NEAR(hz::model::BoundaryMesh::signedVolume(polygons), volume,
-                area * hz::model::SolidTessellator::kDisplayTolerance);
+    EXPECT_NEAR(vol6 / 6.0, volume, area * hz::model::SolidTessellator::kDisplayTolerance);
 }
 
 /// @p faces of @p solid, a closed shell of it, turned inside out as an exact solid can be and still

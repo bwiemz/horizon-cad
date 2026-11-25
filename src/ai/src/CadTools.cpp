@@ -344,8 +344,15 @@ json solidSummary(const doc::Document& document) {
     if (any) {
         out["bounding_box"] = {{"min", toJson(lo)}, {"max", toJson(hi)}, {"size", toJson(hi - lo)}};
     }
-    const auto mass = model::MassPropertiesCalculator::compute(*solid);
-    if (mass.valid) out["volume_mm3"] = round6(mass.volume);
+    // As the part is measured: on its exact counterpart, where it has one.
+    const auto mass = model::MassPropertiesCalculator::compute(*document.exactOrFacetedSolid());
+    if (mass.valid) {
+        out["volume_mm3"] = round6(mass.volume);
+    } else {
+        out["volume_problem"] = mass.problem.empty()
+                                    ? std::string("it encloses nothing that can be measured")
+                                    : mass.problem;
+    }
     return out;
 }
 

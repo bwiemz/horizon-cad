@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "horizon/document/FeatureTree.h"
-#include "horizon/modeling/BoundaryMesh.h"
+#include "horizon/geometry/MeshData.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::doc {
@@ -20,10 +20,12 @@ struct ExactCounterpart {
     /// The imported bodies as read, exact, gathered as the part gathers their facets
     /// (ImportedBodyFeature::exactBody); null when they could not be had, as `note` says.
     std::shared_ptr<const topo::Solid> solid;
-    /// Its mesh, through the read point at model::SolidTessellator::kDisplayTolerance: one
-    /// triangle a polygon, wound outward, each with its face's topoId and exact surface, in face
-    /// order. Set with `solid`, null with it.
-    std::shared_ptr<const std::vector<model::BoundaryPolygon>> mesh;
+    /// Its mesh, through the read point at model::SolidTessellator::kDisplayTolerance, as the
+    /// display draws it (model::SolidTessellator::tessellate): each face's triangles, wound
+    /// outward, their corners shared and shaded by the surface's normals; one faceTags entry a
+    /// face, by its name; its edges but its seams, along their curves. Set with `solid`, null
+    /// with it.
+    std::shared_ptr<const geo::MeshData> mesh;
     /// Why there is no `solid`: "shown from facets: <why>", "exact form not checked: <why>" or
     /// "exact form disagrees with its facets: <exact> vs <faceted>". Empty with a solid.
     std::string note;

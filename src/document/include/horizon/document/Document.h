@@ -17,9 +17,9 @@
 #include "horizon/drafting/Layer.h"
 #include "horizon/math/Units.h"
 
-namespace hz::model {
-struct BoundaryPolygon;
-}  // namespace hz::model
+namespace hz::geo {
+struct MeshData;
+}  // namespace hz::geo
 
 namespace hz::doc {
 
@@ -172,10 +172,22 @@ public:
     /// its imported bodies as read, exact, beside solid(), their faceted copy,
     /// while only imports have made the part. Null when it has none.
     const topo::Solid* exactSolid() const;
-    /// Its mesh, made once at model::SolidTessellator::kDisplayTolerance:
-    /// what the display draws it from without meshing it again. Null with
-    /// exactSolid().
-    std::shared_ptr<const std::vector<model::BoundaryPolygon>> exactMesh() const;
+    /// Its mesh, made once by its build at
+    /// model::SolidTessellator::kDisplayTolerance, as the display draws it:
+    /// what the display draws, and anything else that shows the part, without
+    /// meshing it again. Null with exactSolid().
+    std::shared_ptr<const geo::MeshData> exactMesh() const;
+    /// The solid the part is shown, measured and exported as: its exact
+    /// counterpart where it has one (exactSolid()), else solid(), its faceted
+    /// copy. Every feature, Boolean and reader of ideal labels works on
+    /// solid() whatever this is. Null without a solid.
+    const topo::Solid* exactOrFacetedSolid() const {
+        return exactSolid() != nullptr ? exactSolid() : solid();
+    }
+    /// The mesh the part is shown with: its exact counterpart's (exactMesh()),
+    /// made by its build; else solid() tessellated now at
+    /// model::SolidTessellator::kDisplayTolerance. Null without a solid.
+    std::shared_ptr<const geo::MeshData> exactOrFacetedMesh() const;
     /// Why the part has no exact counterpart where its imports would give it
     /// one (ExactCounterpart::note); empty otherwise.
     const std::string& exactNote() const;

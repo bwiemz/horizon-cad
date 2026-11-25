@@ -2649,7 +2649,7 @@ Details are in the log:
 <context>
     <name>hz::ui::DwgImport</name>
     <message>
-        <location filename="../src/ui/src/DwgImport.cpp" line="+72"/>
+        <location filename="../src/ui/src/DwgImport.cpp" line="+79"/>
         <source>there was not memory enough to read it</source>
         <translation type="unfinished">読み込むためのメモリが足りませんでした</translation>
     </message>
@@ -2699,7 +2699,7 @@ Details are in the log:
         <translation type="unfinished">ファイルを読み込めませんでした (アクセス許可を確認してください)</translation>
     </message>
     <message>
-        <location line="+19"/>
+        <location line="+36"/>
         <source>LibreDWG&apos;s dwg2dxf (%1) could not be started: %2</source>
         <translation type="unfinished">LibreDWG の dwg2dxf (%1) を起動できませんでした: %2</translation>
     </message>
@@ -2716,12 +2716,12 @@ Details are in the log:
         </translation>
     </message>
     <message>
-        <location line="+6"/>
+        <location line="+9"/>
         <source>LibreDWG stopped while reading it: the file may be damaged, or hold something LibreDWG cannot read yet</source>
         <translation type="unfinished">LibreDWG が読み込み中に停止しました。ファイルが破損しているか、LibreDWG がまだ読み込めない内容が含まれている可能性があります</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+24"/>
         <source>LibreDWG read it, but wrote nothing of it</source>
         <translation type="unfinished">LibreDWG は読み込みましたが、何も出力しませんでした</translation>
     </message>
@@ -2882,7 +2882,7 @@ Details are in the log:
         </translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+10"/>
         <source>%1 export writes a part&apos;s body; this document has none</source>
         <translation type="unfinished">%1 エクスポートは部品のボディを書き出します。このドキュメントにはボディがありません</translation>
     </message>
@@ -2916,8 +2916,8 @@ Details are in the log:
         <location line="-18"/>
         <location line="+28"/>
         <location line="+52"/>
-        <location line="+17"/>
         <location line="+18"/>
+        <location line="+17"/>
         <location line="+34"/>
         <location line="+134"/>
         <source>Could not export</source>
@@ -3526,7 +3526,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+458"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+466"/>
         <source>&amp;File</source>
         <translation>ファイル(&amp;F)</translation>
     </message>
@@ -3562,12 +3562,12 @@ begin building your part.</source>
         <translation type="unfinished">%1 個のファセットからなる曲面 (中心 %2)</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-286"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-294"/>
         <source>Close %1</source>
         <translation type="unfinished">%1 を閉じる</translation>
     </message>
     <message>
-        <location line="+900"/>
+        <location line="+908"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -3789,12 +3789,12 @@ begin building your part.</source>
         <location filename="../src/ui/src/MainWindow.cpp" line="-850"/>
         <location line="+1"/>
         <location line="+44"/>
-        <location line="+1228"/>
+        <location line="+1236"/>
         <source>Drawing 1</source>
         <translation type="unfinished">図面 1</translation>
     </message>
     <message>
-        <location line="-1174"/>
+        <location line="-1182"/>
         <source>Command Palette…</source>
         <translation type="unfinished">コマンド パレット…</translation>
     </message>
@@ -4755,12 +4755,12 @@ begin building your part.</source>
     </message>
     <message>
         <location line="+1"/>
-        <location line="+211"/>
+        <location line="+219"/>
         <source>Select</source>
         <translation type="unfinished">選択</translation>
     </message>
     <message>
-        <location line="-208"/>
+        <location line="-216"/>
         <source>Fit All</source>
         <translation type="unfinished">全体表示</translation>
     </message>
@@ -4839,6 +4839,7 @@ begin building your part.</source>
     <message>
         <location line="+3"/>
         <location line="+9"/>
+        <location line="+0"/>
         <location line="+13"/>
         <location line="+66"/>
         <source>Modify</source>
@@ -4959,7 +4960,7 @@ begin building your part.</source>
         <translation type="unfinished">展開図</translation>
     </message>
     <message>
-        <location line="+1040"/>
+        <location line="+1068"/>
         <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">サポートされているすべてのファイル (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD 図面 (*.hcad);;Horizon 部品 (*.hzpart);;Horizon アセンブリ (*.hzasm);;Horizon 図面シート (*.hzdwg);;DXF ファイル (*.dxf);;DWG ファイル (*.dwg);;すべてのファイル (*)</translation>
     </message>
@@ -4981,7 +4982,23 @@ begin building your part.</source>
         <translation type="unfinished">ズームする対象が選択されていません。全体表示 (F) ですべてを表示します</translation>
     </message>
     <message>
-        <location line="+679"/>
+        <location line="+608"/>
+        <source>The part&apos;s mass properties could not be worked out: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+49"/>
+        <source>Exact (integrated on its faces as they were imported):
+</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>exact</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+35"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -5025,12 +5042,17 @@ Its error is not estimated: it was measured once, not refined.</source>
 誤差は推定されていません: 細分化せず一度だけ測定しました。</translation>
     </message>
     <message>
-        <location line="-2645"/>
+        <location line="-2687"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="-893"/>
+        <source>It could not be worked out: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+894"/>
         <source>Angular</source>
         <translation type="unfinished">角度</translation>
     </message>
@@ -5248,19 +5270,19 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+89"/>
+        <location line="+97"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1063"/>
+        <location line="+1083"/>
         <location line="+502"/>
-        <location line="+936"/>
-        <location line="+601"/>
+        <location line="+949"/>
+        <location line="+600"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-3185"/>
+        <location line="-3225"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -5270,7 +5292,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">バックグラウンドで実行中の処理を停止します</translation>
     </message>
     <message>
-        <location line="+49"/>
+        <location line="+57"/>
         <source>%1 on</source>
         <translation type="unfinished">%1 オン</translation>
     </message>
@@ -5281,17 +5303,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2833"/>
+        <location line="+2865"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-2827"/>
+        <location line="-2859"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
     <message>
-        <location line="+377"/>
+        <location line="+397"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (復元)</translation>
     </message>
@@ -5865,7 +5887,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+763"/>
+        <location line="+775"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
@@ -5875,7 +5897,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-739"/>
+        <location line="-751"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">アセンブリにはスケッチがありません。部品でスケッチしてください</translation>
     </message>
@@ -6118,12 +6140,12 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">材質:</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+15"/>
         <source>The part&apos;s mass properties could not be worked out</source>
         <translation type="unfinished">部品の質量特性を計算できませんでした</translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+24"/>
         <source>Volume: %1 %2
 Surface area: %3 %4
 Centre of mass: %5 %6</source>
@@ -6164,7 +6186,7 @@ Mass: %1 g</source>
 </translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+22"/>
         <source>
 
 Every face is flat, so the part is exactly as modelled.
@@ -6206,13 +6228,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">理想形状</translation>
     </message>
     <message>
-        <location line="+10"/>
-        <location line="+54"/>
+        <location line="-3583"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">計算できませんでした。</translation>
     </message>
     <message>
-        <location line="-50"/>
+        <location line="+3596"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">質量特性は既に計測中です</translation>
     </message>
@@ -6237,7 +6258,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">計算できませんでした: %1</translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+9"/>
         <source>Section Plane</source>
         <translation type="unfinished">切断面</translation>
     </message>
@@ -6388,7 +6409,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-3201"/>
+        <location line="-3241"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>
@@ -6399,7 +6420,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">直線寸法</translation>
     </message>
     <message>
-        <location line="+202"/>
+        <location line="+210"/>
         <source>1 selected</source>
         <translation>1 個選択</translation>
     </message>

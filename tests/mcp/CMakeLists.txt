@@ -6,9 +6,14 @@ target_link_libraries(hz_mcp_tests
     PRIVATE
         Horizon::MCP
         Horizon::Document
+        Horizon::FileIO
+        Horizon::Modeling
         GTest::gtest
         GTest::gtest_main
 )
+
+# The STEP text the reader's tests write: an imported part's export.
+target_include_directories(hz_mcp_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests/fileio)
 
 include(GoogleTest)
 gtest_discover_tests(hz_mcp_tests)

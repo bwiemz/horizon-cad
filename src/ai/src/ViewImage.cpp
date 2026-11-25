@@ -18,7 +18,6 @@
 #include "horizon/geometry/MeshData.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/Naming.h"
-#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::ai {
@@ -411,12 +410,10 @@ ToolResult viewResult(const std::vector<ViewMesh>& meshes, const json& in, const
 void registerViewTool(ToolRegistry& registry, const doc::Document& document) {
     registry.add({"get_view_image", kViewDescription, viewSchema()}, ToolAccess::Read,
                  [&document](const json& in) {
-                     const topo::Solid* solid = document.solid();
+                     // As the window shows it: its exact counterpart's mesh, where it has one.
                      std::vector<ViewMesh> meshes;
-                     if (solid != nullptr) {
-                         meshes.push_back({std::make_shared<const geo::MeshData>(
-                                               model::SolidTessellator::tessellate(*solid)),
-                                           math::Mat4::identity()});
+                     if (auto mesh = document.exactOrFacetedMesh()) {
+                         meshes.push_back({std::move(mesh), math::Mat4::identity()});
                      }
                      return viewResult(meshes, in,
                                        "The part has no solid yet: there is nothing to see.");

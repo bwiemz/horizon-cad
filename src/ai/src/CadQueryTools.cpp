@@ -461,8 +461,11 @@ const std::map<std::string, double>& densities() {
 }
 
 ToolResult massProperties(const CadContext& context, const json& in) {
-    const topo::Solid* solid = context.document.solid();
+    // Its exact counterpart where it has one (an imported part), integrated on its faces as read;
+    // else its faceted part.
+    const topo::Solid* solid = context.document.exactOrFacetedSolid();
     if (solid == nullptr) return ToolResult::error("The part has no solid yet.");
+    const bool exact = solid == context.document.exactSolid();
     std::vector<std::string> names;
     for (const auto& [name, density] : densities()) names.push_back(name);
     double density = 1000.0;
@@ -476,7 +479,11 @@ ToolResult massProperties(const CadContext& context, const json& in) {
         material = "density " + std::to_string(density) + " kg/m3";
     }
     const auto props = model::MassPropertiesCalculator::compute(*solid);
-    if (!props.valid) return ToolResult::error("The solid could not be measured.");
+    if (!props.valid) {
+        return ToolResult::error(
+            "The solid could not be measured" +
+            (props.problem.empty() ? std::string(".") : ": " + props.problem + "."));
+    }
     const double grams = props.volume * density * 1e-6;  // mm3 -> m3 is 1e-9; kg -> g 1e3
     return ToolResult::ok(json{{"volume_mm3", round6(props.volume)},
                                {"surface_area_mm2", round6(props.surfaceArea)},
@@ -485,9 +492,10 @@ ToolResult massProperties(const CadContext& context, const json& in) {
                                {"material", material},
                                {"mass_g", round6(grams)},
                                {"mass_kg", round6(grams / 1000.0)},
-                               {"note",
-                                "measured on the faceted solid; curved faces are slightly "
-                                "under their true volume"}});
+                               {"note", exact ? "integrated on the part's exact faces, as they "
+                                                "were imported"
+                                              : "measured on the faceted solid; curved faces "
+                                                "are slightly under their true volume"}});
 }
 
 }  // namespace

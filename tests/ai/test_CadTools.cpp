@@ -1,16 +1,24 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "StepTestText.h"
 #include "horizon/ai/CadTools.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/Layer.h"
+#include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/surfaces/Surface.h"
+#include "horizon/math/Units.h"
+#include "horizon/modeling/MassProperties.h"
+#include "horizon/topology/HalfEdge.h"
+#include "horizon/topology/Solid.h"
 
 using namespace hz;
 using ai::ToolRegistry;
@@ -752,6 +760,68 @@ TEST_F(CadToolsTest, MassPropertiesWithMaterial) {
     const json custom = ok("get_mass_properties", {{"density_kg_m3", 1000}});
     EXPECT_NEAR(custom["mass_g"].get<double>(), 1.0, 1e-9);
     fails("get_mass_properties", {{"material", "unobtainium"}});
+}
+
+namespace {
+
+/// The cylinder other systems write (StepTestText.h), read as File > Import > STEP reads a file
+/// that names no unit, in centimetres: radius 10 mm, height 20 mm, about +z; three exact faces.
+std::unique_ptr<topo::Solid> importedCylinder() {
+    io::StepReadOptions inCentimetres;
+    inCentimetres.unknownLengthUnit = math::LengthUnit::Centimetre;
+    auto solids = io::StepFormat::fromString(step_text::externalStyleCylinder(), nullptr, nullptr,
+                                             inCentimetres);
+    EXPECT_EQ(solids.size(), 1u) << io::StepFormat::lastError();
+    return solids.empty() ? nullptr : std::move(solids.front());
+}
+
+}  // namespace
+
+// An imported part is measured on its exact faces (stage 2): pi r^2 h to 1e-9, where its facets,
+// which its features work on, measure short of it.
+TEST_F(CadToolsTest, MassOfAnImportedPartIsExact) {
+    document.setType(doc::DocumentType::Part);
+    document.featureTree().addFeature(std::make_unique<doc::ImportedBodyFeature>(
+        std::shared_ptr<const topo::Solid>(importedCylinder()), "cylinder.step"));
+    ASSERT_TRUE(document.rebuildModel()) << document.lastBuildMessage();
+    ASSERT_NE(document.exactSolid(), nullptr) << document.exactNote();
+    const double exact = kPi * 10.0 * 10.0 * 20.0;
+    const double faceted = model::MassPropertiesCalculator::compute(*document.solid()).volume;
+    ASSERT_GT(std::abs(faceted - exact), 1e-6 * exact) << "its facets are not the cylinder";
+
+    const json mass = ok("get_mass_properties");
+    EXPECT_NEAR(mass["volume_mm3"].get<double>(), exact, 1e-9 * exact) << mass.dump();
+    EXPECT_NEAR(mass["surface_area_mm2"].get<double>(), 2.0 * kPi * 10.0 * (10.0 + 20.0),
+                1e-9 * exact)
+        << mass.dump();
+    EXPECT_NEAR(mass["center_of_mass"][2].get<double>(), 10.0, 1e-9) << mass.dump();
+    EXPECT_EQ(mass["note"].get<std::string>().find("faceted"), std::string::npos) << mass.dump();
+    EXPECT_NEAR(volume(), exact, 1e-9 * exact) << "get_document_info's volume";
+}
+
+// A solid whose mass cannot be worked out says why, to the assistant as to the user: here an
+// exact face with no pcurve to integrate along.
+TEST_F(CadToolsTest, AMassThatCannotBeWorkedOutSaysWhy) {
+    auto body = importedCylinder();
+    ASSERT_NE(body, nullptr);
+    for (auto& face : body->faces()) {
+        if (face.exactSurface->kind() == geo::SurfaceKind::Cylinder) {
+            face.outerLoop->halfEdge->pcurve = nullptr;
+        }
+    }
+    const auto said = model::MassPropertiesCalculator::compute(*body);
+    ASSERT_FALSE(said.valid);
+    ASSERT_FALSE(said.problem.empty());
+    document.setType(doc::DocumentType::Part);
+    document.setSolid(std::move(body));
+
+    const std::string message = fails("get_mass_properties", json::object());
+    EXPECT_NE(message.find(said.problem), std::string::npos) << message;
+    const json info = ok("get_document_info");
+    EXPECT_FALSE(info["solid"].contains("volume_mm3")) << info.dump();
+    EXPECT_NE(info["solid"].value("volume_problem", std::string()).find(said.problem),
+              std::string::npos)
+        << info.dump();
 }
 
 TEST_F(CadToolsTest, DocumentInfoAndALaterFailure) {

@@ -424,7 +424,7 @@ std::shared_ptr<const ExactCounterpart> ExactFollower::make(
             return nullptr;
         }
         std::string problem;
-        auto mesh = model::BoundaryMesh::extractFacePolygons(
+        auto mesh = model::SolidTessellator::tessellate(
             *gathered, model::SolidTessellator::kDisplayTolerance, &problem,
             control != nullptr ? &control->cancel : nullptr);
         if (stopped()) {
@@ -468,7 +468,7 @@ std::shared_ptr<const ExactCounterpart> ExactFollower::make(
             return made;
         }
         // Both, or neither.
-        auto shown = std::make_shared<const std::vector<model::BoundaryPolygon>>(std::move(mesh));
+        auto shown = std::make_shared<const geo::MeshData>(std::move(mesh));
         made->solid = std::shared_ptr<const topo::Solid>(std::move(gathered));
         made->mesh = std::move(shown);
         return made;

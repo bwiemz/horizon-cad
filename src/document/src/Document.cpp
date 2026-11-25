@@ -11,8 +11,10 @@
 #include "ExactCounterpart.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/UndoStack.h"
+#include "horizon/geometry/MeshData.h"
 #include "horizon/math/Expression.h"
 #include "horizon/math/Quantity.h"
+#include "horizon/modeling/SolidTessellator.h"
 
 namespace hz::doc {
 
@@ -137,8 +139,15 @@ const topo::Solid* Document::exactSolid() const {
     return m_exact ? m_exact->solid.get() : nullptr;
 }
 
-std::shared_ptr<const std::vector<model::BoundaryPolygon>> Document::exactMesh() const {
+std::shared_ptr<const geo::MeshData> Document::exactMesh() const {
     return m_exact ? m_exact->mesh : nullptr;
+}
+
+std::shared_ptr<const geo::MeshData> Document::exactOrFacetedMesh() const {
+    if (auto mesh = exactMesh()) return mesh;
+    if (m_solid == nullptr) return nullptr;
+    return std::make_shared<const geo::MeshData>(
+        model::SolidTessellator::tessellate(*m_solid, model::SolidTessellator::kDisplayTolerance));
 }
 
 const std::string& Document::exactNote() const {

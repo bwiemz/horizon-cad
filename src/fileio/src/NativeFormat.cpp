@@ -41,8 +41,8 @@
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/MeshData.h"
 #include "horizon/math/Units.h"
-#include "horizon/modeling/SolidTessellator.h"
 
 using json = nlohmann::json;
 
@@ -1014,9 +1014,11 @@ static json buildDocumentRoot(const doc::Document& doc, bool includeTessellation
 
     // --- Tessellation cache (v16+, parts only) ---
     // Enables lightweight assembly loading: readers can display the part
-    // without replaying the feature tree.
-    if (includeTessellation && doc.solid()) {
-        geo::MeshData mesh = model::SolidTessellator::tessellate(*doc.solid());
+    // without replaying the feature tree. The part as it is shown: its exact
+    // counterpart's mesh, made by its build, where it has one.
+    const auto shown = includeTessellation ? doc.exactOrFacetedMesh() : nullptr;
+    if (shown) {
+        const geo::MeshData& mesh = *shown;
         json cache;
         cache["positions"] = mesh.positions;
         cache["normals"] = mesh.normals;

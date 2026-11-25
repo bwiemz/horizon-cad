@@ -141,16 +141,17 @@ StepSummary summarize(const fs::path& step, const fs::path& work,
         summary.importBuildError = part.lastBuildMessage();
     }
 
-    // Sent out as File ▸ Export ▸ STEP sends it, the part's model (its curved
-    // faces on their surfaces, as designed), and read back. The solids as
-    // read went out before, a path no user takes, a band round a hole
-    // written without the seam other readers need (#184).
+    // Sent out as File ▸ Export ▸ STEP sends it, the part's model: its exact
+    // counterpart, the bodies as read, where it has one (stage 2), else its
+    // faceted copy (its curved faces on their surfaces, as designed); and
+    // read back. The solids as read went out before, a path no user takes, a
+    // band round a hole written without the seam other readers need (#184).
     const fs::path exported = work / "export" / (name + ".step");
     summary.exportPath = exported.string();
     if (!summary.importBuildError.empty() || part.solid() == nullptr) {
         summary.exportError = "not exported: the part does not build";
     } else if (StepFormat::WriteReport report;
-               StepFormat::save(exported.string(), {part.solid()}, {}, &report)) {
+               StepFormat::save(exported.string(), {part.exactOrFacetedSolid()}, {}, &report)) {
         summary.exportFaceted = report.faceted;
         const auto again = StepFormat::load(exported.string());
         summary.reimportedBodies = 0;

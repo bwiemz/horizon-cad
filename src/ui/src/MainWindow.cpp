@@ -176,6 +176,14 @@ void nameCloseButton(QTabBar& bar, int index) {
     }
 }
 
+/// Mass Properties' word for an ideal that could not be measured: with why, where that is known.
+QString notWorkedOut(const model::IdealMassProperties& ideal) {
+    const std::string& why = ideal.properties.problem;
+    return why.empty()
+               ? MainWindow::tr("It could not be worked out.")
+               : MainWindow::tr("It could not be worked out: %1.").arg(QString::fromStdString(why));
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -1218,6 +1226,14 @@ void MainWindow::createStatusBar() {
     m_autosaveWarning->hide();
     sb->addPermanentWidget(m_autosaveWarning);
 
+    // Why the part is shown from its facets, where its imports would give it
+    // its exact faces: what it says first, and all of it under the pointer.
+    m_exactNote = new QLabel(this);
+    m_exactNote->setObjectName(QStringLiteral("exactNote"));
+    m_exactNote->setStyleSheet("QLabel { padding: 0 6px; color: #e0b060; }");
+    m_exactNote->hide();
+    sb->addPermanentWidget(m_exactNote);
+
     // Active tool name.
     m_statusTool = new QLabel(tr("Select"), this);
     m_statusTool->setMinimumWidth(80);
@@ -1564,10 +1580,15 @@ void MainWindow::rebuildScene() {
         if (m_document->solid()) {
             DocTab* tab = activeTab();
             if (tab != nullptr && tab->document != m_document) tab = nullptr;
-            std::shared_ptr<const geo::MeshData> mesh;
-            if (tab != nullptr && tab->mesh && tab->meshBuild == m_document->builds()) {
+            // An imported part's exact counterpart is drawn with the mesh its
+            // build made, as it is; any other part's faceted solid, meshed
+            // here once a build.
+            std::shared_ptr<const geo::MeshData> mesh = m_document->exactMesh();
+            const bool meshed =
+                tab != nullptr && tab->mesh && tab->meshBuild == m_document->builds();
+            if (!mesh && meshed) {
                 mesh = tab->mesh;
-            } else {
+            } else if (!mesh) {
                 mesh = std::make_shared<const geo::MeshData>(model::SolidTessellator::tessellate(
                     *m_document->solid(), model::SolidTessellator::kDisplayTolerance));
                 ++m_tessellations;
@@ -1577,7 +1598,7 @@ void MainWindow::rebuildScene() {
                 }
             }
             auto node = std::make_shared<render::SceneNode>("FeatureTree Result");
-            node->shareMesh(mesh);  // the tab's, not a copy
+            node->shareMesh(mesh);  // the build's or the tab's, not a copy
             // While a sketch is edited the view works in its frame.
             if (const auto& sketch = m_document->editedSketch()) {
                 node->setLocalTransform(sketch->plane().worldToLocalMatrix());
@@ -1586,8 +1607,23 @@ void MainWindow::rebuildScene() {
             m_viewport->sceneGraph().addNode(node);
         }
     }
+    updateExactNote();
 
     m_viewport->update();
+}
+
+void MainWindow::updateExactNote() {
+    const std::string note = m_assembly ? std::string() : m_document->exactNote();
+    if (note.empty()) {
+        m_exactNote->hide();
+        return;
+    }
+    // "shown from facets: <why>": its first words, as a sentence begins.
+    QString first = QString::fromStdString(note.substr(0, note.find(": ")));
+    if (!first.isEmpty()) first[0] = first[0].toUpper();
+    m_exactNote->setText(first);
+    m_exactNote->setToolTip(QString::fromStdString(note));
+    m_exactNote->show();
 }
 
 void MainWindow::refreshAllPanels() {
@@ -3605,9 +3641,16 @@ void MainWindow::onMassProperties() {
     const QString& materialName = chosen.first;
     const std::optional<model::Material>& material = chosen.second;
     const model::Material* density = material ? &*material : nullptr;
-    const auto modelled = model::MassPropertiesCalculator::compute(*solid, density);
+    // An imported part's exact counterpart is measured, integrated on its
+    // faces as read; any other part as modelled, and ideally below.
+    const topo::Solid* exact = m_document->exactSolid();
+    const auto modelled =
+        model::MassPropertiesCalculator::compute(exact ? *exact : *solid, density);
     if (!modelled.valid) {
-        statusBar()->showMessage(tr("The part's mass properties could not be worked out"));
+        statusBar()->showMessage(modelled.problem.empty()
+                                     ? tr("The part's mass properties could not be worked out")
+                                     : tr("The part's mass properties could not be worked out: %1")
+                                           .arg(QString::fromStdString(modelled.problem)));
         return;
     }
 
@@ -3652,6 +3695,13 @@ void MainWindow::onMassProperties() {
     const QString header =
         weighed ? tr("%1: density %2 g/%3\n\n").arg(materialName, n(modelled.density / 1000.0), cm3)
                 : QString();
+    if (exact) {
+        QMessageBox::information(
+            this, verb,
+            header + tr("Exact (integrated on its faces as they were imported):\n") +
+                measures(modelled) + QStringLiteral("\n\n") + inertia(modelled, tr("exact")));
+        return;
+    }
 
     // Faces that approximate a curved surface: without any, the part is
     // exactly as modelled.
@@ -3721,9 +3771,8 @@ void MainWindow::onMassProperties() {
     if (!onWorker) {
         const auto ideal = model::MassPropertiesCalculator::computeIdeal(*solid, density);
         QMessageBox::information(this, verb,
-                                 ideal.properties.valid
-                                     ? m_massText(&ideal, {})
-                                     : m_massText(nullptr, tr("It could not be worked out.")));
+                                 ideal.properties.valid ? m_massText(&ideal, {})
+                                                        : m_massText(nullptr, notWorkedOut(ideal)));
         return;
     }
     if (m_massTask) {
@@ -3775,9 +3824,8 @@ void MainWindow::onMassPropertiesFinished() {
         return;
     }
     const auto ideal = task->take();
-    m_massBox->setText(ideal.properties.valid
-                           ? m_massText(&ideal, {})
-                           : m_massText(nullptr, tr("It could not be worked out.")));
+    m_massBox->setText(ideal.properties.valid ? m_massText(&ideal, {})
+                                              : m_massText(nullptr, notWorkedOut(ideal)));
 }
 
 void MainWindow::onSectionPlane() {

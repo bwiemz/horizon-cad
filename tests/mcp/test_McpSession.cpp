@@ -6,10 +6,14 @@
 #include <random>
 #include <string>
 
+#include "StepTestText.h"
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/fileio/StepFormat.h"
+#include "horizon/math/Units.h"
 #include "horizon/mcp/McpSession.h"
+#include "horizon/modeling/MassProperties.h"
 
 namespace fs = std::filesystem;
 using hz::ai::ToolResult;
@@ -112,6 +116,32 @@ TEST_F(McpSessionTest, OpenAndNewTakeOverAfterTheCall) {
     EXPECT_TRUE(session.path().empty());
     session.applyPending();  // nothing pending: nothing changes
     EXPECT_EQ(session.document().type(), hz::doc::DocumentType::Drawing);
+}
+
+// An imported part goes out as its exact faces (stage 2): its side as the CYLINDRICAL_SURFACE
+// it was read as, not its facets, and back in, the cylinder's volume to 1e-9.
+TEST_F(McpSessionTest, ExportsAnImportedPartsExactFaces) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto solids = hz::io::StepFormat::fromString(hz::step_text::externalStyleCylinder(), nullptr,
+                                                 nullptr, inMillimetres);
+    ASSERT_EQ(solids.size(), 1u) << hz::io::StepFormat::lastError();
+    McpSession session(true, dir);
+    hz::doc::Document& part = session.document();
+    part.featureTree().addFeature(std::make_unique<hz::doc::ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(solids.front())), "cylinder.step"));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+
+    const std::string path = (dir / "cylinder.step").string();
+    ok(session, "export_document", {{"path", path}});
+    std::ifstream in(path);
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_NE(text.find("CYLINDRICAL_SURFACE"), std::string::npos);
+    const auto back = hz::io::StepFormat::load(path);
+    ASSERT_EQ(back.size(), 1u) << hz::io::StepFormat::lastError();
+    const double volume = hz::model::MassPropertiesCalculator::compute(*back.front()).volume;
+    EXPECT_NEAR(volume, 2.0 * 3.14159265358979323846, 2e-9 * 3.14159265358979323846);
 }
 
 TEST_F(McpSessionTest, BadFilesAreErrors) {
