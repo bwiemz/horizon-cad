@@ -25,7 +25,10 @@ namespace {
 using detail::angleBetween;
 using detail::distanceToSegment;
 using detail::EdgeSamples;
+using detail::inPoleDisc;
+using detail::Join;
 using detail::Plan;
+using detail::Pole;
 using detail::Segment;
 using detail::Spacing;
 using math::Vec2;
@@ -39,7 +42,6 @@ using topo::HalfEdge;
 constexpr int kRefineRounds = 256;
 constexpr double kKeepAway = 0.5;    // grid points nearer the boundary (in spacings) go
 constexpr int kBoundaryRounds = 32;  // rounds of halving edges that faces ask to have halved
-constexpr int kPoleSamples = 32;     // along a pole, to see that the surface stays at its point
 constexpr std::uint32_t kUnused = std::numeric_limits<std::uint32_t>::max();
 constexpr int kFits = -1;     // a triangle that needs no point
 constexpr int kCentroid = 3;  // one that needs its centroid; 0 to 2 name an edge to split
@@ -88,11 +90,10 @@ struct Boundary {
     std::vector<std::vector<Vec2>> uv;
     std::vector<std::vector<Vec3>> xyz;
     std::vector<std::vector<Segment>> segment;
-    /// Each sample's pole, numbered across the face from 0; kNoPole for a sample on none. A
-    /// stretch's points are the half-edge's end before it, its points between, and the next
-    /// half-edge's start.
+    /// Each sample's pole, by its index in poles; kNoPole for a sample on none. A stretch's points
+    /// are the half-edge's end before it, its points between, and the next half-edge's start.
     std::vector<std::vector<int>> pole;
-    int poles = 0;
+    std::vector<Pole> poles;  // each stretch's point and disc
 };
 
 /// Meshes the faces of a solid from its edges' samples.
@@ -132,19 +133,13 @@ private:
         stretch.clear();
         if (plan == nullptr) return {};
         const Spacing& sp = plan->spacing;
-        const Vec2 d = start - end;
-        // Its length in w, near its length on the surface where the surface does not collapse
-        // along it (and longer where it does). Within the allowance (NaN included) they meet, as
-        // every join off a pole does; the tolerance has no say, or a pole on a face smaller than
-        // it would be taken for a join.
-        if (!(std::hypot(d.x * sp.su, d.y * sp.sv) > allowance)) return {};
-        for (int k = 0; k <= kPoleSamples; ++k) {
-            const Vec2 q = end + d * (static_cast<double>(k) / kPoleSamples);
-            if (!((s.evaluate(q.x, q.y) - vertex).length() <= near)) {
-                return "a loop of the face jumps in (u, v) between two of its edges along a "
-                       "stretch where its surface does not come to a point";
-            }
+        const Join join = detail::joinOf(s, sp, end, start, vertex, allowance, near);
+        if (join == Join::Meets) return {};
+        if (join == Join::Jumps) {
+            return "a loop of the face jumps in (u, v) between two of its edges along a "
+                   "stretch where its surface does not come to a point";
         }
+        const Vec2 d = start - end;
         // A point a grid step along it, or the stretch alone where the grid has no step that way
         // (a degenerate patch that is flat along its collapsed side). Each point makes two
         // triangles: one fanned to the pole, one that vanishes there.
@@ -203,9 +198,8 @@ private:
             std::vector<Vec3> xyz;
             std::vector<Segment> segment;
             std::vector<int> pole;
-            const auto shiftOf = [&poly](std::size_t k) {
-                return poly[k * (topo::kLoopSamples - 1)].shift;
-            };
+            constexpr auto kPer = static_cast<std::size_t>(topo::kLoopSamples - 1);
+            const auto shiftOf = [&poly](std::size_t k) { return poly[k * kPer].shift; };
             int arriving = kNoPole;  // the pole the next half-edge starts on
             for (std::size_t k = 0; k < ring.size(); ++k) {
                 const HalfEdge* h = ring[k];
@@ -219,15 +213,16 @@ private:
                     segment.emplace_back(h->edge, forward ? j : n - 1 - j);
                     pole.push_back(j == 0 ? arriving : kNoPole);
                 }
-                // Where this half-edge's end and the next one's start part in (u, v), a pole.
+                // Where this half-edge's end and the next one's start part in (u, v), a pole: both
+                // as the unwrapped loop has them, as planFace judges them.
                 const std::size_t k1 = (k + 1) % ring.size();
                 const HalfEdge* next = ring[k1];
                 const Vec3& vertex = pts[forward ? n : 0];
                 std::vector<Vec2> stretch;
-                std::string problem = poleStretch(
-                    s, plan, h->pcurve->evaluate(ps[n]) + shiftOf(k),
-                    next->pcurve->evaluate(edges_.parameters(next)->front()) + shiftOf(k1), vertex,
-                    allowances[k], std::max(allowances[k], opt_.chordTolerance), stretch);
+                const double near = std::max(allowances[k], opt_.chordTolerance);
+                std::string problem =
+                    poleStretch(s, plan, poly[k * kPer + kPer - 1].b, poly[k1 * kPer].a, vertex,
+                                allowances[k], near, stretch);
                 if (!problem.empty()) return problem;
                 arriving = kNoPole;
                 if (stretch.empty()) continue;
@@ -238,18 +233,19 @@ private:
                 if (nextStart.x != vertex.x || nextStart.y != vertex.y || nextStart.z != vertex.z) {
                     return "a loop of the face reaches a pole at two different points";
                 }
+                const int id = static_cast<int>(b.poles.size());
                 for (const Vec2& p : stretch) {
                     uv.push_back(p);
                     xyz.push_back(vertex);
                     segment.emplace_back(nullptr, 0);
-                    pole.push_back(b.poles);
+                    pole.push_back(id);
                 }
                 if (k1 == 0) {
-                    pole.front() = b.poles;  // the loop closes on the pole
+                    pole.front() = id;  // the loop closes on the pole
                 } else {
-                    arriving = b.poles;
+                    arriving = id;
                 }
-                ++b.poles;
+                b.poles.push_back({vertex, near});
             }
             b.uv.push_back(std::move(uv));
             b.xyz.push_back(std::move(xyz));
@@ -357,11 +353,11 @@ private:
 
     /// kFits when the triangle's (u, v) centroid, and the midpoints of its edges that are not
     /// boundary segments, map within the chord tolerance of it, and it faces the way the
-    /// surface's du x dv does at its centroid. Otherwise where it needs a point: an edge k (from
-    /// vertex k to k + 1) whose midpoint strays, as the centroid would leave that edge in place,
-    /// or kCentroid.
+    /// surface's du x dv does at its centroid (or lies in the disc of one of @p poles, where the
+    /// surface's normal is noise). Otherwise where it needs a point: an edge k (from vertex k to
+    /// k + 1) whose midpoint strays, as the centroid would leave that edge in place, or kCentroid.
     int misfit(const geo::Surface& s, const std::array<Vec2, 3>& uv, const std::array<Vec3, 3>& p,
-               const std::array<bool, 3>& onBoundary) const {
+               const std::array<bool, 3>& onBoundary, const std::vector<Pole>& poles) const {
         const Vec3 n = (p[1] - p[0]).cross(p[2] - p[0]);
         const double ln = n.length();
         if (!(ln > 0.0)) return kCentroid;
@@ -377,7 +373,8 @@ private:
         const Vec2 c = (uv[0] + uv[1] + uv[2]) / 3.0;
         if (!near(c)) return kCentroid;
         const Vec3 sn = s.normal(c.x, c.y);  // zero at a pole or apex: nothing to keep to
-        return sn.lengthSquared() == 0.0 || n.dot(sn) > 0.0 ? kFits : kCentroid;
+        if (sn.lengthSquared() == 0.0 || n.dot(sn) > 0.0) return kFits;
+        return inPoleDisc(poles, p.data(), p.size()) ? kFits : kCentroid;
     }
 
     /// Triangulates the face's region, refining until every triangle fits, into @p out; or
@@ -435,22 +432,40 @@ private:
         // nor kept, and the triangles either side of it meet across it in the mesh.
         std::vector<std::uint32_t> same(t.points.size());
         std::iota(same.begin(), same.end(), 0U);
-        {
-            std::vector<std::uint32_t> first(static_cast<std::size_t>(b.poles), kUnused);
-            for (std::size_t i = 0; i < boundaryCount; ++i) {
-                if (poles[i] == kNoPole) continue;
-                std::uint32_t& at = first[static_cast<std::size_t>(poles[i])];
-                if (at == kUnused) at = t.boundaryVertex[i];
-                same[t.boundaryVertex[i]] = at;
-            }
+        std::vector<std::uint32_t> first(b.poles.size(), kUnused);  // each pole's one point
+        for (std::size_t i = 0; i < boundaryCount; ++i) {
+            if (poles[i] == kNoPole) continue;
+            std::uint32_t& at = first[static_cast<std::size_t>(poles[i])];
+            if (at == kUnused) at = t.boundaryVertex[i];
+            same[t.boundaryVertex[i]] = at;
         }
-        const bool poled = b.poles > 0;  // a face with no pole pays for none
+        const bool poled = !b.poles.empty();  // a face with no pole pays for none
         const auto vanishes = [&same](const std::array<std::uint32_t, 3>& tri) {
             return same[tri[0]] == same[tri[1]] || same[tri[1]] == same[tri[2]] ||
                    same[tri[2]] == same[tri[0]];
         };
         std::vector<Vec2> uv(uvs);
         std::vector<Vec3> xyz(xyzs);
+        // Below the model's resolution the solid's geometry is noise: a side shorter than it that
+        // would be split (or a boundary segment halved), or a triangle with all its sides so
+        // that would take its centroid, never will be refined to fit. The face fails there, at
+        // once, rather than refine towards whatever it is (a degeneracy within tolerance) until
+        // the triangle cap.
+        // Shorter than it along each axis: plain arithmetic, as it is asked of every triangle
+        // that needs a point.
+        const double floor = edges_.tolerance().linear;
+        const auto shortSide = [&xyz, floor](std::uint32_t a, std::uint32_t c) {
+            const Vec3& p = xyz[a];
+            const Vec3& q = xyz[c];
+            return !(std::fabs(p.x - q.x) >= floor || std::fabs(p.y - q.y) >= floor ||
+                     std::fabs(p.z - q.z) >= floor);
+        };
+        const char* const kBelowFloor = "refining the face would go below the model's resolution";
+        // Whether a triangle lies in a pole's disc, where no normal is judged.
+        const auto inDisc = [&](const std::array<std::uint32_t, 3>& tri) {
+            const std::array<Vec3, 3> q = {xyz[tri[0]], xyz[tri[1]], xyz[tri[2]]};
+            return inPoleDisc(b.poles, q.data(), q.size());
+        };
         // Triangles found to fit. A triangle's verdict depends on its vertices alone (they fix
         // which of its edges are boundary segments), so one that refinement leaves in place is
         // not measured again; the points each round adds are the same.
@@ -484,14 +499,21 @@ private:
                 for (std::size_t k = 0; k < 3; ++k) {
                     onBoundary[k] = walls.count(edgeKey(tri[k], tri[(k + 1) % 3])) != 0;
                 }
-                const int m = misfit(s, tuv, txyz, onBoundary);
+                const int m = misfit(s, tuv, txyz, onBoundary, b.poles);
                 if (m == kFits) {
                     fits.insert(key);
-                } else if (m == kCentroid) {
+                    continue;
+                }
+                if (m == kCentroid) {
+                    if (shortSide(tri[0], tri[1]) && shortSide(tri[1], tri[2]) &&
+                        shortSide(tri[2], tri[0])) {
+                        return kBelowFloor;
+                    }
                     added.push_back((t.points[tri[0]] + t.points[tri[1]] + t.points[tri[2]]) / 3.0);
-                } else if (m != kFits) {
+                } else {
                     const std::uint32_t a = tri[static_cast<std::size_t>(m)];
                     const std::uint32_t b = tri[static_cast<std::size_t>(m + 1) % 3];
+                    if (shortSide(a, b)) return kBelowFloor;
                     if (split.insert(edgeKey(a, b)).second) {
                         added.push_back((t.points[a] + t.points[b]) * 0.5);
                     }
@@ -522,7 +544,8 @@ private:
                     const auto [other, first] =
                         sides.emplace(poled ? edgeKey(same[a], same[c]) : key, i);
                     if (!first &&
-                        angleBetween(normals[other->second], normals[i]) > opt_.maxAngle) {
+                        angleBetween(normals[other->second], normals[i]) > opt_.maxAngle &&
+                        !(poled && (inDisc(tri) || inDisc(t.triangles[other->second])))) {
                         turned[other->second] = turned[i] = true;
                     }
                 }
@@ -539,6 +562,10 @@ private:
                         pick = edgeKey(tri[k], tri[(k + 1) % 3]);
                     }
                 }
+                if (shortSide(static_cast<std::uint32_t>(pick >> 32),
+                              static_cast<std::uint32_t>(pick & 0xFFFFFFFFULL))) {
+                    return kBelowFloor;
+                }
                 const auto wall = walls.find(pick);
                 if (wall != walls.end()) {
                     // A pole's stretch is no edge's to halve; only a triangle that vanishes
@@ -552,7 +579,7 @@ private:
             }
             if (!halve.empty()) return "the face's boundary is to be halved";
             if (added.empty()) {
-                emit(f, t, same, uv, xyz, out);
+                emit(f, t, same, first, uv, xyz, out);
                 return {};
             }
             if (round == kRefineRounds) return "refining the face did not meet the tolerance";
@@ -563,11 +590,11 @@ private:
     }
 
     /// The triangles' vertices, compacted, with the surface's outward normals; triangles wound
-    /// outward. Each point is taken as @p same has it, so a pole is one vertex, and the
-    /// triangles that vanish there are left out.
-    static void emit(const Face& f, const geo::Triangulation2D& t,
-                     const std::vector<std::uint32_t>& same, const std::vector<Vec2>& uv,
-                     const std::vector<Vec3>& xyz, FaceMesh& out) {
+    /// outward. Each point is taken as @p same has it, so a pole is one vertex (@p poles, each
+    /// pole's point), and the triangles that vanish there are left out.
+    void emit(const Face& f, const geo::Triangulation2D& t, const std::vector<std::uint32_t>& same,
+              const std::vector<std::uint32_t>& poles, const std::vector<Vec2>& uv,
+              const std::vector<Vec3>& xyz, FaceMesh& out) const {
         const geo::Surface& s = *f.exactSurface;
         const double sign = f.reversed ? -1.0 : 1.0;
         std::vector<std::uint32_t> index(t.points.size(), kUnused);
@@ -587,9 +614,10 @@ private:
             if (f.reversed) std::swap(v[1], v[2]);
             out.triangles.push_back(v);
         }
-        // Where the surface has no normal (a pole, an apex), the triangles' own.
-        for (std::size_t i = 0; i < out.normals.size(); ++i) {
-            if (out.normals[i].lengthSquared() > 0.0) continue;
+        // Where the surface has no normal (an apex), the triangles' own. So too at a pole whose
+        // surface normal turns more than maxAngle from theirs: in the pole's disc the normal is
+        // noise (a B-spline row that collapses only within tolerance).
+        const auto fan = [&out](std::size_t i) {
             Vec3 sum;
             for (const auto& tri : out.triangles) {
                 if (tri[0] != i && tri[1] != i && tri[2] != i) continue;
@@ -597,7 +625,21 @@ private:
                            .cross(out.points[tri[2]] - out.points[tri[0]]);
             }
             const double len = sum.length();
-            if (len > 0.0) out.normals[i] = sum / len;
+            return len > 0.0 ? sum / len : Vec3{};
+        };
+        for (std::size_t i = 0; i < out.normals.size(); ++i) {
+            if (out.normals[i].lengthSquared() > 0.0) continue;
+            const Vec3 mean = fan(i);
+            if (mean.lengthSquared() > 0.0) out.normals[i] = mean;
+        }
+        for (const std::uint32_t p : poles) {
+            if (p == kUnused || index[p] == kUnused) continue;
+            const std::size_t i = index[p];
+            const Vec3 mean = fan(i);
+            if (mean.lengthSquared() > 0.0 &&
+                !(angleBetween(out.normals[i], mean) <= opt_.maxAngle)) {
+                out.normals[i] = mean;
+            }
         }
     }
 

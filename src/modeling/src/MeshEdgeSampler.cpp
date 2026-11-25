@@ -42,6 +42,7 @@ constexpr double kTall = 1.5;
 // inner side), a cell's diagonal and centroid stray less than its sides, the two curvatures taking
 // from each other: its row's curve may sag this much of the tolerance, not half.
 constexpr double kSaddleSag = 0.7;
+constexpr int kPoleSamples = 32;  // along a pole, to see that the surface stays at its point
 
 std::string num(double x) {
     char buf[32];
@@ -154,6 +155,19 @@ std::vector<double> pcurveParameters(const HalfEdge& h, const geo::Surface& s,
 
 }  // namespace
 
+Join joinOf(const geo::Surface& s, const Spacing& sp, const Vec2& end, const Vec2& start,
+            const Vec3& vertex, double allowance, double near) {
+    const Vec2 d = start - end;
+    // Its length in w, near its length on the surface where the surface does not collapse along it
+    // (and longer where it does).
+    if (!(std::hypot(d.x * sp.su, d.y * sp.sv) > allowance)) return Join::Meets;
+    for (int k = 0; k <= kPoleSamples; ++k) {
+        const Vec2 q = end + d * (static_cast<double>(k) / kPoleSamples);
+        if (!((s.evaluate(q.x, q.y) - vertex).length() <= near)) return Join::Jumps;
+    }
+    return Join::Pole;
+}
+
 void EdgeSampler::sampleEdges() {
     tol_ = topo::exactTolerance(solid_);
     for (const Face& f : solid_.faces()) {
@@ -215,7 +229,7 @@ void EdgeSampler::planFace(const Face& f) {
         poly.empty()) {
         return;
     }
-    Plan p{poly.front().a, poly.front().a, {}};
+    Plan p{poly.front().a, poly.front().a, {}, {}};
     for (const auto& seg : poly) {
         p.lo = {std::min(p.lo.x, seg.a.x), std::min(p.lo.y, seg.a.y)};
         p.hi = {std::max(p.hi.x, seg.a.x), std::max(p.hi.y, seg.a.y)};
@@ -248,6 +262,18 @@ void EdgeSampler::planFace(const Face& f) {
     bottom = bottom || point(p.lo.y);
     top = top || point(p.hi.y);
     p.spacing = spacingOf(s, p.lo, p.hi, band && bottom && top);
+    // The poles the loop runs along, each with its disc, as boundaryOf finds them.
+    constexpr auto kPer = static_cast<std::size_t>(topo::kLoopSamples - 1);
+    for (std::size_t k = 0; k < ring.size(); ++k) {
+        const std::size_t k1 = (k + 1) % ring.size();
+        const topo::Vertex* at = ring[k1]->origin;
+        if (at == nullptr) continue;
+        const double near = std::max(allowances[k], opt_.chordTolerance);
+        if (joinOf(s, p.spacing, poly[k * kPer + kPer - 1].b, poly[k1 * kPer].a, at->point,
+                   allowances[k], near) == Join::Pole) {
+            p.poles.push_back({at->point, near});
+        }
+    }
     plans_[&f] = p;
 }
 
@@ -272,15 +298,23 @@ double EdgeSampler::rowsAlong(const HalfEdge& h) const {
 }
 
 /// True when @p s's normal turns by more than maxAngle from (u, v) @p a through @p c to
-/// @p b. Where the surface has no normal (a pole, an apex) nothing is measured.
-bool EdgeSampler::turns(const geo::Surface& s, const Vec2& a, const Vec2& c, const Vec2& b) const {
+/// @p b. Where the surface has no normal (a pole, an apex), or in the disc of a pole of @p plan's,
+/// nothing is measured.
+bool EdgeSampler::turns(const geo::Surface& s, const Plan* plan, const Vec2& a, const Vec2& c,
+                        const Vec2& b) const {
     const Vec3 na = s.normal(a.x, a.y);
     const Vec3 nc = s.normal(c.x, c.y);
     const Vec3 nb = s.normal(b.x, b.y);
     if (na.lengthSquared() == 0.0 || nc.lengthSquared() == 0.0 || nb.lengthSquared() == 0.0) {
         return false;
     }
-    return angleBetween(na, nc) + angleBetween(nc, nb) > opt_.maxAngle;
+    if (!(angleBetween(na, nc) + angleBetween(nc, nb) > opt_.maxAngle)) return false;
+    if (plan == nullptr || plan->poles.empty()) return true;
+    for (const Vec2& q : {a, c, b}) {
+        const Vec3 at = s.evaluate(q.x, q.y);
+        if (inPoleDisc(plan->poles, &at, 1)) return false;
+    }
+    return true;
 }
 
 void EdgeSampler::sampleEdge(const Edge& e, EdgeSamples& es) {
@@ -323,12 +357,16 @@ void EdgeSampler::suitEdge(const Edge& e, EdgeSamples& es) {
         // split its boundary, so the edge must be fine enough for both.
         std::vector<bool> halve(es.t.size() - 1, false);
         bool any = false;
+        // Below the model's resolution the solid's geometry is noise: a segment that would be
+        // halved there never will suit its faces, however many rounds are spent on it.
+        bool belowResolution = false;
         for (const HalfEdge* h : {fwd, static_cast<const HalfEdge*>(fwd->twin)}) {
             if (!h->alive || !h->face || !h->face->exactSurface || !h->pcurve) continue;
             const bool forward = h == fwd;
             std::vector<Vec3> pts = es.points;
             if (!forward) std::reverse(pts.begin(), pts.end());
             const geo::Surface& s = *h->face->exactSurface;
+            const Plan* facePlan = plan(h->face);
             std::vector<double> ps = pcurveParameters(*h, s, pts);
             for (std::size_t k = 0; k + 1 < pts.size(); ++k) {
                 const Vec2 a = h->pcurve->evaluate(ps[k]);
@@ -336,9 +374,11 @@ void EdgeSampler::suitEdge(const Edge& e, EdgeSamples& es) {
                 const Vec2 c = h->pcurve->evaluate(0.5 * (ps[k] + ps[k + 1]));
                 const Vec2 m = (a + b) * 0.5;
                 if (distanceToSegment(s.evaluate(m.x, m.y), pts[k], pts[k + 1]) > sideTolerance() ||
-                    turns(s, a, c, b)) {
+                    turns(s, facePlan, a, c, b)) {
                     halve[forward ? k : pts.size() - 2 - k] = true;
                     any = true;
+                    belowResolution =
+                        belowResolution || !((pts[k + 1] - pts[k]).length() >= tol_.linear);
                 }
             }
             params_[h] = std::move(ps);
@@ -346,6 +386,12 @@ void EdgeSampler::suitEdge(const Edge& e, EdgeSamples& es) {
         if (!any) return;
         if (round == kEdgeRounds) {
             es.problem = "an edge cannot be sampled within the tolerance on its faces";
+            return;
+        }
+        if (belowResolution) {
+            es.problem =
+                "an edge cannot be sampled within the tolerance on its faces above the model's "
+                "resolution";
             return;
         }
         std::vector<double> t;

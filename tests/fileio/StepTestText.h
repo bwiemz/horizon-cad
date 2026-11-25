@@ -448,8 +448,11 @@ inline std::string seamedHemisphere(const std::string& order = "#20,#21,#22",
 /// A sphere of radius @p radius about the origin as a rational B-spline, as other systems write
 /// one: entity #5, biquadratic, nine control points round z (from +x) by five from the south pole
 /// to the north (control points #200 on). Its first and last rows of five each collapse to a
-/// pole. u runs over [0, 1] round z, v over [0, 1] from pole to pole.
-inline std::string splineSphereSurface(double radius) {
+/// pole. u runs over [0, 1] round z, v over [0, 1] from pole to pole. With @p northSpread, the
+/// north pole's row comes together only within it: its seven points off the seam move by it, in
+/// turn up and down the axis (or, with @p alongAxis false, either way along x).
+inline std::string splineSphereSurface(double radius, double northSpread = 0.0,
+                                       bool alongAxis = true) {
     const double w = std::sqrt(0.5);
     const double xs[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
     const double ys[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
@@ -465,9 +468,14 @@ inline std::string splineSphereSurface(double radius) {
         net += i == 0 ? "(" : ",(";
         weights += i == 0 ? "(" : ",(";
         for (int j = 0; j < 5; ++j) {
-            text += "#" + std::to_string(id) + " = CARTESIAN_POINT('',(" +
-                    real(radius * xs[i] * rs[j]) + "," + real(radius * ys[i] * rs[j]) + "," +
-                    real(radius * zs[j]) + "));\n";
+            const double spread =
+                j == 4 && i >= 1 && i <= 7 ? (i % 2 == 0 ? northSpread : -northSpread) : 0.0;
+            // Only a row that moves is written differently: 0 added to -0 would write "0.".
+            double x = radius * xs[i] * rs[j];
+            double z = radius * zs[j];
+            if (spread != 0.0) (alongAxis ? z : x) += spread;
+            text += "#" + std::to_string(id) + " = CARTESIAN_POINT('',(" + real(x) + "," +
+                    real(radius * ys[i] * rs[j]) + "," + real(z) + "));\n";
             net += std::string(j == 0 ? "#" : ",#") + std::to_string(id);
             weights += std::string(j == 0 ? "" : ",") + real(wu * wv[j]);
             ++id;

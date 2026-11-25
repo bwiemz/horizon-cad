@@ -108,17 +108,17 @@ bool collapses(const geo::Surface& s, const Vec2& uv, bool alongU) {
     return (alongU ? d.du : d.dv).length() <= 1e-9 * (alongU ? d.dv : d.du).length();
 }
 
+/// Which parameter a vertex at a pole or an apex collapses along: none, u or v.
+enum class Along : std::uint8_t { None, U, V };
+
 /// The (u, v) of a triangle's vertices from their inversions @p uv, moved by whole periods to lie
-/// together; a vertex at a pole or an apex, which inverts to any value of the parameter the
-/// surface collapses along, takes the mean of the other two's.
-std::array<Vec2, 3> triangleUv(const geo::Surface& s, std::array<Vec2, 3> uv) {
-    std::array<bool, 3> poleU{};
-    std::array<bool, 3> poleV{};
+/// together; a vertex at a pole or an apex (@p along), which inverts to any value of the parameter
+/// the surface collapses along, takes the mean of the other two's.
+std::array<Vec2, 3> triangleUv(const geo::Surface& s, std::array<Vec2, 3> uv,
+                               const std::array<Along, 3>& along) {
     std::size_t ref = 3;
-    for (std::size_t k = 0; k < 3; ++k) {
-        poleU[k] = collapses(s, uv[k], true);
-        poleV[k] = collapses(s, uv[k], false);
-        if (ref == 3 && !poleU[k] && !poleV[k]) ref = k;
+    for (std::size_t k = 0; k < 3 && ref == 3; ++k) {
+        if (along[k] == Along::None) ref = k;
     }
     if (ref == 3) ref = 0;
     for (std::size_t k = 0; k < 3; ++k) {
@@ -127,8 +127,8 @@ std::array<Vec2, 3> triangleUv(const geo::Surface& s, std::array<Vec2, 3> uv) {
     for (std::size_t k = 0; k < 3; ++k) {
         const Vec2& a = uv[(k + 1) % 3];
         const Vec2& b = uv[(k + 2) % 3];
-        if (poleU[k]) uv[k].x = 0.5 * (a.x + b.x);
-        if (poleV[k]) uv[k].y = 0.5 * (a.y + b.y);
+        if (along[k] == Along::U) uv[k].x = 0.5 * (a.x + b.x);
+        if (along[k] == Along::V) uv[k].y = 0.5 * (a.y + b.y);
     }
     return uv;
 }
@@ -138,11 +138,13 @@ std::array<Vec2, 3> triangleUv(const geo::Surface& s, std::array<Vec2, 3> uv) {
 /// shared edges and seams alike; once only on an open sheet, whose edges have no second face);
 /// within the chord tolerance (plus @p slack for the inversion the check itself does) at each
 /// triangle's (u, v) centroid and edge midpoints; every triangle facing the way the surface's
-/// outward normal does at its centroid; normals the surface's, outward, and where the surface
-/// has none (an apex) of unit length and facing the way each triangle there does.
+/// outward normal does at its centroid; normals the surface's, outward. At a pole or an apex
+/// (where the surface collapses, or one of @p poles: a B-spline's row may come together only
+/// within tolerance, its normal there noise) a vertex's (u, v) is its neighbours', and its normal
+/// is of unit length and faces the way each triangle there does.
 Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshes,
                     const MeshOptions& options, double slack, bool closed = true,
-                    const Inverse& inverse = {}) {
+                    const Inverse& inverse = {}, const std::vector<Vec3>& poles = {}) {
     Summary out;
     std::size_t live = 0;
     for (const auto& f : solid.faces()) live += f.alive ? 1 : 0;
@@ -159,6 +161,20 @@ Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshe
         std::vector<Vec2> uvs;
         uvs.reserve(m.points.size());
         for (const Vec3& q : m.points) uvs.push_back(inverse ? inverse(s, q) : s.invert(q));
+        std::vector<Along> along(m.points.size(), Along::None);
+        for (std::size_t i = 0; i < m.points.size(); ++i) {
+            const bool given = std::any_of(poles.begin(), poles.end(), [&](const Vec3& p) {
+                return (m.points[i] - p).length() <= slack;
+            });
+            if (collapses(s, uvs[i], true)) {
+                along[i] = Along::U;
+            } else if (collapses(s, uvs[i], false)) {
+                along[i] = Along::V;
+            } else if (given) {
+                const auto d = s.derivatives(uvs[i].x, uvs[i].y);
+                along[i] = d.du.length() <= d.dv.length() ? Along::U : Along::V;
+            }
+        }
 
         std::map<std::pair<std::uint32_t, std::uint32_t>, int> directed;
         double worst = 0.0;
@@ -172,7 +188,8 @@ Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshe
             const Vec3& a = m.points[t[0]];
             const Vec3& b = m.points[t[1]];
             const Vec3& c = m.points[t[2]];
-            const auto [ua, ub, uc] = triangleUv(s, {uvs[t[0]], uvs[t[1]], uvs[t[2]]});
+            const auto [ua, ub, uc] = triangleUv(s, {uvs[t[0]], uvs[t[1]], uvs[t[2]]},
+                                                 {along[t[0]], along[t[1]], along[t[2]]});
             const Vec2 centroid = (ua + ub + uc) / 3.0;
             for (const Vec2& q : {centroid, (ua + ub) * 0.5, (ub + uc) * 0.5, (uc + ua) * 0.5}) {
                 worst = std::max(worst, distanceToTriangle(s.evaluate(q.x, q.y), a, b, c));
@@ -195,16 +212,16 @@ Summary checkMeshes(const topo::Solid& solid, const std::vector<FaceMesh>& meshe
         for (std::size_t i = 0; i < m.points.size(); ++i) {
             EXPECT_LT((s.evaluate(uvs[i].x, uvs[i].y) - m.points[i]).length(), slack) << tag;
             const Vec3 sn = s.normal(uvs[i].x, uvs[i].y);
-            if (sn.lengthSquared() > 0.0) {
+            if (sn.lengthSquared() > 0.0 && along[i] == Along::None) {
                 EXPECT_NEAR(m.normals[i].dot(sn * sign), 1.0, 1e-9) << tag;
                 continue;
             }
-            EXPECT_NEAR(m.normals[i].length(), 1.0, 1e-9) << tag << ": an apex's normal";
+            EXPECT_NEAR(m.normals[i].length(), 1.0, 1e-9) << tag << ": a pole's normal";
             for (const auto& t : m.triangles) {
                 if (t[0] != i && t[1] != i && t[2] != i) continue;
                 const Vec3 n =
                     (m.points[t[1]] - m.points[t[0]]).cross(m.points[t[2]] - m.points[t[0]]);
-                EXPECT_GT(m.normals[i].dot(n), 0.0) << tag << ": an apex's normal";
+                EXPECT_GT(m.normals[i].dot(n), 0.0) << tag << ": a pole's normal";
             }
         }
     }
@@ -1771,7 +1788,7 @@ void expectMeshesToItsPoints(const topo::Solid& solid, double volume,
         const auto meshes = TrimmedFaceMesher::meshSolid(solid, options);
         const std::chrono::duration<double, std::milli> took =
             std::chrono::steady_clock::now() - start;
-        const Summary s = checkMeshes(solid, meshes, options, slackFor(size), true, inverse);
+        const Summary s = checkMeshes(solid, meshes, options, slackFor(size), true, inverse, poles);
         expectPolesFanned(meshes, poles, size);
         EXPECT_NEAR(s.volume, volume, totalArea(s) * options.chordTolerance) << relative;
         if (timed && relative == 1e-4) {
@@ -1985,6 +2002,51 @@ TEST(TrimmedFaceMesher, ASplineSphereMeshesWhereItsRowsCollapse) {
         splineSphereInverse());
 }
 
+// Ruling 36, within tolerance: the B-spline hemisphere whose last row of control points comes
+// together only within a spread of 3e-8 or 3e-7, its points moved in turn up and down the axis
+// (the surface's normal near the pole then turns every way) or along x. The pole is still one
+// vertex fanned to its neighbours. In its disc no normal is judged: refinement once chased the
+// ripple towards the pole, and the sampler halved the seam towards it, until the triangle cap
+// (13-28 s a face). At the tolerances it ran away at, it meshes within the brief's time limit.
+TEST(TrimmedFaceMesher, ASplinePoleThatComesTogetherOnlyWithinToleranceMeshes) {
+    const struct {
+        const char* name;
+        double spread;
+        bool alongAxis;
+    } cases[] = {{"3e-8 along the axis", 3e-8, true},
+                 {"3e-7 along the axis", 3e-7, true},
+                 {"3e-7 along x", 3e-7, false}};
+    const double hemisphere = 2.0 / 3.0 * math::kPi * 1000.0;
+    for (const auto& c : cases) {
+        SCOPED_TRACE(c.name);
+        const auto cap = readPlaced(step_text::seamedHemisphere(
+            "#20,#21,#22", step_text::splineSphereSurface(10.0, c.spread, c.alongAxis)));
+        ASSERT_NE(cap, nullptr);
+        EXPECT_TRUE(topo::validateExact(*cap, topo::exactTolerance(*cap)).empty());
+        const double size = topo::exactExtent(*cap);
+        const std::vector<Vec3> pole = {placed({0, 0, 10})};
+        for (const double relative : {1e-2, 1e-3, 1e-4}) {
+            MeshOptions options;
+            options.chordTolerance = relative * size;
+            const auto start = std::chrono::steady_clock::now();
+            const auto meshes = TrimmedFaceMesher::meshSolid(*cap, options);
+            const std::chrono::duration<double, std::milli> took =
+                std::chrono::steady_clock::now() - start;
+            const Summary s = checkMeshes(*cap, meshes, options, slackFor(size), true,
+                                          splineSphereInverse(), pole);
+            expectPolesFanned(meshes, pole, size);
+            EXPECT_NEAR(s.volume, hemisphere, totalArea(s) * options.chordTolerance) << relative;
+            if (relative > 1e-4) {
+#if HZ_TIME_LIMITS
+                EXPECT_LT(took.count(), meshingLimit(50.0)) << relative;
+#else
+                (void)took;
+#endif
+            }
+        }
+    }
+}
+
 namespace {
 
 /// The cap round the south pole of the unit sphere below v = -0.3, over three quarters of a turn
@@ -2067,6 +2129,27 @@ private:
     bool standard_;
 };
 
+/// makePolarSlice's face (without its hole) with an edge of its own along the pole, from the
+/// meridian at u = 0 to the one at 3 pi / 2, where its loop otherwise runs along the pole between
+/// edges. The edge's curve is the pole, a point: not a stretch between edges, it is not taken for
+/// a pole, and the triangles beside it are flat in space.
+std::unique_ptr<topo::Solid> makeSliceWithAPoleEdge() {
+    const auto sphere =
+        std::make_shared<geo::Sphere>(geo::Frame::fromAxis({1, 2, 3}, {0.3, -1, 0.4}), 1.0);
+    const double end = 1.5 * math::kPi;
+    const double south = -0.5 * math::kPi;
+    const std::array<Vec2, 4> corner = {{{end, south}, {end, -0.3}, {0, -0.3}, {0, south}}};
+    std::vector<Side> sides;
+    sides.reserve(4);
+    for (std::size_t i = 0; i < 4; ++i) {
+        const Vec2& a = corner[i];
+        const Vec2& b = corner[(i + 1) % 4];
+        sides.push_back(
+            {line(a, b), 0.0, 1.0, std::make_shared<OnSurface>(sphere, a, b), 0.0, 1.0});
+    }
+    return makeOpenFace(sphere, {sides});
+}
+
 /// The block from (0, 0, 0) to (2, 3, 4), its top on a Throwing plane.
 std::unique_ptr<topo::Solid> blockWithAThrowingTop(bool standard) {
     auto block = model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
@@ -2084,8 +2167,10 @@ std::unique_ptr<topo::Solid> blockWithAThrowingTop(bool standard) {
 // Anything the mesher cannot mesh it says why at once, with no triangles, where it once halved a
 // boundary 32 times (about 2 s a face): a loop that jumps between two edges along a stretch of its
 // surface that does not come to a point (a B-spline whose bottom row closes on itself in a loop);
-// an apex that would need more points than the triangle cap; and a surface that throws (a fault
-// in a file's geometry), whatever it throws, which stops the solid and escapes nothing.
+// an apex that would need more points than the triangle cap; a face whose refinement would chase
+// a degeneracy below the model's resolution (an edge of its own along a pole, beside which the
+// triangles are flat in space); and a surface that throws (a fault in a file's geometry),
+// whatever it throws, which stops the solid and escapes nothing.
 TEST(TrimmedFaceMesher, WhatItCannotMeshFailsFast) {
     // A cubic by linear patch: its bottom row runs from the origin round a loop back to it, its
     // top row is open. The face's loop runs up its right side, back along its top, down its left
@@ -2111,6 +2196,7 @@ TEST(TrimmedFaceMesher, WhatItCannotMeshFailsFast) {
     // half the cap: a triangle on each side of each.
     const auto cone = readPlaced(step_text::cone());
     ASSERT_NE(cone, nullptr);
+    const auto poleEdge = makeSliceWithAPoleEdge();
     const auto throwing = blockWithAThrowingTop(true);
     const auto throwingAnything = blockWithAThrowingTop(false);
 
@@ -2129,6 +2215,8 @@ TEST(TrimmedFaceMesher, WhatItCannotMeshFailsFast) {
         {"a jump where the surface does not come to a point", jumps.get(), coarse,
          "does not come to a point"},
         {"an apex past the cap", cone.get(), capped, "pole needs more triangles than the cap"},
+        {"a degeneracy below the model's resolution", poleEdge.get(), coarse,
+         "below the model's resolution"},
         {"a surface that throws", throwing.get(), coarse, "could not be meshed: a fault"},
         {"a surface that throws anything", throwingAnything.get(), coarse,
          "could not be meshed: an unknown fault"},
