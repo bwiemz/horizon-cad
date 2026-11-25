@@ -270,13 +270,14 @@ std::string meshProblem(const topo::Solid& solid) {
     return problem;
 }
 
-/// The volume of @p solid as the read point's mesh measures it. Until Task 7, mass properties of
-/// an exact solid come from that mesh, which is good to about a thousandth here: Task 7
-/// tightens each comparison below to 1e-9.
-double meshVolume(const topo::Solid& solid) {
-    return hz::model::MassPropertiesCalculator::compute(solid).volume;
+/// The volume of @p solid, integrated on its exact faces: a seam laid wrong (a region cut short,
+/// a rim split at the wrong place) shows in it to the integration's 1e-9.
+double exactVolume(const topo::Solid& solid) {
+    const auto props = hz::model::MassPropertiesCalculator::compute(solid);
+    EXPECT_TRUE(props.valid) << props.problem;
+    return props.volume;
 }
-constexpr double kMeshVolumeError = 1e-3;
+constexpr double kExactVolumeError = 1e-9;
 
 /// Every edge's carrier ends at its vertices and lies along its exact curve.
 void expectCarriersOnTheirCurves(const topo::Solid& solid) {
@@ -322,8 +323,7 @@ TEST(SeamInsertion, ABandGetsASeamAndStaysExact) {
     EXPECT_EQ(firstIssue(*solid), "");
     EXPECT_EQ(meshProblem(*solid), "");
     expectCarriersOnTheirCurves(*solid);
-    // Task 7 tightens this to 1e-9 of pi r^2 h.
-    EXPECT_NEAR(meshVolume(*solid), 2.0 * kPi, 2.0 * kPi * kMeshVolumeError);
+    EXPECT_NEAR(exactVolume(*solid), 2.0 * kPi, 2.0 * kPi * kExactVolumeError);
 
     // Its top rim's vertex two radians round: the top rim is split where the seam's line, up
     // from the bottom rim's vertex, crosses it.
@@ -336,7 +336,7 @@ TEST(SeamInsertion, ABandGetsASeamAndStaysExact) {
     EXPECT_EQ(firstIssue(*turned), "");
     EXPECT_EQ(meshProblem(*turned), "");
     expectCarriersOnTheirCurves(*turned);
-    EXPECT_NEAR(meshVolume(*turned), 2.0 * kPi, 2.0 * kPi * kMeshVolumeError);
+    EXPECT_NEAR(exactVolume(*turned), 2.0 * kPi, 2.0 * kPi * kExactVolumeError);
 
     // Its top rim two arcs, the second's vertex on the seam's line: joined there, nothing split.
     const auto arcs = bandWithATwoArcRim();
@@ -350,7 +350,7 @@ TEST(SeamInsertion, ABandGetsASeamAndStaysExact) {
     EXPECT_TRUE(arcs->isValid()) << arcs->validationReport();
     EXPECT_EQ(firstIssue(*arcs), "");
     EXPECT_EQ(meshProblem(*arcs), "");
-    EXPECT_NEAR(meshVolume(*arcs), 2.0 * kPi, 2.0 * kPi * kMeshVolumeError);
+    EXPECT_NEAR(exactVolume(*arcs), 2.0 * kPi, 2.0 * kPi * kExactVolumeError);
 }
 
 namespace {
@@ -403,8 +403,7 @@ TEST(SeamInsertion, LoopsWindingTheSameWayAreSeamed) {
     EXPECT_EQ(meshProblem(*solid), "");
     expectCarriersOnTheirCurves(*solid);
     const double volume = kPi * 1.15 * 1.15 * 7.6;
-    // Task 7 tightens this to 1e-9.
-    EXPECT_NEAR(meshVolume(*solid), volume, volume * kMeshVolumeError);
+    EXPECT_NEAR(exactVolume(*solid), volume, volume * kExactVolumeError);
 
     // The rim left whole, its carrier the whole circle, now runs its edge's way, as the split
     // rim's parts do: the faceted copy samples a closed carrier its own way, and reads the
@@ -483,8 +482,7 @@ TEST(SeamInsertion, ABandWithAHoleIsSeamed) {
     EXPECT_EQ(firstIssue(*solid), "");
     EXPECT_EQ(meshProblem(*solid), "");
     expectCarriersOnTheirCurves(*solid);
-    // Task 7 tightens this to 1e-9.
-    EXPECT_NEAR(meshVolume(*solid), 2.0 * kPi, 2.0 * kPi * kMeshVolumeError);
+    EXPECT_NEAR(exactVolume(*solid), 2.0 * kPi, 2.0 * kPi * kExactVolumeError);
 }
 
 // A face that already has a seam, the exact primitives' cylinder's, is untouched: the same
@@ -646,8 +644,7 @@ TEST(SeamInsertion, EachPeriodicSurfaceIsSeamedAlongItsOwnIsoCurve) {
         EXPECT_EQ(firstIssue(solid), "");
         EXPECT_EQ(meshProblem(solid), "");
         expectCarriersOnTheirCurves(solid);
-        // Task 7 tightens this to 1e-9.
-        EXPECT_NEAR(meshVolume(solid), k.volume, k.volume * kMeshVolumeError);
+        EXPECT_NEAR(exactVolume(solid), k.volume, k.volume * kExactVolumeError);
     }
     // The torus ring's seam runs round through the outer equator, radius 5, where its face is,
     // not the inner; its cylinder is a band too, on the same rims, with a seam of its own.

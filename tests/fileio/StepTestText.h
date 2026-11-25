@@ -1,9 +1,16 @@
 #pragma once
 
 // STEP text for the reader's tests, written by hand as other systems write their solids.
-// Shared by test_StepFormat, test_StepCurved and test_StepExact.
+// Shared by test_StepFormat, test_StepCurved, test_StepExact and test_ExactMass.
 
+#include <cmath>
+#include <iomanip>
+#include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
+
+#include "horizon/math/Vec3.h"
 
 namespace hz::step_text {
 
@@ -272,6 +279,171 @@ inline std::string alibreTube() {
 #24 = CLOSED_SHELL('',(#20,#21,#22,#23));
 #25 = MANIFOLD_SOLID_BREP('tube',#24);
 )");
+}
+
+/// A real as Part-21 writes one: always with its point.
+inline std::string real(double v) {
+    std::ostringstream out;
+    out << std::setprecision(17) << v;
+    std::string s = out.str();
+    if (s.find_first_of(".eE") == std::string::npos) s += ".";
+    return s;
+}
+
+/// externalStyleCylinder() with its side a rational B-spline: the same cylinder, a quadric
+/// written as a B_SPLINE_SURFACE, from (1, 0) round about +z, as nine control points a row.
+inline std::string splineCylinder() {
+    const double w = std::sqrt(0.5);
+    const double xs[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+    const double ys[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+    std::string points;
+    std::string net;
+    std::string weights;
+    int id = 200;
+    for (int i = 0; i < 9; ++i) {
+        const double wi = i % 2 == 1 ? w : 1.0;
+        net += std::string(i == 0 ? "(" : ",(");
+        weights += std::string(i == 0 ? "(" : ",(") + real(wi) + "," + real(wi) + ")";
+        for (int k = 0; k < 2; ++k) {
+            points += "#" + std::to_string(id) + " = CARTESIAN_POINT('',(" + real(xs[i]) + "," +
+                      real(ys[i]) + "," + real(2.0 * k) + "));\n";
+            net += std::string(k == 0 ? "#" : ",#") + std::to_string(id);
+            ++id;
+        }
+        net += ")";
+    }
+    const std::string surface =
+        "#20 = ( BOUNDED_SURFACE() B_SPLINE_SURFACE(2,1,(" + net +
+        "),.UNSPECIFIED.,.T.,.F.,.F.) B_SPLINE_SURFACE_WITH_KNOTS((3,2,2,2,3),(2,2),"
+        "(0.,0.25,0.5,0.75,1.),(0.,1.),.UNSPECIFIED.) GEOMETRIC_REPRESENTATION_ITEM() "
+        "RATIONAL_B_SPLINE_SURFACE((" +
+        weights + ")) REPRESENTATION_ITEM('') SURFACE() );\n";
+    std::string text = externalStyleCylinder();
+    const std::string side = "#20 = CYLINDRICAL_SURFACE('',#19,1.);\n";
+    text.replace(text.find(side), side.size(), points + surface);
+    return text;
+}
+
+/// A Part-21 DATA section written an entity at a time.
+struct Data {
+    std::string text;
+    int next = 1;
+    int add(const std::string& entity) {
+        text += "#" + std::to_string(next) + " = " + entity + ";\n";
+        return next++;
+    }
+    static std::string ref(int id) { return "#" + std::to_string(id); }
+    int point(const math::Vec3& p) {
+        return add("CARTESIAN_POINT('',(" + real(p.x) + "," + real(p.y) + "," + real(p.z) + "))");
+    }
+    int direction(const math::Vec3& d) {
+        return add("DIRECTION('',(" + real(d.x) + "," + real(d.y) + "," + real(d.z) + "))");
+    }
+    int placement(const math::Vec3& origin, const math::Vec3& z, const math::Vec3& x) {
+        const int o = point(origin);
+        const int zd = direction(z);
+        const int xd = direction(x);
+        return add("AXIS2_PLACEMENT_3D(''," + ref(o) + "," + ref(zd) + "," + ref(xd) + ")");
+    }
+    /// A face of @p loop, each of whose edges is (EDGE_CURVE, along it), on @p surface.
+    int face(const std::vector<std::pair<int, bool>>& loop, int surface, bool sameSense = true) {
+        std::string list;
+        for (const auto& [edge, along] : loop) {
+            const int oe =
+                add("ORIENTED_EDGE('',*,*," + ref(edge) + "," + (along ? ".T." : ".F.") + ")");
+            list += (list.empty() ? "" : ",") + ref(oe);
+        }
+        const int edgeLoop = add("EDGE_LOOP('',(" + list + "))");
+        const int bound = add("FACE_OUTER_BOUND(''," + ref(edgeLoop) + ",.T.)");
+        return add("ADVANCED_FACE('',(" + ref(bound) + ")," + ref(surface) + "," +
+                   (sameSense ? ".T." : ".F.") + ")");
+    }
+};
+
+/// The closed shell of a block from (0, 0, 0) to (4, 4, 4) into @p d: six PLANE faces, each loop
+/// counter-clockwise seen from outside. With @p frontFacingIn, the front face's (y = 0) plane
+/// faces into the block while its face still says same_sense .T., as Horizon's own writer wrote
+/// faces whichever way their surfaces were turned. Its CLOSED_SHELL's id.
+inline int blockShell(Data& d, bool frontFacingIn = false) {
+    const math::Vec3 corner[8] = {{0, 0, 0}, {4, 0, 0}, {4, 4, 0}, {0, 4, 0},
+                                  {0, 0, 4}, {4, 0, 4}, {4, 4, 4}, {0, 4, 4}};
+    int points[8];
+    int vertices[8];
+    for (int i = 0; i < 8; ++i) {
+        points[i] = d.point(corner[i]);
+        vertices[i] = d.add("VERTEX_POINT(''," + Data::ref(points[i]) + ")");
+    }
+    const auto edge = [&](int a, int b) {
+        const int dir = d.direction((corner[b] - corner[a]).normalized());
+        const int vec = d.add("VECTOR(''," + Data::ref(dir) + ",1.)");
+        const int line = d.add("LINE(''," + Data::ref(points[a]) + "," + Data::ref(vec) + ")");
+        return d.add("EDGE_CURVE(''," + Data::ref(vertices[a]) + "," + Data::ref(vertices[b]) +
+                     "," + Data::ref(line) + ",.T.)");
+    };
+    const int e1 = edge(0, 1);
+    const int e2 = edge(1, 2);
+    const int e3 = edge(2, 3);
+    const int e4 = edge(3, 0);
+    const int e5 = edge(4, 5);
+    const int e6 = edge(5, 6);
+    const int e7 = edge(6, 7);
+    const int e8 = edge(7, 4);
+    const int e9 = edge(0, 4);
+    const int e10 = edge(1, 5);
+    const int e11 = edge(2, 6);
+    const int e12 = edge(3, 7);
+    const auto plane = [&](const math::Vec3& origin, const math::Vec3& normal,
+                           const math::Vec3& x) {
+        return d.add("PLANE(''," + Data::ref(d.placement(origin, normal, x)) + ")");
+    };
+    std::vector<int> faces;
+    // Each loop counter-clockwise seen from outside.
+    faces.push_back(d.face({{e4, false}, {e3, false}, {e2, false}, {e1, false}},
+                           plane({0, 0, 0}, {0, 0, -1}, {1, 0, 0})));
+    faces.push_back(d.face({{e5, true}, {e6, true}, {e7, true}, {e8, true}},
+                           plane({0, 0, 4}, {0, 0, 1}, {1, 0, 0})));
+    faces.push_back(d.face({{e1, true}, {e10, true}, {e5, false}, {e9, false}},
+                           plane({0, 0, 0}, {0, frontFacingIn ? 1.0 : -1.0, 0}, {1, 0, 0})));
+    faces.push_back(d.face({{e3, true}, {e12, true}, {e7, false}, {e11, false}},
+                           plane({0, 4, 0}, {0, 1, 0}, {-1, 0, 0})));
+    faces.push_back(d.face({{e9, true}, {e8, false}, {e12, false}, {e4, true}},
+                           plane({0, 0, 0}, {-1, 0, 0}, {0, 1, 0})));
+    faces.push_back(d.face({{e2, true}, {e11, true}, {e6, false}, {e10, false}},
+                           plane({4, 0, 0}, {1, 0, 0}, {0, 1, 0})));
+    std::string list;
+    for (int f : faces) list += (list.empty() ? "" : ",") + Data::ref(f);
+    return d.add("CLOSED_SHELL('',(" + list + "))");
+}
+
+/// blockShell()'s block alone, as one solid.
+inline std::string block(bool frontFacingIn) {
+    Data d;
+    d.add("MANIFOLD_SOLID_BREP('block'," + Data::ref(blockShell(d, frontFacingIn)) + ")");
+    return stepFile(d.text);
+}
+
+/// The block with a ball of radius 1 cut out of its middle: its void a sphere whose one face is
+/// bounded by a seam from pole to pole and back, as OpenCASCADE writes one, the shell facing out
+/// of the void and turned round by its ORIENTED_CLOSED_SHELL, as the standard has every void.
+inline std::string blockWithABall() {
+    Data d;
+    const int outer = blockShell(d);
+
+    // The ball: a meridian from its south pole to its north, on its +x side.
+    const math::Vec3 centre{2, 2, 2};
+    const int ball = d.add("SPHERICAL_SURFACE(''," +
+                           Data::ref(d.placement(centre, {0, 0, 1}, {1, 0, 0})) + ",1.)");
+    const int south = d.add("VERTEX_POINT(''," + Data::ref(d.point({2, 2, 1})) + ")");
+    const int north = d.add("VERTEX_POINT(''," + Data::ref(d.point({2, 2, 3})) + ")");
+    const int meridian =
+        d.add("CIRCLE(''," + Data::ref(d.placement(centre, {0, -1, 0}, {1, 0, 0})) + ",1.)");
+    const int seam = d.add("EDGE_CURVE(''," + Data::ref(south) + "," + Data::ref(north) + "," +
+                           Data::ref(meridian) + ",.T.)");
+    const int skin = d.face({{seam, true}, {seam, false}}, ball);
+    const int voidShell = d.add("CLOSED_SHELL('',(" + Data::ref(skin) + "))");
+    const int inward = d.add("ORIENTED_CLOSED_SHELL('',*," + Data::ref(voidShell) + ",.F.)");
+    d.add("BREP_WITH_VOIDS('block'," + Data::ref(outer) + ",(" + Data::ref(inward) + "))");
+    return stepFile(d.text);
 }
 
 }  // namespace hz::step_text

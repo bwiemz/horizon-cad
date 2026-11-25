@@ -1,0 +1,405 @@
+// Mass properties of solids with exact faces (stage 2 of the exact kernel). Each face's share of
+// the volume, its moments and the area is integrated on its own surface, over its own region in
+// (u, v), by the divergence theorem and then Green's theorem along its pcurves: a solid bounded by
+// closed-form surfaces measures as its closed forms, to 1e-9, and no mesh is made for it. A face
+// that cannot be integrated leaves the solid's mass not valid, and says why.
+
+#include <gtest/gtest.h>
+
+#include <atomic>
+#include <cmath>
+#include <memory>
+#include <numbers>
+#include <string>
+#include <vector>
+
+#include "StepTestText.h"
+#include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/Frame.h"
+#include "horizon/geometry/curves/Curve2D.h"
+#include "horizon/geometry/surfaces/AnalyticSurfaces.h"
+#include "horizon/math/Mat4.h"
+#include "horizon/math/Vec2.h"
+#include "horizon/math/Vec3.h"
+#include "horizon/modeling/ExactPrimitives.h"
+#include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Pattern.h"
+#include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/ExactTolerance.h"
+#include "horizon/topology/HalfEdge.h"
+#include "horizon/topology/Solid.h"
+
+namespace {
+
+namespace geo = hz::geo;
+namespace topo = hz::topo;
+using hz::io::StepFormat;
+using hz::math::Vec2;
+using hz::math::Vec3;
+using hz::model::IdealMassProperties;
+using hz::model::MassProperties;
+using hz::model::MassPropertiesCalculator;
+
+constexpr double kPi = std::numbers::pi;
+
+/// These files name no length unit, as hand-written ones often do: read in millimetres.
+hz::io::StepReadOptions inMillimetres() {
+    hz::io::StepReadOptions options;
+    options.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    return options;
+}
+
+/// The one solid @p text holds, as the reader makes it; null (and a failure) when it holds none.
+std::unique_ptr<topo::Solid> readOne(const std::string& text) {
+    auto solids = StepFormat::fromString(text, nullptr, nullptr, inMillimetres());
+    EXPECT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    if (solids.size() != 1) return nullptr;
+    return std::move(solids.front());
+}
+
+void expectRelative(double actual, double expected, double relative, const std::string& what) {
+    EXPECT_NEAR(actual, expected, relative * std::abs(expected)) << what;
+}
+
+/// A frustum from radius 1 at z = 0 to radius 2 at z = 2, written as externalStyleCylinder()
+/// writes its cylinder: a CONICAL_SURFACE side between two rims and a seam, two PLANE caps.
+std::string frustum() {
+    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(0.,1.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CIRCLE('',#4,1.);
+#6 = CARTESIAN_POINT('',(1.,0.,0.));
+#7 = VERTEX_POINT('',#6);
+#8 = CARTESIAN_POINT('',(0.,0.,2.));
+#9 = DIRECTION('',(1.,0.,0.));
+#10 = AXIS2_PLACEMENT_3D('',#8,#2,#9);
+#11 = CIRCLE('',#10,2.);
+#12 = CARTESIAN_POINT('',(2.,0.,2.));
+#13 = VERTEX_POINT('',#12);
+#14 = EDGE_CURVE('',#7,#7,#5,.T.);
+#15 = EDGE_CURVE('',#13,#13,#11,.T.);
+#50 = DIRECTION('',(0.44721359549995793,0.,0.89442719099991586));
+#16 = LINE('',#6,VECTOR('',#50,1.));
+#17 = SURFACE_CURVE('',#16,(),.CURVE_3D.);
+#18 = EDGE_CURVE('',#7,#13,#17,.T.);
+#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);
+#20 = CONICAL_SURFACE('',#19,1.,0.46364760900080612);
+#21 = ORIENTED_EDGE('',*,*,#14,.T.);
+#22 = ORIENTED_EDGE('',*,*,#18,.T.);
+#23 = ORIENTED_EDGE('',*,*,#15,.F.);
+#24 = ORIENTED_EDGE('',*,*,#18,.F.);
+#25 = EDGE_LOOP('',(#21,#22,#23,#24));
+#26 = FACE_OUTER_BOUND('',#25,.T.);
+#27 = ADVANCED_FACE('',(#26),#20,.T.);
+#28 = AXIS2_PLACEMENT_3D('',#8,#2,$);
+#29 = PLANE('',#28);
+#30 = ORIENTED_EDGE('',*,*,#15,.T.);
+#31 = EDGE_LOOP('',(#30));
+#32 = FACE_OUTER_BOUND('',#31,.T.);
+#33 = ADVANCED_FACE('',(#32),#29,.T.);
+#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);
+#35 = PLANE('',#34);
+#36 = ORIENTED_EDGE('',*,*,#14,.F.);
+#37 = EDGE_LOOP('',(#36));
+#38 = FACE_OUTER_BOUND('',#37,.T.);
+#39 = ADVANCED_FACE('',(#38),#35,.F.);
+#40 = CLOSED_SHELL('',(#27,#33,#39));
+#41 = MANIFOLD_SOLID_BREP('frustum',#40);
+)");
+}
+
+/// The live face of @p solid tagged @p tag; null when there is none.
+topo::Face* faceTagged(topo::Solid& solid, const std::string& tag) {
+    for (auto& f : solid.faces()) {
+        if (f.alive && f.topoId.tag() == tag) return &f;
+    }
+    return nullptr;
+}
+
+/// The solid's volume and area as computeIdeal gives them agree with compute()'s, which is
+/// exact: no refinement, nothing extrapolated.
+void expectIdealIsTheSame(const topo::Solid& solid, const MassProperties& props) {
+    const IdealMassProperties ideal = MassPropertiesCalculator::computeIdeal(solid);
+    EXPECT_TRUE(ideal.properties.valid) << ideal.properties.problem;
+    EXPECT_DOUBLE_EQ(ideal.properties.volume, props.volume);
+    EXPECT_DOUBLE_EQ(ideal.properties.surfaceArea, props.surfaceArea);
+    EXPECT_TRUE(ideal.onIdealSurfaces);
+    EXPECT_TRUE(ideal.withinTolerance);
+    EXPECT_LE(ideal.estimatedError, 1e-9);
+}
+
+/// A straight pcurve from @p a to @p b that wiggles a millionth across its course 100,000 times:
+/// a boundary whose integral no number of subdivisions within the budget settles.
+class Wiggle : public geo::Curve2D {
+public:
+    Wiggle(const Vec2& a, const Vec2& b) : a_(a), b_(b) {
+        const Vec2 d = b - a;
+        across_ = Vec2(-d.y, d.x) * (1e-6 / d.length());
+    }
+    Vec2 evaluate(double t) const override {
+        return a_ + (b_ - a_) * t + across_ * std::sin(kWaves * t);
+    }
+    Vec2 derivative(double t, int order) const override {
+        if (order == 1) return (b_ - a_) + across_ * (kWaves * std::cos(kWaves * t));
+        return across_ * (-kWaves * kWaves * std::sin(kWaves * t));
+    }
+    double tMin() const override { return 0.0; }
+    double tMax() const override { return 1.0; }
+    bool isClosed() const override { return false; }
+
+private:
+    static constexpr double kWaves = 2.0 * kPi * 1e5;
+    Vec2 a_;
+    Vec2 b_;
+    Vec2 across_;
+};
+
+}  // namespace
+
+// Volume, area, centre and inertia, on a tilted axis away from the origin, within 1e-9 of the
+// closed forms.
+TEST(ExactMass, ACylinderIsExact) {
+    const Vec3 axis = Vec3{1, 2, 2} * (1.0 / 3.0);
+    const geo::Frame frame = geo::Frame::fromAxis({3, -2, 7}, axis, {0, 0, 1});
+    const double r = 5.0;
+    const double h = 10.0;
+    const auto cyl = hz::model::exact::makeCylinder(frame, r, h);
+    ASSERT_NE(cyl, nullptr);
+    const MassProperties props = MassPropertiesCalculator::compute(*cyl);
+    ASSERT_TRUE(props.valid) << props.problem;
+    EXPECT_TRUE(props.problem.empty());
+
+    const double volume = kPi * r * r * h;
+    expectRelative(props.volume, volume, 1e-9, "its volume");
+    expectRelative(props.surfaceArea, 2.0 * kPi * r * h + 2.0 * kPi * r * r, 1e-9, "its area");
+    const Vec3 centre = frame.origin + axis * (h / 2.0);
+    EXPECT_NEAR((props.centerOfMass - centre).length(), 0.0, 1e-9 * centre.length());
+
+    // About its centre: m r^2 / 2 about its axis, m (3 r^2 + h^2) / 12 across it.
+    const double along = volume * r * r / 2.0;
+    const double across = volume * (3.0 * r * r + h * h) / 12.0;
+    const double a[3] = {axis.x, axis.y, axis.z};
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            const double expected = (i == j ? across : 0.0) + (along - across) * a[i] * a[j];
+            EXPECT_NEAR(props.inertia.at(i, j), expected, 1e-9 * across) << i << ", " << j;
+        }
+    }
+    expectIdealIsTheSame(*cyl, props);
+}
+
+TEST(ExactMass, APlateWithAHoleIsExact) {
+    const auto plate = hz::model::exact::makePlateWithHole({0, 0, 0}, {40, 40, 10}, {20, 20}, 5.0);
+    ASSERT_NE(plate, nullptr);
+    const MassProperties props = MassPropertiesCalculator::compute(*plate);
+    ASSERT_TRUE(props.valid) << props.problem;
+    expectRelative(props.volume, 40.0 * 40.0 * 10.0 - kPi * 25.0 * 10.0, 1e-9, "its volume");
+    expectRelative(props.surfaceArea,
+                   2.0 * (40.0 * 40.0 - kPi * 25.0) + 4.0 * 40.0 * 10.0 + 2.0 * kPi * 5.0 * 10.0,
+                   1e-9, "its area");
+    EXPECT_NEAR((props.centerOfMass - Vec3{20, 20, 5}).length(), 0.0, 1e-9 * 30.0);
+    expectIdealIsTheSame(*plate, props);
+}
+
+// As the reader makes them from a file: a sphere, its one face bounded by a seam from pole to pole
+// and back; a torus, by two seams; a frustum's side, by its rims and a seam.
+TEST(ExactMass, ImportedSphereTorusAndFrustumAreExact) {
+    struct Case {
+        const char* what;
+        std::string text;
+        double volume;
+        double area;
+    };
+    const Case cases[] = {
+        {"the sphere", hz::step_text::sphere(), 4.0 / 3.0 * kPi * 1.5 * 1.5 * 1.5,
+         4.0 * kPi * 1.5 * 1.5},
+        {"the torus", hz::step_text::torus(), 2.0 * kPi * kPi * 4.0 * 1.0 * 1.0,
+         4.0 * kPi * kPi * 4.0 * 1.0},
+        {"the frustum", frustum(), kPi * 2.0 / 3.0 * (4.0 + 2.0 + 1.0),
+         kPi * 3.0 * std::sqrt(5.0) + kPi * 4.0 + kPi},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        const auto solid = readOne(c.text);
+        ASSERT_NE(solid, nullptr);
+        const MassProperties props = MassPropertiesCalculator::compute(*solid);
+        ASSERT_TRUE(props.valid) << props.problem;
+        expectRelative(props.volume, c.volume, 1e-9, "its volume");
+        expectRelative(props.surfaceArea, c.area, 1e-9, "its area");
+        expectIdealIsTheSame(*solid, props);
+    }
+}
+
+// A cone's side comes to its apex, a point where its pcurves run along the line the apex is in
+// (u, v): a degenerate stretch of the boundary, and integrated as one.
+TEST(ExactMass, AConeToItsApexIsExact) {
+    const auto cone = readOne(hz::step_text::cone());
+    ASSERT_NE(cone, nullptr);
+    const MassProperties props = MassPropertiesCalculator::compute(*cone);
+    ASSERT_TRUE(props.valid) << props.problem;
+    expectRelative(props.volume, kPi * 4.0 * 3.0 / 3.0, 1e-9, "its volume");
+    expectRelative(props.surfaceArea, kPi * 4.0 + kPi * 2.0 * std::sqrt(13.0), 1e-9, "its area");
+    EXPECT_NEAR((props.centerOfMass - Vec3{0, 0, 0.75}).length(), 0.0, 1e-9);
+}
+
+// A mirror image turns every face round (Pattern::transformed reverses its loops and its faces'
+// sense): it measures the same, positive, and its centre is mirrored.
+TEST(ExactMass, AMirroredCylinderIsPositive) {
+    const auto cyl =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({1, 2, 3}, {0, 0, 1}), 5.0, 10.0);
+    ASSERT_NE(cyl, nullptr);
+    const double volume = kPi * 25.0 * 10.0;
+    for (const hz::math::Mat4& m :
+         {hz::math::Mat4::scale({-1, 1, 1}), hz::math::Mat4::reflection({0, 0, 0}, {0, 1, 0})}) {
+        const auto mirrored = hz::model::Pattern::transformed(*cyl, m);
+        ASSERT_NE(mirrored, nullptr);
+        const MassProperties props = MassPropertiesCalculator::compute(*mirrored);
+        ASSERT_TRUE(props.valid) << props.problem;
+        expectRelative(props.volume, volume, 1e-9, "its volume, positive");
+        const Vec3 centre = m.transformPoint({1, 2, 8});
+        EXPECT_NEAR((props.centerOfMass - centre).length(), 0.0, 1e-9 * centre.length());
+    }
+}
+
+// Review Focus 4: a block with a ball-shaped void (BREP_WITH_VOIDS), the void's face facing into
+// it. The ball's volume subtracts, and the total is positive.
+TEST(ExactMass, AVoidSubtracts) {
+    const auto block = readOne(hz::step_text::blockWithABall());
+    ASSERT_NE(block, nullptr);
+    ASSERT_EQ(block->shells().size(), 2u);
+    const MassProperties props = MassPropertiesCalculator::compute(*block);
+    ASSERT_TRUE(props.valid) << props.problem;
+    expectRelative(props.volume, 64.0 - 4.0 / 3.0 * kPi, 1e-9, "the block less the ball");
+    expectRelative(props.surfaceArea, 96.0 + 4.0 * kPi, 1e-9, "both shells' area");
+    EXPECT_NEAR((props.centerOfMass - Vec3{2, 2, 2}).length(), 0.0, 1e-9 * 4.0);
+}
+
+// A cylinder whose side is a B_SPLINE_SURFACE (a rational circle swept along z), read as that
+// B-spline: integrated on it, it is the cylinder to 1e-9.
+TEST(ExactMass, ARationalSplineCylinderIsExact) {
+    const auto cyl = readOne(hz::step_text::splineCylinder());
+    ASSERT_NE(cyl, nullptr);
+    int splines = 0;
+    for (const auto& f : cyl->faces()) {
+        if (f.exactSurface && f.exactSurface->kind() == geo::SurfaceKind::Nurbs) ++splines;
+    }
+    ASSERT_EQ(splines, 1);
+    const MassProperties props = MassPropertiesCalculator::compute(*cyl);
+    ASSERT_TRUE(props.valid) << props.problem;
+    expectRelative(props.volume, 2.0 * kPi, 1e-9, "its volume");
+    expectRelative(props.surfaceArea, 6.0 * kPi, 1e-9, "its area");
+    EXPECT_NEAR((props.centerOfMass - Vec3{0, 0, 1}).length(), 0.0, 1e-9);
+    expectIdealIsTheSame(*cyl, props);
+}
+
+// An exact face whose boundary has lost a pcurve cannot be integrated: the solid's mass is not
+// valid and says which face and why. It is never measured some other way (a mesh, its corners).
+TEST(ExactMass, AFaceItCannotIntegrateGivesWhy) {
+    auto cyl =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    ASSERT_NE(cyl, nullptr);
+    topo::Face* side = faceTagged(*cyl, "cylinder/side");
+    ASSERT_NE(side, nullptr);
+    side->outerLoop->halfEdge->pcurve = nullptr;
+
+    const MassProperties props = MassPropertiesCalculator::compute(*cyl);
+    EXPECT_FALSE(props.valid);
+    EXPECT_EQ(props.volume, 0.0);
+    EXPECT_NE(props.problem.find("cylinder/side"), std::string::npos) << props.problem;
+    EXPECT_NE(props.problem.find("pcurve"), std::string::npos) << props.problem;
+
+    const IdealMassProperties ideal = MassPropertiesCalculator::computeIdeal(*cyl);
+    EXPECT_FALSE(ideal.properties.valid);
+    EXPECT_EQ(ideal.properties.problem, props.problem);
+    EXPECT_FALSE(ideal.onIdealSurfaces);
+    EXPECT_FALSE(ideal.withinTolerance);
+}
+
+// A face whose surface gives no finite point (a radius that is not a number) says so.
+TEST(ExactMass, ASurfaceThatIsNotFiniteGivesWhy) {
+    auto cyl =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    ASSERT_NE(cyl, nullptr);
+    topo::Face* side = faceTagged(*cyl, "cylinder/side");
+    ASSERT_NE(side, nullptr);
+    side->exactSurface =
+        std::make_shared<geo::Cylinder>(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), std::nan(""));
+
+    const MassProperties props = MassPropertiesCalculator::compute(*cyl);
+    EXPECT_FALSE(props.valid);
+    EXPECT_NE(props.problem.find("cylinder/side"), std::string::npos) << props.problem;
+    EXPECT_NE(props.problem.find("not finite"), std::string::npos) << props.problem;
+}
+
+// A boundary that wiggles faster than any subdivision within the budget can follow is not
+// integrated to a guess: the mass is not valid, and says the face's integral did not settle.
+TEST(ExactMass, ABoundaryThatWillNotSettleGivesWhy) {
+    auto block = hz::model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
+    ASSERT_NE(block, nullptr);
+    topo::Face* top = faceTagged(*block, "box/top");
+    ASSERT_NE(top, nullptr);
+    topo::HalfEdge* h = top->outerLoop->halfEdge;
+    const Vec2 a = h->pcurve->evaluate(h->pcurveStart);
+    const Vec2 b = h->pcurve->evaluate(h->pcurveEnd);
+    h->pcurve = std::make_shared<Wiggle>(a, b);
+    h->pcurveStart = 0.0;
+    h->pcurveEnd = 1.0;
+
+    const MassProperties props = MassPropertiesCalculator::compute(*block);
+    EXPECT_FALSE(props.valid);
+    EXPECT_NE(props.problem.find("box/top"), std::string::npos) << props.problem;
+    EXPECT_NE(props.problem.find("did not settle"), std::string::npos) << props.problem;
+}
+
+// A solid with some faces exact and others plain loops: the plain ones are summed by the polygon
+// formulas, as every face was before the exact kernel, and the whole is right.
+TEST(ExactMass, AMixedSolidSumsItsPlainFacesAsPolygons) {
+    auto block = hz::model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
+    ASSERT_NE(block, nullptr);
+    topo::Face* top = faceTagged(*block, "box/top");
+    ASSERT_NE(top, nullptr);
+    top->exactSurface = nullptr;
+    topo::HalfEdge* h = top->outerLoop->halfEdge;
+    do {
+        h->pcurve = nullptr;
+        h = h->next;
+    } while (h != top->outerLoop->halfEdge);
+
+    const MassProperties props = MassPropertiesCalculator::compute(*block);
+    ASSERT_TRUE(props.valid) << props.problem;
+    EXPECT_NEAR(props.volume, 24.0, 24.0 * 1e-12);
+    EXPECT_NEAR(props.surfaceArea, 52.0, 52.0 * 1e-12);
+    EXPECT_NEAR((props.centerOfMass - Vec3{1, 1.5, 2}).length(), 0.0, 1e-12);
+    const IdealMassProperties ideal = MassPropertiesCalculator::computeIdeal(*block);
+    EXPECT_DOUBLE_EQ(ideal.properties.volume, props.volume);
+    EXPECT_FALSE(ideal.onIdealSurfaces) << "one face is measured as modelled";
+}
+
+// The kernel's box is wound facing in; written to STEP and read back, every one of its exact
+// faces faces in, consistently. Each face is signed by its own sense and the solid's sign is
+// normalised, as the polygon formulas normalise it: it measures as the box it bounds.
+TEST(ExactMass, ASolidWhoseFacesAllFaceInMeasuresAsWhatTheyBound) {
+    const auto box = hz::model::PrimitiveFactory::makeBox(10.0, 20.0, 30.0);
+    ASSERT_NE(box, nullptr);
+    const auto read = readOne(StepFormat::toString({box.get()}));
+    ASSERT_NE(read, nullptr);
+    ASSERT_TRUE(topo::hasExactFaces(*read));
+    const MassProperties props = MassPropertiesCalculator::compute(*read);
+    ASSERT_TRUE(props.valid) << props.problem;
+    EXPECT_NEAR(props.volume, 6000.0, 6000.0 * 1e-12);
+    EXPECT_NEAR(props.surfaceArea, 2.0 * (200.0 + 600.0 + 300.0), 2200.0 * 1e-12);
+    const MassProperties faceted = MassPropertiesCalculator::compute(*box);
+    EXPECT_NEAR((props.centerOfMass - faceted.centerOfMass).length(), 0.0, 1e-9);
+}
+
+// A request to stop is heard: the result is not valid.
+TEST(ExactMass, AStoppedRequestIsNotValid) {
+    const auto cyl =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    ASSERT_NE(cyl, nullptr);
+    const std::atomic<bool> cancelled{true};
+    const IdealMassProperties ideal =
+        MassPropertiesCalculator::computeIdeal(*cyl, nullptr, 1e-10, &cancelled);
+    EXPECT_FALSE(ideal.properties.valid);
+}

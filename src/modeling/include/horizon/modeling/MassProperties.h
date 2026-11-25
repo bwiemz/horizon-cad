@@ -29,13 +29,16 @@ struct Material {
 /// physical values. Lengths are in model units; interpret the derived units
 /// accordingly (e.g. mm → volume in mm³).
 struct MassProperties {
-    double volume = 0.0;       ///< signed-tetrahedra volume (always reported positive)
-    double surfaceArea = 0.0;  ///< sum of boundary-triangle areas
+    double volume = 0.0;       ///< enclosed volume (always reported positive)
+    double surfaceArea = 0.0;  ///< boundary area (triangles, or exact faces integrated)
     math::Vec3 centerOfMass;   ///< volume-weighted centroid
     math::Mat3 inertia;        ///< tensor about the center of mass (× density)
     double mass = 0.0;         ///< density × volume
     double density = 1.0;      ///< density used (1 when no material)
-    bool valid = false;        ///< false if the solid produced no triangles
+    bool valid = false;        ///< false if the solid encloses nothing that could be measured
+    /// Why the properties are not valid, where that is known: the face that could not be
+    /// measured and why ("<face>: <why>"). Empty when they are valid.
+    std::string problem;
 };
 
 /// Mass properties of what a solid is meant to be (Phase 141): each face that
@@ -83,10 +86,15 @@ struct IdealMassProperties {
 
 class MassPropertiesCalculator {
 public:
-    /// Compute mass properties from the solid's triangulated boundary. When
-    /// @p material is null a unit density is used. A solid described by
-    /// curves, as read from a STEP file, is measured in facets
-    /// (describedByCurves, facetCurved).
+    /// Compute mass properties from the solid's boundary. When @p material is
+    /// null a unit density is used. A solid with exact faces (as read from a
+    /// STEP file) is integrated on them, exactly: each face over its own
+    /// region of its own surface, to 1e-11 of the face, its other faces by
+    /// their polygons. A face that cannot be integrated leaves the result not
+    /// valid, with its problem; it is never meshed or faceted instead. Any
+    /// other solid is measured on its triangulated loops; one described by
+    /// curves without exact faces in facets (describedByCurves, facetCurved).
+    /// Nothing throws: a failure is a result that is not valid.
     static MassProperties compute(const topo::Solid& solid, const Material* material = nullptr);
 
     /// The ideal mass properties (IdealMassProperties): refined until the
@@ -98,7 +106,10 @@ public:
     /// request, not for every rebuild. Set @p cancelled to stop it, and its
     /// result is not valid. A solid described by curves is measured in
     /// facets that record its surfaces; one that cannot be cut into them is
-    /// measured by its corners, and is not exact.
+    /// measured by its corners, and is not exact. A solid with exact faces is
+    /// integrated on them, as compute() integrates it: the same numbers, with
+    /// the integration's estimate as estimatedError, nothing refined, and on
+    /// its ideal surfaces when every face is exact.
     ///
     /// @p triangleBudget: no refinement is measured that would make more
     /// triangles than this. Less trades precision for time: the result says

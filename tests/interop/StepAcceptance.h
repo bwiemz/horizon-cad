@@ -36,9 +36,13 @@ struct StepSummary {
     /// the manifest gives, or not at all).
     bool unitUnknown = false;
     std::size_t bodies = 0;
-    bool allValid = true;          ///< every body passes Solid::isValid()
-    double facetedVolume = 0.0;    ///< mm³, as built in facets
-    double idealVolume = 0.0;      ///< mm³, on the surfaces the facets record
+    bool allValid = true;  ///< every body passes Solid::isValid()
+    /// mm³, as MassPropertiesCalculator::compute measures the bodies as read: integrated on
+    /// their exact faces where they have them, else in facets.
+    double facetedVolume = 0.0;
+    /// mm³, as computeIdeal measures them: on their exact faces where they have them, else on
+    /// the surfaces the facets record.
+    double idealVolume = 0.0;
     bool onIdealSurfaces = false;  ///< every body measured on its ideals
     Bounds bounds;                 ///< of the facets' corners
     std::vector<std::string> skipped;

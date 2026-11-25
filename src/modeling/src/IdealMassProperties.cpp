@@ -23,6 +23,7 @@
 #include <utility>
 #include <vector>
 
+#include "ExactMass.h"
 #include "MassIntegrals.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
@@ -30,6 +31,7 @@
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
 
@@ -703,6 +705,23 @@ IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& so
                                                            double tolerance,
                                                            const std::atomic<bool>* cancelled,
                                                            double triangleBudget) {
+    // A solid with exact faces is integrated on them, as compute() integrates it: the same
+    // numbers, exact to the integration's estimate. Nothing is refined; a face that cannot be
+    // integrated leaves it not valid, with why.
+    if (topo::hasExactFaces(solid)) {
+        const auto stopped = [cancelled] { return cancelled != nullptr && cancelled->load(); };
+        if (stopped()) return {};
+        const detail::ExactMeasure exact = detail::measureExact(solid, material, cancelled);
+        if (stopped()) return {};
+        IdealMassProperties result;
+        result.properties = exact.properties;
+        result.withoutIdeal = exact.plainFaces;
+        result.onIdealSurfaces = exact.properties.valid && exact.plainFaces.empty();
+        result.estimatedError = exact.estimatedError;
+        result.tolerance = tolerance;
+        result.withinTolerance = exact.properties.valid && exact.estimatedError <= tolerance;
+        return result;
+    }
     // A solid as read, bounded by curves, is measured in facets that record
     // their surfaces, as compute() measures it. One that cannot be cut into
     // facets is measured by the corners of its loops: not exact, and its

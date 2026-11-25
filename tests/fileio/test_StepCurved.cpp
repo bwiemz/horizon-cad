@@ -208,11 +208,10 @@ TEST(StepCurvedTest, APlateWithABoreHasTheRightVolumeBothWays) {
 }
 
 // A solid as read, its faces bounded by circles, is measured on its exact
-// faces (stage 2: they are read with it), meshed at the read point: more than
-// its 32-gon of facets holds, at most the cylinder, and nearer the cylinder.
-// Measured by the corners of its loops, its volume was 0 and, from
-// computeIdeal, "exact". Scripts measure what they read. (Task 7 measures
-// it exactly, to 1e-9.)
+// faces (stage 2: they are read with it), integrated on them: the cylinder,
+// to 1e-9, where its 32-gon of facets holds less. Measured by the corners of
+// its loops, its volume was 0 and, from computeIdeal, "exact". Scripts
+// measure what they read.
 TEST(StepCurvedTest, ASolidAsReadIsMeasuredOnItsExactFaces) {
     const auto solids = StepFormat::fromString(cylinder(), nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
@@ -225,17 +224,18 @@ TEST(StepCurvedTest, ASolidAsReadIsMeasuredOnItsExactFaces) {
     const auto modelled = MassPropertiesCalculator::compute(read);
     const double facets = MassPropertiesCalculator::compute(*faceted.solid).volume;  // 6.2429
     EXPECT_GT(modelled.volume, facets);
-    EXPECT_LE(modelled.volume, 2.0 * kPi);
-    EXPECT_LT(2.0 * kPi - modelled.volume, modelled.volume - facets) << "nearer the cylinder";
+    expectRelative(modelled.volume, 2.0 * kPi, 1e-9, "the cylinder");
+    expectRelative(modelled.surfaceArea, 6.0 * kPi, 1e-9, "its area");
     const auto ideal = MassPropertiesCalculator::computeIdeal(read);
     EXPECT_TRUE(ideal.onIdealSurfaces);
     expectRelative(ideal.properties.volume, 2.0 * kPi, 1e-9, "as designed");
     expectRelative(ideal.properties.surfaceArea, 6.0 * kPi, 1e-9, "as designed");
 }
 
-// One that cannot be cut into facets is measured by its corners, which is not
-// exact, and names the faces measured so. A request to stop is heard before
-// the facets are cut.
+// One whose exact faces cannot be integrated, here a face with no boundary
+// (which cannot be cut into facets either), is not measured at all: not
+// valid, not exact, and its problem names the face. It is never measured by
+// its corners or its facets instead. A request to stop is heard.
 TEST(StepCurvedTest, ASolidAsReadThatCannotBeFacetedIsNotExact) {
     auto solids = StepFormat::fromString(cylinder(), nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
@@ -245,8 +245,13 @@ TEST(StepCurvedTest, ASolidAsReadThatCannotBeFacetedIsNotExact) {
 
     const auto ideal = MassPropertiesCalculator::computeIdeal(read);
     EXPECT_FALSE(ideal.onIdealSurfaces);
-    EXPECT_FALSE(ideal.withoutIdeal.empty()) << "the dialog says why it is not exact";
-    MassPropertiesCalculator::compute(read);  // by its corners, and no crash
+    EXPECT_FALSE(ideal.withinTolerance);
+    EXPECT_FALSE(ideal.properties.valid);
+    EXPECT_NE(ideal.properties.problem.find(read.faces().front().topoId.tag()), std::string::npos)
+        << "the dialog says why it is not exact: " << ideal.properties.problem;
+    const auto modelled = MassPropertiesCalculator::compute(read);  // no crash
+    EXPECT_FALSE(modelled.valid);
+    EXPECT_EQ(modelled.problem, ideal.properties.problem);
 
     const std::atomic<bool> cancelled{true};
     const auto stopped =
