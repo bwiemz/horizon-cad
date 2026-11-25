@@ -501,6 +501,20 @@ a user can see. Each is several PRs.
        buggy 4991 → 1385 ms (master 9599), ProE 3484 → 3216 ms (master
        3785), Shapr3D 338 → 201 ms (master 277), and IronCAD's old part
        2050 → 228 ms (master 477).
+   - *Stage 3, platforms:* two results can differ by the last bits a
+     platform's maths library gives.
+     - A body's faceted copy can differ by one column of a band's facet grid
+       where the band's width divided by its column spacing is a whole number
+       but for rounding (`trimmedFacets`, as on master). The Solid Edge old
+       part gives 3,796 faces on one platform and 3,868 on another, its volume
+       1.7e-5 apart, within the facets' own error. Making the grid
+       deterministic would move the faceted copies of a dozen corpus bodies,
+       so it waits until the bridge's last users go; stage 7 deletes it.
+     - An edge whose stray sits on Ruling 66's rounding bound (16 units in the
+       last place of what its measure is computed from) can be taken up on
+       one platform and reported on another. No corpus file sits there: the
+       manifest, whose `exact_failures` is strict both ways, reads alike on
+       Linux, Windows and macOS.
    - *Stage 5:* still no geometric orientation check in the validator; the
      counterpart's volume check against its facets stands in for it.
    - *Stage 6:* the spindle torus, unchanged (the screw is on the regression
