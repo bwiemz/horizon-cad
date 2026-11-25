@@ -472,37 +472,9 @@ namespace {
 /// 1.6e-7. With @p spline, the sphere is a rational B-spline (2 x 2) instead of a
 /// SPHERICAL_SURFACE.
 std::string capBeyondAFlat(bool spline) {
-    using hz::step_text::real;
     std::string text;
     if (spline) {
-        const double w = std::sqrt(0.5);
-        const double xs[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
-        const double ys[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
-        const double rs[5] = {0, 1, 1, 1, 0};
-        const double zs[5] = {-1, -1, 0, 1, 1};
-        const double wv[5] = {1, w, 1, w, 1};
-        std::string net;
-        std::string weights;
-        int id = 200;
-        for (int i = 0; i < 9; ++i) {
-            const double wu = i % 2 == 1 ? w : 1.0;
-            net += i == 0 ? "(" : ",(";
-            weights += i == 0 ? "(" : ",(";
-            for (int j = 0; j < 5; ++j) {
-                text += "#" + std::to_string(id) + " = CARTESIAN_POINT('',(" + real(xs[i] * rs[j]) +
-                        "," + real(ys[i] * rs[j]) + "," + real(zs[j]) + "));\n";
-                net += std::string(j == 0 ? "#" : ",#") + std::to_string(id);
-                weights += std::string(j == 0 ? "" : ",") + real(wu * wv[j]);
-                ++id;
-            }
-            net += ")";
-            weights += ")";
-        }
-        text += "#5 = ( BOUNDED_SURFACE() B_SPLINE_SURFACE(2,2,(" + net +
-                "),.UNSPECIFIED.,.T.,.F.,.F.) B_SPLINE_SURFACE_WITH_KNOTS((3,2,2,2,3),(3,2,3),"
-                "(0.,0.25,0.5,0.75,1.),(0.,0.5,1.),.UNSPECIFIED.) GEOMETRIC_REPRESENTATION_ITEM() "
-                "RATIONAL_B_SPLINE_SURFACE((" +
-                weights + ")) REPRESENTATION_ITEM('') SURFACE() );\n";
+        text = hz::step_text::splineSphereSurface(1.0);
     } else {
         text +=
             "#97 = CARTESIAN_POINT('',(0.,0.,0.));\n#99 = AXIS2_PLACEMENT_3D('',#97,#2,#3);\n"

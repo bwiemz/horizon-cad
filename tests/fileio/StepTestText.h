@@ -142,6 +142,112 @@ inline std::string sphere() {
 )");
 }
 
+/// A cone of radius 2.5 and height 10, its apex at the origin and its base below, as Unigraphics
+/// writes one (the Moon buggy's face #32800): its CONICAL_SURFACE of radius 0 placed at the apex,
+/// along -z; its side bounded by the base's circle and a VERTEX_LOOP at the apex; a flat base.
+inline std::string apexCone() {
+    return stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,-10.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CIRCLE('',#4,2.5);
+#6 = CARTESIAN_POINT('',(2.5,0.,-10.));
+#7 = VERTEX_POINT('',#6);
+#8 = CARTESIAN_POINT('',(0.,0.,0.));
+#9 = VERTEX_POINT('',#8);
+#10 = EDGE_CURVE('',#7,#7,#5,.T.);
+#11 = ORIENTED_EDGE('',*,*,#10,.F.);
+#12 = EDGE_LOOP('',(#11));
+#13 = FACE_BOUND('',#12,.T.);
+#14 = DIRECTION('',(0.,0.,-1.));
+#15 = DIRECTION('',(-1.,0.,0.));
+#16 = AXIS2_PLACEMENT_3D('',#1,#14,#15);
+#17 = PLANE('',#16);
+#18 = ADVANCED_FACE('',(#13),#17,.T.);
+#19 = ORIENTED_EDGE('',*,*,#10,.T.);
+#20 = EDGE_LOOP('',(#19));
+#21 = FACE_BOUND('',#20,.T.);
+#22 = VERTEX_LOOP('',#9);
+#23 = FACE_BOUND('',#22,.T.);
+#24 = DIRECTION('',(-1.,0.,-4.44089209850063E-16));
+#25 = AXIS2_PLACEMENT_3D('',#8,#14,#24);
+#26 = CONICAL_SURFACE('',#25,0.,0.24497866312686414);
+#27 = ADVANCED_FACE('',(#21,#23),#26,.T.);
+#28 = CLOSED_SHELL('',(#18,#27));
+#29 = MANIFOLD_SOLID_BREP('apex cone',#28);
+)");
+}
+
+/// A ball of radius 10 about the origin as Unigraphics writes one (the Moon buggy's face #32040):
+/// one face, bounded by a VERTEX_LOOP at its north pole alone, its placement's directions as that
+/// file has them (x not of unit length, z a hair off the axis).
+inline std::string vertexLoopBall() {
+    return stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,10.));
+#2 = VERTEX_POINT('',#1);
+#3 = VERTEX_LOOP('',#2);
+#4 = FACE_BOUND('',#3,.T.);
+#5 = CARTESIAN_POINT('',(0.,0.,0.));
+#6 = DIRECTION('',(1.09273919746571E-16,0.,1.));
+#7 = DIRECTION('',(39.3700787401575,0.,0.));
+#8 = AXIS2_PLACEMENT_3D('',#5,#6,#7);
+#9 = SPHERICAL_SURFACE('',#8,10.);
+#10 = ADVANCED_FACE('',(#4),#9,.T.);
+#11 = CLOSED_SHELL('',(#10));
+#12 = MANIFOLD_SOLID_BREP('ball',#11);
+)");
+}
+
+/// A drill's point on a rod: a cylinder of radius 3 from z = 0 up to z = 10, its top flat, and
+/// below z = 0 a cone of half-angle 59 degrees (a 118 degree point) to its apex on the axis, as
+/// OpenCASCADE writes one: each curved face bounded by its rims and a seam, the cone's up to the
+/// apex and back.
+inline std::string drillPoint() {
+    return stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CARTESIAN_POINT('',(0.,0.,10.));
+#6 = AXIS2_PLACEMENT_3D('',#5,#2,#3);
+#7 = CIRCLE('',#4,3.);
+#8 = CIRCLE('',#6,3.);
+#9 = CARTESIAN_POINT('',(3.,0.,0.));
+#10 = VERTEX_POINT('',#9);
+#11 = CARTESIAN_POINT('',(3.,0.,10.));
+#12 = VERTEX_POINT('',#11);
+#13 = CARTESIAN_POINT('',(0.,0.,-1.8025818570826808));
+#14 = VERTEX_POINT('',#13);
+#15 = EDGE_CURVE('',#10,#10,#7,.T.);
+#16 = EDGE_CURVE('',#12,#12,#8,.T.);
+#17 = LINE('',#9,VECTOR('',#2,1.));
+#18 = EDGE_CURVE('',#10,#12,#17,.T.);
+#19 = DIRECTION('',(-0.85716730070211233,0.,-0.51503807491005416));
+#20 = LINE('',#9,VECTOR('',#19,1.));
+#21 = EDGE_CURVE('',#10,#14,#20,.T.);
+#22 = CYLINDRICAL_SURFACE('',#4,3.);
+#23 = ORIENTED_EDGE('',*,*,#15,.T.);
+#24 = ORIENTED_EDGE('',*,*,#18,.T.);
+#25 = ORIENTED_EDGE('',*,*,#16,.F.);
+#26 = ORIENTED_EDGE('',*,*,#18,.F.);
+#27 = EDGE_LOOP('',(#23,#24,#25,#26));
+#28 = FACE_OUTER_BOUND('',#27,.T.);
+#29 = ADVANCED_FACE('',(#28),#22,.T.);
+#30 = PLANE('',#6);
+#31 = ORIENTED_EDGE('',*,*,#16,.T.);
+#32 = EDGE_LOOP('',(#31));
+#33 = FACE_OUTER_BOUND('',#32,.T.);
+#34 = ADVANCED_FACE('',(#33),#30,.T.);
+#35 = CONICAL_SURFACE('',#4,3.,1.0297442586766543);
+#36 = ORIENTED_EDGE('',*,*,#15,.F.);
+#37 = ORIENTED_EDGE('',*,*,#21,.T.);
+#38 = ORIENTED_EDGE('',*,*,#21,.F.);
+#39 = EDGE_LOOP('',(#36,#37,#38));
+#40 = FACE_OUTER_BOUND('',#39,.T.);
+#41 = ADVANCED_FACE('',(#40),#35,.T.);
+#42 = CLOSED_SHELL('',(#29,#34,#41));
+#43 = MANIFOLD_SOLID_BREP('drill point',#42);
+)");
+}
+
 /// A torus of radii 4 and 1: one face, its boundary two seams, each there
 /// and back.
 inline std::string torus() {
@@ -288,6 +394,92 @@ inline std::string real(double v) {
     std::string s = out.str();
     if (s.find_first_of(".eE") == std::string::npos) s += ".";
     return s;
+}
+
+/// A cap of a sphere of radius 10 about the origin as OpenCASCADE writes one: the sphere's face
+/// north of the plane z = @p height, bounded by its rim and a seam meridian from the rim up to the
+/// pole, used once each way, in the loop order @p order (a rotation of "#20,#21,#22"), and a flat
+/// disc. With @p surface, the cap's surface is that entity text instead (it must define #5).
+inline std::string seamedCap(double height, const std::string& order = "#20,#21,#22",
+                             const std::string& surface = {}) {
+    const double r = std::sqrt(100.0 - height * height);
+    return stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+)" + (surface.empty() ? std::string("#5 = SPHERICAL_SURFACE('',#4,10.);\n") : surface) +
+                    "#32 = CARTESIAN_POINT('',(0.,0.," + real(height) +
+                    "));\n#33 = AXIS2_PLACEMENT_3D('',#32,#2,#3);\n#6 = CIRCLE('',#33," + real(r) +
+                    ");\n#7 = CARTESIAN_POINT('',(" + real(r) + ",0.," + real(height) + R"());
+#8 = VERTEX_POINT('',#7);
+#9 = CARTESIAN_POINT('',(0.,0.,10.));
+#10 = VERTEX_POINT('',#9);
+#11 = DIRECTION('',(0.,-1.,0.));
+#12 = AXIS2_PLACEMENT_3D('',#1,#11,#3);
+#13 = CIRCLE('',#12,10.);
+#14 = EDGE_CURVE('',#8,#8,#6,.T.);
+#15 = EDGE_CURVE('',#8,#10,#13,.T.);
+#16 = DIRECTION('',(0.,0.,-1.));
+#17 = AXIS2_PLACEMENT_3D('',#32,#16,#3);
+#18 = PLANE('',#17);
+#20 = ORIENTED_EDGE('',*,*,#14,.T.);
+#21 = ORIENTED_EDGE('',*,*,#15,.T.);
+#22 = ORIENTED_EDGE('',*,*,#15,.F.);
+#23 = EDGE_LOOP('',()" +
+                    order +
+                    R"());
+#24 = FACE_OUTER_BOUND('',#23,.T.);
+#25 = ADVANCED_FACE('',(#24),#5,.T.);
+#26 = ORIENTED_EDGE('',*,*,#14,.F.);
+#27 = EDGE_LOOP('',(#26));
+#28 = FACE_OUTER_BOUND('',#27,.T.);
+#29 = ADVANCED_FACE('',(#28),#18,.T.);
+#30 = CLOSED_SHELL('',(#25,#29));
+#31 = MANIFOLD_SOLID_BREP('cap',#30);
+)");
+}
+
+/// seamedCap's hemisphere: its rim the equator, of radius 10.
+inline std::string seamedHemisphere(const std::string& order = "#20,#21,#22",
+                                    const std::string& surface = {}) {
+    return seamedCap(0.0, order, surface);
+}
+
+/// A sphere of radius @p radius about the origin as a rational B-spline, as other systems write
+/// one: entity #5, biquadratic, nine control points round z (from +x) by five from the south pole
+/// to the north (control points #200 on). Its first and last rows of five each collapse to a
+/// pole. u runs over [0, 1] round z, v over [0, 1] from pole to pole.
+inline std::string splineSphereSurface(double radius) {
+    const double w = std::sqrt(0.5);
+    const double xs[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+    const double ys[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+    const double rs[5] = {0, 1, 1, 1, 0};
+    const double zs[5] = {-1, -1, 0, 1, 1};
+    const double wv[5] = {1, w, 1, w, 1};
+    std::string text;
+    std::string net;
+    std::string weights;
+    int id = 200;
+    for (int i = 0; i < 9; ++i) {
+        const double wu = i % 2 == 1 ? w : 1.0;
+        net += i == 0 ? "(" : ",(";
+        weights += i == 0 ? "(" : ",(";
+        for (int j = 0; j < 5; ++j) {
+            text += "#" + std::to_string(id) + " = CARTESIAN_POINT('',(" +
+                    real(radius * xs[i] * rs[j]) + "," + real(radius * ys[i] * rs[j]) + "," +
+                    real(radius * zs[j]) + "));\n";
+            net += std::string(j == 0 ? "#" : ",#") + std::to_string(id);
+            weights += std::string(j == 0 ? "" : ",") + real(wu * wv[j]);
+            ++id;
+        }
+        net += ")";
+        weights += ")";
+    }
+    return text + "#5 = ( BOUNDED_SURFACE() B_SPLINE_SURFACE(2,2,(" + net +
+           "),.UNSPECIFIED.,.T.,.F.,.F.) B_SPLINE_SURFACE_WITH_KNOTS((3,2,2,2,3),(3,2,3),"
+           "(0.,0.25,0.5,0.75,1.),(0.,0.5,1.),.UNSPECIFIED.) GEOMETRIC_REPRESENTATION_ITEM() "
+           "RATIONAL_B_SPLINE_SURFACE((" +
+           weights + ")) REPRESENTATION_ITEM('') SURFACE() );\n";
 }
 
 /// externalStyleCylinder() with its side a rational B-spline: the same cylinder, a quadric

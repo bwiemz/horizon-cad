@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <limits>
+#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -37,9 +39,11 @@ using topo::HalfEdge;
 constexpr int kRefineRounds = 256;
 constexpr double kKeepAway = 0.5;    // grid points nearer the boundary (in spacings) go
 constexpr int kBoundaryRounds = 32;  // rounds of halving edges that faces ask to have halved
+constexpr int kPoleSamples = 32;     // along a pole, to see that the surface stays at its point
 constexpr std::uint32_t kUnused = std::numeric_limits<std::uint32_t>::max();
 constexpr int kFits = -1;     // a triangle that needs no point
 constexpr int kCentroid = 3;  // one that needs its centroid; 0 to 2 name an edge to split
+constexpr int kNoPole = -1;   // a boundary point that is not on a pole
 
 std::uint64_t edgeKey(std::uint32_t a, std::uint32_t b) {
     return (static_cast<std::uint64_t>(std::min(a, b)) << 32) | std::max(a, b);
@@ -77,11 +81,18 @@ double distanceToTriangle(const Vec3& p, const Vec3& a, const Vec3& b, const Vec
 }
 
 /// A face's loops (outer first) in unwrapped (u, v), with each sample's position and the edge
-/// segment from it to the next sample.
+/// segment from it to the next sample. Where a loop runs along a pole or an apex (a stretch of its
+/// (u, v) along which the surface is one point), the stretch's points are in it too, each at the
+/// vertex there, and the segment from each to the next has no edge.
 struct Boundary {
     std::vector<std::vector<Vec2>> uv;
     std::vector<std::vector<Vec3>> xyz;
     std::vector<std::vector<Segment>> segment;
+    /// Each sample's pole, numbered across the face from 0; kNoPole for a sample on none. A
+    /// stretch's points are the half-edge's end before it, its points between, and the next
+    /// half-edge's start.
+    std::vector<std::vector<int>> pole;
+    int poles = 0;
 };
 
 /// Meshes the faces of a solid from its edges' samples.
@@ -101,16 +112,62 @@ public:
             return out;
         }
         Boundary b;
-        out.problem = boundaryOf(f, b);
+        out.problem = boundaryOf(f, edges_.plan(&f), b);
         if (out.problem.empty()) out.problem = triangulate(f, b, out, halve);
         if (!out.problem.empty()) out = FaceMesh{&f, {}, {}, {}, out.problem};
         return out;
     }
 
 private:
+    /// The way a loop runs from @p end, where a half-edge's pcurve ends in (u, v), to @p start,
+    /// where the next one's begins: into @p stretch, the points of a pole between them (end first,
+    /// a grid step or less apart), or nothing where they meet within @p allowance (the join's, a
+    /// distance on the surface: pcurves that end a rounding apart). A pole is a stretch along
+    /// which @p s stays within @p near of @p vertex, the point both half-edges reach; one along
+    /// which it does not is a jump no mesh can follow, and why is returned. A face with no plan
+    /// has no pole: triangulate says why.
+    std::string poleStretch(const geo::Surface& s, const Plan* plan, const Vec2& end,
+                            const Vec2& start, const Vec3& vertex, double allowance, double near,
+                            std::vector<Vec2>& stretch) const {
+        stretch.clear();
+        if (plan == nullptr) return {};
+        const Spacing& sp = plan->spacing;
+        const Vec2 d = start - end;
+        // Its length in w, near its length on the surface where the surface does not collapse
+        // along it (and longer where it does). Within the allowance (NaN included) they meet, as
+        // every join off a pole does; the tolerance has no say, or a pole on a face smaller than
+        // it would be taken for a join.
+        if (!(std::hypot(d.x * sp.su, d.y * sp.sv) > allowance)) return {};
+        for (int k = 0; k <= kPoleSamples; ++k) {
+            const Vec2 q = end + d * (static_cast<double>(k) / kPoleSamples);
+            if (!((s.evaluate(q.x, q.y) - vertex).length() <= near)) {
+                return "a loop of the face jumps in (u, v) between two of its edges along a "
+                       "stretch where its surface does not come to a point";
+            }
+        }
+        // A point a grid step along it, or the stretch alone where the grid has no step that way
+        // (a degenerate patch that is flat along its collapsed side). Each point makes two
+        // triangles: one fanned to the pole, one that vanishes there.
+        const double steps =
+            std::ceil(std::max(std::isfinite(sp.du) ? std::fabs(d.x) / sp.du : 0.0,
+                               std::isfinite(sp.dv) ? std::fabs(d.y) / sp.dv : 0.0));
+        const double n = std::max(1.0, steps);
+        if (!(2.0 * n <= static_cast<double>(opt_.maxTrianglesPerFace))) {
+            return "the face's pole needs more triangles than the cap of " +
+                   std::to_string(opt_.maxTrianglesPerFace);
+        }
+        const auto count = static_cast<std::size_t>(n);
+        stretch.reserve(count);
+        for (std::size_t k = 0; k < count; ++k) {
+            stretch.push_back(end + d * (static_cast<double>(k) / n));
+        }
+        return {};
+    }
+
     /// The face's loops in (u, v), unwrapped and aligned as the validator does it, each sample
-    /// at its pcurve parameter; empty, or why the face cannot be laid out.
-    std::string boundaryOf(const Face& f, Boundary& b) const {
+    /// at its pcurve parameter, and each stretch where a loop runs along a pole (poleStretch, by
+    /// @p plan's grid steps) laid out along it; empty, or why the face cannot be laid out.
+    std::string boundaryOf(const Face& f, const Plan* plan, Boundary& b) const {
         const geo::Surface& s = *f.exactSurface;
         const double pu = topo::uPeriod(s);
         const double pv = topo::vPeriod(s);
@@ -145,22 +202,59 @@ private:
             std::vector<Vec2> uv;
             std::vector<Vec3> xyz;
             std::vector<Segment> segment;
+            std::vector<int> pole;
+            const auto shiftOf = [&poly](std::size_t k) {
+                return poly[k * (topo::kLoopSamples - 1)].shift;
+            };
+            int arriving = kNoPole;  // the pole the next half-edge starts on
             for (std::size_t k = 0; k < ring.size(); ++k) {
                 const HalfEdge* h = ring[k];
-                const Vec2 shift = poly[k * (topo::kLoopSamples - 1)].shift;
                 const std::vector<Vec3>& pts = edges_.samples(h->edge)->points;
                 const std::vector<double>& ps = *edges_.parameters(h);
                 const std::size_t n = pts.size() - 1;
                 const bool forward = h == h->edge->halfEdge;
                 for (std::size_t j = 0; j < n; ++j) {  // the last is the next one's first
-                    uv.push_back(h->pcurve->evaluate(ps[j]) + shift);
+                    uv.push_back(h->pcurve->evaluate(ps[j]) + shiftOf(k));
                     xyz.push_back(pts[forward ? j : n - j]);
                     segment.emplace_back(h->edge, forward ? j : n - 1 - j);
+                    pole.push_back(j == 0 ? arriving : kNoPole);
                 }
+                // Where this half-edge's end and the next one's start part in (u, v), a pole.
+                const std::size_t k1 = (k + 1) % ring.size();
+                const HalfEdge* next = ring[k1];
+                const Vec3& vertex = pts[forward ? n : 0];
+                std::vector<Vec2> stretch;
+                std::string problem = poleStretch(
+                    s, plan, h->pcurve->evaluate(ps[n]) + shiftOf(k),
+                    next->pcurve->evaluate(edges_.parameters(next)->front()) + shiftOf(k1), vertex,
+                    allowances[k], std::max(allowances[k], opt_.chordTolerance), stretch);
+                if (!problem.empty()) return problem;
+                arriving = kNoPole;
+                if (stretch.empty()) continue;
+                // The pole is one vertex of the mesh: both half-edges must reach the same point.
+                const std::vector<Vec3>& nextPts = edges_.samples(next->edge)->points;
+                const Vec3& nextStart =
+                    next == next->edge->halfEdge ? nextPts.front() : nextPts.back();
+                if (nextStart.x != vertex.x || nextStart.y != vertex.y || nextStart.z != vertex.z) {
+                    return "a loop of the face reaches a pole at two different points";
+                }
+                for (const Vec2& p : stretch) {
+                    uv.push_back(p);
+                    xyz.push_back(vertex);
+                    segment.emplace_back(nullptr, 0);
+                    pole.push_back(b.poles);
+                }
+                if (k1 == 0) {
+                    pole.front() = b.poles;  // the loop closes on the pole
+                } else {
+                    arriving = b.poles;
+                }
+                ++b.poles;
             }
             b.uv.push_back(std::move(uv));
             b.xyz.push_back(std::move(xyz));
             b.segment.push_back(std::move(segment));
+            b.pole.push_back(std::move(pole));
         }
         return {};
     }
@@ -301,11 +395,13 @@ private:
         std::vector<std::vector<Vec2>> loopsW;
         std::vector<Vec2> uvs;
         std::vector<Vec3> xyzs;
+        std::vector<int> poles;
         for (std::size_t l = 0; l < b.uv.size(); ++l) {
             loopsW.emplace_back();
             for (const Vec2& p : b.uv[l]) loopsW.back().push_back({p.x * sp.su, p.y * sp.sv});
             uvs.insert(uvs.end(), b.uv[l].begin(), b.uv[l].end());
             xyzs.insert(xyzs.end(), b.xyz[l].begin(), b.xyz[l].end());
+            poles.insert(poles.end(), b.pole[l].begin(), b.pole[l].end());
         }
         const std::vector<std::vector<Vec2>> holesW(loopsW.begin() + 1, loopsW.end());
         std::vector<Vec2> interior;
@@ -334,6 +430,25 @@ private:
             }
             base += n;
         }
+        // Each point's vertex in space: its own, but the points of a pole are one, the first of
+        // them. A triangle with two vertices on one pole vanishes there: it is neither measured
+        // nor kept, and the triangles either side of it meet across it in the mesh.
+        std::vector<std::uint32_t> same(t.points.size());
+        std::iota(same.begin(), same.end(), 0U);
+        {
+            std::vector<std::uint32_t> first(static_cast<std::size_t>(b.poles), kUnused);
+            for (std::size_t i = 0; i < boundaryCount; ++i) {
+                if (poles[i] == kNoPole) continue;
+                std::uint32_t& at = first[static_cast<std::size_t>(poles[i])];
+                if (at == kUnused) at = t.boundaryVertex[i];
+                same[t.boundaryVertex[i]] = at;
+            }
+        }
+        const bool poled = b.poles > 0;  // a face with no pole pays for none
+        const auto vanishes = [&same](const std::array<std::uint32_t, 3>& tri) {
+            return same[tri[0]] == same[tri[1]] || same[tri[1]] == same[tri[2]] ||
+                   same[tri[2]] == same[tri[0]];
+        };
         std::vector<Vec2> uv(uvs);
         std::vector<Vec3> xyz(xyzs);
         // Triangles found to fit. A triangle's verdict depends on its vertices alone (they fix
@@ -354,9 +469,13 @@ private:
                 uv.push_back({t.points[i].x / sp.su, t.points[i].y / sp.sv});
                 xyz.push_back(s.evaluate(uv.back().x, uv.back().y));
             }
+            for (std::size_t i = same.size(); i < t.points.size(); ++i) {
+                same.push_back(static_cast<std::uint32_t>(i));
+            }
             std::vector<Vec2> added;
             std::unordered_set<std::uint64_t> split;
             for (const auto& tri : t.triangles) {
+                if (poled && vanishes(tri)) continue;
                 const TriangleKey key = canonical(tri);
                 if (fits.count(key) != 0) continue;
                 const std::array<Vec2, 3> tuv = {uv[tri[0]], uv[tri[1]], uv[tri[2]]};
@@ -388,14 +507,20 @@ private:
             for (const auto& tri : t.triangles) {
                 normals.push_back((xyz[tri[1]] - xyz[tri[0]]).cross(xyz[tri[2]] - xyz[tri[0]]));
             }
+            // Edges are keyed by their vertices in space: at a pole, the triangles either side of
+            // one that vanishes share an edge.
             std::unordered_map<std::uint64_t, std::size_t> sides;
             std::vector<bool> turned(t.triangles.size(), false);
             for (std::size_t i = 0; i < t.triangles.size(); ++i) {
+                const auto& tri = t.triangles[i];
+                if (poled && vanishes(tri)) continue;
                 for (std::size_t k = 0; k < 3; ++k) {
-                    const std::uint64_t key =
-                        edgeKey(t.triangles[i][k], t.triangles[i][(k + 1) % 3]);
+                    const std::uint32_t a = tri[k];
+                    const std::uint32_t c = tri[(k + 1) % 3];
+                    const std::uint64_t key = edgeKey(a, c);
                     if (walls.count(key) != 0) continue;
-                    const auto [other, first] = sides.emplace(key, i);
+                    const auto [other, first] =
+                        sides.emplace(poled ? edgeKey(same[a], same[c]) : key, i);
                     if (!first &&
                         angleBetween(normals[other->second], normals[i]) > opt_.maxAngle) {
                         turned[other->second] = turned[i] = true;
@@ -416,7 +541,9 @@ private:
                 }
                 const auto wall = walls.find(pick);
                 if (wall != walls.end()) {
-                    halve.push_back(wall->second);
+                    // A pole's stretch is no edge's to halve; only a triangle that vanishes
+                    // has one for a side.
+                    if (wall->second.first != nullptr) halve.push_back(wall->second);
                 } else if (split.insert(pick).second) {
                     const auto a = static_cast<std::size_t>(pick >> 32);
                     const auto c = static_cast<std::size_t>(pick & 0xFFFFFFFFULL);
@@ -425,7 +552,7 @@ private:
             }
             if (!halve.empty()) return "the face's boundary is to be halved";
             if (added.empty()) {
-                emit(f, t, uv, xyz, out);
+                emit(f, t, same, uv, xyz, out);
                 return {};
             }
             if (round == kRefineRounds) return "refining the face did not meet the tolerance";
@@ -436,21 +563,25 @@ private:
     }
 
     /// The triangles' vertices, compacted, with the surface's outward normals; triangles wound
-    /// outward.
-    static void emit(const Face& f, const geo::Triangulation2D& t, const std::vector<Vec2>& uv,
+    /// outward. Each point is taken as @p same has it, so a pole is one vertex, and the
+    /// triangles that vanish there are left out.
+    static void emit(const Face& f, const geo::Triangulation2D& t,
+                     const std::vector<std::uint32_t>& same, const std::vector<Vec2>& uv,
                      const std::vector<Vec3>& xyz, FaceMesh& out) {
         const geo::Surface& s = *f.exactSurface;
         const double sign = f.reversed ? -1.0 : 1.0;
         std::vector<std::uint32_t> index(t.points.size(), kUnused);
         for (const auto& tri : t.triangles) {
+            const std::array<std::uint32_t, 3> p = {same[tri[0]], same[tri[1]], same[tri[2]]};
+            if (p[0] == p[1] || p[1] == p[2] || p[2] == p[0]) continue;  // it vanishes at a pole
             std::array<std::uint32_t, 3> v{};
             for (std::size_t k = 0; k < 3; ++k) {
-                if (index[tri[k]] == kUnused) {
-                    index[tri[k]] = static_cast<std::uint32_t>(out.points.size());
-                    out.points.push_back(xyz[tri[k]]);
-                    out.normals.push_back(s.normal(uv[tri[k]].x, uv[tri[k]].y) * sign);
+                if (index[p[k]] == kUnused) {
+                    index[p[k]] = static_cast<std::uint32_t>(out.points.size());
+                    out.points.push_back(xyz[p[k]]);
+                    out.normals.push_back(s.normal(uv[p[k]].x, uv[p[k]].y) * sign);
                 }
-                v[k] = index[tri[k]];
+                v[k] = index[p[k]];
             }
             // Counter-clockwise in (u, v) faces along du x dv: outward unless reversed.
             if (f.reversed) std::swap(v[1], v[2]);
@@ -475,31 +606,14 @@ private:
     const detail::EdgeSampler& edges_;
 };
 
-}  // namespace
-
-std::vector<FaceMesh> TrimmedFaceMesher::meshSolid(const topo::Solid& solid,
-                                                   const MeshOptions& options) {
-    std::vector<FaceMesh> out;
-    std::string invalid;
-    if (!(options.chordTolerance > 0.0) || !std::isfinite(options.chordTolerance)) {
-        invalid = "the chord tolerance must be positive and finite";
-    } else if (!(options.maxAngle > 0.0) || !(options.maxAngle <= math::kPi)) {
-        invalid = "the angle must be above 0 and at most pi";
-    } else if (options.maxTrianglesPerFace == 0) {
-        invalid = "the triangle cap must be above 0";
-    }
-    std::vector<const Face*> faces;
-    for (const Face& f : solid.faces()) {
-        if (f.alive) faces.push_back(&f);
-    }
-    if (!invalid.empty()) {
-        for (const Face* f : faces) out.push_back(FaceMesh{f, {}, {}, {}, invalid});
-        return out;
-    }
+/// Every one of @p faces meshed, its edges sampled once for all of them: meshSolid's work, once
+/// its options are found sound.
+std::vector<FaceMesh> meshFaces(const topo::Solid& solid, const MeshOptions& options,
+                                const std::vector<const Face*>& faces) {
     detail::EdgeSampler edges(solid, options);
     edges.sampleEdges();
     const FaceMesher mesher(solid, options, edges);
-    out.resize(faces.size());
+    std::vector<FaceMesh> out(faces.size());
     // A face may ask for boundary segments to be halved; that changes the faces on both sides
     // of each, which are meshed again, until none asks.
     std::unordered_set<const Face*> todo(faces.begin(), faces.end());
@@ -529,6 +643,38 @@ std::vector<FaceMesh> TrimmedFaceMesher::meshSolid(const topo::Solid& solid,
         todo = std::unordered_set<const Face*>(changed.begin(), changed.end());
     }
     return out;
+}
+
+}  // namespace
+
+std::vector<FaceMesh> TrimmedFaceMesher::meshSolid(const topo::Solid& solid,
+                                                   const MeshOptions& options) {
+    std::vector<const Face*> faces;
+    for (const Face& f : solid.faces()) {
+        if (f.alive) faces.push_back(&f);
+    }
+    const auto every = [&faces](const std::string& why) {
+        std::vector<FaceMesh> out;
+        out.reserve(faces.size());
+        for (const Face* f : faces) out.push_back(FaceMesh{f, {}, {}, {}, why});
+        return out;
+    };
+    if (!(options.chordTolerance > 0.0) || !std::isfinite(options.chordTolerance)) {
+        return every("the chord tolerance must be positive and finite");
+    }
+    if (!(options.maxAngle > 0.0) || !(options.maxAngle <= math::kPi)) {
+        return every("the angle must be above 0 and at most pi");
+    }
+    if (options.maxTrianglesPerFace == 0) return every("the triangle cap must be above 0");
+    // A surface or curve that throws (a fault in a file's geometry) stops the solid: every face
+    // says why, as no face's mesh is left partial.
+    try {
+        return meshFaces(solid, options, faces);
+    } catch (const std::exception& e) {
+        return every(std::string("the solid could not be meshed: ") + e.what());
+    } catch (...) {
+        return every("the solid could not be meshed: an unknown fault");
+    }
 }
 
 }  // namespace hz::model

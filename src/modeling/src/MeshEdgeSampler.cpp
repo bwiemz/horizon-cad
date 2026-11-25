@@ -235,6 +235,18 @@ void EdgeSampler::planFace(const Face& f) {
         top = top || (rim && a.y == p.hi.y);
         band = band && (rim || seam);
     }
+    // A side of the box along which the surface is one point (a cone's apex, which the loop runs
+    // along from one side of its seam to the other) ends a band as a rim does.
+    const auto point = [&](double v) {
+        const Vec3 first = s.evaluate(p.lo.x, v);
+        for (int i = 1; i < kSurfaceSamples; ++i) {
+            const double u = p.lo.x + (p.hi.x - p.lo.x) * i / (kSurfaceSamples - 1);
+            if (!((s.evaluate(u, v) - first).length() <= sideTolerance())) return false;
+        }
+        return true;
+    };
+    bottom = bottom || point(p.lo.y);
+    top = top || point(p.hi.y);
     p.spacing = spacingOf(s, p.lo, p.hi, band && bottom && top);
     plans_[&f] = p;
 }
