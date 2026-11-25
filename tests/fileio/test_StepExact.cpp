@@ -12,20 +12,27 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "StepTestText.h"
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
+#include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BoundaryMesh.h"
+#include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Pattern.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/Solid.h"
@@ -527,10 +534,10 @@ std::string torusPatchAndTheRest() {
 )");
 }
 
-/// The nine control points (CCW about +z from (cos a, sin a, 0), r = 1) of the rational
+/// The nine control points (CCW about +z from (cos a, sin a, @p z), r = 1) of the rational
 /// quadratic circle, as CARTESIAN_POINTs from #@p first, and the curve as #@p id: a closed
 /// B-spline whose join is at angle @p a.
-std::string splineCircle(int id, int first, double a) {
+std::string splineCircle(int id, int first, double a, double z = 0.0) {
     const double w = std::sqrt(0.5);
     const double xs[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
     const double ys[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
@@ -541,7 +548,7 @@ std::string splineCircle(int id, int first, double a) {
         const double x = xs[i] * std::cos(a) - ys[i] * std::sin(a);
         const double y = xs[i] * std::sin(a) + ys[i] * std::cos(a);
         text += "#" + std::to_string(first + i) + " = CARTESIAN_POINT('',(" + real(x) + "," +
-                real(y) + ",0.));\n";
+                real(y) + "," + real(z) + "));\n";
         points += std::string(i == 0 ? "" : ",") + "#" + std::to_string(first + i);
         weights += std::string(i == 0 ? "" : ",") + real(i % 2 == 1 ? w : 1.0);
     }
@@ -669,12 +676,13 @@ TEST(StepExact, AClosedSplineEdgeWhoseVertexIsOffItsJoinSaysSo) {
         << StepFormat::lastError();
 }
 
-// Minor (e): edge ranges follow their sense. A cylinder whose bottom rim is two half circles, one
-// .T. across its circle's t = 0, one .F. on a circle about -z, and whose top rim is one closed
-// edge .F. on a circle about -z (the reviewer's probe): each edge runs from its start vertex
-// through the half it bounds, and the solid is clean and measures 2 pi.
-TEST(StepExact, EdgeRangesFollowTheirSenseAcrossAJoin) {
-    const std::string data = R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+namespace {
+
+/// A cylinder whose bottom rim is two half circles, one .T. across its circle's t = 0, one .F. on
+/// a circle about -z, and whose top rim is one closed edge .F. on a circle about -z (the
+/// reviewer's probe).
+std::string cylinderWithSplitRims() {
+    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
 #2 = DIRECTION('',(0.,0.,1.));
 #3 = DIRECTION('',(0.,0.,-1.));
 #4 = DIRECTION('',(1.,0.,0.));
@@ -722,9 +730,16 @@ TEST(StepExact, EdgeRangesFollowTheirSenseAcrossAJoin) {
 #65 = ADVANCED_FACE('',(#64),#61,.T.);
 #70 = CLOSED_SHELL('',(#49,#56,#65));
 #71 = MANIFOLD_SOLID_BREP('split rims',#70);
-)";
+)");
+}
+
+}  // namespace
+
+// Minor (e): edge ranges follow their sense. cylinderWithSplitRims(): each edge runs from its
+// start vertex through the half it bounds, and the solid is clean and measures 2 pi.
+TEST(StepExact, EdgeRangesFollowTheirSenseAcrossAJoin) {
     const auto solids =
-        StepFormat::fromString(hz::step_text::stepFile(data), nullptr, nullptr, inMillimetres());
+        StepFormat::fromString(cylinderWithSplitRims(), nullptr, nullptr, inMillimetres());
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
     const topo::Solid& s = *solids[0];
     std::multiset<std::string> middles;
@@ -1021,4 +1036,476 @@ TEST(StepExact, ASeamPastTheLimitLeavesItsSolidOut) {
                        "0.00346 (a thousandth of the solid's size) (face #27"),
               std::string::npos)
         << why;
+}
+
+// ---------------------------------------------------------------------------
+// The writer writes exact faces (Task 8)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// @p solid written to STEP and read back: its one solid, or null. @p text, when given, receives
+/// what was written.
+std::unique_ptr<topo::Solid> writtenAndRead(const topo::Solid& solid, std::string* text = nullptr) {
+    const std::string written = StepFormat::toString({&solid});
+    if (text != nullptr) *text = written;
+    auto back = StepFormat::fromString(written);
+    EXPECT_EQ(back.size(), 1u) << StepFormat::lastError();
+    return back.size() == 1 ? std::move(back[0]) : nullptr;
+}
+
+bool near(const Vec3& a, const Vec3& b, double tolerance) {
+    return (a - b).length() <= tolerance;
+}
+
+/// Empty when @p b is @p a as the writer writes it, within @p tolerance: the same kind, origin,
+/// x axis and z axis (a plane's z its x × y, which its PLANE's axis is, whichever hand its frame
+/// is), and radii; a B-spline's same degrees, net and weights. Otherwise what differs. A
+/// parameter scale (a plane's, an axial one: a file in inches) is not geometry, and STEP's typed
+/// surfaces carry none.
+std::string surfaceDiffers(const geo::Surface& a, const geo::Surface& b, double tolerance) {
+    if (a.kind() != b.kind()) return "its kind";
+    const auto frames = [&](const geo::Frame& fa, const geo::Frame& fb,
+                            const Vec3& axis) -> std::string {
+        if (!near(fa.origin, fb.origin, tolerance)) return "its origin";
+        if (!near(fa.x, fb.x, 1e-12)) return "its x axis";
+        if (!near(axis, fb.z, 1e-12)) return "its axis";
+        return {};
+    };
+    const auto same = [&](double x, double y) { return std::abs(x - y) <= tolerance; };
+    if (const auto* p = dynamic_cast<const geo::Plane*>(&a)) {
+        const auto& q = dynamic_cast<const geo::Plane&>(b);
+        return frames(p->frame(), q.frame(), p->frame().x.cross(p->frame().y));
+    }
+    if (const auto* c = dynamic_cast<const geo::Cylinder*>(&a)) {
+        const auto& d = dynamic_cast<const geo::Cylinder&>(b);
+        if (!same(c->radius(), d.radius())) return "its radius";
+        return frames(c->frame(), d.frame(), c->frame().z);
+    }
+    if (const auto* c = dynamic_cast<const geo::Cone*>(&a)) {
+        const auto& d = dynamic_cast<const geo::Cone&>(b);
+        if (!same(c->radius(), d.radius())) return "its radius";
+        if (std::abs(c->halfAngle() - d.halfAngle()) > 1e-12) return "its half-angle";
+        return frames(c->frame(), d.frame(), c->frame().z);
+    }
+    if (const auto* s = dynamic_cast<const geo::Sphere*>(&a)) {
+        const auto& t = dynamic_cast<const geo::Sphere&>(b);
+        if (!same(s->radius(), t.radius())) return "its radius";
+        return frames(s->frame(), t.frame(), s->frame().z);
+    }
+    if (const auto* s = dynamic_cast<const geo::Torus*>(&a)) {
+        const auto& t = dynamic_cast<const geo::Torus&>(b);
+        if (!same(s->majorRadius(), t.majorRadius()) || !same(s->minorRadius(), t.minorRadius())) {
+            return "its radii";
+        }
+        return frames(s->frame(), t.frame(), s->frame().z);
+    }
+    const auto& n = dynamic_cast<const geo::NurbsSurface&>(a);
+    const auto& m = dynamic_cast<const geo::NurbsSurface&>(b);
+    if (n.degreeU() != m.degreeU() || n.degreeV() != m.degreeV() ||
+        n.controlPoints().size() != m.controlPoints().size()) {
+        return "its degrees or net";
+    }
+    for (std::size_t i = 0; i < n.controlPoints().size(); ++i) {
+        if (n.controlPoints()[i].size() != m.controlPoints()[i].size()) return "its net";
+        for (std::size_t j = 0; j < n.controlPoints()[i].size(); ++j) {
+            if (!near(n.controlPoints()[i][j], m.controlPoints()[i][j], tolerance) ||
+                std::abs(n.weights()[i][j] - m.weights()[i][j]) > 1e-12) {
+                return "its net";
+            }
+        }
+    }
+    return {};
+}
+
+/// Empty when @p b is @p a as the writer writes it, within @p tolerance: a line's same point,
+/// direction and magnitude (its scale); a circle's or an ellipse's same centre, radii, x axis and
+/// plane (a closed edge's conic is written turned, where the edge runs back down it, so that it
+/// runs with its edge); a B-spline's same degree (an open edge's is written over its own span).
+/// Where each runs is the caller's to compare. Otherwise what differs.
+std::string curveDiffers(const geo::Curve3& a, const geo::Curve3& b, double tolerance) {
+    if (a.kind() != b.kind()) return "its kind";
+    const auto conics = [&](const geo::Frame& fa, const geo::Frame& fb) -> std::string {
+        if (!near(fa.origin, fb.origin, tolerance)) return "its centre";
+        if (!near(fa.x, fb.x, 1e-12)) return "its x axis";
+        if (std::abs(fa.x.cross(fa.y).dot(fb.x.cross(fb.y))) < 1.0 - 1e-12) return "its plane";
+        return {};
+    };
+    const auto same = [&](double x, double y) { return std::abs(x - y) <= tolerance; };
+    if (const auto* l = dynamic_cast<const geo::LineCurve*>(&a)) {
+        const auto& m = dynamic_cast<const geo::LineCurve&>(b);
+        if (!near(l->origin(), m.origin(), tolerance)) return "its point";
+        if (!near(l->direction(), m.direction(), 1e-12)) return "its direction";
+        if (!same(l->scale(), m.scale())) return "its magnitude";
+        return {};
+    }
+    if (const auto* c = dynamic_cast<const geo::CircleCurve*>(&a)) {
+        const auto& d = dynamic_cast<const geo::CircleCurve&>(b);
+        if (!same(c->radius(), d.radius())) return "its radius";
+        return conics(c->frame(), d.frame());
+    }
+    if (const auto* e = dynamic_cast<const geo::EllipseCurve*>(&a)) {
+        const auto& f = dynamic_cast<const geo::EllipseCurve&>(b);
+        if (!same(e->majorRadius(), f.majorRadius()) || !same(e->minorRadius(), f.minorRadius())) {
+            return "its radii";
+        }
+        return conics(e->frame(), f.frame());
+    }
+    const auto& n = dynamic_cast<const geo::NurbsCurve&>(a);
+    const auto& m = dynamic_cast<const geo::NurbsCurve&>(b);
+    if (n.degree() != m.degree()) return "its degree";
+    return {};
+}
+
+/// The points of @p e's span at a quarter of its parameter each, from its start to its end.
+std::vector<Vec3> spanOf(const topo::Edge& e) {
+    std::vector<Vec3> points;
+    for (int k = 0; k <= 4; ++k) {
+        points.push_back(
+            e.exactCurve->evaluate(e.curveStart + (e.curveEnd - e.curveStart) * k / 4));
+    }
+    return points;
+}
+
+/// Whether @p a and @p b are the same points within @p tolerance, in order or the other way.
+bool sameSpan(const std::vector<Vec3>& a, const std::vector<Vec3>& b, double tolerance) {
+    const auto inOrder = [&](bool reversed) {
+        for (std::size_t k = 0; k < a.size(); ++k) {
+            if (!near(a[k], b[reversed ? b.size() - 1 - k : k], tolerance)) return false;
+        }
+        return true;
+    };
+    return a.size() == b.size() && (inOrder(false) || inOrder(true));
+}
+
+/// The points of @p face's loops' vertices.
+std::vector<Vec3> cornersOf(const topo::Face& face) {
+    std::vector<Vec3> corners;
+    std::vector<const topo::Wire*> loops{face.outerLoop};
+    loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+    for (const topo::Wire* w : loops) {
+        const topo::HalfEdge* h = w->halfEdge;
+        do {
+            corners.push_back(h->origin->point);
+            h = h->next;
+        } while (h != w->halfEdge);
+    }
+    return corners;
+}
+
+/// Whether every point of @p a is one of @p b's and the other way round, within @p tolerance.
+bool sameCorners(const std::vector<Vec3>& a, const std::vector<Vec3>& b, double tolerance) {
+    const auto within = [tolerance](const std::vector<Vec3>& x, const std::vector<Vec3>& y) {
+        return std::all_of(x.begin(), x.end(), [&](const Vec3& p) {
+            return std::any_of(y.begin(), y.end(),
+                               [&](const Vec3& q) { return near(p, q, tolerance); });
+        });
+    };
+    return within(a, b) && within(b, a);
+}
+
+/// A point on @p face's boundary where its outward normal is defined (none at an apex), and that
+/// normal: the middle of one of its outer loop's half-edges, on its pcurve.
+std::pair<Vec3, Vec3> pointAndNormal(const topo::Face& face) {
+    const topo::HalfEdge* h = face.outerLoop->halfEdge;
+    do {
+        const auto uv = h->pcurve->evaluate(0.5 * (h->pcurveStart + h->pcurveEnd));
+        Vec3 n = face.exactSurface->normal(uv.x, uv.y);
+        if (n.length() > 0.5) {
+            return {face.exactSurface->evaluate(uv.x, uv.y), face.reversed ? n * -1.0 : n};
+        }
+        h = h->next;
+    } while (h != face.outerLoop->halfEdge);
+    ADD_FAILURE() << "no point on its outline has a normal";
+    return {};
+}
+
+/// Expects @p back to be @p solid written and read back with nothing changed: each face on the
+/// same surface (surfaceDiffers), with the same corners, facing the same way; each edge on the
+/// same curve (curveDiffers) over the same points; the same exact volume to 1e-9; clean.
+void expectUnchanged(const topo::Solid& solid, const topo::Solid& back) {
+    const double tolerance = topo::exactTolerance(solid).linear;
+    EXPECT_EQ(back.faceCount(), solid.faceCount());
+    EXPECT_EQ(back.edgeCount(), solid.edgeCount());
+    EXPECT_EQ(back.vertexCount(), solid.vertexCount());
+    std::set<const topo::Face*> matched;
+    for (const auto& f : solid.faces()) {
+        ASSERT_NE(f.exactSurface, nullptr);
+        const auto corners = cornersOf(f);
+        const auto [p, n] = pointAndNormal(f);
+        const topo::Face* found = nullptr;
+        std::string why = "no face with its corners";
+        for (const auto& g : back.faces()) {
+            if (matched.count(&g) != 0 || !g.exactSurface ||
+                !sameCorners(corners, cornersOf(g), tolerance)) {
+                continue;
+            }
+            why = surfaceDiffers(*f.exactSurface, *g.exactSurface, tolerance);
+            if (!why.empty()) continue;
+            const auto uv = g.exactSurface->invert(p);
+            const Vec3 m = g.exactSurface->normal(uv.x, uv.y) * (g.reversed ? -1.0 : 1.0);
+            if (!near(g.exactSurface->evaluate(uv.x, uv.y), p, tolerance) || m.dot(n) < 0.999) {
+                why = "it faces the other way, or is not where it was";
+                continue;
+            }
+            found = &g;
+            break;
+        }
+        EXPECT_NE(found, nullptr) << f.topoId.tag() << ": " << why;
+        if (found != nullptr) matched.insert(found);
+    }
+    for (const auto& e : solid.edges()) {
+        ASSERT_NE(e.exactCurve, nullptr);
+        const auto span = spanOf(e);
+        bool found = false;
+        std::string why = "no edge over the same points";
+        for (const auto& g : back.edges()) {
+            if (!g.exactCurve || !sameSpan(span, spanOf(g), tolerance)) continue;
+            why = curveDiffers(*e.exactCurve, *g.exactCurve, tolerance);
+            if (why.empty()) {
+                found = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found) << e.topoId.tag() << ": " << why;
+    }
+    const double volume = hz::model::MassPropertiesCalculator::compute(solid).volume;
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(back).volume, volume, volume * 1e-9);
+    EXPECT_EQ(firstIssue(back), "");
+}
+
+/// @p text with its first @p count FACE_OUTER_BOUNDs (all of them, when it has no more) turned
+/// round: their loops run the other way, so on a plane, where the loops decide, the face faces
+/// the other way.
+std::string boundsTurned(std::string text, int count) {
+    std::size_t at = 0;
+    for (int i = 0; i < count; ++i) {
+        at = text.find("FACE_OUTER_BOUND(", at);
+        if (at == std::string::npos) break;
+        const std::size_t sense = text.find(",.T.)", at);
+        if (sense == std::string::npos) break;
+        text.replace(sense, 5, ",.F.)");
+        at = sense;
+    }
+    return text;
+}
+
+/// Expects every face of @p shell to face away from @p centre, or toward it with @p toward: its
+/// outward normal at the middle of a half-edge of its outer loop (pointAndNormal).
+void expectFacing(const topo::Shell& shell, const Vec3& centre, bool toward = false) {
+    for (const topo::Face* f : shell.faces) {
+        const auto [p, n] = pointAndNormal(*f);
+        const double along = n.dot((p - centre).normalized());
+        if (toward) {
+            EXPECT_LT(along, -0.1) << f->topoId.tag() << " faces away from its void's centre";
+        } else {
+            EXPECT_GT(along, 0.1) << f->topoId.tag() << " faces into its solid";
+        }
+    }
+}
+
+}  // namespace
+
+// Every solid the reader's tests read, and the exact primitives, each written and read back,
+// comes back as it was: each face on the same surface, of the same kind (a CYLINDRICAL_SURFACE
+// as one, a B-spline as that B-spline), its frame and radii the same within the model
+// resolution, facing the same way; each edge on the same curve, a line keeping its magnitude;
+// the same exact volume. A mirror image's left-handed frames and a file in inches' scales are
+// written as the geometry they make (Ruling 42).
+TEST(StepExact, ARoundTripChangesNoSurface) {
+    std::vector<std::pair<std::string, std::unique_ptr<topo::Solid>>> solids;
+    const auto read = [&](const std::string& what, const std::string& text,
+                          const hz::io::StepReadOptions& options) {
+        auto in = StepFormat::fromString(text, nullptr, nullptr, options);
+        ASSERT_EQ(in.size(), 1u) << what << ": " << StepFormat::lastError();
+        solids.emplace_back(what, std::move(in[0]));
+    };
+    read("an OpenCASCADE cylinder", externalStyleCylinder(), inMillimetres());
+    read("a cone to its apex", cone(), inMillimetres());
+    read("a sphere", sphere(), inMillimetres());
+    read("a torus", torus(), inMillimetres());
+    read("a B-spline cylinder", splineCylinder(), inMillimetres());
+    read("a block with a ball out of it", blockWithABall(), inMillimetres());
+    read("a block with a face written facing in", block(true), inMillimetres());
+    read("a seamed hemisphere", seamedHemisphere(), inMillimetres());
+    read("a dimple written facing in", cylinderWithADimpleWrittenFacingIn(), inMillimetres());
+    read("split rims", cylinderWithSplitRims(), inMillimetres());
+    read("a band", bandCylinder(), inMillimetres());
+    read("Solid Edge's bore", solidEdgeCylinder(), inMillimetres());
+    read("a file in inches",
+         withEntities(replaced(externalStyleCylinder(), "VECTOR('',#2,1.)", "VECTOR('',#2,2.)"),
+                      inches()),
+         {});
+    solids.emplace_back("an exact block", hz::model::exact::makeBlock({-1, 0, 2}, {3, 5, 6}));
+    solids.emplace_back("an exact cylinder",
+                        hz::model::exact::makeCylinder(
+                            geo::Frame::fromAxis({1, 2, 3}, {0, 1, 1}, {1, 0, 0}), 2.0, 5.0));
+    solids.emplace_back("an exact plate with a hole",
+                        hz::model::exact::makePlateWithHole({0, 0, 0}, {8, 6, 2}, {3, 3}, 1.5));
+    const auto mirror = hz::math::Mat4::reflection(Vec3{4, 0, 0}, Vec3{1, 1, 0});
+    for (std::size_t i = 0; i < 2; ++i) {
+        // A mirror image: its frames left-handed, every face's sense turned with its loops (a
+        // B-spline's among them).
+        solids.emplace_back(
+            "mirrored " + solids[i == 0 ? 0 : 4].first,
+            hz::model::Pattern::transformed(*solids[i == 0 ? 0 : 4].second, mirror));
+    }
+    for (const auto& [what, solid] : solids) {
+        SCOPED_TRACE(what);
+        ASSERT_NE(solid, nullptr);
+        ASSERT_EQ(firstIssue(*solid), "");
+        const auto back = writtenAndRead(*solid);
+        ASSERT_NE(back, nullptr);
+        expectUnchanged(*solid, *back);
+    }
+}
+
+// An exact cylinder goes out on its own surfaces: its side a CYLINDRICAL_SURFACE, its caps PLANEs,
+// its rims CIRCLEs and its seam a LINE; no B-spline surface or curve.
+TEST(StepExact, TypedSurfacesAreWrittenAsTheirKind) {
+    const auto cylinder =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 2.0, 5.0);
+    ASSERT_NE(cylinder, nullptr);
+    const std::string text = StepFormat::toString({cylinder.get()});
+    const auto count = [&text](const std::string& what) {
+        std::size_t n = 0;
+        for (auto at = text.find(what); at != std::string::npos; at = text.find(what, at + 1)) ++n;
+        return n;
+    };
+    EXPECT_EQ(count("CYLINDRICAL_SURFACE("), 1u);
+    EXPECT_EQ(count(" PLANE("), 2u);
+    EXPECT_EQ(count("CIRCLE("), 2u);
+    EXPECT_EQ(count("LINE("), 1u);
+    EXPECT_EQ(count("B_SPLINE_SURFACE"), 0u);
+    EXPECT_EQ(count("B_SPLINE_CURVE"), 0u);
+    EXPECT_EQ(count("PCURVE"), 0u);
+
+    // A cone, a sphere and a torus as read, each as its own kind.
+    for (const auto& [text2, kind] : {std::pair{cone(), std::string("CONICAL_SURFACE(")},
+                                      std::pair{sphere(), std::string("SPHERICAL_SURFACE(")},
+                                      std::pair{torus(), std::string("TOROIDAL_SURFACE(")}}) {
+        SCOPED_TRACE(kind);
+        const auto in = StepFormat::fromString(text2, nullptr, nullptr, inMillimetres());
+        ASSERT_EQ(in.size(), 1u) << StepFormat::lastError();
+        const std::string out = StepFormat::toString({in[0].get()});
+        EXPECT_NE(out.find(kind), std::string::npos);
+        EXPECT_EQ(out.find("B_SPLINE_SURFACE"), std::string::npos);
+    }
+}
+
+// Ruling 41: the kernel's box is wound facing in. Written and read back it is a solid whose every
+// face faces out, away from its centre, and that holds together.
+TEST(StepExact, TheKernelsBoxWrittenAndReadBackFacesOut) {
+    const auto box = hz::model::PrimitiveFactory::makeBox(10.0, 20.0, 30.0);
+    ASSERT_NE(box, nullptr);
+    const auto back = writtenAndRead(*box);
+    ASSERT_NE(back, nullptr);
+    ASSERT_TRUE(topo::hasExactFaces(*back));
+    Vec3 centre;
+    for (const auto& v : box->vertices()) centre = centre + v.point * (1.0 / 8.0);
+    ASSERT_EQ(back->shells().size(), 1u);
+    expectFacing(back->shells().front(), centre);
+    EXPECT_EQ(firstIssue(*back), "");
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*back).volume, 6000.0, 6000.0 * 1e-12);
+}
+
+// Ruling 41, the reader's half: a file that writes a block's shell inside out (every loop turned
+// round, so each face faces in) is read with its shell turned outward, its topology with it: every
+// face faces away from the block's centre and the validator is clean. With a ball's void inside,
+// the void still faces into itself (Review Focus 4) and its volume subtracts.
+TEST(StepExact, AShellWrittenInsideOutIsReadFacingOut) {
+    const Vec3 centre{2, 2, 2};
+    {
+        const auto in = StepFormat::fromString(boundsTurned(block(false), 6), nullptr, nullptr,
+                                               inMillimetres());
+        ASSERT_EQ(in.size(), 1u) << StepFormat::lastError();
+        ASSERT_EQ(in[0]->shells().size(), 1u);
+        expectFacing(in[0]->shells().front(), centre);
+        EXPECT_EQ(firstIssue(*in[0]), "");
+        EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*in[0]).volume, 64.0, 64e-12);
+    }
+    {
+        const auto in = StepFormat::fromString(boundsTurned(blockWithABall(), 6), nullptr, nullptr,
+                                               inMillimetres());
+        ASSERT_EQ(in.size(), 1u) << StepFormat::lastError();
+        ASSERT_EQ(in[0]->shells().size(), 2u);
+        expectFacing(in[0]->shells()[0], centre);
+        expectFacing(in[0]->shells()[1], centre, true);
+        EXPECT_EQ(firstIssue(*in[0]), "");
+        const double volume = 64.0 - 4.0 / 3.0 * hz::math::kPi;
+        EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*in[0]).volume, volume,
+                    volume * 1e-9);
+    }
+}
+
+namespace {
+
+/// bandCylinder() with its top rim a closed B-spline circle joined, and its vertex, half a turn
+/// round from the bottom rim's, as the rims of Onshape's airframe are: the seam put in where it
+/// is read splits the top rim, into two edges each on part of the closed B-spline.
+std::string splineBand() {
+    std::string text = replaced(bandCylinder(), "#11 = CIRCLE('',#10,1.);",
+                                splineCircle(11, 310, hz::math::kPi, 2.0));
+    return replaced(text, "#12 = CARTESIAN_POINT('',(1.,0.,2.));",
+                    "#12 = CARTESIAN_POINT('',(-1.,0.,2.));");
+}
+
+}  // namespace
+
+// A band given its seam where it is read, which splits a rim: Solid Edge's bore (its rims each a
+// closed edge against its circle, .F.) and a band whose split rim is a closed B-spline (Onshape's
+// airframe's). Written and read back, every face is still cut into facets, as it was when first
+// read, so an imported part saved and opened again builds: a closed edge goes out running with
+// its curve, and an open edge on a B-spline on its own span of it, which a reader cannot take
+// for the other half of a closed curve.
+TEST(StepExact, ASeamedBandWrittenAndReadBackIsCutIntoFacetsAsBefore) {
+    for (const auto& [what, text] :
+         {std::pair<std::string, std::string>{"Solid Edge's bore", solidEdgeCylinder()},
+          {"a band with a B-spline rim", splineBand()}}) {
+        SCOPED_TRACE(what);
+        const auto in = StepFormat::fromString(text, nullptr, nullptr, inMillimetres());
+        ASSERT_EQ(in.size(), 1u) << StepFormat::lastError();
+        const auto first = hz::model::facetCurved(*in[0]);
+        ASSERT_NE(first.solid, nullptr) << first.error;
+        const auto back = writtenAndRead(*in[0]);
+        ASSERT_NE(back, nullptr);
+        EXPECT_EQ(firstIssue(*back), "");
+        const auto again = hz::model::facetCurved(*back);
+        ASSERT_NE(again.solid, nullptr) << again.error;
+        EXPECT_EQ(again.solid->faceCount(), first.solid->faceCount());
+        const double volume = hz::model::MassPropertiesCalculator::compute(*first.solid).volume;
+        EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*again.solid).volume, volume,
+                    volume * 1e-9);
+    }
+}
+
+// A solid of an exact body and a body of the kernel's (in facets, wound facing in) goes out with
+// each face as it is: the exact cylinder's on its cylinder and planes, the box's on their planes
+// (Ruling 13), each body facing out. Read back, both bodies are exact and face out, and the solid
+// measures the two.
+TEST(StepExact, AMixedSolidGoesOutWithEachFaceAsItIs) {
+    const auto cylinder =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    const auto box = hz::model::Pattern::transformed(*hz::model::PrimitiveFactory::makeBox(2, 3, 4),
+                                                     hz::math::Mat4::translation({5, 0, 0}));
+    ASSERT_NE(cylinder, nullptr);
+    ASSERT_NE(box, nullptr);
+    topo::Solid mixed;
+    hz::model::Pattern::append(mixed, *cylinder, hz::math::Mat4::identity());
+    hz::model::Pattern::append(mixed, *box, hz::math::Mat4::identity());
+    std::string text;
+    const auto back = writtenAndRead(mixed, &text);
+    ASSERT_NE(back, nullptr);
+    EXPECT_NE(text.find("CYLINDRICAL_SURFACE("), std::string::npos);
+    EXPECT_EQ(text.find("B_SPLINE_SURFACE"), std::string::npos);
+    ASSERT_EQ(back->shells().size(), 2u);
+    std::multiset<geo::SurfaceKind> kinds;
+    for (const topo::Face* f : exactFaces(*back)) kinds.insert(f->exactSurface->kind());
+    EXPECT_EQ(kinds.count(geo::SurfaceKind::Cylinder), 1u);
+    EXPECT_EQ(kinds.count(geo::SurfaceKind::Plane), 8u);
+    expectFacing(back->shells()[0], Vec3{0, 0, 1});
+    expectFacing(back->shells()[1], Vec3{6, 1.5, 2});
+    EXPECT_EQ(firstIssue(*back), "");
+    const double volume = 2.0 * hz::math::kPi + 24.0;
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*back).volume, volume, volume * 1e-9);
 }

@@ -749,3 +749,34 @@ TEST(ExactMass, AStoppedRequestIsNotValid) {
         MassPropertiesCalculator::computeIdeal(*cyl, nullptr, 1e-10, &cancelled);
     EXPECT_FALSE(ideal.properties.valid);
 }
+
+// Each shell's volume, signed by which way its faces face (compute() normalises the sign away): a
+// block with a ball's void is +64 and -4/3 pi, each integrated on its exact faces; the same block
+// mirrored, its faces turned with its loops, measures the same; the kernel's box, wound facing in
+// and measured by its polygons, is negative; a shell no face of which can be integrated says why.
+TEST(ExactMass, ShellVolumesAreSignedByWhichWayTheirFacesFace) {
+    const auto block = readOne(hz::step_text::blockWithABall());
+    ASSERT_NE(block, nullptr);
+    const double ball = 4.0 / 3.0 * std::numbers::pi;
+    std::string problem;
+    auto volumes = MassPropertiesCalculator::shellVolumes(*block, &problem);
+    ASSERT_EQ(volumes.size(), 2u) << problem;
+    EXPECT_NEAR(volumes[0], 64.0, 64.0 * 1e-6);
+    EXPECT_NEAR(volumes[1], -ball, ball * 1e-6);
+
+    const auto mirrored = hz::model::Pattern::transformed(
+        *block, hz::math::Mat4::reflection(Vec3{0, 0, 0}, Vec3{1, 0, 0}));
+    volumes = MassPropertiesCalculator::shellVolumes(*mirrored, &problem);
+    ASSERT_EQ(volumes.size(), 2u) << problem;
+    EXPECT_NEAR(volumes[0], 64.0, 64.0 * 1e-6);
+    EXPECT_NEAR(volumes[1], -ball, ball * 1e-6);
+
+    const auto box = hz::model::PrimitiveFactory::makeBox(10.0, 20.0, 30.0);
+    volumes = MassPropertiesCalculator::shellVolumes(*box, &problem);
+    ASSERT_EQ(volumes.size(), 1u) << problem;
+    EXPECT_NEAR(volumes[0], -6000.0, 6000.0 * 1e-12);
+
+    std::atomic<bool> cancelled{true};
+    EXPECT_TRUE(MassPropertiesCalculator::shellVolumes(*block, &problem, 1e-6, &cancelled).empty());
+    EXPECT_EQ(problem, "stopped");
+}

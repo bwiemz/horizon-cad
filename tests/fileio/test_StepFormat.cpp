@@ -146,13 +146,14 @@ TEST(StepFormat, CylinderRoundTripIsExactForTheFacetedSolid) {
     auto cyl = PrimitiveFactory::makeCylinder(4.0, 12.0);
     ASSERT_NE(cyl, nullptr);
 
-    // Written as modelled, a cylinder's faces are its planar facets and the
-    // export carries no rational surface: the written model is exactly the
-    // model in memory. (Written as designed, the default since Phase 151,
-    // its side is one face on the cylinder: StepCurvedTest.)
+    // Written as modelled, a cylinder's faces are its planar facets, each on
+    // its own PLANE (exact kernel stage 2, Ruling 13; a bilinear patch until
+    // then), and the export carries no B-spline surface: the written model
+    // is exactly the model in memory. (Written as designed, the default since
+    // Phase 151, its side is one face on the cylinder: StepCurvedTest.)
     const std::string text = StepFormat::toString(refs(*cyl), {false});
-    EXPECT_EQ(text.find("RATIONAL_B_SPLINE_SURFACE"), std::string::npos);
-    EXPECT_NE(text.find("B_SPLINE_SURFACE_WITH_KNOTS"), std::string::npos);
+    EXPECT_EQ(text.find("B_SPLINE_SURFACE"), std::string::npos);
+    EXPECT_NE(text.find(" PLANE("), std::string::npos);
 
     auto solids = StepFormat::fromString(text);
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();

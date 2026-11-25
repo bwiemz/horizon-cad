@@ -1174,41 +1174,50 @@ struct Pass {
     std::string problem;
 };
 
+/// Adds @p face to @p pass: an exact face integrated to @p accuracy of its own size, any other by
+/// its polygons, about @p pass's origin. False, with the pass's problem said, where the face
+/// cannot be integrated or @p cancelled is set.
+bool addFace(Pass& pass, const Face& face, double size, const math::ModelTolerance& tolerance,
+             double accuracy, const std::atomic<bool>* cancelled) {
+    if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
+        pass.problem = "stopped";
+        return false;
+    }
+    if (!face.alive) return true;
+    const Vec3& origin = pass.measures.origin;
+    if (!face.exactSurface) {
+        // As modelled: the polygon formulas, about the same origin.
+        for (const auto& tri : faceTriangles(face)) {
+            pass.measures.add(tri[0] - origin, tri[1] - origin, tri[2] - origin);
+        }
+        pass.plain.insert(face.topoId.isValid() ? logicalFace(face.topoId.tag()) : nameOf(face));
+        return true;
+    }
+    FaceIntegral integral(face, origin, size, tolerance, accuracy, cancelled);
+    const FaceResult r = integral.run();
+    if (!r.problem.empty()) {
+        pass.problem = nameOf(face) + ": " + r.problem;
+        return false;
+    }
+    for (std::size_t k = 0; k < 10; ++k) {
+        pass.measures.sums[k] += r.flux[k] * std::pow(size, kPowers[k]) * kSumFactors[k];
+    }
+    pass.measures.area += r.flux[kArea] * size * size;
+    pass.volumeError += r.error[0] * size * size * size;
+    pass.areaError += r.error[kArea] * size * size;
+    pass.volumeBoundary += r.boundary[0] * size * size * size;
+    pass.areaBoundary += r.boundary[kArea] * size * size;
+    pass.pieces = std::max(pass.pieces, r.pieces);
+    return true;
+}
+
 Pass integrateFaces(const topo::Solid& solid, const Vec3& origin, double size,
                     const math::ModelTolerance& tolerance, double accuracy,
                     const std::atomic<bool>* cancelled) {
     Pass pass;
     pass.measures.origin = origin;
     for (const auto& face : solid.faces()) {
-        if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
-            pass.problem = "stopped";
-            return pass;
-        }
-        if (!face.alive) continue;
-        if (!face.exactSurface) {
-            // As modelled: the polygon formulas, about the same origin.
-            for (const auto& tri : faceTriangles(face)) {
-                pass.measures.add(tri[0] - origin, tri[1] - origin, tri[2] - origin);
-            }
-            pass.plain.insert(face.topoId.isValid() ? logicalFace(face.topoId.tag())
-                                                    : nameOf(face));
-            continue;
-        }
-        FaceIntegral integral(face, origin, size, tolerance, accuracy, cancelled);
-        const FaceResult r = integral.run();
-        if (!r.problem.empty()) {
-            pass.problem = nameOf(face) + ": " + r.problem;
-            return pass;
-        }
-        for (std::size_t k = 0; k < 10; ++k) {
-            pass.measures.sums[k] += r.flux[k] * std::pow(size, kPowers[k]) * kSumFactors[k];
-        }
-        pass.measures.area += r.flux[kArea] * size * size;
-        pass.volumeError += r.error[0] * size * size * size;
-        pass.areaError += r.error[kArea] * size * size;
-        pass.volumeBoundary += r.boundary[0] * size * size * size;
-        pass.areaBoundary += r.boundary[kArea] * size * size;
-        pass.pieces = std::max(pass.pieces, r.pieces);
+        if (!addFace(pass, face, size, tolerance, accuracy, cancelled)) return pass;
     }
     return pass;
 }
@@ -1276,6 +1285,47 @@ ExactMeasure measure(const topo::Solid& solid, const Material* material,
 }
 
 }  // namespace
+
+ShellVolumes measureShellVolumes(const topo::Solid& solid, double accuracy,
+                                 const std::atomic<bool>* cancelled) {
+    ShellVolumes out;
+    try {
+        const double size = topo::exactExtent(solid);
+        if (!(size > 0.0) || !std::isfinite(size)) {
+            out.problem = "the solid has no size to measure";
+            return out;
+        }
+        const Vec3 origin = middleOf(solid);
+        const math::ModelTolerance tolerance = topo::exactTolerance(solid);
+        for (const auto& shell : solid.shells()) {
+            Pass pass;
+            pass.measures.origin = origin;
+            for (const Face* face : shell.faces) {
+                if (face == nullptr) continue;
+                if (!addFace(pass, *face, size, tolerance, accuracy, cancelled)) {
+                    out.problem = pass.problem;
+                    out.volumes.clear();
+                    return out;
+                }
+            }
+            // The sums hold six times the volume (kSumFactors).
+            const double volume = pass.measures.sums[0] / kSumFactors[0];
+            if (!std::isfinite(volume)) {
+                out.problem = "a shell's volume is not finite";
+                out.volumes.clear();
+                return out;
+            }
+            out.volumes.push_back(volume);
+        }
+    } catch (const std::exception& e) {
+        out.volumes.clear();
+        out.problem = std::string("the solid could not be measured: ") + e.what();
+    } catch (...) {
+        out.volumes.clear();
+        out.problem = "the solid could not be measured: an unknown fault";
+    }
+    return out;
+}
 
 ExactMeasure measureExact(const topo::Solid& solid, const Material* material,
                           const std::atomic<bool>* cancelled, double tolerance) {

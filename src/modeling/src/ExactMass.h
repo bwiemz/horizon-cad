@@ -61,4 +61,20 @@ struct ExactMeasure {
 ExactMeasure measureExact(const topo::Solid& solid, const Material* material,
                           const std::atomic<bool>* cancelled, double tolerance = 1e-10);
 
+/// What measureShellVolumes gives: each shell's signed volume, in the solid's shell order, or why
+/// there is none.
+struct ShellVolumes {
+    std::vector<double> volumes;
+    std::string problem;
+};
+
+/// The volume each of @p solid's shells encloses, signed by which way its faces face, as
+/// measureExact sums it but shell by shell and not normalised: each exact face integrated to
+/// @p accuracy of its own size, each other face by its polygons. A shell whose faces face out
+/// of what it encloses is positive; one facing into it (a void's) is negative. Empty volumes,
+/// with the problem said, where a face cannot be integrated, a sum is not finite, or
+/// @p cancelled is set. Nothing throws.
+ShellVolumes measureShellVolumes(const topo::Solid& solid, double accuracy,
+                                 const std::atomic<bool>* cancelled);
+
 }  // namespace hz::model::detail

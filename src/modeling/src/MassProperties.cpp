@@ -4,6 +4,7 @@
 #include <cmath>
 #include <exception>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ExactMass.h"
@@ -225,6 +226,14 @@ MassProperties MassPropertiesCalculator::compute(const topo::Solid& solid,
         props.problem = "the solid could not be measured: an unknown fault";
         return props;
     }
+}
+
+std::vector<double> MassPropertiesCalculator::shellVolumes(const topo::Solid& solid,
+                                                           std::string* problem, double accuracy,
+                                                           const std::atomic<bool>* cancelled) {
+    detail::ShellVolumes measured = detail::measureShellVolumes(solid, accuracy, cancelled);
+    if (problem != nullptr) *problem = std::move(measured.problem);
+    return std::move(measured.volumes);
 }
 
 }  // namespace hz::model

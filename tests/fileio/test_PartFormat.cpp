@@ -6,6 +6,7 @@
 #include <fstream>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <set>
 #include <string>
 
 #include "StepTestText.h"
@@ -21,6 +22,8 @@
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/surfaces/AnalyticSurfaces.h"
+#include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidTessellator.h"
@@ -1411,4 +1414,34 @@ TEST(PartFormat, AnImportedBodyThatCanBeExactOpensExact) {
     for (const auto& line : report.converted) {
         EXPECT_EQ(line.find("not exact"), std::string::npos) << line;
     }
+}
+
+// Task 8: a part keeps its imported body as STEP the writer writes, each exact face as its kind, so
+// the body opens exact with its faces on their own surfaces: an OpenCASCADE cylinder's side on its
+// cylinder and its caps on their planes, as it was read, not as B-splines.
+TEST(PartFormat, AnImportedBodyStaysExactThroughThePartFile) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto read = hz::io::StepFormat::fromString(hz::step_text::externalStyleCylinder(), nullptr,
+                                               nullptr, inMillimetres);
+    ASSERT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    hz::io::ImportReport report;
+    const auto body = savedAndOpened(std::move(read[0]), "cylinder.step", report);
+    ASSERT_NE(body, nullptr);
+    ASSERT_TRUE(hz::topo::hasExactFaces(*body));
+    EXPECT_TRUE(hz::topo::validateExact(*body, hz::topo::exactTolerance(*body)).empty());
+    std::multiset<hz::geo::SurfaceKind> kinds;
+    for (const auto& f : body->faces()) {
+        ASSERT_NE(f.exactSurface, nullptr);
+        kinds.insert(f.exactSurface->kind());
+        if (const auto* side = dynamic_cast<const hz::geo::Cylinder*>(f.exactSurface.get())) {
+            EXPECT_NEAR(side->radius(), 1.0, 1e-15);
+            EXPECT_NEAR((side->frame().z - Vec3{0, 0, 1}).length(), 0.0, 1e-15);
+        }
+    }
+    EXPECT_EQ(kinds, (std::multiset<hz::geo::SurfaceKind>{hz::geo::SurfaceKind::Plane,
+                                                          hz::geo::SurfaceKind::Cylinder,
+                                                          hz::geo::SurfaceKind::Plane}));
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*body).volume, 2.0 * hz::math::kPi,
+                2.0 * hz::math::kPi * 1e-9);
 }

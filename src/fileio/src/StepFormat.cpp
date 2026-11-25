@@ -39,12 +39,15 @@
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/Faceting.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/SeamInsertion.h"
 #include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/ExactValidator.h"
+#include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/LoopUnwrap.h"
+#include "horizon/topology/Queries.h"
 
 namespace hz::io {
 
@@ -306,6 +309,147 @@ int writeSurface(StepWriter& w, const geo::NurbsSurface& s) {
 }
 
 // ---------------------------------------------------------------------------
+// Exact faces and edges as their kind (exact kernel, stage 2)
+// ---------------------------------------------------------------------------
+
+int writeDirection(StepWriter& w, const Vec3& d) {
+    return w.add("DIRECTION('',(" + fmtReal(d.x) + "," + fmtReal(d.y) + "," + fmtReal(d.z) + "))");
+}
+
+/// An AXIS2_PLACEMENT_3D at @p origin, its axis @p axis and its x @p ref: always right-handed, as
+/// STEP's are (its y is axis x ref).
+int writePlacement(StepWriter& w, const Vec3& origin, const Vec3& axis, const Vec3& ref) {
+    const int at = w.addPoint(origin);
+    const int z = writeDirection(w, axis);
+    const int x = writeDirection(w, ref);
+    return w.add("AXIS2_PLACEMENT_3D('',#" + std::to_string(at) + ",#" + std::to_string(z) + ",#" +
+                 std::to_string(x) + ")");
+}
+
+bool positiveFinite(double x) {
+    return std::isfinite(x) && x > 0.0;
+}
+
+/// A surface as written: its id, and whether the normal of the surface written (du x dv) runs
+/// against the normal of the surface it was written for.
+struct WrittenSurface {
+    int id = 0;
+    bool flipped = false;
+};
+
+/// @p s written as its kind: a PLANE, CYLINDRICAL_SURFACE, CONICAL_SURFACE, SPHERICAL_SURFACE or
+/// TOROIDAL_SURFACE placed by its frame, or its B-spline (writeSurface). STEP's typed surfaces
+/// carry no parameter scale, and their placements are right-handed, so each is written as the
+/// geometry it makes (Ruling 42): a plane through its frame's origin about x × y, with its x; a
+/// surface of revolution about its frame's z with its x. A left-handed frame (a mirror image's),
+/// or a negative axial scale, then runs the surface's u (or v) the other way, and the surface
+/// written faces against it: said in `flipped`. Nullopt where its numbers make none STEP holds
+/// (a radius that is not positive, a cone's half-angle outside (0, pi/2), a scale of 0): the
+/// face goes out on its carrier, as before the exact kernel.
+std::optional<WrittenSurface> writeExactSurface(StepWriter& w, const geo::Surface& s) {
+    const auto revolved = [&](const geo::Frame& f, double axialScale, const std::string& kind,
+                              const std::string& radii) -> std::optional<WrittenSurface> {
+        if (!std::isfinite(axialScale) || axialScale == 0.0) return std::nullopt;
+        const bool leftHanded = f.x.cross(f.y).dot(f.z) < 0.0;
+        const int placement = writePlacement(w, f.origin, f.z, f.x);
+        return WrittenSurface{w.add(kind + "('',#" + std::to_string(placement) + "," + radii + ")"),
+                              leftHanded != (axialScale < 0.0)};
+    };
+    if (const auto* plane = dynamic_cast<const geo::Plane*>(&s)) {
+        const geo::Frame& f = plane->frame();
+        const Vec3 axis = f.x.cross(f.y);
+        if (!positiveFinite(axis.length()) || !std::isfinite(plane->scale()) ||
+            plane->scale() == 0.0) {
+            return std::nullopt;
+        }
+        const int placement = writePlacement(w, f.origin, axis * (1.0 / axis.length()), f.x);
+        return WrittenSurface{w.add("PLANE('',#" + std::to_string(placement) + ")"), false};
+    }
+    if (const auto* cylinder = dynamic_cast<const geo::Cylinder*>(&s)) {
+        if (!positiveFinite(cylinder->radius())) return std::nullopt;
+        return revolved(cylinder->frame(), cylinder->axialScale(), "CYLINDRICAL_SURFACE",
+                        fmtReal(cylinder->radius()));
+    }
+    if (const auto* cone = dynamic_cast<const geo::Cone*>(&s)) {
+        const double r = cone->radius();
+        const double a = cone->halfAngle();
+        if (!std::isfinite(r) || r < 0.0 || !(a > 0.0 && a < math::kHalfPi)) return std::nullopt;
+        return revolved(cone->frame(), cone->axialScale(), "CONICAL_SURFACE",
+                        fmtReal(r) + "," + fmtReal(a));
+    }
+    if (const auto* sphere = dynamic_cast<const geo::Sphere*>(&s)) {
+        if (!positiveFinite(sphere->radius())) return std::nullopt;
+        return revolved(sphere->frame(), 1.0, "SPHERICAL_SURFACE", fmtReal(sphere->radius()));
+    }
+    if (const auto* torus = dynamic_cast<const geo::Torus*>(&s)) {
+        if (!positiveFinite(torus->majorRadius()) || !positiveFinite(torus->minorRadius())) {
+            return std::nullopt;
+        }
+        return revolved(torus->frame(), 1.0, "TOROIDAL_SURFACE",
+                        fmtReal(torus->majorRadius()) + "," + fmtReal(torus->minorRadius()));
+    }
+    if (const auto* nurbs = dynamic_cast<const geo::NurbsSurface*>(&s)) {
+        return WrittenSurface{writeSurface(w, *nurbs), false};
+    }
+    return std::nullopt;
+}
+
+/// @p c run the other way over the same domain: its net and weights reversed, its knots
+/// mirrored.
+geo::NurbsCurve reversedSpline(const geo::NurbsCurve& c) {
+    std::vector<Vec3> points(c.controlPoints().rbegin(), c.controlPoints().rend());
+    std::vector<double> weights(c.weights().rbegin(), c.weights().rend());
+    const std::vector<double>& knots = c.knots();
+    std::vector<double> mirrored;
+    mirrored.reserve(knots.size());
+    for (auto k = knots.rbegin(); k != knots.rend(); ++k) {
+        mirrored.push_back(knots.front() + knots.back() - *k);
+    }
+    return {std::move(points), std::move(weights), std::move(mirrored), c.degree()};
+}
+
+/// @p c written as its kind, parametrised as @p c is: a LINE whose VECTOR's magnitude is the
+/// line's scale (a negative scale written as its direction turned round), a CIRCLE or an ELLIPSE
+/// placed about its frame's x × y with its x (so its y is the frame's, whichever hand the frame
+/// is), or its B-spline (writeCurve). With @p backward, the same curve running the other way: a
+/// line's direction, a conic's y (and so its axis) turned round, a B-spline's net reversed.
+/// Nullopt where its numbers make none STEP holds.
+std::optional<int> writeExactCurve(StepWriter& w, const geo::Curve3& c, bool backward = false) {
+    if (const auto* line = dynamic_cast<const geo::LineCurve*>(&c)) {
+        const double scale = line->scale();
+        if (!std::isfinite(scale) || scale == 0.0) return std::nullopt;
+        const Vec3 direction =
+            (scale < 0.0) != backward ? line->direction() * -1.0 : line->direction();
+        const int point = w.addPoint(line->origin());
+        const int vector = w.add("VECTOR('',#" + std::to_string(writeDirection(w, direction)) +
+                                 "," + fmtReal(std::abs(scale)) + ")");
+        return w.add("LINE('',#" + std::to_string(point) + ",#" + std::to_string(vector) + ")");
+    }
+    const auto placed = [&](const geo::Frame& f, const std::string& kind,
+                            const std::string& radii) -> std::optional<int> {
+        const Vec3 axis = f.x.cross(f.y) * (backward ? -1.0 : 1.0);
+        if (!positiveFinite(axis.length())) return std::nullopt;
+        const int placement = writePlacement(w, f.origin, axis * (1.0 / axis.length()), f.x);
+        return w.add(kind + "('',#" + std::to_string(placement) + "," + radii + ")");
+    };
+    if (const auto* circle = dynamic_cast<const geo::CircleCurve*>(&c)) {
+        if (!positiveFinite(circle->radius())) return std::nullopt;
+        return placed(circle->frame(), "CIRCLE", fmtReal(circle->radius()));
+    }
+    if (const auto* ellipse = dynamic_cast<const geo::EllipseCurve*>(&c)) {
+        if (!positiveFinite(ellipse->majorRadius()) || !positiveFinite(ellipse->minorRadius())) {
+            return std::nullopt;
+        }
+        return placed(ellipse->frame(), "ELLIPSE",
+                      fmtReal(ellipse->majorRadius()) + "," + fmtReal(ellipse->minorRadius()));
+    }
+    if (const auto* nurbs = dynamic_cast<const geo::NurbsCurve*>(&c)) {
+        return backward ? writeCurve(w, reversedSpline(*nurbs)) : writeCurve(w, *nurbs);
+    }
+    return std::nullopt;
+}
+
+// ---------------------------------------------------------------------------
 // Curved faces as designed (Phase 151)
 // ---------------------------------------------------------------------------
 
@@ -371,6 +515,51 @@ std::optional<std::pair<Vec3, Vec3>> planeOf(const topo::Face& f) {
     const double length = normal.length();
     if (length <= 0.0 || count == 0) return std::nullopt;
     return std::make_pair(normal * (1.0 / length), centroid * (1.0 / count));
+}
+
+/// The plane a face with no exact geometry is written on where it is flat (Ruling 13): its outer
+/// loop's (planeOf: its normal the way the loop runs), where its carrier, if it has one, is flat,
+/// and every corner of its loops and every control point of its edges' curves lies within
+/// @p tolerance of that plane. A flat face goes out on its plane, not on its carrier, a patch
+/// sized to its corners that the circles of its rims, written as designed, stand outside of.
+std::optional<std::pair<Vec3, Vec3>> flatPlaneOf(const topo::Face& f, double tolerance) {
+    const auto plane = planeOf(f);
+    if (!plane) return std::nullopt;
+    Vec3 carrierOrigin;
+    Vec3 carrierNormal;
+    if (f.surface != nullptr &&
+        !topo::GeometryValidator::facePlane(f, carrierOrigin, carrierNormal)) {
+        return std::nullopt;  // a curved carrier, whatever its corners do
+    }
+    const auto& [normal, at] = *plane;
+    const auto on = [&](const Vec3& p) { return std::abs((p - at).dot(normal)) <= tolerance; };
+    std::vector<const topo::Wire*> loops{f.outerLoop};
+    loops.insert(loops.end(), f.innerLoops.begin(), f.innerLoops.end());
+    for (const topo::Wire* wire : loops) {
+        if (wire == nullptr || wire->halfEdge == nullptr) return std::nullopt;
+        const topo::HalfEdge* he = wire->halfEdge;
+        std::size_t count = 0;
+        do {
+            if (he->origin == nullptr || !on(he->origin->point)) return std::nullopt;
+            if (he->edge != nullptr && he->edge->curve != nullptr) {
+                const auto& points = he->edge->curve->controlPoints();
+                if (!std::all_of(points.begin(), points.end(), on)) return std::nullopt;
+            }
+            he = he->next;
+        } while (he != nullptr && he != wire->halfEdge && ++count < 1000000);
+    }
+    return plane;
+}
+
+/// Whether @p f's carrier faces the way its outer loop runs: its normal near the loop's middle
+/// against the loop's (planeOf). A loop whose corners make no polygon (a circle's one vertex)
+/// says nothing, and the carrier is taken to face as its face does, as the reader leaves every
+/// carrier it reads.
+bool carrierRunsWithLoops(const topo::Face& f) {
+    const auto plane = planeOf(f);
+    if (!plane || f.surface == nullptr) return true;
+    const auto [u, v] = f.surface->locate(plane->second);
+    return f.surface->normal(u, v).dot(plane->first) >= 0.0;
 }
 
 /// A curved face as designed: the facets that stand in for one analytic
@@ -920,11 +1109,44 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
     // Edges. Orient the written curve along the recorded half-edge direction.
     std::unordered_map<const topo::Edge*, int> edgeIds;
     for (const auto& e : solid.edges()) {
-        if (e.halfEdge == nullptr || e.curve == nullptr || inside(e)) continue;
+        if (e.halfEdge == nullptr || e.halfEdge->twin == nullptr ||
+            (e.curve == nullptr && e.exactCurve == nullptr) || inside(e)) {
+            continue;
+        }
         const topo::Vertex* start = e.halfEdge->origin;
         const topo::Vertex* end = e.halfEdge->twin->origin;
         const std::string ends =
             "#" + std::to_string(vertexIds.at(start)) + ",#" + std::to_string(vertexIds.at(end));
+        if (e.exactCurve != nullptr) {
+            // On its exact curve as its kind, from its start at curveStart to its end at
+            // curveEnd: with the curve where that runs up it. A reader can tell which way round a
+            // closed edge runs only from its sense, and takes its curve's way for it (Horizon's
+            // reader its carrier's), so a closed edge goes out on its curve turned, where it runs
+            // back down it, and with it. An open edge on a B-spline goes out on its own span of
+            // it: on a closed one, an end at the join is at either end of the curve, and no
+            // reader can tell which half the edge runs over.
+            const bool closed = start == end;
+            const bool backward = e.curveEnd < e.curveStart;
+            const auto* spline = dynamic_cast<const geo::NurbsCurve*>(e.exactCurve.get());
+            const auto spanned = [&]() -> bool {
+                if (closed || spline == nullptr) return false;
+                const double a =
+                    std::clamp(std::min(e.curveStart, e.curveEnd), spline->tMin(), spline->tMax());
+                const double b =
+                    std::clamp(std::max(e.curveStart, e.curveEnd), spline->tMin(), spline->tMax());
+                return b - a > 1e-12 * (spline->tMax() - spline->tMin());
+            };
+            const std::optional<int> curveId =
+                spanned()
+                    ? std::optional<int>(writeCurve(w, spline->segment(e.curveStart, e.curveEnd)))
+                    : writeExactCurve(w, *e.exactCurve, closed && backward);
+            if (curveId) {
+                edgeIds[&e] = w.add("EDGE_CURVE(''," + ends + ",#" + std::to_string(*curveId) +
+                                    "," + (closed || !backward ? ".T." : ".F.") + ")");
+                continue;
+            }
+            if (e.curve == nullptr) continue;
+        }
         if (curved.count(&e) != 0) {
             const auto rim = rims.find(&e);
             const std::optional<Circle> circle =
@@ -967,12 +1189,14 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
                             (senseForward ? ".T." : ".F.") + ")");
     }
 
+    // How near a flat face's corners must lie to one plane for it to go out on that plane.
+    const double flatWithin = math::ModelTolerance::forExtent(topo::exactExtent(solid)).linear;
+
     // Faces; a cavity's @p reversed, facing out of its void as a closed
     // shell of the void must (its bounds and its sense turned round).
     const auto sense = [](bool forward) { return forward ? std::string(".T.") : ".F."; };
     auto writeFace = [&](const topo::Face& f, bool reversed) -> std::optional<int> {
-        if (f.outerLoop == nullptr || f.surface == nullptr) return std::nullopt;
-
+        if (f.outerLoop == nullptr) return std::nullopt;
         auto writeLoop = [&](const topo::Wire* wire, bool outer) -> std::optional<int> {
             std::vector<int> oriented;
             const topo::HalfEdge* start = wire->halfEdge;
@@ -998,9 +1222,38 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
         }
         if (bounds.empty()) return std::nullopt;
 
-        const int surfId = writeSurface(w, *f.surface);
+        // Its surface, and whether that surface's normal runs the way its loops do, so that
+        // its same_sense says truly which way it faces: an exact face on its exact surface as
+        // its kind; a flat one with none on its plane (Ruling 13); another on its carrier, as
+        // is an exact face whose surface's numbers make none STEP holds.
+        std::optional<int> surfId;
+        bool withLoops = true;
+        if (f.exactSurface != nullptr) {
+            if (const auto written = writeExactSurface(w, *f.exactSurface)) {
+                // Its loops run about its outward normal: its surface's, turned where reversed.
+                surfId = written->id;
+                withLoops = written->flipped == f.reversed;
+            }
+        }
+        if (!surfId) {
+            const auto plane =
+                f.exactSurface == nullptr ? flatPlaneOf(f, flatWithin) : std::nullopt;
+            if (plane) {
+                const auto& [normal, at] = *plane;
+                const geo::Frame frame = geo::Frame::fromAxis(at, normal);
+                surfId = w.add("PLANE('',#" +
+                               std::to_string(writePlacement(w, at, frame.z, frame.x)) + ")");
+                withLoops = true;  // its normal is its loop's
+            } else if (f.surface != nullptr) {
+                surfId = writeSurface(w, *f.surface);
+                withLoops = carrierRunsWithLoops(f);
+            } else {
+                return std::nullopt;
+            }
+        }
+
         return w.add("ADVANCED_FACE(''," + StepWriter::refList(bounds) + ",#" +
-                     std::to_string(surfId) + "," + sense(!reversed) + ")");
+                     std::to_string(*surfId) + "," + sense(withLoops != reversed) + ")");
     };
 
     // A curved face as designed: one face on its surface, round its outline;
@@ -1077,17 +1330,30 @@ std::vector<int> writeSolid(StepWriter& w, const topo::Solid& solid, int index, 
         return "'solid_" + std::to_string(index) + "_" + std::to_string(body) + "'";
     };
 
+    // A body wound facing in (the kernel's box is: its builders wind either way) goes out
+    // facing out, as STEP has every solid: each of its shells turned round. Only where its loops
+    // measure it, its faces having no exact surface, which faces out as its `reversed` says, and
+    // its edges being chords, not curves whose few corners measure nothing.
+    const bool loopsMeasure = !model::describedByCurves(solid);
+    const auto woundIn = [loopsMeasure](const topo::Shell& shell) {
+        return loopsMeasure &&
+               std::none_of(shell.faces.begin(), shell.faces.end(),
+                            [](const topo::Face* f) { return f->exactSurface != nullptr; }) &&
+               topo::signedVolume(shell) < 0.0;
+    };
+
     // Each body: its outer shell, and a void for each cavity it encloses.
     std::vector<int> solidIds;
     for (const auto& shells : model::Pattern::bodyShells(solid)) {
         const auto facesOf = [](const topo::Shell* shell) {
             return std::vector<const topo::Face*>(shell->faces.begin(), shell->faces.end());
         };
-        const auto outer = writeShell(facesOf(shells.front()), false);
+        const bool turned = woundIn(*shells.front());
+        const auto outer = writeShell(facesOf(shells.front()), turned);
         if (!outer) continue;
         std::vector<int> voids;
         for (std::size_t i = 1; i < shells.size(); ++i) {
-            if (const auto cavity = writeShell(facesOf(shells[i]), true)) {
+            if (const auto cavity = writeShell(facesOf(shells[i]), !turned)) {
                 voids.push_back(
                     w.add("ORIENTED_CLOSED_SHELL('',*,#" + std::to_string(*cavity) + ",.F.)"));
             }
@@ -1506,7 +1772,29 @@ public:
                 }
             }
         }
+        m_plan = plan;
         return turned ? assemble(plan, error) : std::move(solid);
+    }
+
+    /// Which shells of the solid built are voids, in its shell order (its shells are built in
+    /// the order of its plan).
+    std::vector<bool> voidShells() const {
+        std::vector<bool> voids;
+        voids.reserve(m_plan.size());
+        for (const ShellRef& shell : m_plan) voids.push_back(shell.isVoid);
+        return voids;
+    }
+
+    /// The solid built again with each of @p shells (indices in its shell order) turned round, as
+    /// build() turns a void or a surface model's shell that measures the wrong way: each of its
+    /// faces' loops run the other way and its face reversed, so its topology and its geometry
+    /// agree. Null, with @p error said, where it cannot be built.
+    std::unique_ptr<topo::Solid> turned(const std::vector<std::size_t>& shells,
+                                        std::string& error) {
+        for (const std::size_t i : shells) {
+            if (i < m_plan.size()) m_plan[i].reversed = !m_plan[i].reversed;
+        }
+        return assemble(m_plan, error);
     }
 
     /// How many of a surface model's shells were open surfaces, left out.
@@ -2915,6 +3203,8 @@ private:
     std::unique_ptr<topo::Solid> m_solid;
     std::unordered_map<int, topo::Vertex*> m_vertices;
     std::map<int, EdgeRecord> m_edges;
+    /// The shells build() built, each as it turned them: the solid's shells, in order.
+    std::vector<ShellRef> m_plan;
     std::size_t m_openShells = 0;
     /// Each typed or B-spline surface's exact surface, by its SURFACE: shared by its faces.
     std::unordered_map<int, std::shared_ptr<const geo::Surface>> m_exactSurfaces;
@@ -4340,6 +4630,28 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     return read;
 }
 
+/// How near a shell's exact volume is integrated to tell which way it faces: relative to each
+/// face's size, far coarser than mass properties' 1e-11, for only its sign is wanted.
+constexpr double kSignAccuracy = 1e-6;
+
+/// The shells of @p solid, by their index in its shell order, that face the wrong way for what
+/// they are, by the signed volume each encloses integrated on its exact faces: an outer shell
+/// whose faces face into it (written inside out, as a careless writer may: Horizon's own wrote
+/// its kernel's box so), or a void's whose faces face out of the void. @p voids says which
+/// shells are voids. None where the volumes cannot be measured: the mass properties of such a
+/// solid say why when asked.
+std::vector<std::size_t> shellsInsideOut(const topo::Solid& solid, const std::vector<bool>& voids,
+                                         const std::atomic<bool>* cancelled) {
+    const std::vector<double> volumes =
+        model::MassPropertiesCalculator::shellVolumes(solid, nullptr, kSignAccuracy, cancelled);
+    std::vector<std::size_t> wrong;
+    if (volumes.size() != voids.size()) return wrong;
+    for (std::size_t i = 0; i < volumes.size(); ++i) {
+        if (voids[i] ? volumes[i] > 0.0 : volumes[i] < 0.0) wrong.push_back(i);
+    }
+    return wrong;
+}
+
 /// @p solid without its exact form, as master reads it: every exact field cleared, so nothing
 /// half-exact survives a solid kept though its exact form failed part way.
 void clearExact(topo::Solid& solid) {
@@ -4444,6 +4756,27 @@ BuiltSolids buildSolids(const StepParser& parser, const std::vector<SolidGroup>&
             // an import, kept as it was in a native file's embedded STEP.
             try {
                 exact = finishExact(*solid, cancelled);
+                // A shell written inside out (every face facing into what it bounds, consistently,
+                // so the validator cannot tell) is turned outward as build() turns a void that
+                // measures the wrong way: built again with its loops run the other way and its
+                // faces reversed, and made exact again. A void stays facing into itself.
+                const std::vector<std::size_t> inside =
+                    exact.problem.empty() ? shellsInsideOut(*solid, builder.voidShells(), cancelled)
+                                          : std::vector<std::size_t>{};
+                if (!inside.empty()) {
+                    std::string why;
+                    auto again = builder.turned(inside, why);
+                    if (again == nullptr || !builder.exactProblem().empty()) {
+                        notExact = "its shell written inside out could not be turned round: " +
+                                   (why.empty() ? builder.exactProblem() : why);
+                    } else {
+                        if (mm != 1.0) {
+                            again = model::Pattern::transformed(*again, math::Mat4::scale(mm));
+                        }
+                        exact = finishExact(*again, cancelled);
+                        solid = std::move(again);
+                    }
+                }
             } catch (const std::exception& e) {
                 notExact = std::string("its exact form could not be made: ") + e.what();
             }

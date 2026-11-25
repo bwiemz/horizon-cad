@@ -84,11 +84,20 @@ struct StepWritePart {
 /// STEP AP242 (ISO 10303-21) import/export of B-Rep solids.
 ///
 /// The writer emits every Horizon solid as one MANIFOLD_SOLID_BREP per shell
-/// (grouped in a shared ADVANCED_BREP_SHAPE_REPRESENTATION) whose faces and
-/// edges carry exact (rational) B-spline geometry. A curved face, modelled as
-/// facets that record their surface, is written as designed (Phase 151): one
-/// face on that surface, bounded by circles, where it can be; otherwise as
-/// its facets, and reported.  The reader parses a
+/// (grouped in a shared ADVANCED_BREP_SHAPE_REPRESENTATION). A face with an
+/// exact surface goes out as its kind: a PLANE, CYLINDRICAL_SURFACE,
+/// CONICAL_SURFACE, SPHERICAL_SURFACE or TOROIDAL_SURFACE placed by its frame
+/// (written as the geometry it makes: STEP's placements are right-handed and
+/// carry no parameter scale), or its B-spline; an edge with an exact curve as
+/// a LINE (its VECTOR's magnitude the line's scale), CIRCLE, ELLIPSE or
+/// B-spline, a closed edge running with its curve and an open one on a
+/// B-spline over its own span of it. No PCURVE is written. A flat face with
+/// none goes out on its own PLANE; another face with none on its carrier
+/// B-spline. A curved face, modelled as facets that record their surface, is
+/// written as designed (Phase 151): one face on that surface, bounded by
+/// circles, where it can be; otherwise as its facets, and reported. Each
+/// face's same_sense says truly which way it faces, and a body wound facing
+/// in (as the kernel's box is) goes out turned round, facing out.  The reader parses a
 /// practical AP242 subset: B-spline curves/surfaces (polynomial and rational),
 /// LINE and CIRCLE edge geometry (including OCC-style SURFACE_CURVE /
 /// SEAM_CURVE wrappers), PLANE / CYLINDRICAL_SURFACE face geometry, and the
@@ -132,7 +141,11 @@ struct StepWritePart {
 /// vertex to be at the join), no coarser than a thousandth of the curve. A solid whose exact form
 /// cannot be made, strays beyond the limit, or does not hold together (topo::validateExact) is
 /// left out with why: nothing faceted comes in for it (StepReadOptions::keepWhenNotExact aside,
-/// for a native file's embedded STEP).
+/// for a native file's embedded STEP). A solid's shell written inside out (an outer shell whose
+/// faces face into it, consistently: the signed volume it encloses, integrated on its exact
+/// faces, is negative; or a void's facing out of the void) is turned round as it is read, its
+/// loops run the other way and its faces reversed, so that every solid comes in facing out and
+/// every void into itself.
 ///
 /// Faces keep their holes (FACE_BOUND). Solids come in in millimetres: the
 /// LENGTH_UNIT of each shape representation's context — an SI unit with any

@@ -126,6 +126,18 @@ public:
                                             double triangleBudget = kIdealTriangleBudget);
     /// The budget of triangles computeIdeal refines to by default.
     static constexpr double kIdealTriangleBudget = 6e6;
+
+    /// The volume each of @p solid's shells encloses, in the solid's shell order, signed by which
+    /// way its faces face: positive for a shell whose faces face out of what it encloses,
+    /// negative for one whose faces face into it (a void's, or a shell written inside out).
+    /// compute() normalises that sign away; a reader that must tell such a shell needs it. Each
+    /// exact face is integrated on its surface as compute() integrates it, but to @p accuracy of
+    /// the face's size (a sign needs far less than compute()'s 1e-11); each other face by its
+    /// polygons. Empty, with why in @p problem, where a face cannot be integrated, a volume is
+    /// not finite, or @p cancelled is set. Nothing throws.
+    static std::vector<double> shellVolumes(const topo::Solid& solid,
+                                            std::string* problem = nullptr, double accuracy = 1e-6,
+                                            const std::atomic<bool>* cancelled = nullptr);
 };
 
 }  // namespace hz::model
