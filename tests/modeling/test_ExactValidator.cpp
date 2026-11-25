@@ -19,6 +19,7 @@
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/TrimmedFaceMesher.h"
 #include "horizon/topology/ExactValidator.h"
+#include "horizon/topology/LoopUnwrap.h"
 
 using namespace hz;
 using hz::math::Vec3;
@@ -46,6 +47,34 @@ void expectKinds(const topo::Solid& s, ExactIssueKind expected,
 }
 
 }  // namespace
+
+// The loop measures the validator judges by are one definition each (LoopUnwrap.h), which the
+// STEP reader's face sense and model::insertSeams measure through too: a loop's signed area, its
+// jumps included, and a half-edge's join to the next, whether linked to it or only named.
+TEST(ExactValidator, ItsLoopMeasuresAreShared) {
+    topo::LoopPolygon square;
+    const math::Vec2 corners[4] = {{1.0, 1.0}, {3.0, 1.0}, {3.0, 3.0}, {1.0, 3.0}};
+    for (int i = 0; i < 4; ++i) {
+        square.push_back({nullptr, 0.0, 1.0, {}, corners[i], corners[(i + 1) % 4]});
+    }
+    EXPECT_EQ(topo::signedArea(square), 4.0);
+    // Chords that do not join: the jump from one's end to the next one's start counts.
+    topo::LoopPolygon gapped = {{nullptr, 0.0, 1.0, {}, {0.0, 0.0}, {2.0, 0.0}},
+                                {nullptr, 0.0, 1.0, {}, {2.0, 2.0}, {0.0, 2.0}}};
+    EXPECT_EQ(topo::signedArea(gapped), 4.0);
+    std::reverse(square.begin(), square.end());
+    for (auto& seg : square) std::swap(seg.a, seg.b);
+    EXPECT_EQ(topo::signedArea(square), -4.0);
+
+    const auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({}, {0, 0, 1}), 5.0, 10.0);
+    for (const auto& f : cyl->faces()) {
+        const topo::HalfEdge* h = f.outerLoop->halfEdge;
+        do {
+            EXPECT_EQ(topo::joinAllowance(*h, kTol), topo::joinAllowance(*h, *h->next, kTol));
+            h = h->next;
+        } while (h != f.outerLoop->halfEdge);
+    }
+}
 
 TEST(ExactValidator, TheExactPrimitivesAtAnyPlacementAreClean) {
     for (const Vec3& at : {Vec3{0, 0, 0}, Vec3{-7, 3, 11}, Vec3{100, -50, 20}}) {

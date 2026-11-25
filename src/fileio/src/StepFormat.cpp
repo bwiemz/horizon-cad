@@ -3917,21 +3917,6 @@ std::string whereIn(const topo::Face* face, const topo::Edge* edge) {
     return where.empty() ? where : " (" + where + ")";
 }
 
-/// The signed area of an unwrapped loop in (u, v), its jumps from one pcurve's end to the next
-/// one's start included, as the exact validator measures it.
-double signedArea(const topo::LoopPolygon& loop) {
-    if (loop.empty()) return 0.0;
-    const math::Vec2 o = loop.front().a;
-    double twice = 0.0;
-    for (std::size_t i = 0; i < loop.size(); ++i) {
-        const math::Vec2 p = loop[i].a - o;
-        const math::Vec2 q = loop[i].b - o;
-        const math::Vec2 r = loop[(i + 1) % loop.size()].a - o;
-        twice += p.x * q.y - q.x * p.y + q.x * r.y - r.x * q.y;
-    }
-    return twice / 2.0;
-}
-
 /// The half-edges of @p wire, in order; empty when its cycle breaks within @p limit.
 std::vector<topo::HalfEdge*> ringOf(const topo::Wire& wire, std::size_t limit) {
     std::vector<topo::HalfEdge*> ring;
@@ -3968,7 +3953,7 @@ std::optional<double> loopArea(const std::vector<topo::HalfEdge*>& ring, const g
         lo = {std::min(lo.x, seg.a.x), std::min(lo.y, seg.a.y)};
         hi = {std::max(hi.x, seg.a.x), std::max(hi.y, seg.a.y)};
     }
-    const double area = signedArea(poly);
+    const double area = topo::signedArea(poly);
     return std::abs(area) <= 1e-12 * (hi.x - lo.x) * (hi.y - lo.y) ? 0.0 : area;
 }
 

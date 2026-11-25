@@ -333,7 +333,7 @@ struct Checker {
             report(ExactIssueKind::RangeTooLong, &f, w->halfEdge->edge,
                    "loop spans more than one period of the surface");
         }
-        const double area = detail::signedArea(info.poly);
+        const double area = signedArea(info.poly);
         // Outer loops run counter-clockwise unless the face is reversed; inner loops the
         // other way.
         const bool wantPositive = outer != f.reversed;

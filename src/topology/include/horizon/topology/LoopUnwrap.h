@@ -56,12 +56,18 @@ bool loopHalfEdges(const Face& face, const Wire& wire, std::size_t limit,
 /// its edge's and the vertex's effective tolerance, so the two together by the sum.
 double joinAllowance(const HalfEdge& h, const math::ModelTolerance& tolerance);
 
+/// joinAllowance(h, tolerance) for @p h followed by @p next, which need not be linked to it yet
+/// (a loop being put together): the same sum, at @p next's origin.
+double joinAllowance(const HalfEdge& h, const HalfEdge& next,
+                     const math::ModelTolerance& tolerance);
+
 /// Samples each half-edge's pcurve at @p samples parameters (both ends included, either way
 /// round) and chains them, shifting each by whole periods (periodU, periodV; 0 where the surface
 /// is not periodic in that direction) so it continues the previous one. @p out then holds
 /// samples - 1 chords for each half-edge of @p ring, in ring order, each carrying its half-edge's
 /// shift. False when the loop closes only after winding a whole number of periods round the
-/// surface; @p out is then not meaningful. @p joinAllowance[k] is how far apart (a distance on
+/// surface; @p out then holds the chain as unwrapped, its end a whole number of periods from its
+/// start. @p joinAllowance[k] is how far apart (a distance on
 /// the surface) half-edge k's end and the next one's start may be and still join; on an axis
 /// where the raw jump is already within it (a pole or an apex, where the derivative vanishes)
 /// nothing is shifted: that jump is a move along the singular side, not a wrap. Every half-edge
@@ -73,5 +79,11 @@ bool unwrapLoop(const std::vector<const HalfEdge*>& ring, int samples, const geo
 /// Shifts @p loop by whole periods so it lies in the window of @p reference (nearest by the
 /// middle of its extent), for loops of one face that were each unwrapped from their own start.
 void alignLoop(LoopPolygon& loop, const LoopPolygon& reference, double periodU, double periodV);
+
+/// The signed area (positive counter-clockwise) of an unwrapped loop's chords, with the jump
+/// from each pcurve's end to the next one's start included: the area the exact validator judges
+/// a loop's orientation by. Everyone who must agree with it (the STEP reader's face sense, the
+/// seams model::insertSeams lays) measures through this one function.
+double signedArea(const LoopPolygon& loop);
 
 }  // namespace hz::topo

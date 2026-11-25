@@ -69,23 +69,6 @@ double distanceToSegment(const Vec2& p, const Vec2& a, const Vec2& b) {
 
 }  // namespace
 
-double signedArea(const LoopPolygon& loop) {
-    if (loop.empty()) return 0.0;
-    // About the first point: far from the origin the products would lose their precision.
-    const Vec2 o = loop.front().a;
-    double twice = 0.0;
-    for (size_t i = 0; i < loop.size(); ++i) {
-        const Vec2 p = loop[i].a - o;
-        const Vec2 q = loop[i].b - o;
-        twice += p.x * q.y - q.x * p.y;
-        // The jump from one pcurve's end to the next one's start: nothing but rounding on most
-        // surfaces, a run along the pole or apex on others.
-        const Vec2 r = loop[(i + 1) % loop.size()].a - o;
-        twice += q.x * r.y - r.x * q.y;
-    }
-    return twice / 2.0;
-}
-
 bool selfIntersects(const LoopPolygon& loop, const UvTolerance& tolerance) {
     const size_t n = loop.size();
     for (size_t i = 0; i < n; ++i) {

@@ -20,9 +20,6 @@ namespace hz::topo::detail {
 /// given point.
 using UvTolerance = std::function<double(const math::Vec2&)>;
 
-/// Signed area (positive counter-clockwise) of the chords' polygon.
-double signedArea(const LoopPolygon& loop);
-
 /// True when two non-adjacent chords of the loop cross for real: a crossing of chords is
 /// confirmed by bisecting both curves until their deviation from the chords is below the
 /// tolerance, so the sag of a coarse sampling does not count.

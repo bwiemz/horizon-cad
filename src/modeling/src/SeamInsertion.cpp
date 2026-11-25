@@ -91,21 +91,6 @@ std::vector<HalfEdge*> ringFrom(const Face& face, HalfEdge* first, std::size_t l
     return {};
 }
 
-/// The signed area of an unwrapped chain in (u, v), its jumps from one pcurve's end to the next
-/// one's start included, as the exact validator measures a loop.
-double signedArea(const topo::LoopPolygon& chain) {
-    if (chain.empty()) return 0.0;
-    const Vec2 o = chain.front().a;
-    double twice = 0.0;
-    for (std::size_t i = 0; i < chain.size(); ++i) {
-        const Vec2 p = chain[i].a - o;
-        const Vec2 q = chain[i].b - o;
-        const Vec2 r = chain[(i + 1) % chain.size()].a - o;
-        twice += p.x * q.y - q.x * p.y + q.x * r.y - r.x * q.y;
-    }
-    return twice / 2.0;
-}
-
 /// The whole periods @p chain winds round @p s in u and v: its end's distance from its start,
 /// where unwrapLoop finds it a wrap (beyond the last join's allowance), in periods.
 std::array<double, 2> windingOf(const topo::LoopPolygon& chain, const geo::Surface& s,
@@ -744,18 +729,14 @@ void carrierWithItsEdge(Edge& e) {
         e.curve = std::make_shared<geo::NurbsCurve>(reversedCurve(*e.curve));
 }
 
-/// joinAllowance for each half-edge of @p ring, joining the next in the ring at its origin: for
-/// a ring not linked yet.
+/// topo::joinAllowance for each half-edge of @p ring, joining the next in the ring: for a ring
+/// not linked yet.
 std::vector<double> allowancesOf(const std::vector<const HalfEdge*>& ring,
                                  const math::ModelTolerance& tolerance) {
     std::vector<double> out;
     out.reserve(ring.size());
     for (std::size_t k = 0; k < ring.size(); ++k) {
-        const HalfEdge& h = *ring[k];
-        const HalfEdge& next = *ring[(k + 1) % ring.size()];
-        const double v = next.origin->tolerance;
-        out.push_back(tolerance.effective(std::max(h.edge->tolerance, v)) +
-                      tolerance.effective(std::max(next.edge->tolerance, v)));
+        out.push_back(topo::joinAllowance(*ring[k], *ring[(k + 1) % ring.size()], tolerance));
     }
     return out;
 }
@@ -850,7 +831,7 @@ std::string laySeam(Solid& solid, Face& face, int dir, double period, Loop& a, c
                               allowancesOf(ring, tolerance), chain)) {
             continue;
         }
-        const double area = signedArea(chain);
+        const double area = topo::signedArea(chain);
         if (!std::isfinite(area) || area == 0.0) continue;
         if (otherPeriod > 0.0 && (area > 0.0) == face.reversed) continue;
         chosen = end;
