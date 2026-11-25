@@ -16,6 +16,7 @@
 #include "horizon/math/RTree.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Faceting.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/Queries.h"
 
 namespace hz::model {
@@ -113,12 +114,15 @@ int windingOf(const Solid& solid) {
 // computation that reads a solid's loops (mass properties, the Booleans,
 // which shells are cavities) takes one sign for all of them, so a part of an
 // inward-wound box and an outward-wound cylinder measured the box less the
-// cylinder, and took the cylinder for a cavity in it.
+// cylinder, and took the cylinder for a cavity in it. A solid with exact faces
+// faces out as they say (Face::reversed), and is copied as it is: its corners,
+// joined by straight lines, need not wind as its faces do (a C-shaped clip's
+// enclose a negative volume), and turned round for them it was inside out.
 void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceIndex,
                const std::vector<const Shell*>* only = nullptr, bool outward = false) {
     const bool mirrors = xform.determinant3() < 0.0;
     // A mirrored copy keeps src's winding (see above), so src says it.
-    const bool flip = mirrors != (outward && windingOf(src) < 0);
+    const bool flip = mirrors != (outward && !topo::hasExactFaces(src) && windingOf(src) < 0);
     const auto moveSurface = [&xform, flip](const geo::NurbsSurface& surface) {
         auto moved = transformSurface(surface, xform);
         return flip ? std::make_shared<geo::NurbsSurface>(moved->reversedU()) : moved;

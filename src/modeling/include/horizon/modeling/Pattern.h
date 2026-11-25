@@ -61,7 +61,9 @@ public:
     /// are kept. Each is copied wound facing out, as `append` and a
     /// pattern's bodies are: the kernel's builders wind either way (a box
     /// primitive inward, a cylinder outward), and a solid of both measured
-    /// the one less the other.
+    /// the one less the other. A solid with exact faces faces out as they
+    /// say (topo::Face::reversed), whichever way its corners wind, and is
+    /// copied as it is.
     static std::unique_ptr<topo::Solid> collect(const topo::Solid& a, const topo::Solid& b);
 
     /// @p source's bodies added to @p into, moved by the rigid @p xform, with

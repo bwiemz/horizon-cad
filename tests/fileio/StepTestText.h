@@ -615,6 +615,102 @@ inline int blockShell(Data& d, bool frontFacingIn = false) {
     return d.add("CLOSED_SHELL('',(" + list + "))");
 }
 
+/// A C-shaped clip: the ring between radii 1 and 2 about the z axis through @p centre, swept 300
+/// degrees counter-clockwise from -150 to +150 degrees, from @p centre up to 1 above it. Six
+/// faces: its top and bottom PLANEs, its two ends, the CYLINDRICAL_SURFACEs of its outside and of
+/// its inside (that one's face against its surface), each loop counter-clockwise seen from
+/// outside. Its arcs go more than half way round, so each flat face's corners wind against the
+/// face, and its corners joined by straight lines enclose a negative volume: it faces out only
+/// as its faces say. Volume 2.5 pi.
+inline std::string cClip(const math::Vec3& centre = {}) {
+    Data d;
+    constexpr double kDegree = 3.14159265358979323846 / 180.0;
+    const double start = -150.0 * kDegree;
+    const double end = 150.0 * kDegree;
+    struct Corner {
+        math::Vec3 at;
+        int point;
+        int vertex;
+    };
+    const auto corner = [&](double radius, double angle, double z) {
+        const math::Vec3 at =
+            centre + math::Vec3(radius * std::cos(angle), radius * std::sin(angle), z);
+        const int point = d.point(at);
+        return Corner{at, point, d.add("VERTEX_POINT(''," + Data::ref(point) + ")")};
+    };
+    const Corner o1b = corner(2, start, 0);
+    const Corner o2b = corner(2, end, 0);
+    const Corner i1b = corner(1, start, 0);
+    const Corner i2b = corner(1, end, 0);
+    const Corner o1t = corner(2, start, 1);
+    const Corner o2t = corner(2, end, 1);
+    const Corner i1t = corner(1, start, 1);
+    const Corner i2t = corner(1, end, 1);
+    const auto line = [&](const Corner& a, const Corner& b) {
+        const int dir = d.direction((b.at - a.at).normalized());
+        const int vec = d.add("VECTOR(''," + Data::ref(dir) + ",1.)");
+        const int curve = d.add("LINE(''," + Data::ref(a.point) + "," + Data::ref(vec) + ")");
+        return d.add("EDGE_CURVE(''," + Data::ref(a.vertex) + "," + Data::ref(b.vertex) + "," +
+                     Data::ref(curve) + ",.T.)");
+    };
+    // Each arc counter-clockwise about +z, 300 degrees from its start to its end.
+    const auto arc = [&](const Corner& a, const Corner& b, double radius, double z) {
+        const int circle =
+            d.add("CIRCLE(''," +
+                  Data::ref(d.placement(centre + math::Vec3(0, 0, z), {0, 0, 1}, {1, 0, 0})) + "," +
+                  real(radius) + ")");
+        return d.add("EDGE_CURVE(''," + Data::ref(a.vertex) + "," + Data::ref(b.vertex) + "," +
+                     Data::ref(circle) + ",.T.)");
+    };
+    const int outerBottom = arc(o1b, o2b, 2, 0);
+    const int outerTop = arc(o1t, o2t, 2, 1);
+    const int innerBottom = arc(i1b, i2b, 1, 0);
+    const int innerTop = arc(i1t, i2t, 1, 1);
+    const int upOuter1 = line(o1b, o1t);
+    const int upOuter2 = line(o2b, o2t);
+    const int upInner1 = line(i1b, i1t);
+    const int upInner2 = line(i2b, i2t);
+    const int outBottom1 = line(i1b, o1b);
+    const int outBottom2 = line(i2b, o2b);
+    const int outTop1 = line(i1t, o1t);
+    const int outTop2 = line(i2t, o2t);
+    const auto plane = [&](const math::Vec3& origin, const math::Vec3& normal,
+                           const math::Vec3& x) {
+        return d.add("PLANE(''," + Data::ref(d.placement(origin, normal, x)) + ")");
+    };
+    const auto cylinder = [&](double radius) {
+        return d.add("CYLINDRICAL_SURFACE(''," +
+                     Data::ref(d.placement(centre, {0, 0, 1}, {1, 0, 0})) + "," + real(radius) +
+                     ")");
+    };
+    const math::Vec3 radial1(std::cos(start), std::sin(start), 0);
+    const math::Vec3 radial2(std::cos(end), std::sin(end), 0);
+    std::vector<int> faces;
+    faces.push_back(d.face({{outerTop, true}, {outTop2, false}, {innerTop, false}, {outTop1, true}},
+                           plane(centre + math::Vec3(0, 0, 1), {0, 0, 1}, {1, 0, 0})));
+    faces.push_back(
+        d.face({{outBottom1, false}, {innerBottom, true}, {outBottom2, true}, {outerBottom, false}},
+               plane(centre, {0, 0, -1}, {1, 0, 0})));
+    faces.push_back(
+        d.face({{outerBottom, true}, {upOuter2, true}, {outerTop, false}, {upOuter1, false}},
+               cylinder(2)));
+    faces.push_back(
+        d.face({{innerBottom, false}, {upInner1, true}, {innerTop, true}, {upInner2, false}},
+               cylinder(1), false));
+    // Each end faces away from the ring: back along it at its start, on along it at its end.
+    faces.push_back(
+        d.face({{outBottom1, true}, {upOuter1, true}, {outTop1, false}, {upInner1, false}},
+               plane(centre, {std::sin(start), -std::cos(start), 0}, radial1)));
+    faces.push_back(
+        d.face({{outBottom2, false}, {upInner2, true}, {outTop2, true}, {upOuter2, false}},
+               plane(centre, {-std::sin(end), std::cos(end), 0}, radial2)));
+    std::string list;
+    for (int f : faces) list += (list.empty() ? "" : ",") + Data::ref(f);
+    const int shell = d.add("CLOSED_SHELL('',(" + list + "))");
+    d.add("MANIFOLD_SOLID_BREP('clip'," + Data::ref(shell) + ")");
+    return stepFile(d.text);
+}
+
 /// blockShell()'s block alone, as one solid.
 inline std::string block(bool frontFacingIn) {
     Data d;

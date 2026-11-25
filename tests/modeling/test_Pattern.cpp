@@ -4,6 +4,8 @@
 #include <numbers>
 #include <set>
 
+#include "StepTestText.h"
+#include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Mat4.h"
@@ -12,6 +14,8 @@
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/topology/ExactTolerance.h"
+#include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/GeometryValidator.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
@@ -239,6 +243,33 @@ TEST(PatternTest, SeparateUndoesCollect) {
     EXPECT_EQ(bodies[0]->edgeCount(), 12u) << "only the body's own edges";
     EXPECT_EQ(bodies[0]->vertexCount(), 8u);
     EXPECT_EQ(bodies[1]->faces().front().topoId, large->faces().front().topoId) << "names are kept";
+}
+
+// An exact solid faces out as its faces say (Face::reversed), whichever way its corners wind:
+// joined by straight lines, a C-shaped clip's enclose a negative volume, as two of the ProE
+// vacuum case's bodies' do. Appended, it is copied as it faces, not turned inside out for its
+// corners, so a part of it and a cylinder measures both, not the clip less the cylinder.
+TEST(PatternTest, AnExactSolidIsAppendedAsItsFacesFaceWhateverItsCornersWind) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto clip =
+        hz::io::StepFormat::fromString(hz::step_text::cClip(), nullptr, nullptr, inMillimetres);
+    ASSERT_EQ(clip.size(), 1u) << hz::io::StepFormat::lastError();
+    auto cylinder = hz::io::StepFormat::fromString(hz::step_text::externalStyleCylinder(), nullptr,
+                                                   nullptr, inMillimetres);
+    ASSERT_EQ(cylinder.size(), 1u) << hz::io::StepFormat::lastError();
+    const double pi = std::numbers::pi;
+    ASSERT_NEAR(MassPropertiesCalculator::compute(*clip[0]).volume, 2.5 * pi, 2.5 * pi * 1e-9);
+
+    hz::topo::Solid both;
+    Pattern::append(both, *cylinder[0], hz::math::Mat4::translation(Vec3(10, 0, 0)));
+    Pattern::append(both, *clip[0], hz::math::Mat4::identity());
+    ASSERT_EQ(both.faceCount(), 9u);
+    for (std::size_t i = 0; i < clip[0]->faces().size(); ++i) {
+        EXPECT_EQ(both.faces()[3 + i].reversed, clip[0]->faces()[i].reversed) << "face " << i;
+    }
+    EXPECT_NEAR(MassPropertiesCalculator::compute(both).volume, 4.5 * pi, 4.5 * pi * 1e-9);
+    EXPECT_TRUE(hz::topo::validateExact(both, hz::topo::exactTolerance(both)).empty());
 }
 
 TEST(PatternTest, SeparatingOneBodyGivesItBack) {
