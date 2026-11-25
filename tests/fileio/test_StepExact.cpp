@@ -1222,24 +1222,66 @@ TEST(StepExact, ASeamedSphereCapWrittenFacingInComesInFacingOut) {
     EXPECT_EQ(firstIssue(*solids[0]), "");
 }
 
-// Item 4: a closed B-spline rim whose vertex is 5e-3 off the curve's join, in a file of 0.01
-// uncertainty: off the join by a thousandth of the curve (2.8e-3), but within the solid's limit
-// (a thousandth of its height of 100), so the vertex is at the join and the edge grows to cover
-// its gap.
-TEST(StepExact, AClosedSplineJoinIsFoundWithinTheSolidsLimit) {
+namespace {
+
+/// externalStyleCylinder() 100 tall, its bottom rim a closed B-spline whose join is 5e-3 round
+/// from the rim's vertex, in a file of 0.01 uncertainty.
+std::string closedSplineRimOffItsJoin() {
     std::string text = replaced(externalStyleCylinder(), "#8 = CARTESIAN_POINT('',(0.,0.,2.));",
                                 "#8 = CARTESIAN_POINT('',(0.,0.,100.));");
     text = replaced(text, "#12 = CARTESIAN_POINT('',(1.,0.,2.));",
                     "#12 = CARTESIAN_POINT('',(1.,0.,100.));");
     text = replaced(text, "#14 = EDGE_CURVE('',#7,#7,#5,.T.);",
                     splineCircle(300, 310, 5e-3) + "#14 = EDGE_CURVE('',#7,#7,#300,.T.);");
+    return withEntities(text, millimetresWithin("0.01"));
+}
+
+}  // namespace
+
+// Item 4: a closed B-spline rim whose vertex is 5e-3 off the curve's join, in a file of 0.01
+// uncertainty: off the join by a thousandth of the curve (2.8e-3), but within the solid's limit
+// (a thousandth of its height of 100), so the vertex is at the join and the edge grows to cover
+// its gap.
+TEST(StepExact, AClosedSplineJoinIsFoundWithinTheSolidsLimit) {
     ImportReport report;
-    const auto solids =
-        StepFormat::fromString(withEntities(text, millimetresWithin("0.01")), &report);
+    const auto solids = StepFormat::fromString(closedSplineRimOffItsJoin(), &report);
     ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
     EXPECT_GE(largestEdgeTolerance(*solids[0]), 4.9e-3);
     EXPECT_TRUE(anySays(report.converted, "exact to")) << report.converted.size();
     EXPECT_EQ(firstIssue(*solids[0]), "");
+}
+
+// M7: that solid written as the writer writes it (as a part file keeps it, and an export sends it)
+// reads back exact. The file states the uncertainty its vertices stand within, the largest
+// tolerance a vertex was given, so the rim's vertex is at its curve's join again. Stated at the
+// writer's own 1e-7, it was read back "its vertex is off where its closed B-spline curve joins".
+// A solid no tolerance was grown on states the writer's own.
+TEST(StepExact, AClosedSplineJoinFoundWithinTheFilesUncertaintyIsFoundAgainWhenWrittenAndRead) {
+    const auto solids = StepFormat::fromString(closedSplineRimOffItsJoin());
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    double vertexTolerance = 0.0;
+    for (const auto& v : solids[0]->vertices())
+        vertexTolerance = std::max(vertexTolerance, v.tolerance);
+    EXPECT_GE(vertexTolerance, 4.9e-3);
+
+    const std::string written = StepFormat::toString({solids[0].get()});
+    const std::string stated = "UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(";
+    const auto at = written.find(stated);
+    ASSERT_NE(at, std::string::npos);
+    EXPECT_EQ(std::stod(written.substr(at + stated.size())), vertexTolerance)
+        << "the largest tolerance a vertex was given";
+    const auto back = StepFormat::fromString(written);
+    ASSERT_EQ(back.size(), 1u) << StepFormat::lastError();
+    EXPECT_GE(largestEdgeTolerance(*back[0]), 4.9e-3);
+    EXPECT_EQ(firstIssue(*back[0]), "");
+    const auto again = StepFormat::fromString(StepFormat::toString({back[0].get()}));
+    ASSERT_EQ(again.size(), 1u) << StepFormat::lastError();
+
+    const auto clean =
+        StepFormat::fromString(externalStyleCylinder(), nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(clean.size(), 1u) << StepFormat::lastError();
+    EXPECT_NE(StepFormat::toString({clean[0].get()}).find("LENGTH_MEASURE(1.E-7)"),
+              std::string::npos);
 }
 
 // A seamed face whose loop joins at a pole (a spherical cap with a seam meridian) is exact

@@ -5068,15 +5068,39 @@ struct Preamble {
     int productContext = 0;
 };
 
-Preamble writePreamble(StepWriter& w) {
+/// The uncertainty a file states for its solids, in millimetres, where nothing is given a
+/// tolerance: the writer's own resolution.
+constexpr double kWrittenUncertainty = 1e-7;
+
+/// The uncertainty a file of @p solids states, in millimetres: kWrittenUncertainty, or the largest
+/// tolerance a vertex of theirs was given, where that is larger. A vertex's tolerance covers how
+/// far it stands from the ends of its edges' curves, as its file had it. The reader joins a closed
+/// B-spline's ends, and takes a vertex to be at that join, within its file's uncertainty
+/// (SolidBuilder::placeOnCurve): stated finer than its vertices stand, a solid read exact within
+/// a loose file's uncertainty would be read back with a vertex off its join, and not exact.
+double uncertaintyOf(const std::vector<const topo::Solid*>& solids) {
+    double largest = kWrittenUncertainty;
+    for (const topo::Solid* solid : solids) {
+        if (solid == nullptr) continue;
+        for (const auto& v : solid->vertices()) {
+            if (v.alive && std::isfinite(v.tolerance)) largest = std::max(largest, v.tolerance);
+        }
+    }
+    return largest;
+}
+
+Preamble writePreamble(StepWriter& w, double uncertaintyMillimetres) {
     Preamble pre;
     // Geometric representation context (SI millimetres) shared by all solids.
     const int lengthUnit = w.add("(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.))");
     const int angleUnit = w.add("(NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.))");
     const int solidAngleUnit = w.add("(NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT())");
+    const std::string measure = uncertaintyMillimetres > kWrittenUncertainty
+                                    ? fmtReal(uncertaintyMillimetres)
+                                    : std::string("1.E-7");
     const int uncertainty =
-        w.add("UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-7),#" + std::to_string(lengthUnit) +
-              ",'distance_accuracy_value','confusion accuracy')");
+        w.add("UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(" + measure + "),#" +
+              std::to_string(lengthUnit) + ",'distance_accuracy_value','confusion accuracy')");
     pre.context = w.add(
         "(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#" +
         std::to_string(uncertainty) + ")) GLOBAL_UNIT_ASSIGNED_CONTEXT((#" +
@@ -5165,7 +5189,7 @@ std::string StepFormat::toString(const std::vector<const topo::Solid*>& solids,
         report->faceted.clear();
         report->leftOut.clear();
     }
-    const Preamble pre = writePreamble(w);
+    const Preamble pre = writePreamble(w, uncertaintyOf(solids));
 
     int index = 0;
     for (const topo::Solid* solid : solids) {
@@ -5197,7 +5221,11 @@ std::string StepFormat::assemblyToString(const std::string& name,
     const auto leaveOut = [report](const std::string& why) {
         if (report != nullptr) report->leftOut.push_back(why);
     };
-    const Preamble pre = writePreamble(w);
+    std::vector<const topo::Solid*> bodies;
+    for (const StepWritePart& part : parts) {
+        bodies.insert(bodies.end(), part.bodies.begin(), part.bodies.end());
+    }
+    const Preamble pre = writePreamble(w, uncertaintyOf(bodies));
     const auto direction = [&w](const Vec3& d) {
         return w.add("DIRECTION('',(" + fmtReal(d.x) + "," + fmtReal(d.y) + "," + fmtReal(d.z) +
                      "))");
