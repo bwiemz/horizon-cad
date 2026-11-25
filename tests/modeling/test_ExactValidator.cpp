@@ -864,7 +864,7 @@ double mostMeasured(const topo::Edge& e) {
 }
 
 /// With @p e's tolerance @p measured, @p solid is clean; with it a last bit lower, its only issues
-/// are @p e's pcurves straying.
+/// are @p e's pcurves straying, each naming its half-edge, whose own measure is past the tolerance.
 void expectStraysOnlyPast(topo::Solid& solid, topo::Edge& e, double measured) {
     e.tolerance = measured;
     EXPECT_TRUE(topo::validateExact(solid, kTol).empty()) << "a tolerance of the measure";
@@ -874,17 +874,21 @@ void expectStraysOnlyPast(topo::Solid& solid, topo::Edge& e, double measured) {
     for (const auto& i : issues) {
         EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve) << i.detail;
         EXPECT_EQ(i.edge, &e);
+        ASSERT_NE(i.halfEdge, nullptr) << i.detail;
+        EXPECT_EQ(i.halfEdge->edge, &e);
+        EXPECT_EQ(i.halfEdge->face, i.face);
+        EXPECT_GT(topo::pcurveGaps(*i.halfEdge, kTol).strays, e.tolerance);
     }
 }
 
 }  // namespace
 
-// The STEP reader grows an edge's tolerance from topo::pcurveGaps, so it is what validateExact
-// measures, to the last bit: on a cylinder whose rim's circle is moved out from its side (each
-// sample's nearest point on the circle searched for) and on a straight B-spline edge moved off its
-// faces (the fast path's segment), a tolerance of the measure is clean, and one a last bit below
-// it is reported as the pcurves straying. Where the fast path accepts a pcurve as it stands,
-// there is nothing to cover.
+// The STEP reader measures a pcurve the validator reports with topo::pcurveGaps, to tell a last
+// bit's rounding from a stray (Ruling 64), so it is what validateExact measures, to the last bit:
+// on a cylinder whose rim's circle is moved out from its side (each sample's nearest point on the
+// circle searched for) and on a straight B-spline edge moved off its faces (the fast path's
+// segment), a tolerance of the measure is clean, and one a last bit below it is reported as the
+// pcurves straying. Where the fast path accepts a pcurve as it stands, there is nothing to cover.
 TEST(ExactValidator, PcurveGapsIsWhatItMeasures) {
     auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({3, -2, 7}, {0, 0, 1}), 5.0, 10.0);
     topo::Edge* rim = nullptr;

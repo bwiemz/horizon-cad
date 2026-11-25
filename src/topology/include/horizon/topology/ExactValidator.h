@@ -27,6 +27,9 @@ struct ExactIssue {
     const Face* face = nullptr;
     const Edge* edge = nullptr;
     std::string detail;
+    /// The half-edge whose pcurve is at issue (PcurveOffCurve and PcurveOffVertex): a seam's two
+    /// share their face and edge. Null for the other kinds.
+    const HalfEdge* halfEdge = nullptr;
 };
 
 /// Every way @p solid's exact geometry disagrees with its topology; empty when it agrees.
@@ -48,13 +51,15 @@ struct PcurveGaps {
 };
 
 /// What validateExact measures on @p h's pcurve with @p tolerance, by the same code on the same
-/// geometry, so that a tolerance grown to cover it passes those checks on every platform (two
-/// measures of one distance at other points, or by another route, can differ in the last bit).
-/// On a straight edge whose pcurve the validator accepts without searching the curve (it lies
-/// well within the edge's tolerance as it stands), @c strays is 0; a larger tolerance accepts it
-/// too. With no exact curve on its edge, @c strays is 0, as the validator measures no stray then;
-/// with no pcurve, or no face with an exact surface, all three are 0 (the validator reports those
-/// as missing geometry).
+/// geometry: what a PcurveOffCurve or PcurveOffVertex issue on @p h compared with its tolerances,
+/// so that a caller can tell how far past them it is (another measure of the same gap, at other
+/// points or by another route, can differ in the last bit). On a straight edge whose pcurve the
+/// validator accepts without searching the curve (it lies well within the edge's tolerance as it
+/// stands), @c strays is 0; a larger tolerance accepts it too. With no exact curve on its edge,
+/// @c strays is 0, as the validator measures no stray then; with no pcurve, or no face with an
+/// exact surface, all three are 0 (the validator reports those as missing geometry). As for
+/// validateExact, @p h's solid must be combinatorially valid: @p h's origin, its next and its
+/// next's origin are followed without null checks.
 PcurveGaps pcurveGaps(const HalfEdge& h, const math::ModelTolerance& tolerance);
 
 }  // namespace hz::topo

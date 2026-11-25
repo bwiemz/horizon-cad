@@ -128,8 +128,9 @@ struct Checker {
     const math::ModelTolerance& tol;
     std::vector<ExactIssue> issues;
 
-    void report(ExactIssueKind kind, const Face* f, const Edge* e, std::string detail) {
-        issues.push_back({kind, f, e, std::move(detail)});
+    void report(ExactIssueKind kind, const Face* f, const Edge* e, std::string detail,
+                const HalfEdge* h = nullptr) {
+        issues.push_back({kind, f, e, std::move(detail), h});
     }
 
     void checkEdge(const Edge& e) {
@@ -205,7 +206,8 @@ struct Checker {
             !tol.within(gaps.end, std::max(e.tolerance, h.next->origin->tolerance))) {
             report(ExactIssueKind::PcurveOffVertex, h.face, &e,
                    "pcurve ends are " + num(gaps.start) + " and " + num(gaps.end) +
-                       " from their vertices");
+                       " from their vertices",
+                   &h);
         }
         if (params.empty()) return;  // no curve, or the segment's fast path accepts it
         // The ends are known: the vertices (checked above) sit at curveStart and curveEnd. Using
@@ -216,10 +218,10 @@ struct Checker {
         params.back() = forward ? e.curveEnd : e.curveStart;
         if (!tol.within(gaps.strays, e.tolerance)) {
             report(ExactIssueKind::PcurveOffCurve, h.face, &e,
-                   "pcurve strays " + num(gaps.strays) + " from the edge's curve");
+                   "pcurve strays " + num(gaps.strays) + " from the edge's curve", &h);
         } else if (!advancesWithCurve(e, forward, params)) {
             report(ExactIssueKind::PcurveOffCurve, h.face, &e,
-                   "pcurve runs against, or winds differently round, the edge's curve");
+                   "pcurve runs against, or winds differently round, the edge's curve", &h);
         }
     }
 
