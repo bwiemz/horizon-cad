@@ -82,7 +82,11 @@ public:
     /// worker), as newDocument registers the documents it makes.
     void adoptDocument(std::shared_ptr<Document> document);
     /// Open an assembly file (deduplicated by canonical path). Returns
-    /// nullptr on load failure or when no assembly loader is set.
+    /// nullptr on load failure or when no assembly loader is set. One of
+    /// format 31 or older (AssemblyDocument::migrated) has the components its
+    /// mates name resolved, and each mate whose geometry they no longer have
+    /// added to what it left out (AssemblyMates::unresolved): it is read in
+    /// part.
     std::shared_ptr<AssemblyDocument> openAssembly(const std::string& path);
 
     /// Close (unregister) a document. Returns true if it was open.
@@ -194,6 +198,10 @@ private:
     std::shared_ptr<const geo::MeshData> sharedMesh(
         const std::string& key, std::uint64_t version,
         const std::function<std::shared_ptr<const geo::MeshData>()>& make);
+
+    /// Each mate of @p assembly, just read from a file of format 31 or older,
+    /// that finds nothing in its components resolved: added to its leftOut.
+    void noteUnresolvedMates(AssemblyDocument& assembly);
 
     /// resolveComponent for an assembly file at @p fullPath (@p key its
     /// canonical path). @p cycle is set when it fails for placing an

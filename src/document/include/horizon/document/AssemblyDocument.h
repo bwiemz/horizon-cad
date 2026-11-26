@@ -370,6 +370,15 @@ public:
     void setLeftOut(std::vector<std::string> items) { m_leftOut = std::move(items); }
     bool readInPart() const { return !m_leftOut.empty(); }
 
+    // --- Migrated (stage 3) ---
+
+    /// Read from a file of format 31 or older, when its parts were built from facets: its mates
+    /// name its parts' faces and edges as master's builds named them, and are checked against
+    /// the parts as they are built now when it is opened (DocumentManager::openAssembly). Not
+    /// saved.
+    bool migrated() const { return m_migrated; }
+    void setMigrated(bool migrated) { m_migrated = migrated; }
+
     // --- Unit (Phase 154) ---
 
     /// The unit its lengths are shown and typed in, saved with it.
@@ -390,6 +399,7 @@ private:
     bool m_dirty = false;
     std::string m_filePath;
     std::vector<std::string> m_leftOut;
+    bool m_migrated = false;
     math::LengthUnit m_lengthUnit = math::LengthUnit::Millimetre;
 };
 

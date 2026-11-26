@@ -2280,8 +2280,12 @@ bool MainWindow::openPath(const QString& fileName) {
                 return true;
             }
         }
-        io::ImportReport report = m_lastLoadReport;
-        if (report.skipped.empty()) report.skipped = assembly->leftOut();
+        // What it left out, as it holds it: its read's, and an old one's mates that find
+        // nothing (DocumentManager::openAssembly). Not the loaders' last report: that is of the
+        // last part read to check those mates. An assembly's read approximates and converts
+        // nothing.
+        io::ImportReport report;
+        report.skipped = assembly->leftOut();
         const bool readInPart = assembly->readInPart();
         // Saved assemblies come back positioned by their mates: modified, if
         // that moved anything, so the placing can be saved.

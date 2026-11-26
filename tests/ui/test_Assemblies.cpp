@@ -31,8 +31,11 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <map>
+#include <memory>
+#include <nlohmann/json.hpp>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -49,8 +52,10 @@
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 #include "horizon/ui/AssemblyTreePanel.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/MotionPlayer.h"
@@ -1247,6 +1252,81 @@ TEST(AssembliesTest, AnAssemblyIsNotInsertedIntoItself) {
     EXPECT_TRUE(refusal.text().contains(QStringLiteral("inside itself")))
         << refusal.text().toStdString();
     EXPECT_EQ(assembly.components().size(), 1u) << "not inserted";
+}
+
+namespace {
+
+/// @p text, a part's or an assembly's JSON, written at @p path as a file of format @p version.
+void writeAsFormat(const std::string& text, const QString& path, int version) {
+    nlohmann::json root = nlohmann::json::parse(text);
+    root["version"] = version;
+    std::ofstream(path.toStdString()) << root.dump();
+}
+
+}  // namespace
+
+// Stage 3 (Task 12): an assembly saved before format 32 whose mate names a face its part, migrated
+// as it is read (built exactly, its features named Stable), no longer has. Opened, it says so in
+// the report of what its reading left out, and is read in part: not saved over its file. The
+// report is the assembly's alone: not what reading its part, to find the mate's faces, left out
+// of the part (a fillet's edge named the old way, which its migration drops).
+TEST(AssembliesTest, AnOldAssemblysMateThatFindsNothingIsReportedWhenItOpens) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    hz::doc::Document part;
+    part.setType(hz::doc::DocumentType::Part);
+    auto made = hz::doc::PrimitiveFeature::makeCylinder(5.0, 10.0);
+    made->setNaming(hz::model::NamingScheme::Positional);
+    const std::string id = made->featureID();
+    part.featureTree().addFeature(std::move(made));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    std::string side;  // a face as the old way named it, which no Stable name is
+    for (const auto& face : part.solid()->faces()) {
+        if (face.topoId.tag().rfind(id + "/", 0) != 0) side = face.topoId.tag();
+    }
+    ASSERT_FALSE(side.empty()) << "named the old way";
+    auto fillet = std::make_unique<hz::doc::FilletFeature>(
+        std::vector<hz::topo::TopologyID>{part.solid()->edges().front().topoId}, 0.5);
+    fillet->setNaming(hz::model::NamingScheme::Positional);
+    part.featureTree().addFeature(std::move(fillet));
+    const QString cylinder = dir.filePath(QStringLiteral("cylinder.hzpart"));
+    writeAsFormat(hz::io::NativeFormat::documentToJson(part, false), cylinder, 31);
+
+    hz::doc::AssemblyDocument pair;
+    std::vector<uint64_t> ids;
+    for (const double x : {0.0, 20.0}) {
+        hz::doc::ComponentInstance comp;
+        comp.name = "cylinder";
+        comp.partPath = cylinder.toStdString();
+        comp.transform = hz::math::Mat4::translation(Vec3(x, 0, 0));
+        ids.push_back(pair.addComponent(comp));
+    }
+    hz::doc::Mate mate;
+    mate.type = hz::doc::MateType::Concentric;
+    mate.a = {ids[0], hz::topo::TopologyID::fromTag(side)};
+    mate.b = {ids[1], hz::topo::TopologyID::fromTag(side)};
+    const uint64_t mateId = pair.addMate(mate);
+    const QString path = dir.filePath(QStringLiteral("pair.hzasm"));
+    writeAsFormat(hz::io::NativeFormat::assemblyToJson(pair, path.toStdString()), path, 31);
+
+    MainWindow w;
+    DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"), 30'000);
+    ASSERT_TRUE(w.openPath(path));
+    report.waitForDialog(30'000);
+    ASSERT_TRUE(report.seen()) << "the mate that finds nothing is reported";
+    const QString line = QStringLiteral(
+                             "Left out: mate %1 references geometry that could not be "
+                             "resolved")
+                             .arg(mateId);
+    EXPECT_TRUE(report.detailedText().contains(line)) << report.detailedText().toStdString();
+    EXPECT_FALSE(report.detailedText().contains(QStringLiteral("is not carried over")))
+        << "the part's, not the assembly's: " << report.detailedText().toStdString();
+    ASSERT_NE(w.activeAssembly(), nullptr);
+    EXPECT_TRUE(w.activeAssembly()->readInPart());
+    auto* tabs = w.findChild<QTabBar*>(QStringLiteral("documentTabs"));
+    ASSERT_NE(tabs, nullptr);
+    EXPECT_TRUE(tabs->tabText(tabs->currentIndex()).contains(QStringLiteral("(incomplete)")))
+        << tabs->tabText(tabs->currentIndex()).toStdString();
 }
 
 // Phase 160: a Distance mate held between limits. The second block starts

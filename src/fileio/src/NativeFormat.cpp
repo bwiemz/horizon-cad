@@ -2562,13 +2562,16 @@ static bool loadAssemblyChecked(const json& root, doc::AssemblyDocument& asmDoc,
                                 const std::string& filePath, std::string* error,
                                 ImportReport* report) {
     if (!root.is_object()) return fail(error, "this is not a Horizon assembly");
-    if (root.contains("version") && !checkVersion(root, error)) return false;
+    int fileVersion = 0;  // none written: older than any that is
+    if (root.contains("version") && !checkVersion(root, error, &fileVersion)) return false;
     ImportReport own;
     ImportReport& noted = report != nullptr ? *report : own;
     const auto before = static_cast<std::ptrdiff_t>(noted.skipped.size());
     try {
         if (loadAssemblyRoot(root, asmDoc, filePath, &noted)) {
             asmDoc.setLeftOut({noted.skipped.begin() + before, noted.skipped.end()});
+            // Its mates name faces of parts built from facets: checked when it is opened.
+            asmDoc.setMigrated(fileVersion <= kLastFacetedFormat);
             return true;
         }
         return fail(error, "this is not a Horizon assembly (its type is not \"hzasm\")");

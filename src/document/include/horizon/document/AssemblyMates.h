@@ -56,6 +56,12 @@ public:
     /// ("mate 3 references geometry that could not be resolved").
     static std::optional<AssemblyMates> gather(const AssemblyDocument& assembly,
                                                std::string* why = nullptr);
+    /// Each mate of @p assembly whose geometry cannot be found in its components' resolved
+    /// parts, as gather() says it ("mate 3 references geometry that could not be resolved"), in
+    /// the order of the mates: every one gather() stops at, not only the first. A Fixed mate names
+    /// none, and one on a pattern's instance is gather()'s to refuse. The caller resolves the
+    /// components first.
+    static std::vector<std::string> unresolved(const AssemblyDocument& assembly);
 
     /// A component held where a drag puts it: grounded there.
     struct Hold {
