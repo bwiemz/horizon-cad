@@ -261,22 +261,13 @@ FeatureOutput ExtrudeFeature::executeWithExact(const BuildContext& context,
             return out;
         }
         // Built exactly (stage 3); the faceted extrusion every operation not yet converted reads
-        // is its bridge copy, master's facets named for the exact faces they lie on.
-        auto exact = model::Extrude::exact(m_sketch->entities(), from, direction, distance,
-                                           m_featureID, reason);
-        if (!exact) return out;
-        model::FacetedSolid bridge;
-        try {
-            bridge = model::facetExact(*exact, facetResolution());
-        } catch (const std::exception& e) {
-            bridge.error = e.what();
-        }
-        if (!bridge.solid) {
-            return fail("its exact form could not be cut into facets: " + bridge.error);
-        }
-        model::nameBridgeEdges(*bridge.solid, *exact);
-        out.faceted = std::move(bridge.solid);
-        out.exact = std::move(exact);
+        // is its bridge copy, master's facets named for the exact faces they lie on and numbered
+        // as master's (Ruling 21).
+        auto built =
+            model::Extrude::exactAndBridge(m_sketch->entities(), from, direction, distance,
+                                           m_featureID, m_segments, m_chordTolerance, reason);
+        out.faceted = std::move(built.faceted);
+        out.exact = std::move(built.exact);
         return out;
     };
     // Along the direction, a plane the sketch's, moved @p by.
@@ -1402,6 +1393,37 @@ FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/
         return out;
     }
     model::nameBridgeEdges(*bridge.solid, *exact);
+    // Numbered as master's faceted primitive numbered the same places (Ruling 21): a box names
+    // nothing by number.
+    std::vector<model::SolidSewer::InputFace> soup;
+    const char* curvedSide = "side";
+    const int n = segments();
+    switch (m_kind) {
+        case Kind::Box:
+            break;
+        case Kind::Cylinder:
+            soup = model::PrimitiveFactory::cylinderFaces(m_p0, m_p1, n);
+            curvedSide = "cylinder/side";
+            break;
+        case Kind::Sphere:
+            soup = model::PrimitiveFactory::sphereFaces(m_p0, n);
+            curvedSide = "sphere/band";
+            break;
+        case Kind::Cone:
+            soup = model::PrimitiveFactory::coneFaces(m_p0, m_p1, m_p2, n);
+            curvedSide = "cone/side";
+            break;
+        case Kind::Torus:
+            soup = model::PrimitiveFactory::torusFaces(m_p0, m_p1, n);
+            curvedSide = "torus/patch";
+            break;
+    }
+    if (!soup.empty()) {
+        model::nameAsMasters(
+            *bridge.solid, *exact,
+            model::mastersFacets(soup, curvedSide, featureID(),
+                                 isPlaced() ? placement() : math::Mat4::identity()));
+    }
     out.faceted = std::move(bridge.solid);
     out.exact = std::move(exact);
     return out;

@@ -324,6 +324,24 @@ static void tagArcIdeals(const ringstack::SampledProfile& sampled, const draft::
 
 namespace {
 
+/// The side face master's faceted extrude made over chord @p i of @p sampled, the ring of
+/// @p validation's loop: by position, or after the sketch entity the chord was cut from (and
+/// which of its chords it is).
+std::string sideRole(const ringstack::SampledProfile& sampled,
+                     const ProfileValidationResult& validation, size_t i, NamingScheme naming) {
+    if (naming == NamingScheme::Positional) return "lateral_" + std::to_string(i);
+    const int source = i < sampled.edgeSource.size() ? sampled.edgeSource[i] : -1;
+    if (source < 0) return "side:closing";
+    std::string role = "side:" + validation.edgeSources[static_cast<size_t>(source)];
+    if (sampled.sourceFacets[static_cast<size_t>(source)] > 1) {
+        // A facet of the curved side the arc sweeps: part of it, under
+        // Stable names, so a reference to the side takes them all.
+        role += (naming == NamingScheme::Stable ? "/facet:" : ".f") +
+                std::to_string(sampled.edgeFacet[i]);
+    }
+    return role;
+}
+
 /// One closed loop, extruded: the solid execute() builds for a profile that
 /// is a single loop.
 std::unique_ptr<topo::Solid> extrudeLoop(const ProfileValidationResult& validation,
@@ -351,19 +369,7 @@ std::unique_ptr<topo::Solid> extrudeLoop(const ProfileValidationResult& validati
 
     // The side face over chord i -> i+1: by position, or after the sketch
     // entity the chord was cut from (and which of its chords it is).
-    const auto sideRole = [&](size_t i) -> std::string {
-        if (naming == NamingScheme::Positional) return "lateral_" + std::to_string(i);
-        const int source = i < sampled.edgeSource.size() ? sampled.edgeSource[i] : -1;
-        if (source < 0) return "side:closing";
-        std::string role = "side:" + validation.edgeSources[static_cast<size_t>(source)];
-        if (sampled.sourceFacets[static_cast<size_t>(source)] > 1) {
-            // A facet of the curved side the arc sweeps: part of it, under
-            // Stable names, so a reference to the side takes them all.
-            role += (naming == NamingScheme::Stable ? "/facet:" : ".f") +
-                    std::to_string(sampled.edgeFacet[i]);
-        }
-        return role;
-    };
+    const auto role = [&](size_t i) { return sideRole(sampled, validation, i, naming); };
     const auto nameEdges = [&](topo::Solid& solid) {
         if (namesFromGeometry(naming)) {
             hz::model::nameEdges(solid, naming);
@@ -399,10 +405,10 @@ std::unique_ptr<topo::Solid> extrudeLoop(const ProfileValidationResult& validati
         bb.bottom->topoId = TopologyID::make(featureID, "cap_bottom");
         bb.top->topoId = TopologyID::make(featureID, "cap_top");
         // front(0-1), right(1-2), back(2-3), left(3-0): the chords in order.
-        bb.front->topoId = TopologyID::make(featureID, sideRole(0));
-        bb.right->topoId = TopologyID::make(featureID, sideRole(1));
-        bb.back->topoId = TopologyID::make(featureID, sideRole(2));
-        bb.left->topoId = TopologyID::make(featureID, sideRole(3));
+        bb.front->topoId = TopologyID::make(featureID, role(0));
+        bb.right->topoId = TopologyID::make(featureID, role(1));
+        bb.back->topoId = TopologyID::make(featureID, role(2));
+        bb.left->topoId = TopologyID::make(featureID, role(3));
         nameEdges(*solid);
 
         for (auto& e : solid->edges()) {
@@ -447,7 +453,7 @@ std::unique_ptr<topo::Solid> extrudeLoop(const ProfileValidationResult& validati
     pb.bottomFace->topoId = TopologyID::make(featureID, "cap_bottom");
     pb.topFace->topoId = TopologyID::make(featureID, "cap_top");
     for (size_t i = 0; i < N; ++i) {
-        pb.lateralFaces[i]->topoId = TopologyID::make(featureID, sideRole(i));
+        pb.lateralFaces[i]->topoId = TopologyID::make(featureID, role(i));
     }
     nameEdges(*solid);
 
@@ -924,7 +930,103 @@ std::unique_ptr<topo::Solid> extrudeExactly(const ProfileRegions& found,
     }
 }
 
+/// Master's faceted extrude of the single loop @p loop as it named what it made (Ruling 21): its
+/// prism's ring at the sketch and moved by @p offset (ringstack::sampleProfile at {segments,
+/// chordTolerance}), its caps and its side faces named as its Stable path named them, and its
+/// edges in the order its Euler operators made them (buildPrismTopology: the ring at the sketch,
+/// its closing chord, the lines along the offset, the ring at the offset). Empty for a loop with
+/// no arc or circle, which names nothing by number.
+MastersFacets mastersPrism(const ProfileValidationResult& loop, const draft::SketchPlane& plane,
+                           const Vec3& offset, const std::string& featureID, int segments,
+                           double chordTolerance) {
+    MastersFacets out;
+    FacetResolution resolution;
+    resolution.segmentsPerTurn = segments;
+    resolution.chordTolerance = chordTolerance;
+    const ringstack::SampledProfile sampled =
+        ringstack::sampleProfile(loop.orderedEdges, 1e-6, resolution);
+    const size_t n = sampled.vertices.size();
+    if (n < 3 || sampled.arcs.empty()) return out;
+    out.points.reserve(2 * n);
+    for (const Vec2& v : sampled.vertices) out.points.push_back(plane.localToWorld(v));
+    for (size_t i = 0; i < n; ++i) out.points.push_back(out.points[i] + offset);
+    std::vector<size_t> bottom(n);
+    std::vector<size_t> top(n);
+    for (size_t i = 0; i < n; ++i) {
+        bottom[i] = i;
+        top[i] = n + i;
+    }
+    out.faces.push_back(std::move(bottom));
+    out.faceNames.push_back(featureID + "/cap_bottom");
+    out.faces.push_back(std::move(top));
+    out.faceNames.push_back(featureID + "/cap_top");
+    for (size_t i = 0; i < n; ++i) {
+        const size_t j = (i + 1) % n;
+        out.faces.push_back({i, j, n + j, n + i});
+        out.faceNames.push_back(featureID + "/" + sideRole(sampled, loop, i, NamingScheme::Stable));
+    }
+    out.edges.reserve(3 * n);
+    for (size_t i = 0; i + 1 < n; ++i) out.edges.emplace_back(i, i + 1);
+    out.edges.emplace_back(n - 1, 0);
+    for (size_t i = 0; i < n; ++i) out.edges.emplace_back(i, n + i);
+    for (size_t i = 0; i < n; ++i) out.edges.emplace_back(n + i, n + (i + 1) % n);
+    return out;
+}
+
+/// The exact extrusion of @p found (which master builds) and its bridge copy at {@p segments,
+/// @p chordTolerance}, named as nameBridgeEdges names it and, for a single loop, as master's
+/// prism named the same places (nameAsMasters); master made a profile of several loops by
+/// Booleans, whose names are their own.
+Extrude::ExactAndBridge buildExactAndBridge(const ProfileRegions& found,
+                                            const draft::SketchPlane& plane, const Vec3& direction,
+                                            double distance, const std::string& featureID,
+                                            int segments, double chordTolerance,
+                                            std::string* reason) {
+    Extrude::ExactAndBridge out;
+    auto exact = extrudeExactly(found, plane, direction * distance, featureID, reason);
+    if (!exact) return out;
+    FacetResolution resolution;
+    resolution.segmentsPerTurn = segments;
+    resolution.chordTolerance = chordTolerance;
+    FacetedSolid bridge;
+    try {
+        bridge = facetExact(*exact, resolution);
+    } catch (const std::exception& e) {
+        bridge.error = e.what();
+    }
+    if (!bridge.solid) {
+        if (reason) *reason = "its exact form could not be cut into facets: " + bridge.error;
+        return out;
+    }
+    nameBridgeEdges(*bridge.solid, *exact);
+    if (found.isSingleLoop()) {
+        nameAsMasters(*bridge.solid, *exact,
+                      mastersPrism(found.regions.front().outer, plane, direction * distance,
+                                   featureID, segments, chordTolerance));
+    }
+    out.exact = std::move(exact);
+    out.faceted = std::move(bridge.solid);
+    return out;
+}
+
 }  // namespace
+
+Extrude::ExactAndBridge Extrude::exactAndBridge(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+    const draft::SketchPlane& plane, const Vec3& direction, double distance,
+    const std::string& featureID, int segments, double chordTolerance, std::string* reason) {
+    const ProfileRegions found = ProfileValidator::regions(profile);
+    if (auto refused = refusal(found, plane, direction, distance)) {
+        if (reason) *reason = std::move(*refused);
+        return {};
+    }
+    if (segments < 3) {
+        if (reason) *reason = "arcs need at least 3 segments per turn";
+        return {};
+    }
+    return buildExactAndBridge(found, plane, direction, distance, featureID, segments,
+                               chordTolerance, reason);
+}
 
 std::unique_ptr<topo::Solid> Extrude::exact(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
@@ -955,24 +1057,10 @@ std::unique_ptr<topo::Solid> Extrude::execute(
     }
     if (naming == NamingScheme::Stable) {
         // The exact extrusion's bridge copy: master's facets, named for the exact faces and
-        // edges they lie on.
-        std::string why;
-        const auto solid = extrudeExactly(found, plane, direction * distance, featureID, &why);
-        if (!solid) return fail(why);
-        FacetResolution resolution;
-        resolution.segmentsPerTurn = segments;
-        resolution.chordTolerance = chordTolerance;
-        FacetedSolid bridge;
-        try {
-            bridge = facetExact(*solid, resolution);
-        } catch (const std::exception& e) {
-            bridge.error = e.what();
-        }
-        if (!bridge.solid) {
-            return fail("its exact form could not be cut into facets: " + bridge.error);
-        }
-        nameBridgeEdges(*bridge.solid, *solid);
-        return std::move(bridge.solid);
+        // edges they lie on, and numbered as master's.
+        return buildExactAndBridge(found, plane, direction, distance, featureID, segments,
+                                   chordTolerance, reason)
+            .faceted;
     }
     if (found.isSingleLoop()) {
         return extrudeLoop(found.regions.front().outer, plane, direction, distance, featureID,

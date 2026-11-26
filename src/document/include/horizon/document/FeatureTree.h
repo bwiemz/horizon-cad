@@ -298,10 +298,11 @@ public:
                                            std::unique_ptr<topo::Solid> inputSolid,
                                            std::string* reason = nullptr) const override;
     /// Its plane and distance found from its extent as before; then, under Stable naming, built
-    /// exactly (stage 3): model::Extrude::exact, its faces named for this feature, and its bridge
-    /// copy cut at facetResolution(), master's counts, its edges named by model::nameBridgeEdges.
-    /// An extrusion only the exact construction cannot build fails with "could not be built
-    /// exactly: <why>". Under the older schemes, master's faceted extrusion and no exact body.
+    /// exactly (stage 3): model::Extrude::exactAndBridge, its faces named for this feature, and
+    /// its bridge copy cut at facetResolution(), master's counts, numbered as master's prism
+    /// numbered its facets, chords and seams (Ruling 21). An extrusion only the exact construction
+    /// cannot build fails with "could not be built exactly: <why>". Under the older schemes,
+    /// master's faceted extrusion and no exact body.
     FeatureOutput executeWithExact(const BuildContext& context,
                                    std::unique_ptr<topo::Solid> inputSolid,
                                    std::string* reason = nullptr) const override;
@@ -920,8 +921,10 @@ public:
     /// Under Stable naming, built exactly (stage 3): the exact primitive (model::exact) in the
     /// frame it stands in, its faces named for this feature (`<featureID>/side`), its edges
     /// after them (model::nameEdgesLogically), and its bridge copy cut at facetResolution(),
-    /// master's counts, its edges named by model::nameBridgeEdges. Under the older schemes,
-    /// master's faceted primitive and no exact body.
+    /// master's counts, its edges named by model::nameBridgeEdges and then, with its facets,
+    /// numbered as master's faceted primitive numbered the same places (model::nameAsMasters,
+    /// Ruling 21; an exact seam is renamed with them). Under the older schemes, master's faceted
+    /// primitive and no exact body.
     FeatureOutput executeWithExact(const BuildContext& context,
                                    std::unique_ptr<topo::Solid> inputSolid,
                                    std::string* reason = nullptr) const override;

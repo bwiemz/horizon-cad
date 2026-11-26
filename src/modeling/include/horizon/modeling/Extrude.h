@@ -48,12 +48,12 @@ public:
     ///                   NamingScheme): by position, as before persistent
     ///                   naming, or from the sketch entities they come from.
     ///                   Under Stable naming the solid is exact()'s bridge
-    ///                   copy (model::facetExact at {segments, chordTolerance}):
-    ///                   master's facets, vertex for vertex, each named for the
-    ///                   exact face it lies on (`<face>/facet:<k>`) and its
-    ///                   edges by model::nameBridgeEdges. A plate's holes are
-    ///                   then holes in its caps, not cut by a Boolean. The
-    ///                   other schemes build master's faceted solid as before.
+    ///                   copy (exactAndBridge()): master's facets, vertex for
+    ///                   vertex, each named for the exact face it lies on
+    ///                   (`<face>/facet:<k>`), numbered as master's. A plate's
+    ///                   holes are then holes in its caps, not cut by a
+    ///                   Boolean. The other schemes build master's faceted
+    ///                   solid as before.
     /// @return The extruded solid, or nullptr if the profile is invalid (or,
     ///         under Stable naming, its exact form cannot be built or cut into
     ///         facets: "could not be built exactly: <why>", "its exact form
@@ -89,6 +89,25 @@ public:
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const math::Vec3& direction, double distance,
         const std::string& featureID, std::string* reason = nullptr);
+
+    /// exact()'s solid and its bridge copy, what Extrude::execute gives under Stable naming.
+    struct ExactAndBridge {
+        std::unique_ptr<topo::Solid> exact;
+        std::unique_ptr<topo::Solid> faceted;
+    };
+
+    /// The extrusion built exactly and its bridge copy (model::facetExact at {segments,
+    /// chordTolerance}), its edges named by model::nameBridgeEdges. A profile of one loop, which
+    /// master's faceted prism built, has its facets, chords and seams named as that prism named
+    /// the same places, numbers and all, so a saved name binds where it bound
+    /// (model::nameAsMasters, Ruling 21); an exact seam (a circle's line at its start) is renamed
+    /// with them. Master made a profile of several loops with Booleans, whose numbers are theirs.
+    /// Both null, with @p reason as exact() and execute() give it, where either cannot be made.
+    static ExactAndBridge exactAndBridge(
+        const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+        const draft::SketchPlane& plane, const math::Vec3& direction, double distance,
+        const std::string& featureID, int segments = kDefaultSegments, double chordTolerance = 0.0,
+        std::string* reason = nullptr);
 };
 
 }  // namespace hz::model

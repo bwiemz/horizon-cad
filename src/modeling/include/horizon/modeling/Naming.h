@@ -1,7 +1,13 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "horizon/math/Mat4.h"
+#include "horizon/math/Vec3.h"
+#include "horizon/modeling/SolidSewer.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -76,6 +82,43 @@ void nameEdgesLogically(topo::Solid& solid);
 /// every name an edge of @p exact has: no line is taken for an exact edge it does not lie on.
 /// What else the bridge holds keeps its name.
 void nameBridgeEdges(topo::Solid& faceted, const topo::Solid& exact);
+
+/// A faceted construction of master's as it named what it made (stage 3, Ruling 21): its points,
+/// its faces (each a loop of points) with master's names for them, and its edges in the order
+/// master made them, each a pair of points, which is the order nameEdgesLogically numbered them
+/// in. With no edges given, the order a sewer (SolidSewer) first meets them going round the
+/// faces in order, as it makes them.
+struct MastersFacets {
+    std::vector<math::Vec3> points;
+    std::vector<std::vector<std::size_t>> faces;
+    std::vector<std::string> faceNames;
+    std::vector<std::pair<std::size_t, std::size_t>> edges;
+};
+
+/// @p soup, the polygons one of master's faceted primitives sewed in order
+/// (PrimitiveFactory::cylinderFaces and the like), named as master's Stable primitive named the
+/// faces sewn from them: each name scoped to @p featureID (scopeToFeature), and the faces of its
+/// curved side, those whose names hold @p curvedSide (`cylinder/side`, the faces
+/// PrimitiveFactory gives one ideal surface), `<featureID>/<role>/facet:<k>` in order
+/// (nameFacetsLogically); every point moved by @p placement, as master's placed primitive was.
+MastersFacets mastersFacets(const std::vector<SolidSewer::InputFace>& soup,
+                            const std::string& curvedSide, const std::string& featureID,
+                            const math::Mat4& placement);
+
+/// Name @p bridge, the bridge copy (model::facetExact) of @p exact, whose names nameBridgeEdges
+/// gave, as @p masters named the same places (stage 3, Ruling 21): a saved name of master's
+/// facets and edges binds where it bound. Each facet whose corners are a face of master's takes
+/// its name; each edge between two of master's points takes the name master's edge between them
+/// had, numbered as nameEdgesLogically numbered master's (a curve's chords `<edge>/chord:<k>` and
+/// the lines inside a face `<face>/seam:<k>` in the order master made them). An exact edge inside
+/// one face (a seam: a cylinder's line at u = 0, a sphere's meridian) is renamed in @p exact
+/// too: after master's edge where its first chord lies (from its half-edge's origin), its chords
+/// `<that name>/chord:<k>` where it has several, so that logicalEdge still takes each to it and
+/// no line of a grid takes its name (Ruling 18). Master's names of the other chords of such a
+/// seam are no name of the bridge's. What has no place in master's construction (a facet cut in
+/// two where it was not flat, its diagonal) keeps its name, renumbered past every name now taken.
+/// Nothing is renamed when @p masters has no points.
+void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets& masters);
 
 /// Name @p solid's edges as @p naming does: logically (Stable), after their
 /// faces (FromGeometry). Positional names are an operation's own; they are
