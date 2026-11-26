@@ -856,3 +856,25 @@ TEST(ExactRevolve, ALemonsBridgeIsCutEvenlyInItsU) {
     EXPECT_GT(worst, 1e-3);
     EXPECT_LT(worst, 0.02);
 }
+
+// Not master's: with a chord tolerance, master turned every point of its profile through as many
+// steps as its widest radius needed (Revolve::segmentsForTolerance at profileRadius, the feature's
+// segments()), where the bridge cuts each rim by its own radius (FacetResolution::stepsFor), as
+// it cuts every circle. A washer of radii 2 and 4 at 0.01: master's 45 steps round both rims (92
+// faces, 270 edges, 180 vertices under Stable naming), the bridge's 45 round the outer and 32 round
+// the inner (79, 231 and 154). Tracked in the task's report, not fixed here: the bridge would need
+// a count for the circles round the revolve's axis that FacetResolution does not carry.
+TEST(ExactRevolve, AChordToleranceCutsEachRimByItsOwnRadius) {
+    const Profile p = washer();
+    const double radius = Revolve::profileRadius(p, SketchPlane(), Vec3(), Vec3(0, 1, 0));
+    const int segments = Revolve::segmentsForTolerance(radius, 0.01);
+    ASSERT_EQ(segments, 45);
+    std::string why;
+    const auto bridge = Revolve::execute(p, SketchPlane(), Vec3(), Vec3(0, 1, 0), kTwoPi, "x",
+                                         segments, 0.01, &why, NamingScheme::Stable);
+    ASSERT_NE(bridge, nullptr) << why;
+    EXPECT_EQ(bridge->faceCount(), 79u);
+    EXPECT_EQ(bridge->edges().size(), 231u);
+    EXPECT_EQ(bridge->vertices().size(), 154u);
+    EXPECT_TRUE(bridge->isValid()) << bridge->validationReport();
+}
