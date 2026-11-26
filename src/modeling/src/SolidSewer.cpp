@@ -373,6 +373,12 @@ std::shared_ptr<geo::NurbsCurve> makeLineCurve(const Vec3& a, const Vec3& b) {
 
 }  // namespace
 
+std::shared_ptr<geo::NurbsSurface> SolidSewer::planarPatch(const std::vector<math::Vec3>& loop) {
+    std::vector<size_t> indices(loop.size());
+    for (size_t i = 0; i < loop.size(); ++i) indices[i] = i;
+    return synthesizePlanarPatch(indices, loop);
+}
+
 std::unique_ptr<topo::Solid> SolidSewer::sew(const std::vector<InputFace>& faces, double weldTol) {
     using namespace hz::topo;
 

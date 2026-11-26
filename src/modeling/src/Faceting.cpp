@@ -2140,8 +2140,179 @@ int FacetResolution::stepsFor(double radius, double sweep) const {
     return std::max(1, static_cast<int>(std::ceil(steps - 1e-9)));
 }
 
+namespace {
+
+/// Whether every live face of @p solid lies on a plane (its exact surface) and every live edge
+/// runs straight (no exact curve, or a line): a polyhedron, its own bridge copy.
+bool flatAndStraight(const topo::Solid& solid) {
+    for (const auto& face : solid.faces()) {
+        if (!face.alive) continue;
+        if (!face.exactSurface || face.exactSurface->kind() != geo::SurfaceKind::Plane ||
+            face.outerLoop == nullptr) {
+            return false;
+        }
+    }
+    for (const auto& edge : solid.edges()) {
+        if (!edge.alive) continue;
+        if (edge.halfEdge == nullptr || edge.halfEdge->twin == nullptr) return false;
+        if (edge.exactCurve && edge.exactCurve->kind() != geo::CurveKind::Line) return false;
+    }
+    return true;
+}
+
+/// The bridge copy of @p exact, a polyhedron (flatAndStraight): each face one facet, each edge
+/// one chord, as facetExact's sewing of their outlines makes them (SolidSewer::sew: the faces in
+/// order, each loop from its wire's start, a vertex and an edge made where first met, an edge's
+/// first half-edge its own, its name its exact edge's, a face's carrier the sewer's planar
+/// patch, a shell for each set of faces joined across their edges), from its own half-edges:
+/// nothing is welded or found again, which on a prism of 50,000 sides took most of its time.
+std::unique_ptr<topo::Solid> flatCopy(const topo::Solid& exact) {
+    // What each of the exact solid's vertices, half-edges and faces became, by its id (each
+    // unique in its solid, as Solid allocates them): null where ids repeat, for the sewer to
+    // make it instead.
+    std::size_t ids = 0;
+    for (const auto& v : exact.vertices()) ids = std::max<std::size_t>(ids, v.id);
+    for (const auto& f : exact.faces()) ids = std::max<std::size_t>(ids, f.id);
+    for (const auto& e : exact.edges()) {
+        if (!e.alive) continue;
+        ids = std::max<std::size_t>({ids, e.halfEdge->id, e.halfEdge->twin->id});
+    }
+    ++ids;
+    const auto known = [ids](const auto* entity) { return entity->id < ids; };
+    std::vector<topo::Vertex*> vertexOf(ids, nullptr);
+    std::vector<HalfEdge*> halfEdgeOf(ids, nullptr);
+    std::vector<std::size_t> faceOf(ids, 0);
+
+    auto solid = std::make_unique<topo::Solid>();
+    std::vector<std::pair<const Face*, Face*>> faces;
+    faces.reserve(exact.faces().size());
+    std::vector<Vec3> outline;
+    const auto loopsOf = [](const Face& face) {
+        std::vector<const Wire*> loops{face.outerLoop};
+        loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+        return loops;
+    };
+    for (const auto& face : exact.faces()) {
+        if (!face.alive) continue;
+        Face* f = solid->allocFace();
+        f->topoId = face.topoId;
+        faceOf[face.id] = faces.size();
+        faces.emplace_back(&face, f);
+        outline.clear();
+        bool outer = true;
+        for (const Wire* loop : loopsOf(face)) {
+            Wire* wire = solid->allocWire();
+            if (outer) {
+                f->outerLoop = wire;
+            } else {
+                f->innerLoops.push_back(wire);
+            }
+            // Made in two steps, as the sewer makes them: every half-edge, then their links.
+            const HalfEdge* start = loop->halfEdge;
+            std::size_t n = 0;
+            for (const HalfEdge* h = start; n == 0 || h != start; h = h->next) {
+                if (!known(h) || !known(h->origin) || halfEdgeOf[h->id] != nullptr) return nullptr;
+                halfEdgeOf[h->id] = solid->allocHalfEdge();
+                ++n;
+            }
+            const HalfEdge* h = start;
+            for (std::size_t i = 0; i < n; ++i, h = h->next) {
+                HalfEdge* he = halfEdgeOf[h->id];
+                topo::Vertex*& v = vertexOf[h->origin->id];
+                if (v == nullptr) {
+                    v = solid->allocVertex();
+                    v->point = h->origin->point;
+                }
+                he->origin = v;
+                he->face = f;
+                he->next = halfEdgeOf[h->next->id];
+                he->next->prev = he;
+                if (v->halfEdge == nullptr) v->halfEdge = he;
+                if (outer) outline.push_back(v->point);
+            }
+            wire->halfEdge = halfEdgeOf[start->id];
+            outer = false;
+        }
+        f->surface = SolidSewer::planarPatch(outline);
+    }
+    // Edges where first met, going round the faces in order; each pairs its half-edges.
+    int index = 0;
+    for (const auto& pair : faces) {
+        for (const Wire* loop : loopsOf(*pair.first)) {
+            const HalfEdge* start = loop->halfEdge;
+            const HalfEdge* h = start;
+            do {
+                HalfEdge* he = halfEdgeOf[h->id];
+                if (he->edge == nullptr) {
+                    HalfEdge* twin = known(h->twin) ? halfEdgeOf[h->twin->id] : nullptr;
+                    if (twin == nullptr) return nullptr;
+                    topo::Edge* e = solid->allocEdge();
+                    e->halfEdge = he;
+                    e->topoId = h->edge->topoId.isValid()
+                                    ? h->edge->topoId
+                                    : pair.second->topoId.child("edge", index);
+                    ++index;
+                    e->curve = std::make_shared<geo::NurbsCurve>(
+                        std::vector<Vec3>{he->origin->point, he->next->origin->point},
+                        std::vector<double>{1.0, 1.0}, std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
+                    he->edge = e;
+                    he->twin = twin;
+                    twin->twin = he;
+                    twin->edge = e;
+                }
+                h = h->next;
+            } while (h != start);
+        }
+    }
+    // A shell for each set of faces joined across their edges, in the order of their first face.
+    std::vector<topo::Shell*> shellOf(faces.size(), nullptr);
+    std::vector<std::size_t> stack;
+    for (std::size_t seed = 0; seed < faces.size(); ++seed) {
+        if (shellOf[seed] != nullptr) continue;
+        topo::Shell* shell = solid->allocShell();
+        shell->solid = solid.get();
+        shellOf[seed] = shell;
+        stack.assign(1, seed);
+        while (!stack.empty()) {
+            const std::size_t cur = stack.back();
+            stack.pop_back();
+            for (const Wire* loop : loopsOf(*faces[cur].first)) {
+                const HalfEdge* start = loop->halfEdge;
+                const HalfEdge* h = start;
+                do {
+                    const std::size_t next = faceOf[h->twin->face->id];
+                    if (shellOf[next] == nullptr) {
+                        shellOf[next] = shell;
+                        stack.push_back(next);
+                    }
+                    h = h->next;
+                } while (h != start);
+            }
+        }
+    }
+    for (std::size_t i = 0; i < faces.size(); ++i) {
+        shellOf[i]->faces.push_back(faces[i].second);
+        faces[i].second->shell = shellOf[i];
+    }
+    return solid;
+}
+
+}  // namespace
+
 FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolution) {
     FacetedSolid result;
+    if (flatAndStraight(exact)) {
+        // A polyhedron is its own bridge: its faces one facet each, its edges one chord.
+        if (auto solid = flatCopy(exact)) {
+            if (!solid->checkManifold()) {
+                result.error = "the facets did not join into a closed solid";
+                return result;
+            }
+            result.solid = std::move(solid);
+            result.copied = true;
+            return result;
+        }
+    }
     const math::ModelTolerance tolerance = topo::exactTolerance(exact);
     const double size = topo::exactExtent(exact);
     const std::size_t limit = 2 * exact.edges().size() + 1;

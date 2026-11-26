@@ -1392,7 +1392,7 @@ FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/
         if (reason) *reason = "its exact form could not be cut into facets: " + bridge.error;
         return out;
     }
-    model::nameBridgeEdges(*bridge.solid, *exact);
+    if (!bridge.copied) model::nameBridgeEdges(*bridge.solid, *exact);
     // Numbered as master's faceted primitive numbered the same places (Ruling 21): a box names
     // nothing by number.
     std::vector<model::SolidSewer::InputFace> soup;

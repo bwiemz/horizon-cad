@@ -21,6 +21,9 @@ struct FacetedSolid {
     /// each is one facet, its outline, and only its ideal is the surface.
     std::vector<std::string> outlined;
     std::string error;  ///< why there is no solid
+    /// facetExact's: the exact solid was a polyhedron, its own topology copied, each edge one
+    /// chord named as its exact edge: nameBridgeEdges has nothing to name.
+    bool copied = false;
 };
 
 /// @p exact, whose faces lie on curved surfaces and whose edges run along
@@ -89,6 +92,11 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle = math::kTwoP
 ///   a line is its own chord, and records nothing. The edges inside a face
 ///   are named as SolidSewer names them: a caller that names edges its own
 ///   way (model::nameEdgesLogically) does so after, as for facetCurved.
+///
+/// A polyhedron (every face on a plane, every edge a line) is its own bridge: its topology is
+/// copied as the sewing of its faces' outlines would make it (the same faces, loops, vertices,
+/// edges and shells, in the same order, each face's carrier the sewer's planar patch), without
+/// welding or pairing anything again, and the result says so (`copied`).
 ///
 /// No solid, and the error says why, where a face has no boundary, a curved
 /// face has no exact surface (`face <tag> has no surface to facet`, as for

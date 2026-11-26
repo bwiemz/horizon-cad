@@ -16,6 +16,8 @@
 
 #include "ExactProfile.h"
 #include "RingStack.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Line2D.h"
@@ -940,6 +942,12 @@ MastersFacets mastersPrism(const ProfileValidationResult& loop, const draft::Ske
                            const Vec3& offset, const std::string& featureID, int segments,
                            double chordTolerance) {
     MastersFacets out;
+    if (std::none_of(loop.orderedEdges.begin(), loop.orderedEdges.end(), [](const auto& e) {
+            return dynamic_cast<const draft::DraftArc*>(e.get()) != nullptr ||
+                   dynamic_cast<const draft::DraftCircle*>(e.get()) != nullptr;
+        })) {
+        return out;  // a polygon: nothing numbered
+    }
     FacetResolution resolution;
     resolution.segmentsPerTurn = segments;
     resolution.chordTolerance = chordTolerance;
@@ -998,7 +1006,7 @@ Extrude::ExactAndBridge buildExactAndBridge(const ProfileRegions& found,
         if (reason) *reason = "its exact form could not be cut into facets: " + bridge.error;
         return out;
     }
-    nameBridgeEdges(*bridge.solid, *exact);
+    if (!bridge.copied) nameBridgeEdges(*bridge.solid, *exact);
     if (found.isSingleLoop()) {
         nameAsMasters(*bridge.solid, *exact,
                       mastersPrism(found.regions.front().outer, plane, direction * distance,

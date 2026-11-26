@@ -12,6 +12,7 @@
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -97,36 +98,61 @@ std::string logicalEdge(const std::string& edgeTag) {
 }
 
 void nameEdgesLogically(topo::Solid& solid) {
-    // Each edge's base name, from its logical faces; how many share it.
+    // Each edge's base name, from its logical faces; how many share it. Hashed, and the faces'
+    // names read where they are, not copied: a prism of 50,000 sides has 150,000 edges to name.
     std::vector<std::string> base(solid.edges().size());
-    std::map<std::string, int> count;
+    std::unordered_map<std::string_view, int> count;
+    count.reserve(solid.edges().size());
+    std::string bufferA;
+    std::string bufferB;
     size_t i = 0;
     for (const auto& edge : solid.edges()) {
-        const auto [a, b] = facePair(edge);
         std::string& name = base[i++];
-        if (a.empty()) continue;
-        const std::string la = logicalFace(a);
-        const std::string lb = logicalFace(b);
+        const topo::HalfEdge* he = edge.halfEdge;
+        if (he == nullptr || he->twin == nullptr || he->face == nullptr ||
+            he->twin->face == nullptr || !he->face->topoId.isValid() ||
+            !he->twin->face->topoId.isValid()) {
+            continue;
+        }
+        const std::string* a = &he->face->topoId.tag();
+        const std::string* b = &he->twin->face->topoId.tag();
+        if (*b < *a) std::swap(a, b);
+        // A facet's logical face: its name less its `/facet:<k>`; any other face's is its name.
+        const auto logical = [](const std::string& tag, std::string& buffer) -> const std::string& {
+            if (tag.find("/facet:") == std::string::npos) return tag;
+            buffer = logicalFace(tag);
+            return buffer;
+        };
+        const std::string& la = logical(*a, bufferA);
+        const std::string& lb = logical(*b, bufferB);
         if (la == lb) {
-            name = la + "/seam";  // between two facets of one face
+            name.reserve(la.size() + 5);
+            name.append(la).append("/seam");  // between two facets of one face
         } else {
             const size_t slash = la.find('/');
             if (slash != std::string::npos && lb.compare(0, slash + 1, la, 0, slash + 1) == 0) {
-                name = la.substr(0, slash) + "/edge:" + la.substr(slash + 1) + "|" +
-                       lb.substr(slash + 1);
+                name.reserve(la.size() + lb.size() + 7);
+                name.append(la, 0, slash)
+                    .append("/edge:")
+                    .append(la, slash + 1)
+                    .append("|")
+                    .append(lb, slash + 1);
             } else {
-                name = "edge:" + la + "|" + lb;
+                name.reserve(la.size() + lb.size() + 6);
+                name.append("edge:").append(la).append("|").append(lb);
             }
         }
-        ++count[name];
     }
-    std::map<std::string, int> next;
+    for (const std::string& name : base) {
+        if (!name.empty()) ++count[name];
+    }
+    std::unordered_map<std::string_view, int> next;
     i = 0;
     for (auto& edge : solid.edges()) {
         const std::string& name = base[i++];
         if (name.empty()) continue;
         const bool seam = name.size() > 5 && name.compare(name.size() - 5, 5, "/seam") == 0;
-        if (!seam && count[name] == 1) {
+        if (!seam && count.at(name) == 1) {
             edge.topoId = topo::TopologyID::fromTag(name);
             continue;
         }
@@ -139,13 +165,14 @@ void nameEdgesLogically(topo::Solid& solid) {
 void nameBridgeEdges(topo::Solid& faceted, const topo::Solid& exact) {
     // Every name the exact solid's edges have: a chord of one keeps its name, and no line is
     // named so.
-    std::set<std::string> exactNames;
+    std::unordered_set<std::string> exactNames;
     for (const auto& edge : exact.edges()) {
         if (edge.topoId.isValid()) exactNames.insert(edge.topoId.tag());
     }
     std::map<std::string, int> next;  // by face: the number its next seam may take
     for (auto& edge : faceted.edges()) {
-        if (edge.topoId.isValid() && exactNames.count(logicalEdge(edge.topoId.tag())) != 0) {
+        if (edge.topoId.isValid() && (exactNames.count(edge.topoId.tag()) != 0 ||
+                                      exactNames.count(logicalEdge(edge.topoId.tag())) != 0)) {
             continue;  // a chord of an exact edge
         }
         const auto [a, b] = facePair(edge);
