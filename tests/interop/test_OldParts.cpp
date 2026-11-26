@@ -1,12 +1,14 @@
 // Part files saved before the exact kernel (stage 2, Ruling 10): each holds its imported bodies as
-// STEP the writer of its day wrote, which no exact form may hold. Such a part opens as it did: a
-// body whose exact form fails is kept as the file has it, untouched by the exact pass, and builds
-// as it built before.
+// STEP the writer of its day wrote, which no exact form may hold. Such a part opens exact where its
+// exact form holds; a body whose exact form fails is kept as the file has it, untouched by the
+// exact pass, and builds as it built before.
 
 #include <gtest/gtest.h>
 
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -63,51 +65,59 @@ std::string oldPartFile(const std::string& step, const std::string& source) {
     return root.dump();
 }
 
-/// The Solid Edge body's faceted copy as master built it (54f72335): 3868 faces enclosing
-/// 684.443891. A platform's last bits may put a band's grid a column either way where its width
-/// over its count is a whole number but for rounding (3796 faces, 684.4555, were seen): within the
-/// facets' own chordal error, and far from the hundreds of thousands of faces a facet count that
-/// follows rounding gave.
-constexpr std::size_t kFewestFaces = 3700;
-constexpr std::size_t kMostFaces = 4000;
-constexpr double kVolume = 684.443891;
-/// Relative: twice what a grid's column moved it by (1.7e-5); a face lost, or one too many, moves
+/// The Moon buggy body's faceted copy as master built it (54f72335): 12750 faces enclosing
+/// 2799280.89787. A platform's last bits may put a band's grid a column either way where its width
+/// over its count is a whole number but for rounding (11952 faces, 2799004.59, are seen when it is
+/// moved by them): within the facets' own chordal error, and far from the hundreds of thousands of
+/// faces a facet count that follows rounding gave (CI fix 2).
+constexpr std::size_t kFewestFaces = 11500;
+constexpr std::size_t kMostFaces = 13500;
+constexpr double kVolume = 2799280.89787;
+/// Relative: twice what a grid's column moves it by (9.9e-5); a face lost, or one too many, moves
 /// it by far more.
-constexpr double kVolumeWithin = 4e-5;
+constexpr double kVolumeWithin = 2e-4;
 
 /// Seconds since @p start.
 double secondsSince(std::chrono::steady_clock::time_point start) {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 }
 
-}  // namespace
-
-// The corpus's Solid Edge part (tests/interop/step/solidedge_ercf_knife_holder.step), as a part
-// file saved before stage 2 holds it: written by master's writer (54f72335), each face a B-spline
-// patch. Its exact pass inserts a seam on one band and splits two rims, then refuses the next band
-// (its two loops wind round it the same way: counted, not measured, so on every platform); the
-// body is kept as the file has it, not as the failed pass left it: its 90 edges, none a seam or a
-// piece of a split rim, and it builds as on master, 3868 faces enclosing 684.444, in moments (CI
-// fix 2: what a platform's last bits may move is bounded, not pinned).
-TEST(OldPartFile, ABodyKeptAsItWasIsTheFilesUntouchedByTheExactPass) {
-    const std::string step = readText(oldPartDir() / "solidedge_ercf_knife_holder.body.step");
-    ASSERT_FALSE(step.empty());
-
-    Document opened;
+/// @p name's text, opened as a part file holding it as its one imported body from @p source;
+/// null where it does not open.
+const ImportedBodyFeature* opened(Document& part, const std::string& name,
+                                  const std::string& source) {
+    const std::string step = readText(oldPartDir() / name);
+    EXPECT_FALSE(step.empty()) << name;
     std::string error;
     hz::io::ImportReport report;
-    ASSERT_TRUE(NativeFormat::documentFromJson(
-        oldPartFile(step, "solidedge_ercf_knife_holder.step"), opened, &error, &report))
+    EXPECT_TRUE(NativeFormat::documentFromJson(oldPartFile(step, source), part, &error, &report))
         << error;
-    ASSERT_EQ(opened.featureTree().featureCount(), 1u);
-    const auto* imported =
-        dynamic_cast<const ImportedBodyFeature*>(opened.featureTree().feature(0));
+    if (part.featureTree().featureCount() != 1) return nullptr;
+    return dynamic_cast<const ImportedBodyFeature*>(part.featureTree().feature(0));
+}
+
+}  // namespace
+
+// The corpus's Moon buggy (tests/interop/step/edm_ug_moon_buggy_asm.stp), its body 15 as a part
+// file saved before stage 2 holds it: written by master's writer (54f72335), each face a B-spline
+// patch. Its exact pass refuses its B-spline torus band (face #149: its seam would cross where its
+// surface closes); the body is kept as the file has it: its 4 edges, none a seam or a piece of a
+// split rim, and it builds as on master, 12750 faces enclosing 2799280.9, in moments (CI fix 2:
+// what a platform's last bits may move is bounded, not pinned). The corpus's Solid Edge body was
+// kept so too, until its rims read the wrong way round were turned (below).
+TEST(OldPartFile, ABodyKeptAsItWasIsTheFilesUntouchedByTheExactPass) {
+    Document part;
+    const ImportedBodyFeature* imported =
+        opened(part, "edm_ug_moon_buggy_asm.body15.step", "edm_ug_moon_buggy_asm.stp");
     ASSERT_NE(imported, nullptr);
     ASSERT_NE(imported->solid(), nullptr);
+    EXPECT_NE(imported->note().find("its seam would cross where its surface closes"),
+              std::string::npos)
+        << imported->note();
     EXPECT_NE(imported->note().find("; kept as it was"), std::string::npos) << imported->note();
 
     const hz::topo::Solid& body = *imported->solid();
-    EXPECT_EQ(body.edgeCount(), 90u) << "the file's edges, as it has them";
+    EXPECT_EQ(body.edgeCount(), 4u) << "the file's edges, as it has them";
     for (const auto& e : body.edges()) {
         const std::string name = e.topoId.tag();
         EXPECT_EQ(name.find("/seam"), std::string::npos) << name;
@@ -115,28 +125,71 @@ TEST(OldPartFile, ABodyKeptAsItWasIsTheFilesUntouchedByTheExactPass) {
     }
 
     const auto start = std::chrono::steady_clock::now();
-    ASSERT_TRUE(opened.rebuildModel()) << opened.lastBuildMessage();
-    EXPECT_LT(secondsSince(start), 10.0) << "built in moments (0.2 s, Debug)";
-    EXPECT_EQ(opened.failedFeatureIndex(), -1) << opened.lastBuildMessage();
-    ASSERT_NE(opened.solid(), nullptr);
-    EXPECT_GE(opened.solid()->faceCount(), kFewestFaces);
-    EXPECT_LE(opened.solid()->faceCount(), kMostFaces);
-    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*opened.solid()).volume, kVolume,
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_LT(secondsSince(start), 10.0) << "built in moments (0.4 s, Debug)";
+    EXPECT_EQ(part.failedFeatureIndex(), -1) << part.lastBuildMessage();
+    ASSERT_NE(part.solid(), nullptr);
+    EXPECT_GE(part.solid()->faceCount(), kFewestFaces);
+    EXPECT_LE(part.solid()->faceCount(), kMostFaces);
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*part.solid()).volume, kVolume,
                 kVolumeWithin * kVolume);
-    EXPECT_EQ(opened.exactSolid(), nullptr) << "no exact form holds it";
+    EXPECT_EQ(part.exactSolid(), nullptr) << "no exact form holds it";
 }
 
-// CI fix 2 (macOS): the body's faceted copy is the same size wherever its last bits fall. Its band
-// that no seam could be laid on (face #1084) is cut into facets along a seam of the faceting's own,
-// straight up the band from one rim's point to the other's, at one u but for rounding. How many
-// pieces that seam is cut into was measured by how far the surface turns along u across that span,
-// at 256 points a hundredth of a last bit apart: their chords' directions were rounding, they
-// turned hundreds of radians, and the seam was cut into hundreds of pieces, the band's facets
-// spaced as finely. Moved by a millionth of a micrometre, as another platform's library rounds,
-// the part built 287,864 faces in 90 s on macOS, and up to 254,044 here. Each faceted copy, moved
-// by any of these, is the size master's is, and is cut in moments.
+// The corpus's Solid Edge and Onshape parts, as part files saved before stage 2 hold them. Each
+// was kept as it was ("its two loops wind round it the same way"): master's writer gave a closed
+// rim's EDGE_CURVE same_sense .T. whichever way its carrier ran, and where the source's ran
+// against the rim (Solid Edge's #288, #289 and #314, Onshape's #101, same_sense .F.), the rim
+// reads back the wrong way round on both its faces. Those rims are turned before any band is
+// seamed, and each body opens exact. Solid Edge's carriers are its own circles and lines, so its
+// exact volume is its source's (OpenCASCADE's, in the manifest); Onshape's is the body's as master
+// wrote it, 1.6e-6 from its source's. Each builds in moments, its faceted copy the size it is
+// wherever its last bits fall.
+TEST(OldPartFile, ABodyWhoseRimsReadTheWrongWayRoundOpensExact) {
+    struct Case {
+        const char* file;
+        const char* source;
+        double volume;
+        std::size_t faces;  // its faceted copy's
+    };
+    const Case cases[] = {
+        {"solidedge_ercf_knife_holder.body.step", "solidedge_ercf_knife_holder.step", 684.683543,
+         1652},
+        {"onshape_rocketsmith_upper_airframe.body.step", "onshape_rocketsmith_upper_airframe.step",
+         712990.962654, 10229},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.file);
+        Document part;
+        const ImportedBodyFeature* imported = opened(part, c.file, c.source);
+        ASSERT_NE(imported, nullptr);
+        EXPECT_EQ(imported->note(), "") << "exact, nothing to say";
+        const auto start = std::chrono::steady_clock::now();
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        EXPECT_LT(secondsSince(start), 10.0) << "built in moments";
+        EXPECT_EQ(part.failedFeatureIndex(), -1) << part.lastBuildMessage();
+        EXPECT_EQ(part.exactNote(), "");
+        ASSERT_NE(part.exactSolid(), nullptr);
+        EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*part.exactSolid()).volume,
+                    c.volume, 1e-9 * c.volume);
+        ASSERT_NE(part.solid(), nullptr);
+        // A tenth either way: a grid's column moved by a platform's last bits, not a blow-up.
+        EXPECT_GE(part.solid()->faceCount(), c.faces - c.faces / 10);
+        EXPECT_LE(part.solid()->faceCount(), c.faces + c.faces / 10);
+    }
+}
+
+// CI fix 2 (macOS): a kept body's faceted copy is the same size wherever its last bits fall. Its
+// bands that no seam could be laid on are cut into facets along a seam of the faceting's own, at
+// one parameter but for rounding. How many pieces that seam was cut into was measured by how far
+// the surface turns across that span, at 256 points a hundredth of a last bit apart: their chords'
+// directions were rounding, they turned hundreds of radians, and the seam was cut into hundreds of
+// pieces, the band's facets spaced as finely. Moved by a millionth of a micrometre, as another
+// platform's library rounds, the Solid Edge part (kept so until its rims were turned) built
+// 287,864 faces in 90 s on macOS. The Moon buggy body, moved by any of these, is the size master's
+// is, and is cut in moments.
 TEST(OldPartFile, ItsFacetedCopyIsTheSameSizeWhereverItsLastBitsFall) {
-    const std::string step = readText(oldPartDir() / "solidedge_ercf_knife_holder.body.step");
+    const std::string step = readText(oldPartDir() / "edm_ug_moon_buggy_asm.body15.step");
     ASSERT_FALSE(step.empty());
     hz::io::StepReadOptions asAPartFile;
     asAPartFile.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
@@ -155,7 +208,7 @@ TEST(OldPartFile, ItsFacetedCopyIsTheSameSizeWhereverItsLastBitsFall) {
         ASSERT_NE(faceted.solid, nullptr) << "moved by " << d << ": " << faceted.error;
         EXPECT_GE(faceted.solid->faceCount(), kFewestFaces) << "moved by " << d;
         EXPECT_LE(faceted.solid->faceCount(), kMostFaces) << "moved by " << d;
-        EXPECT_LT(seconds, 5.0) << "moved by " << d << " (0.15 s, Debug)";
+        EXPECT_LT(seconds, 5.0) << "moved by " << d << " (0.35 s, Debug)";
         EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*faceted.solid).volume, kVolume,
                     kVolumeWithin * kVolume)
             << "moved by " << d;

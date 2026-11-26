@@ -5,10 +5,13 @@
 #include <cmath>
 #include <cstddef>
 #include <exception>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -154,6 +157,92 @@ bool hasSeam(const Solid& solid, const Face& face) {
         }
     }
     return false;
+}
+
+// ---- rims read the wrong way round ----
+
+/// Whether @p e is a rim: a closed edge alone in its loop on each of two faces, each on its pcurve.
+bool isRim(const Edge& e) {
+    const HalfEdge* h = e.halfEdge;
+    if (!e.alive || h == nullptr || h->twin == nullptr || !e.exactCurve) return false;
+    const HalfEdge* t = h->twin;
+    return h->origin != nullptr && h->origin == t->origin && h->next == h && t->next == t &&
+           h->face != nullptr && t->face != nullptr && h->face != t->face && h->pcurve && t->pcurve;
+}
+
+/// Turns @p e, a rim, the other way round on both its faces: each half-edge runs its pcurve the
+/// other way, from the same vertex, and the other one runs with the edge's curve.
+void turnRim(Edge& e) {
+    HalfEdge* h = e.halfEdge;
+    std::swap(h->pcurveStart, h->pcurveEnd);
+    std::swap(h->twin->pcurveStart, h->twin->pcurveEnd);
+    e.halfEdge = h->twin;
+}
+
+/// What a face says of two of its loops: turned either both or neither (@p differ false), or one
+/// of them (true). A loop that is not a rim is held as written, its index kNotARim.
+struct Tie {
+    std::size_t a = 0;
+    std::size_t b = 0;
+    bool differ = false;
+};
+constexpr std::size_t kNotARim = std::numeric_limits<std::size_t>::max();
+
+/// The ties @p face's loops make, into @p ties, each loop's rim's index from @p rimOf (kNotARim
+/// for a loop that is not a rim): a band's two loops wind opposite ways, and an inner loop of a
+/// face whose surface wraps neither way runs against its outer loop. Any other loop but the outer
+/// loop of a face that is no band (a band's hole, a hole in a face that wraps, a hole whose area
+/// says nothing) is held as written: nothing here says which way it must run. The outer loop of a
+/// face that is no band is not held: its face takes its sense from it, or says it runs against it.
+void tiesOf(const Solid& solid, const Face& face, const math::ModelTolerance& tolerance,
+            const std::function<std::size_t(const Loop&)>& rimOf, std::vector<Tie>& ties) {
+    if (!face.alive || !face.exactSurface) return;
+    std::optional<std::vector<Loop>> read;
+    try {
+        read = loopsOf(solid, face, tolerance);
+    } catch (const std::exception&) {
+        return;  // its loops cannot be read: insertSeams and the validator say why
+    }
+    if (!read) return;
+    const std::vector<Loop>& loops = *read;
+    const geo::Surface& s = *face.exactSurface;
+    std::vector<bool> tied(loops.size(), false);
+    bool band = false;
+    if (!(topo::uPeriod(s) > 0.0) && !(topo::vPeriod(s) > 0.0)) {
+        const double outside = topo::signedArea(loops.front().chain);
+        for (std::size_t k = 1; k < loops.size(); ++k) {
+            const double inside = topo::signedArea(loops[k].chain);
+            if (!(outside != 0.0) || !(inside != 0.0)) continue;  // NaN too: says nothing
+            ties.push_back(
+                {rimOf(loops.front()), rimOf(loops[k]), (inside > 0.0) == (outside > 0.0)});
+            tied[k] = true;
+        }
+    } else if (!hasSeam(solid, face)) {
+        // A band: two loops once round along one parameter, and none round any other way.
+        std::vector<std::size_t> winding;
+        int dir = -1;
+        bool alone = true;
+        for (std::size_t k = 0; k < loops.size(); ++k) {
+            const bool u = loops[k].winds[0] != 0.0;
+            const bool v = loops[k].winds[1] != 0.0;
+            if (!u && !v) continue;
+            if ((u && v) || (dir >= 0 && dir != (u ? 0 : 1))) alone = false;
+            dir = u ? 0 : 1;
+            winding.push_back(k);
+        }
+        if (alone && winding.size() == 2) {
+            const double wa = loops[winding[0]].winds[static_cast<std::size_t>(dir)];
+            const double wb = loops[winding[1]].winds[static_cast<std::size_t>(dir)];
+            if (std::fabs(wa) == 1.0 && std::fabs(wb) == 1.0) {
+                ties.push_back({rimOf(loops[winding[0]]), rimOf(loops[winding[1]]), wa == wb});
+                tied[winding[0]] = tied[winding[1]] = true;
+                band = true;
+            }
+        }
+    }
+    for (std::size_t k = band ? 0 : 1; k < loops.size(); ++k) {
+        if (!tied[k]) ties.push_back({kNotARim, rimOf(loops[k]), false});
+    }
 }
 
 // ---- where a loop crosses a seam's line ----
@@ -1067,6 +1156,96 @@ std::string insertSeams(Solid& solid, const math::ModelTolerance& tolerance) {
         if (std::string why = insertSeams(solid, face, tolerance); !why.empty()) return why;
     }
     return {};
+}
+
+std::vector<Face*> turnBackwardRims(Solid& solid, const math::ModelTolerance& tolerance) {
+    // The rims, and what each face's loops say of them.
+    std::vector<Edge*> rims;
+    std::unordered_map<const HalfEdge*, std::size_t> rimAt;
+    for (Edge& e : solid.edges()) {
+        if (!isRim(e)) continue;
+        rimAt[e.halfEdge] = rimAt[e.halfEdge->twin] = rims.size();
+        rims.push_back(&e);
+    }
+    if (rims.empty()) return {};
+    const auto rimOf = [&rimAt](const Loop& loop) {
+        if (loop.ring.size() != 1) return kNotARim;
+        const auto it = rimAt.find(loop.ring.front());
+        return it == rimAt.end() ? kNotARim : it->second;
+    };
+    std::vector<Tie> ties;
+    std::unordered_set<const Face*> seen;
+    for (const Edge* e : rims) {
+        for (const Face* f : {e->halfEdge->face, e->halfEdge->twin->face}) {
+            if (seen.insert(f).second) tiesOf(solid, *f, tolerance, rimOf, ties);
+        }
+    }
+
+    // Each rim tied to others, and each held to a loop taken as written: whether it is turned.
+    struct Link {
+        std::size_t to = 0;
+        bool differ = false;
+    };
+    std::vector<std::vector<Link>> links(rims.size());
+    std::vector<std::vector<bool>> held(rims.size());  // turned exactly where true
+    for (const Tie& t : ties) {
+        if (t.a == kNotARim && t.b == kNotARim) continue;  // nothing to turn: insertSeams says
+        if (t.a == kNotARim || t.b == kNotARim) {
+            held[t.a == kNotARim ? t.b : t.a].push_back(t.differ);
+        } else {
+            links[t.a].push_back({t.b, t.differ});
+            links[t.b].push_back({t.a, t.differ});
+        }
+    }
+
+    // Each set of rims tied together, turned as its ties say: one way round where a rim is held,
+    // else the fewer turns; none where its ties cannot all hold, or as many could turn either way.
+    std::vector<int> turn(rims.size(), -1);
+    std::vector<Face*> turned;
+    std::unordered_set<Face*> listed;
+    for (std::size_t first = 0; first < rims.size(); ++first) {
+        if (turn[first] >= 0) continue;
+        std::vector<std::size_t> group{first};
+        turn[first] = 0;
+        bool holds = true;
+        for (std::size_t i = 0; i < group.size(); ++i) {
+            const std::size_t r = group[i];
+            for (const Link& l : links[r]) {
+                const int want = turn[r] ^ (l.differ ? 1 : 0);
+                if (turn[l.to] < 0) {
+                    turn[l.to] = want;
+                    group.push_back(l.to);
+                } else if (turn[l.to] != want) {
+                    holds = false;
+                }
+            }
+        }
+        // Flipping every rim of the group satisfies the same ties: which of the two is decided by
+        // the rims held as written, else by the fewer turns.
+        std::optional<int> flip;
+        std::size_t turns = 0;
+        for (const std::size_t r : group) {
+            turns += static_cast<std::size_t>(turn[r]);
+            for (const bool h : held[r]) {
+                const int want = turn[r] ^ (h ? 1 : 0);
+                if (flip && *flip != want) holds = false;
+                flip = want;
+            }
+        }
+        if (!holds) continue;
+        if (!flip) {
+            if (2 * turns == group.size()) continue;  // as many either way: which cannot be told
+            flip = 2 * turns > group.size() ? 1 : 0;
+        }
+        for (const std::size_t r : group) {
+            if ((turn[r] ^ *flip) == 0) continue;
+            turnRim(*rims[r]);
+            for (Face* f : {rims[r]->halfEdge->face, rims[r]->halfEdge->twin->face}) {
+                if (listed.insert(f).second) turned.push_back(f);
+            }
+        }
+    }
+    return turned;
 }
 
 }  // namespace hz::model

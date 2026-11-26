@@ -4682,6 +4682,21 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
         }
     }
 
+    // A rim read the wrong way round on both its faces (a part file saved by master holds them,
+    // its writer unable to tell which way a closed edge's curve ran) turned, before any band is
+    // seamed: a band beside it winds round it the same way as its other loop until it is. A face
+    // turned that is not a band takes its sense from its loops again.
+    if (!bands.empty()) {
+        for (topo::Face* f : model::turnBackwardRims(solid, resolution)) {
+            if (stop()) return read;
+            if (std::find(bands.begin(), bands.end(), f) != bands.end()) continue;
+            if (std::string why = faceSense(*f, resolution, limitHalfEdges, limit); !why.empty()) {
+                read.problem = why + whereIn(f, nullptr);
+                return read;
+            }
+        }
+    }
+
     // Each band given its seam, now that every face's pcurves exist (its seam splits edges that
     // faces built after it share), then its sense and its seams' layout, as every other face had.
     // The tolerances its seam and splits are given, measured as grow measures, are held to the

@@ -5,6 +5,7 @@
 // exact kernel's loops close in (u, v), so such a face is given the seam its file left out.
 
 #include <string>
+#include <vector>
 
 #include "horizon/math/ModelTolerance.h"
 #include "horizon/topology/Solid.h"
@@ -33,6 +34,8 @@ namespace hz::model {
 /// - **What it needs.** Exactly two loops wind round, once each and opposite ways. A face that
 ///   already has a seam is untouched, as is one without an exact surface, or with a loop that
 ///   does not close or a half-edge without a pcurve: the exact validator says why of those.
+/// - **Loops that wind the same way** are refused, with why: no seam closes them. Where one is a
+///   rim read the wrong way round, turnBackwardRims, run first, turns it.
 /// - **The splits.** Each new vertex lies on its edge's exact curve. Both of the edge's
 ///   half-edges keep their pcurves, split at the matching parameters, and the vertex's tolerance
 ///   covers how far those pcurves have it. Each new edge keeps its edge's tolerance, and the
@@ -48,5 +51,26 @@ std::string insertSeams(topo::Solid& solid, const math::ModelTolerance& toleranc
 /// not have its seam. Splitting an edge also splits its twin's half-edge, on the face next to it.
 std::string insertSeams(topo::Solid& solid, topo::Face& face,
                         const math::ModelTolerance& tolerance);
+
+/// Turns each rim of @p solid that reads the wrong way round on both its faces, before any seam
+/// is laid; returns the faces whose loops it turned, each once. A rim is a closed edge alone in
+/// its loop on each of its two faces. A part file saved before the exact kernel holds rims the
+/// wrong way round: its writer told which way an edge's curve runs by the vertex it starts at, and
+/// a closed edge's two ends are one vertex, so a rim whose carrier ran against it reads back
+/// against both its faces' other loops.
+///
+/// - **What says so.** A band's two loops (two loops each once round its surface the one way,
+///   insertSeams's) must wind opposite ways; an inner loop of a face whose surface wraps neither
+///   way must run against its outer loop. Turning a rim turns its loop on both faces. A loop that
+///   is not a rim is taken as written, as is a hole nothing says the way of (a band's, a hole in
+///   a face that wraps, one whose area says nothing).
+/// - **Which rims.** The rims these tie together are turned as every tie says. Where a tie holds a
+///   rim to a loop taken as written, that decides them; where none does, the fewer rims are turned
+///   that satisfy them all, and none where as many could be turned either way. Rims whose ties
+///   cannot all hold are left as written, and their bands are refused by insertSeams.
+/// - **Senses.** A face's sense is not changed: a caller that took a face's sense from its loops
+///   takes it again for each face returned.
+std::vector<topo::Face*> turnBackwardRims(topo::Solid& solid,
+                                          const math::ModelTolerance& tolerance);
 
 }  // namespace hz::model
