@@ -627,9 +627,11 @@ a user can see. Each is several PRs.
      construction of the body was one construction (Ruling 44). That holds for
      primitives, a single loop's extrude and revolve, a hole's tool and a
      sheet's flange. Its faces, loops and edges are in master's order and
-     winding, named as the bridge cut from the exact form names the same
-     places. So what an operation after it numbers by the order it meets
-     them is master's:
+     winding. Its names are master's own, with no copy cut for them (Ruling
+     45). The exceptions: an exact seam's chords are named after the seam
+     (Ruling 18), and a sheet's names come from its sketch (Ruling 28). So
+     what an operation after it numbers by the order it meets them is
+     master's:
      - the pieces of a face a Boolean splits (`<face>/piece:<n>`);
      - the chords and seams that a Boolean, shell or pattern names again.
 
