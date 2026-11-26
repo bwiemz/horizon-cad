@@ -103,7 +103,13 @@ static std::string dumpJson(const json& root, int indent) {
 /// "count2", and a pattern may combine its copies "together". An older
 /// build would build one row of the grid, and name the pieces of the faces
 /// the copies split otherwise, so that what refers to them would miss.
-static constexpr int kFormatVersion = 31;
+/// 32: a part is built exactly (stage 3 of the exact kernel): its primitives,
+/// extrusions, revolves, holes and sheets are round, and every feature is
+/// named Stable. A part of 31 or older is migrated when it is read
+/// (migrateToExact), saying what changed. An older build would build the
+/// part from facets, and its tessellation cache would show it round where
+/// the build is not.
+static constexpr int kFormatVersion = 32;
 
 /// A sketch's plane: its origin, normal and x axis.
 static json planeToJson(const draft::SketchPlane& plane) {
@@ -1262,10 +1268,10 @@ static void noteSkipped(ImportReport* report, const std::string& kind, size_t in
     report->skipped.push_back(line + ": " + why);
 }
 
-/// Populate a Document from a parsed envelope. Shared by load() and
-/// BinaryFormat.
-static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport* report,
-                             const SharedImports* shared) {
+/// Populate a Document from a parsed envelope of format @p fileVersion (one
+/// checkVersion() accepted). Shared by load() and BinaryFormat.
+static bool loadDocumentRoot(const json& root, int /*fileVersion*/, doc::Document& doc,
+                             ImportReport* report, const SharedImports* shared) {
     if (!root.contains("version") || !root.contains("entities")) return false;
 
     doc.draftDocument().clear();
@@ -2101,8 +2107,9 @@ static bool loadDocumentRoot(const json& root, doc::Document& doc, ImportReport*
 /// throws json type and range errors from deep inside the reader; nothing
 /// above this may see them, or they reach the Qt event loop and end the
 /// session.
-/// Refuse a file written by a newer format than this build reads.
-static bool checkVersion(const json& root, std::string* error) {
+/// Refuse a file written by a newer format than this build reads. @p fileVersion,
+/// when given, receives the file's format (1 to kFormatVersion).
+static bool checkVersion(const json& root, std::string* error, int* fileVersion = nullptr) {
     const json& version = root.at("version");
     if (!version.is_number_integer())
         return fail(error, "the file's format version is not a number");
@@ -2113,6 +2120,7 @@ static bool checkVersion(const json& root, std::string* error) {
                                std::to_string(kFormatVersion) + ")");
     }
     if (v < 1) return fail(error, "the file's format version " + std::to_string(v) + " is invalid");
+    if (fileVersion != nullptr) *fileVersion = static_cast<int>(v);
     return true;
 }
 
@@ -2121,7 +2129,8 @@ static bool loadDocumentChecked(const json& root, doc::Document& doc, std::strin
     if (!root.is_object() || !root.contains("version") || !root.contains("entities")) {
         return fail(error, "this is not a Horizon document (it has no version or entity list)");
     }
-    if (!checkVersion(root, error)) return false;
+    int fileVersion = kFormatVersion;
+    if (!checkVersion(root, error, &fileVersion)) return false;
     // What it leaves out goes with the document, whether or not a report is
     // asked for: the window does not save it over this file (Document::
     // leftOut).
@@ -2129,7 +2138,7 @@ static bool loadDocumentChecked(const json& root, doc::Document& doc, std::strin
     ImportReport& noted = report != nullptr ? *report : own;
     const auto before = static_cast<std::ptrdiff_t>(noted.skipped.size());
     try {
-        if (loadDocumentRoot(root, doc, &noted, shared)) {
+        if (loadDocumentRoot(root, fileVersion, doc, &noted, shared)) {
             doc.setLeftOut({noted.skipped.begin() + before, noted.skipped.end()});
             return true;
         }
