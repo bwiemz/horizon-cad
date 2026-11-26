@@ -25,6 +25,7 @@ add_executable(hz_fileio_tests
     test_DxfText.cpp
     test_DrawingExport.cpp
     test_DrawingDocumentIO.cpp
+    test_DrawingExact.cpp
     test_DrawingDimensionRenderer.cpp
     test_GeometricToleranceRenderer.cpp
     test_BalloonRenderer.cpp

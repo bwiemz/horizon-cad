@@ -885,22 +885,22 @@ inline std::string blockWithABall() {
 }
 
 /// A cylinder of radius @p radius about the z axis, from z = 0 up to its top cut off by a plane
-/// leaning @p lean radians off the flat, through (0, 0, @p height) and rising towards +x: as
-/// OpenCASCADE writes one, its side bounded by its round rim, a seam and its top's ELLIPSE, which
-/// lies on both. Its side is no rectangle of the cylinder's (u, v): its top rim is a wave across
-/// it, a trimmed curved face.
-inline std::string slantCylinder(double radius, double height, double lean) {
+/// leaning @p lean radians off the flat, through (0, 0, @p height) and rising towards the angle
+/// @p turn about z: as OpenCASCADE writes one, its side bounded by its round rim, a seam at
+/// @p turn and its top's ELLIPSE, which lies on both. Its side is no rectangle of the cylinder's
+/// (u, v): its top rim is a wave across it, a trimmed curved face.
+inline std::string slantCylinder(double radius, double height, double lean, double turn = 0.0) {
     Data d;
     const math::Vec3 up{0, 0, 1};
-    const math::Vec3 x{1, 0, 0};
+    const math::Vec3 x{std::cos(turn), std::sin(turn), 0};
     const int axis = d.placement({0, 0, 0}, up, x);
     const int rim = d.add("CIRCLE(''," + Data::ref(axis) + "," + real(radius) + ")");
-    const math::Vec3 low{radius, 0, 0};
-    const math::Vec3 high{radius, 0, height + radius * std::tan(lean)};
+    const math::Vec3 low = x * radius;
+    const math::Vec3 high = low + up * (height + radius * std::tan(lean));
     const int bottom = d.add("VERTEX_POINT(''," + Data::ref(d.point(low)) + ")");
     const int top = d.add("VERTEX_POINT(''," + Data::ref(d.point(high)) + ")");
-    const math::Vec3 normal{-std::sin(lean), 0, std::cos(lean)};
-    const math::Vec3 major{std::cos(lean), 0, std::sin(lean)};
+    const math::Vec3 normal = up * std::cos(lean) - x * std::sin(lean);
+    const math::Vec3 major = x * std::cos(lean) + up * std::sin(lean);
     const int tilted = d.placement({0, 0, height}, normal, major);
     const int ellipse = d.add("ELLIPSE(''," + Data::ref(tilted) + "," +
                               real(radius / std::cos(lean)) + "," + real(radius) + ")");

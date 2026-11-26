@@ -2,23 +2,30 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
 #include <locale>
+#include <memory>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/AtomicFile.h"
 #include "horizon/fileio/NativeFormat.h"
+#include "horizon/modeling/FacetResolution.h"
+#include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/SectionView.h"
+#include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::io {
@@ -139,6 +146,43 @@ model::PaperSize paperNamed(const std::string& name, model::PaperSize fallback) 
 /// A scale a sheet can be drawn at: positive and finite.
 bool usableScale(double s) {
     return std::isfinite(s) && s > 1e-6 && s < 1e6;
+}
+
+/// Name the edges of @p copy, a sheet's copy of the exact part @p exact (DrawingDocumentIO::
+/// cutForSheet; Ruling 31): logically (model::nameEdgesLogically), so that a curve's chords
+/// share its logical name, as the faceted part's do; a chord of an exact edge inside one face (a
+/// cylinder's seam) keeps the name model::facetExact gave it, its exact edge's; and every other
+/// line inside a face is `<face>/line:<n>`, in storage order, a name the faceted part's lines
+/// (`<face>/seam:<n>`) never have. A dimension or callout on one of those is then lost, and said
+/// to be, rather than bound to a line somewhere else.
+void nameForSheet(topo::Solid& copy, const topo::Solid& exact) {
+    std::unordered_set<std::string> exactNames;
+    for (const topo::Edge& e : exact.edges()) {
+        if (e.topoId.isValid()) exactNames.insert(e.topoId.tag());
+    }
+    std::vector<std::string> given;  // facetExact's names, edge by edge
+    given.reserve(copy.edges().size());
+    for (const topo::Edge& e : copy.edges()) {
+        given.push_back(e.topoId.isValid() ? e.topoId.tag() : std::string());
+    }
+    model::nameEdgesLogically(copy);
+    std::unordered_map<std::string, int> next;  // by face: its next line's number
+    std::size_t i = 0;
+    for (topo::Edge& e : copy.edges()) {
+        const std::string& was = given[i++];
+        const topo::HalfEdge* he = e.halfEdge;
+        if (he == nullptr || he->twin == nullptr || he->face == nullptr ||
+            he->twin->face == nullptr) {
+            continue;
+        }
+        const std::string face = model::logicalFace(he->face->topoId.tag());
+        if (face != model::logicalFace(he->twin->face->topoId.tag())) continue;  // two faces'
+        const bool onExact = !was.empty() && (exactNames.count(was) != 0 ||
+                                              (was.find("/chord:") != std::string::npos &&
+                                               exactNames.count(model::logicalEdge(was)) != 0));
+        e.topoId = topo::TopologyID::fromTag(
+            onExact ? was : face + "/line:" + std::to_string(next[face]++));
+    }
 }
 
 }  // namespace
@@ -655,11 +699,60 @@ bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSp
         return fail("its part \"" + spec.partPath + "\" did not rebuild");
     }
     const std::vector<HoleNote> holes = holesOf(partDoc);
+    // An exact part is drawn from its exact faces, cut for the sheet's largest scale (stage 3); a
+    // sheet of it laid out anew at the scale its faceted part chooses, as before. Any other part
+    // is drawn from its faceted solid.
+    const topo::Solid* solid = partDoc.solid();
+    std::unique_ptr<topo::Solid> cut;
+    DrawingDocumentSpec drawn = spec;
+    if (const topo::Solid* exact = partDoc.exactSolid()) {
+        const double scale = sheetScale(spec, *solid, spec.titleBlock);
+        std::string why;
+        cut = cutForSheet(*exact, scale, &why);
+        if (!cut) return fail("its part \"" + spec.partPath + "\" could not be drawn: " + why);
+        solid = cut.get();
+        if (drawn.views.empty()) drawn.scale = scale;
+    }
     // A version 1 file: the four standard views, spaced by its gap, at 1:1.
-    outDrawing = spec.version >= 2
-                     ? build(*partDoc.solid(), spec, nullptr, &holes)
-                     : model::DrawingGenerator::standardViews(*partDoc.solid(), spec.gap);
+    outDrawing = spec.version >= 2 ? build(*solid, drawn, nullptr, &holes)
+                                   : model::DrawingGenerator::standardViews(*solid, spec.gap);
     return true;
+}
+
+double DrawingDocumentIO::sheetScale(const DrawingDocumentSpec& spec, const topo::Solid& faceted,
+                                     const model::TitleBlock& room) {
+    if (spec.version < 2) return 1.0;
+    if (!spec.views.empty()) {
+        double largest = 0.0;
+        for (const DrawingViewSpec& v : spec.views) {
+            if (usableScale(v.scale)) largest = std::max(largest, v.scale);
+        }
+        return largest > 0.0 ? largest : 1.0;
+    }
+    if (usableScale(spec.scale)) return spec.scale;
+    double chosen = 1.0;
+    model::DrawingGenerator::sheetLayout(faceted, spec.sheet, room, spec.gap, &chosen);
+    return chosen;
+}
+
+std::unique_ptr<topo::Solid> DrawingDocumentIO::cutForSheet(const topo::Solid& exact, double scale,
+                                                            std::string* error) {
+    model::FacetResolution resolution;
+    resolution.segmentsPerTurn = 32;
+    resolution.chordTolerance = kChordOnPaper / (usableScale(scale) ? scale : 1.0);
+    model::FacetedSolid cut;
+    try {
+        cut = model::facetExact(exact, resolution);
+    } catch (const std::exception& e) {
+        cut.solid.reset();
+        cut.error = e.what();
+    }
+    if (!cut.solid) {
+        if (error != nullptr) *error = "its exact part could not be cut into facets: " + cut.error;
+        return nullptr;
+    }
+    nameForSheet(*cut.solid, exact);
+    return std::move(cut.solid);
 }
 
 namespace {

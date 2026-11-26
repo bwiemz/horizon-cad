@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -188,7 +189,21 @@ private:
     /// one of its files changes, not re-reading its parts on every edit, and
     /// a part's tab may rebuild meanwhile.
     struct Source {
+        /// What the views are drawn from: a part's faceted solid; or, where it has an exact
+        /// part, that cut for a sheet whose largest scale is `scale`
+        /// (io::DrawingDocumentIO::cutForSheet; stage 3); or an assembly's components
+        /// gathered, each its faceted part (an assembly's sheet stays faceted in stage 3).
         std::unique_ptr<topo::Solid> solid;
+        /// Where the part has an exact part: its own copies of it and of its faceted solid.
+        /// `solid` is cut again from `exact` for a sheet at another scale; `faceted` chooses the
+        /// scale of a sheet laid out anew, as before. Null otherwise.
+        std::shared_ptr<const topo::Solid> exact;
+        std::shared_ptr<const topo::Solid> faceted;
+        double scale = 0.0;  ///< the largest view scale `solid` was cut for; 0 when not cut
+        /// The scale the standard layout of `faceted` chose, and for which paper, title block
+        /// and gap (its width, height and margin, the block's height, the gap): a sheet laid out
+        /// anew asks it again at every edit.
+        mutable std::optional<std::pair<std::array<double, 5>, double>> laidOut;
         model::PartsList partsList;
         /// A component's name prefix, and its item number.
         std::vector<std::pair<std::string, int>> balloons;
@@ -213,18 +228,30 @@ private:
     /// given the views it was drawn with. The views drawn go to @p drawn.
     void draw(doc::Document& document, io::DrawingDocumentSpec& spec, const Source& source,
               model::Drawing* drawn = nullptr);
-    /// What the sheet of @p path (a part, or an assembly) is drawn from, as
-    /// it is now. Null, with the reason, when it cannot be read.
-    std::shared_ptr<const Source> sourceOf(const std::string& path, std::string* error);
-    /// @p sheet's source: the one it keeps, or read now and kept.
+    /// What the sheet @p spec describes (of a part, or an assembly, at spec.partPath) is
+    /// drawn from, as it is now: an exact part cut for the sheet's largest scale. Null, with the
+    /// reason, when it cannot be read or cut.
+    std::shared_ptr<const Source> sourceOf(const io::DrawingDocumentSpec& spec, std::string* error);
+    /// @p sheet's source: the one it keeps, cut again from its exact part where the sheet's
+    /// largest scale has changed, or read now and kept.
     std::shared_ptr<const Source> sourceFor(Sheet& sheet, std::string* error);
+    /// The largest scale a sheet of @p spec draws @p source's part at
+    /// (io::DrawingDocumentIO::sheetScale): for a sheet laid out anew, the scale its faceted part's
+    /// layout chooses, asked once for each paper, title block and gap. Only for a source with an
+    /// exact part.
+    static double scaleOf(const io::DrawingDocumentSpec& spec, const Source& source);
+    /// @p from with its exact part cut for a sheet whose largest scale is @p scale: a new source,
+    /// all else @p from's. Null, with the reason, when it cannot be cut.
+    static std::shared_ptr<const Source> cutFor(const Source& from, double scale,
+                                                std::string* error);
     /// @p sheet's title block with the room its parts list takes: what its
     /// views are laid out and placed around.
     static model::TitleBlock roomFor(const Sheet& sheet);
-    /// The part at @p path as it is now: its tab's solid when it is open and
-    /// built, else its file's, built in @p holder. Null, with the reason.
-    const topo::Solid* partSolid(const std::string& path, doc::Document& holder,
-                                 std::string* error);
+    /// The part at @p path as it is now: its tab's document when it is open and
+    /// built, else its file's, built in @p holder: its solid, and its exact part where it has
+    /// one. Null, with the reason.
+    const doc::Document* partDocument(const std::string& path, doc::Document& holder,
+                                      std::string* error);
     /// Lay the sheet's standard views out again at @p scale (0: the largest
     /// that fits), with its sections and details kept, scaled with them, and
     /// placed again where there is room; @p fits false when some found none.

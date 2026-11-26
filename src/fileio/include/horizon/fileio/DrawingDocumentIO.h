@@ -169,6 +169,31 @@ public:
                                 std::vector<std::string>* lost = nullptr,
                                 const std::vector<HoleNote>* holes = nullptr);
 
+    /// The most a chord of a view of an exact part sags on paper, in millimetres (stage 3).
+    static constexpr double kChordOnPaper = 0.01;
+
+    /// The largest scale (paper ÷ model) a sheet of @p spec draws its views at, of a part whose
+    /// faceted solid is @p faceted: its views' largest, a detail's included; with none, its scale
+    /// where it is set, else the one its standard layout chooses for @p faceted above @p room, as
+    /// before (DrawingGenerator::sheetLayout); a version 1 sheet's views are at 1:1.
+    static double sheetScale(const DrawingDocumentSpec& spec, const topo::Solid& faceted,
+                             const model::TitleBlock& room);
+
+    /// What a sheet whose views are at most @p scale draws a part from, where it has an exact
+    /// part @p exact (Document::exactSolid; stage 3): its exact faces cut into facets, 32 a turn
+    /// and so finely that no chord sags more than kChordOnPaper on paper (model::facetExact at
+    /// kChordOnPaper / @p scale mm; an import's faces as its own bridge cuts them, Ruling 17).
+    /// Its edges are named so that dimensions, callouts, tolerances and datums find theirs by
+    /// model::logicalEdge as on the faceted part: a curve's chords logically
+    /// (model::nameEdgesLogically), a chord of an exact edge inside one face (a seam) as that
+    /// edge. Every other line inside a face is `<face>/line:<n>` (Ruling 31), a name of this copy
+    /// alone: the lines, and so their names, depend on the sheet's scale, and the faceted part's
+    /// lines (`<face>/seam:<n>`) are none of them, so a dimension on one of those is lost, and
+    /// said to be, never measured on a line elsewhere. A part with no exact part is drawn from its
+    /// faceted solid (Document::solid), as before. Null, with why, where it cannot be cut.
+    static std::unique_ptr<topo::Solid> cutForSheet(const topo::Solid& exact, double scale,
+                                                    std::string* error = nullptr);
+
     /// The hole features of @p part that take part in its build.
     static std::vector<HoleNote> holesOf(const doc::Document& part);
     /// The hole of @p holes that made the edge named @p edge; null for an

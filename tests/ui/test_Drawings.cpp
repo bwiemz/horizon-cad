@@ -1342,3 +1342,68 @@ TEST(DrawingsTest, AHolesPositionIsTolerancedToADatum) {
     EXPECT_TRUE(framed()) << toleranceTexts(*sheet).join(", ").toStdString();
     EXPECT_EQ(toleranceTexts(*sheet).count(QStringLiteral("A")), 2);
 }
+
+// ---------------------------------------------------------------------------
+// Drawings from the exact part (stage 3)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// The x of each straight upright line on @p sheet's Visible layer @p length long: a cylinder's
+/// outlines seen from the front and from the side, sorted.
+std::vector<double> uprights(const hz::doc::Document& sheet, double length) {
+    std::vector<double> xs;
+    for (const auto& entity : sheet.draftDocument().entities()) {
+        if (entity->layer() != "Visible") continue;
+        const auto* line = dynamic_cast<const hz::draft::DraftLine*>(entity.get());
+        if (line == nullptr) continue;
+        const auto a = line->start();
+        const auto b = line->end();
+        if (std::abs(a.x - b.x) < 1e-9 && std::abs(std::abs(a.y - b.y) - length) < 1e-6) {
+            xs.push_back(a.x);
+        }
+    }
+    std::sort(xs.begin(), xs.end());
+    return xs;
+}
+
+}  // namespace
+
+// A sheet of an exact part is drawn from its exact faces, cut for the scale it is drawn at, and
+// cut again when that changes: a cylinder of radius 50 and height 40, its faceted part 45 sides
+// round (whose front outline at -x lies 0.12 mm inside), has both outlines of its front and side
+// views within 0.01 mm on paper of 100 mm apart at 1:1, and of 200 mm at 2:1, where the copy
+// cut for 1:1 left the side view's 0.02 mm inside each.
+TEST(DrawingsTest, AnExactPartsSheetIsCutForTheScaleItIsDrawnAt) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("drum.hzpart"));
+    {
+        hz::doc::Document part;
+        part.setType(hz::doc::DocumentType::Part);
+        auto drum = hz::doc::PrimitiveFeature::makeCylinder(50, 40);
+        ASSERT_TRUE(drum->setParameter("segments", 45));
+        part.featureTree().addFeature(std::move(drum));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_NE(part.exactSolid(), nullptr);
+        ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), part));
+    }
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, path);
+    ASSERT_NE(sheet, nullptr);
+    for (const char* scale : {"1:1", "2:1"}) {
+        SCOPED_TRACE(scale);
+        {
+            FormFiller form(QStringLiteral("Drawing Scale"), FormAnswers().choose("scale", scale));
+            trigger(w, "action_drawing_scale");
+            ASSERT_TRUE(form.seen());
+        }
+        const double s = std::string(scale) == "1:1" ? 1.0 : 2.0;
+        const std::vector<double> xs = uprights(*sheet, 40.0 * s);
+        ASSERT_EQ(xs.size(), 4u) << "an outline each side, in the front view and the side view";
+        for (const std::size_t first : {0u, 2u}) {
+            const double apart = xs[first + 1] - xs[first];
+            EXPECT_LE(apart, 100.0 * s + 1e-9);
+            EXPECT_GE(apart, 100.0 * s - 2.0 * 0.01) << "within 0.01 mm on paper each side";
+        }
+    }
+}
