@@ -35,6 +35,18 @@ work, not "post-1.0".
   saved before this stage still open, each imported body as it was. Design:
   [the exact kernel spec](docs/superpowers/specs/2026-11-24-exact-kernel-design.md).
 
+- **STEP that Horizon CAD exported before the exact kernel may not import.**
+  A STEP file Horizon CAD wrote before stage 2, wherever a round face is large
+  beside its part (a radius over about a fifth of the part's diagonal, as a
+  plain cylinder of radius 10 and height 20 has), is left out on import, and
+  the import says why ("its curve stands 0.0482 off its face's surface"). The
+  old exporter wrote each flat face as a patch sized to its facets, too small
+  to hold its round edges: a cap's circular rim stands outside its patch by up
+  to half a percent of its radius. The reader does not stretch a file's
+  surface to reach edges that lie off it, so such a file is not read as it is.
+  The part file (`.hzpart`) it was exported from still opens, and exported
+  again, it writes STEP that imports.
+
 - **Exact kernel, stage 1.** The foundations of an in-house exact B-rep kernel,
   with nothing in the application reading them yet: typed analytic and NURBS
   surfaces and curves, pcurves, one tolerance model, exact predicates, an exact
