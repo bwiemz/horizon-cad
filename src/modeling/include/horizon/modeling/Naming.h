@@ -67,6 +67,16 @@ std::string logicalEdge(const std::string& edgeTag);
 /// curve, `<edge>/chord:<n>`, so a reference to the curve takes them all.
 void nameEdgesLogically(topo::Solid& solid);
 
+/// Name the edges of @p faceted, the bridge copy (model::facetExact) of @p exact, whose edges are
+/// named (nameEdgesLogically), as a feature built exactly names them (stage 3, Ruling 18). Each
+/// chord lying on an exact edge keeps the name facetExact gave it, `<edge>/chord:<k>` (or the
+/// edge's own, where it is one chord), so `logicalEdge` takes it to that edge, a seam's chords
+/// included. Each other edge between two facets of one face, a line of its grid, is a seam of
+/// it, `<face>/seam:<n>` in storage order, as nameEdgesLogically names one, its numbers skipping
+/// every name an edge of @p exact has: no line is taken for an exact edge it does not lie on.
+/// What else the bridge holds keeps its name.
+void nameBridgeEdges(topo::Solid& faceted, const topo::Solid& exact);
+
 /// Name @p solid's edges as @p naming does: logically (Stable), after their
 /// faces (FromGeometry). Positional names are an operation's own; they are
 /// left as they are.

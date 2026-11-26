@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -125,6 +126,29 @@ void nameEdgesLogically(topo::Solid& solid) {
         const int k = next[name]++;
         edge.topoId = topo::TopologyID::fromTag(seam ? name + ":" + std::to_string(k)
                                                      : name + "/chord:" + std::to_string(k));
+    }
+}
+
+void nameBridgeEdges(topo::Solid& faceted, const topo::Solid& exact) {
+    // Every name the exact solid's edges have: a chord of one keeps its name, and no line is
+    // named so.
+    std::set<std::string> exactNames;
+    for (const auto& edge : exact.edges()) {
+        if (edge.topoId.isValid()) exactNames.insert(edge.topoId.tag());
+    }
+    std::map<std::string, int> next;  // by face: the number its next seam may take
+    for (auto& edge : faceted.edges()) {
+        if (edge.topoId.isValid() && exactNames.count(logicalEdge(edge.topoId.tag())) != 0) {
+            continue;  // a chord of an exact edge
+        }
+        const auto [a, b] = facePair(edge);
+        if (a.empty()) continue;
+        const std::string face = logicalFace(a);
+        if (logicalFace(b) != face) continue;  // not inside one face
+        int& n = next[face];
+        std::string name = face + "/seam:" + std::to_string(n++);
+        while (exactNames.count(name) != 0) name = face + "/seam:" + std::to_string(n++);
+        edge.topoId = topo::TopologyID::fromTag(name);
     }
 }
 

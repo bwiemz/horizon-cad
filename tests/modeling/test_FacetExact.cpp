@@ -7,8 +7,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <set>
@@ -300,6 +302,81 @@ TEST(FacetExact, FacetsNameTheirExactFace) {
             if (logicalFace(a) != logicalFace(b)) between.insert(logicalEdge(e.topoId.tag()));
         }
         EXPECT_EQ(between, exactBetween);
+    }
+}
+
+// Ruling 18: a converted feature's bridge copy is named by nameBridgeEdges, not
+// nameEdgesLogically. Each chord lying on an exact edge keeps facetExact's name for it, so
+// logicalEdge takes it to that edge, a seam's chords included; every other edge of the bridge (a
+// line inside one face, between two facets of it) is named a seam of its face,
+// `<face>/seam:<n>`, numbered past every name the exact solid uses, so none is taken for an exact
+// edge it does not lie on. Whether an edge lies on an exact edge is read from the geometry: both
+// its ends on that edge's curve, within its range.
+TEST(FacetExact, BridgeEdgesAreNamedForTheExactEdgesTheyLieOn) {
+    const geo::Frame frame = geo::Frame::fromAxis({1, 2, 3}, {0.3, -0.4, 1.0}, {1, 1, 0});
+    const struct {
+        const char* what;
+        std::function<std::unique_ptr<topo::Solid>()> make;
+        int minor;
+    } cases[] = {
+        {"a cylinder (its seam a line)", [&] { return exact::makeCylinder(frame, 5.0, 10.0); }, 0},
+        {"a sphere (its seam a meridian)", [&] { return exact::makeSphere(frame, 5.0); }, 16},
+        {"a torus (two seams, both circles)", [&] { return exact::makeTorus(frame, 6.0, 2.0); },
+         16},
+        {"a cone to its apex", [&] { return exact::makeCone(frame, 0.0, 4.0, 6.0); }, 0},
+    };
+    for (const auto& c : cases) {
+        SCOPED_TRACE(c.what);
+        auto solid = c.make();
+        ASSERT_NE(solid, nullptr);
+        hz::model::scopeToFeature(*solid, "primitive_7");
+        nameEdgesLogically(*solid);
+        std::set<std::string> exactTags;
+        for (const auto& e : solid->edges()) exactTags.insert(e.topoId.tag());
+
+        auto bridge = facetExact(*solid, FacetResolution{32, 0.0, c.minor});
+        ASSERT_NE(bridge.solid, nullptr) << bridge.error;
+        hz::model::nameBridgeEdges(*bridge.solid, *solid);
+
+        // The exact edge a point lies on, by its curve within its range.
+        const auto onEdge = [](const topo::Edge& e, const Vec3& p) {
+            const double t = e.exactCurve->closestParameter(p);
+            if ((e.exactCurve->evaluate(t) - p).length() > 1e-9) return false;
+            const double lo = std::min(e.curveStart, e.curveEnd) - 1e-9;
+            const double hi = std::max(e.curveStart, e.curveEnd) + 1e-9;
+            if (!e.exactCurve->periodic()) return t >= lo && t <= hi;
+            const geo::Interval range = e.exactCurve->range();
+            const double period = range.max - range.min;
+            double s = t;
+            while (s > hi) s -= period;
+            while (s < lo) s += period;
+            return s <= hi;
+        };
+        std::map<std::string, int> chordsOf;
+        std::set<std::string> seams;
+        for (const auto& e : bridge.solid->edges()) {
+            const Vec3& a = e.halfEdge->origin->point;
+            const Vec3& b = e.halfEdge->twin->origin->point;
+            const topo::Edge* lying = nullptr;
+            for (const auto& x : solid->edges()) {
+                if (x.exactCurve && onEdge(x, a) && onEdge(x, b)) lying = &x;
+            }
+            const std::string tag = e.topoId.tag();
+            if (lying != nullptr) {
+                EXPECT_EQ(logicalEdge(tag), lying->topoId.tag()) << tag;
+                ++chordsOf[lying->topoId.tag()];
+                continue;
+            }
+            EXPECT_EQ(exactTags.count(logicalEdge(tag)), 0u)
+                << tag << " lies on no exact edge, but is named for one";
+            const auto [fa, fb] = facesOf(e);
+            EXPECT_EQ(logicalFace(fa), logicalFace(fb)) << tag << " lies inside one face";
+            EXPECT_EQ(tag.rfind(logicalFace(fa) + "/seam:", 0), 0u) << tag;
+            EXPECT_TRUE(seams.insert(tag).second) << tag << " names two lines";
+        }
+        for (const auto& tag : exactTags) {
+            EXPECT_GE(chordsOf[tag], 1) << tag << " has no chord on it";
+        }
     }
 }
 
