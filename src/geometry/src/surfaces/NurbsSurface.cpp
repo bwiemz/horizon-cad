@@ -21,6 +21,15 @@ namespace {
 /// row curves, and the derivatives are differences of evaluate().
 constexpr int kMaxOrder = 16;
 
+/// How many units in the last place of the points a gap is computed from a projection's step may
+/// move its point and be rounding's alone (project): a guard on floating-point arithmetic, not a
+/// geometric tolerance.
+constexpr double kStepUlps = 4.0;
+/// How far from degenerate a surface must be where a projection's step is judged by how far it
+/// moves the point: |dS/du x dS/dv| over |dS/du|^2 + |dS/dv|^2 (at most a half, where the two are
+/// alike and square), above this. A guard on the first order's reach, not a geometric tolerance.
+constexpr double kRegular = 1e-3;
+
 using detail::Homogeneous;
 
 /// The span [knots[s], knots[s + 1]) holding @p t, for @p count control points of degree @p p
@@ -472,7 +481,8 @@ SurfacePoint NurbsSurface::evaluateWithDerivatives(double u, double v) const {
     return {point, (au - point * wu) * (1.0 / w), (av - point * wv) * (1.0 / w)};
 }
 
-std::pair<double, double> NurbsSurface::project(const math::Vec3& point, double u, double v) const {
+std::pair<double, double> NurbsSurface::project(const math::Vec3& point, double u, double v,
+                                                const SurfacePoint* at) const {
     const double u0 = uMin(), u1 = uMax();
     const double v0 = vMin(), v1 = vMax();
     // Round a seam, or stopped at an edge.
@@ -482,8 +492,17 @@ std::pair<double, double> NurbsSurface::project(const math::Vec3& point, double 
         t = lo + std::fmod(t - lo, period);
         return t < lo ? t + period : t;
     };
+    // The surface where the search starts, given: only where the start is where the first step
+    // evaluates it, to the last bit.
+    const double uGiven = u;
+    const double vGiven = v;
     u = keep(u, u0, u1, m_closedU);
     v = keep(v, v0, v1, m_closedV);
+    // Equal and of one sign: the same double, bit for bit (a NaN is equal to nothing).
+    const auto same = [](double a, double b) {
+        return a == b && std::signbit(a) == std::signbit(b);
+    };
+    if (!same(u, uGiven) || !same(v, vGiven)) at = nullptr;
     // A step that would leave the domain goes halfway to its edge instead:
     // clamped onto an edge where the surface degenerates (a pole, an apex),
     // the search stuck there, u no longer turning the point. Each parameter's
@@ -496,7 +515,7 @@ std::pair<double, double> NurbsSurface::project(const math::Vec3& point, double 
         if (t + d > hi && t < hi) alpha = std::min(alpha, 0.5 * (hi - t) / d);
     };
     for (int iter = 0; iter < 100; ++iter) {
-        const SurfacePoint s = evaluateWithDerivatives(u, v);
+        const SurfacePoint s = iter == 0 && at != nullptr ? *at : evaluateWithDerivatives(u, v);
         const math::Vec3 r = s.point - point;
         // Gauss-Newton on |S - point|^2, damped a little so a pole (where
         // dS/du vanishes) does not make the system singular.
@@ -517,8 +536,24 @@ std::pair<double, double> NurbsSurface::project(const math::Vec3& point, double 
         du *= alphaU;
         dv *= alphaV;
         // Still by the step, not by where it lands: on a seam a step of
-        // 1e-17 lands a period away.
-        const bool still = std::abs(du) <= 1e-15 * (u1 - u0) && std::abs(dv) <= 1e-15 * (v1 - v0);
+        // 1e-17 lands a period away. Still too where the surface is regular
+        // and the step moves the point by no more than rounding makes of the
+        // gap it is taken from (a few units in the last place of the points
+        // it is computed from): a step that small is rounding's, and the
+        // search would only wander in rounding's width after it, its point no
+        // nearer. Far from the origin that width is above the step in u and v
+        // above (a quarter of a rational circle's span, its speed changing at
+        // the knot, was crossed back and forth all 100 steps), and the search
+        // stops there. Near a pole or an apex, where one direction's speed
+        // vanishes beside the other's, a step moves the point by far more
+        // than its first order says, and the step in u and v decides alone.
+        const bool regular = s.du.cross(s.dv).length() > kRegular * (a + c);
+        const double moved = (s.du * du + s.dv * dv).length();
+        const double rounding = kStepUlps * std::numeric_limits<double>::epsilon() *
+                                (s.point.length() + point.length());
+        const bool still =
+            (std::abs(du) <= 1e-15 * (u1 - u0) && std::abs(dv) <= 1e-15 * (v1 - v0)) ||
+            (regular && moved <= rounding);
         u = keep(u + du, u0, u1, m_closedU);
         v = keep(v + dv, v0, v1, m_closedV);
         if (still) break;

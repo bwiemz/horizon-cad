@@ -171,8 +171,18 @@ public:
     /// near its answer, where closestPoint's grid search, over the whole
     /// surface, is too slow to repeat for each of many points. Across a seam
     /// where the surface closes on itself the search goes on round, where
-    /// elsewhere it stops at the edge. Converges to machine precision.
-    std::pair<double, double> project(const math::Vec3& point, double u, double v) const;
+    /// elsewhere it stops at the edge. Converges to machine precision: it
+    /// stops where a step in u and v is a 1e-15 of their ranges, or moves the
+    /// point by no more than rounding makes of the gap (a few units in the
+    /// last place of the points it is computed from; far from the origin
+    /// that is the larger, and the search went on in rounding's width).
+    /// @p at, where given, is evaluateWithDerivatives(@p u, @p v): its first
+    /// step is taken from it rather than evaluating the surface there again,
+    /// where (@p u, @p v) lies in the domain as given (elsewhere it is
+    /// evaluated where the search starts), so the result is the same to the
+    /// last bit.
+    std::pair<double, double> project(const math::Vec3& point, double u, double v,
+                                      const SurfacePoint* at = nullptr) const;
 
     /// The (u, v) of the point of the surface nearest @p point, searched for
     /// over the whole surface: a grid of starts, the middles of its cells

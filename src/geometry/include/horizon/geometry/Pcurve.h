@@ -76,8 +76,16 @@ struct Pcurve {
 /// the limit between its samples comes back with its problem). A
 /// closed form, whose deviation is its stand-off, is taken where that deviation is within the
 /// limit.
+///
+/// Each sample on a NURBS surface is placed by Newton's method from the (u, v) of the one before
+/// it; the first is searched for over the whole surface, or, given @p startNear (a (u, v) of the
+/// surface near the curve's point at @p t0: the end of the pcurve before it in a loop, at the
+/// vertex they share), placed from it as the others are from their neighbours, where that lands
+/// within @p tolerance of the point (no point of the surface is nearer it by more, so the search
+/// would find that point; elsewhere it is still made). Its (u, v) is the surface's own, within its
+/// range along a direction that closes, as the search's is.
 Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t1, double tolerance,
-                double standOffLimit = 0.0);
+                double standOffLimit = 0.0, const math::Vec2* startNear = nullptr);
 
 /// The largest of a gap sampled along a curve and of its peaks between the samples: how pcurveOn
 /// and the exact validator find a gap's peak, so that a tolerance grown to what the one measures

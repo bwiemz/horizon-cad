@@ -104,4 +104,18 @@ double pcurveRounding(const Solid& solid, const HalfEdge& h);
 RoundingTakeUp roundingShortfalls(const Solid& solid, const std::vector<ExactIssue>& issues,
                                   const math::ModelTolerance& tolerance);
 
+/// validateExact of @p solid again, once the tolerances @p takeUp names have grown (Ruling 66's
+/// second validation): what validateExact finds, in its order, by making again only the checks
+/// those tolerances enter. A grown edge's tolerance enters every check of the edge (its curve's
+/// ends and range, its pcurves' ends, how far they stray and whether they run with it); a grown
+/// vertex's, the checks of each edge's ends at it (its curve's end there, its pcurves' ends); and
+/// either, the joins of each loop through them, whose faces are checked again whole. Every other
+/// check reads what it read when validateExact found @p takeUp's issues, and found nothing there.
+/// @p takeUp must be roundingShortfalls' of that validation's issues, all of them shortfalls
+/// (beyond null), and @p solid changed since only by those tolerances growing; a take-up with
+/// an issue beyond rounding, or a shortfall naming a tolerance not of its issue's edge or that
+/// edge's ends, is validated whole.
+std::vector<ExactIssue> validateTakenUp(const Solid& solid, const math::ModelTolerance& tolerance,
+                                        const RoundingTakeUp& takeUp);
+
 }  // namespace hz::topo

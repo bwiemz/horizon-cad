@@ -594,6 +594,26 @@ struct Sample {
     double speedU = 0.0;
     double speedV = 0.0;
     bool singular = false;
+    /// On a NURBS surface, the surface where it was evaluated at @c evaluatedAt (its point and
+    /// first derivatives, evaluateWithDerivatives'): the first step of Newton's method from this
+    /// sample's (u, v), while that is still uv, to the last bit.
+    SurfacePoint surface;
+    Vec2 evaluatedAt{std::numeric_limits<double>::quiet_NaN(),
+                     std::numeric_limits<double>::quiet_NaN()};
+};
+
+/// Whether @p a and @p b are the same (u, v), bit for bit (equal and of one sign; a NaN is equal
+/// to nothing).
+bool sameBits(const Vec2& a, const Vec2& b) {
+    return a.x == b.x && a.y == b.y && std::signbit(a.x) == std::signbit(b.x) &&
+           std::signbit(a.y) == std::signbit(b.y);
+}
+
+/// A (u, v) a pcurve's first sample is placed from (pcurveOn's startNear), and how near its point
+/// it must land to be taken.
+struct StartNear {
+    Vec2 uv;
+    double within = 0.0;
 };
 
 /// Places curve points on the surface, each from the (u, v) of the sample before it; one
@@ -606,25 +626,35 @@ public:
     /// A sample at @p t, placed from @p prev.
     Sample at(double t, const Sample* prev) const { return at(t, c_.derivatives(t), prev); }
 
-    /// A sample at @p t, whose point and tangent @p d already has, placed from @p prev.
-    Sample at(double t, const CurveDerivatives& d, const Sample* prev) const {
+    /// A sample at @p t, whose point and tangent @p d already has, placed from @p prev; the first
+    /// (no @p prev) from @p near, where it is given and lands (place).
+    Sample at(double t, const CurveDerivatives& d, const Sample* prev,
+              const StartNear* near = nullptr) const {
         Sample out;
         out.t = t;
         out.point = d.point;
         out.tangent = d.d1;
-        place(out, prev);
+        place(out, prev, near);
         return out;
     }
 
     /// The (u, v) of @p smp's point near @p prev's: from prev's, by Newton on a NURBS surface,
-    /// else the nearest representative of the inverted point.
-    void place(Sample& smp, const Sample* prev) const {
+    /// else the nearest representative of the inverted point. A first sample (no @p prev) on a
+    /// NURBS surface is placed from @p near by Newton too, as a later one is from the sample
+    /// before it, where that lands within @p near's tolerance of its point: no point of the
+    /// surface is nearer it by more, so the search of the whole surface (invert) would find the
+    /// same point (or, where the surface passes it twice, at a seam or a pole, the same point by
+    /// another (u, v)). Elsewhere it is searched for.
+    void place(Sample& smp, const Sample* prev, const StartNear* near = nullptr) const {
         const Vec3& p = smp.point;
         Vec2 uv;
         if (nurbs_ != nullptr && prev != nullptr) {
-            const auto r = nurbs_->project(p, prev->uv.x, prev->uv.y);
+            // Its first step from the surface prev was placed on, already evaluated there.
+            const SurfacePoint* at =
+                sameBits(prev->evaluatedAt, prev->uv) ? &prev->surface : nullptr;
+            const auto r = nurbs_->project(p, prev->uv.x, prev->uv.y, at);
             uv = Vec2(r.first, r.second);
-        } else {
+        } else if (nurbs_ == nullptr || near == nullptr || !landsFrom(*near, p, uv)) {
             uv = s_.invert(p);
         }
         if (prev != nullptr) {
@@ -645,6 +675,10 @@ public:
             here = local(uv);
         }
         smp.uv = uv;
+        if (nurbs_ != nullptr) {
+            smp.surface = {here.point, here.du, here.dv};
+            smp.evaluatedAt = uv;
+        }
         smp.gap = (here.point - p).length();
         smp.speedU = here.du.length();
         smp.speedV = here.dv.length();
@@ -661,6 +695,14 @@ private:
         Vec3 du;
         Vec3 dv;
     };
+
+    /// Whether Newton's method from @p near's (u, v) lands within its tolerance of @p p, the
+    /// (u, v) it lands on in @p uv.
+    bool landsFrom(const StartNear& near, const Vec3& p, Vec2& uv) const {
+        const auto r = nurbs_->project(p, near.uv.x, near.uv.y);
+        uv = Vec2(r.first, r.second);
+        return (nurbs_->evaluate(uv.x, uv.y) - p).length() <= near.within;
+    }
 
     /// The surface at @p uv, to first derivatives (a NURBS surface without its second ones).
     Local local(const Vec2& uv) const {
@@ -906,10 +948,12 @@ double distanceNear(const Curve3& c, const Vec3& p, double guess, double lo, dou
                     double settle) {
     if (lo > hi) std::swap(lo, hi);
     double t = std::clamp(guess, lo, hi);
-    CurveDerivatives d = c.derivatives(t);
-    double best = (d.point - p).length();
+    // The point alone first (a curve's derivatives' point is its evaluate's, to the last bit):
+    // where it settles there, as from a matched parameter it mostly does, its derivatives are not
+    // needed.
+    double best = (c.evaluate(t) - p).length();
     for (int it = 0; it < 8 && best > settle; ++it) {
-        if (it > 0) d = c.derivatives(t);
+        const CurveDerivatives d = c.derivatives(t);
         const Vec3 r = d.point - p;
         const double denom = d.d1.dot(d.d1) + r.dot(d.d2);
         if (!(denom > 0.0)) break;
@@ -1248,17 +1292,26 @@ double standOffOf(const Inverter& inv, const std::vector<Sample>& samples, doubl
 }
 
 Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, double tolerance,
-                     double limit) {
+                     double limit, const Vec2* startNear) {
     const Inverter inv(s, c);
     std::vector<Sample> samples;
     samples.reserve(kMaxSamples);
     const Start start = initialIntervals(c, t0, t1);
     const int initial = start.intervals;
+    // The first sample from the (u, v) it starts near, where that is given; each after it from
+    // the one before.
+    StartNear near;
+    const StartNear* first = nullptr;
+    if (startNear != nullptr) {
+        near = {*startNear, tolerance};
+        first = &near;
+    }
     for (int k = 0; k <= initial; ++k) {
         const double t = t0 + (t1 - t0) * static_cast<double>(k) / initial;
         const Sample* prev = samples.empty() ? nullptr : &samples.back();
-        samples.push_back(start.at.empty() ? inv.at(t, prev)
-                                           : inv.at(t, start.at[static_cast<size_t>(k)], prev));
+        const CurveDerivatives d =
+            start.at.empty() ? c.derivatives(t) : start.at[static_cast<size_t>(k)];
+        samples.push_back(inv.at(t, d, prev, k == 0 ? first : nullptr));
     }
     // Each was placed from the one before it, as rechain would place it again: only a pole at
     // the start is left to give its u.
@@ -1452,7 +1505,7 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
 }  // namespace
 
 Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t1, double tolerance,
-                double standOffLimit) {
+                double standOffLimit, const math::Vec2* startNear) {
     if (!std::isfinite(t0) || !std::isfinite(t1) || !std::isfinite(tolerance)) {
         return failed("pcurve deviation is unbounded: the range or the tolerance is not finite");
     }
@@ -1478,7 +1531,7 @@ Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t
             return pc;
         }
     }
-    return generalPcurve(surface, curve, t0, t1, tolerance, limit);
+    return generalPcurve(surface, curve, t0, t1, tolerance, limit, startNear);
 }
 
 double peakOfGap(const std::vector<double>& at, const std::vector<double>& gaps,
@@ -1498,11 +1551,20 @@ PcurveGap pcurveGap(const Surface& surface, const Curve2D& pcurve, const std::ve
     std::vector<double> gaps;
     gaps.reserve(at.size());
     double reach = 0.0;
+    std::vector<Vec3> points;
+    points.reserve(at.size());
     for (const double s : at) {
         const Vec2 uv = pcurve.evaluate(s);
-        const Vec3 p = surface.evaluate(uv.x, uv.y);
-        // The pcurve and the curve need not share parameters: measured to the nearest point.
-        const double t = curve.closestParameter(p);
+        points.push_back(surface.evaluate(uv.x, uv.y));
+    }
+    // The pcurve and the curve need not share parameters: measured to the nearest point
+    // (closestParameter; a B-spline's, its look along the curve made once for every sample).
+    const auto* nurbs = dynamic_cast<const NurbsCurve*>(&curve);
+    std::vector<double> nearest;
+    if (nurbs != nullptr) nearest = nurbs->closestPoints(points);
+    for (size_t i = 0; i < points.size(); ++i) {
+        const Vec3& p = points[i];
+        const double t = nurbs != nullptr ? nearest[i] : curve.closestParameter(p);
         const double d = (curve.evaluate(t) - p).length();
         out.params.push_back(t);
         gaps.push_back(d);

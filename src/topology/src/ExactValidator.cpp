@@ -6,6 +6,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -142,6 +143,18 @@ bool passesOnASegment(const Edge& e, const HalfEdge& h, const math::ModelToleran
     return std::fabs(sum - std::fabs(e.curveEnd - e.curveStart)) <= 0.5 * slackSum;
 }
 
+/// How far @p h's pcurve's ends, on its face's surface, lie from its vertices (pcurveGaps' start
+/// and end; strays is left 0).
+PcurveGaps pcurveEnds(const HalfEdge& h) {
+    const geo::Surface& s = *h.face->exactSurface;
+    PcurveGaps gaps;
+    const Vec2 a = sample(h, 0);
+    const Vec2 b = sample(h, kSamples - 1);
+    gaps.start = (s.evaluate(a.x, a.y) - h.origin->point).length();
+    gaps.end = (s.evaluate(b.x, b.y) - h.next->origin->point).length();
+    return gaps;
+}
+
 /// What checkPcurve measures on @p h's pcurve (pcurveGaps), and, where it searched the curve for
 /// each sample's nearest point (not on a segment the fast path accepts), the parameters found
 /// in @p params, in sample order. How far the pcurve strays is geo::pcurveGap's measure, the one
@@ -150,11 +163,7 @@ bool passesOnASegment(const Edge& e, const HalfEdge& h, const math::ModelToleran
 PcurveGaps measurePcurve(const Edge& e, const HalfEdge& h, const math::ModelTolerance& tol,
                          std::vector<double>& params) {
     const geo::Surface& s = *h.face->exactSurface;
-    PcurveGaps gaps;
-    const Vec2 a = sample(h, 0);
-    const Vec2 b = sample(h, kSamples - 1);
-    gaps.start = (s.evaluate(a.x, a.y) - h.origin->point).length();
-    gaps.end = (s.evaluate(b.x, b.y) - h.next->origin->point).length();
+    PcurveGaps gaps = pcurveEnds(h);
     params.clear();
     if (!e.exactCurve || passesOnASegment(e, h, tol)) return gaps;
     geo::PcurveGap measured = geo::pcurveGap(s, *h.pcurve, sampleParameters(h), *e.exactCurve,
@@ -280,7 +289,9 @@ struct Checker {
         issues.push_back({kind, f, e, std::move(detail), h});
     }
 
-    void checkEdge(const Edge& e) {
+    /// Every check of @p e; or, not @p whole, only those its vertices' tolerances enter (its
+    /// curve's ends and its pcurves' ends at them), the rest reading its own tolerance alone.
+    void checkEdge(const Edge& e, bool whole = true) {
         if (!e.exactCurve) {
             report(ExactIssueKind::MissingGeometry, nullptr, &e, "edge has no exact curve");
         } else {
@@ -297,7 +308,7 @@ struct Checker {
                 }
             }
         }
-        checkEdgeRange(e);
+        if (whole) checkEdgeRange(e);
         for (const HalfEdge* h : {e.halfEdge, e.halfEdge->twin}) {
             if (!h->face || !h->alive) continue;
             if (!h->pcurve) {
@@ -305,7 +316,7 @@ struct Checker {
                 continue;
             }
             // A face without a surface is reported once, by checkFace.
-            if (h->face->exactSurface) checkPcurve(e, *h);
+            if (h->face->exactSurface) checkPcurve(e, *h, whole);
         }
     }
 
@@ -346,9 +357,11 @@ struct Checker {
                over(hi.y - lo.y, periodV, d.dv.length());
     }
 
-    void checkPcurve(const Edge& e, const HalfEdge& h) {
+    /// @p h's pcurve's ends at its vertices, and, @p whole, how far it strays from its edge's
+    /// curve and whether it runs with it (which read the edge's own tolerance alone).
+    void checkPcurve(const Edge& e, const HalfEdge& h, bool whole) {
         std::vector<double> params;
-        const PcurveGaps gaps = measurePcurve(e, h, tol, params);
+        const PcurveGaps gaps = whole ? measurePcurve(e, h, tol, params) : pcurveEnds(h);
         if (!tol.within(gaps.start, std::max(e.tolerance, h.origin->tolerance)) ||
             !tol.within(gaps.end, std::max(e.tolerance, h.next->origin->tolerance))) {
             report(ExactIssueKind::PcurveOffVertex, h.face, &e,
@@ -524,7 +537,11 @@ struct Checker {
         // the rest.
         const auto ref =
             std::find_if(loops.begin(), loops.end(), [](const LoopInfo& l) { return l.usable; });
-        if (ref == loops.end()) return;
+        // A loop alone has no other to cross or contain: no pair below, nothing to index.
+        if (std::count_if(loops.begin(), loops.end(), [](const LoopInfo& l) { return l.usable; }) <
+            2) {
+            return;
+        }
         for (auto j = loops.begin(); j != loops.end(); ++j) {
             if (!j->usable || j == ref) continue;
             alignLoop(j->poly, ref->poly, uPeriod(surface), vPeriod(surface));
@@ -652,6 +669,49 @@ RoundingTakeUp roundingShortfalls(const Solid& solid, const std::vector<ExactIss
         // An issue of these kinds whose measures are within (a pcurve running against its curve).
         if (!explained) return refuse(issue);
     }
+    return out;
+}
+
+std::vector<ExactIssue> validateTakenUp(const Solid& solid, const math::ModelTolerance& tolerance,
+                                        const RoundingTakeUp& takeUp) {
+    // What the take-up grew, by the tolerance each shortfall names: its issue's edge's, or a
+    // vertex's at one of the edge's ends. One that names neither, or a take-up that took up
+    // nothing for an issue beyond rounding, is validated whole, as validateExact validates it.
+    if (takeUp.beyond != nullptr) return validateExact(solid, tolerance);
+    std::unordered_set<const Edge*> grownEdges;
+    std::unordered_set<const Vertex*> grownVertices;
+    for (const RoundingShortfall& s : takeUp.shortfalls) {
+        const HalfEdge* h = s.issue != nullptr ? s.issue->halfEdge : nullptr;
+        if (h == nullptr || h->edge == nullptr) return validateExact(solid, tolerance);
+        if (s.tolerance == &h->edge->tolerance) {
+            grownEdges.insert(h->edge);
+        } else if (s.tolerance == &h->origin->tolerance) {
+            grownVertices.insert(h->origin);
+        } else if (s.tolerance == &h->next->origin->tolerance) {
+            grownVertices.insert(h->next->origin);
+        } else {
+            return validateExact(solid, tolerance);
+        }
+    }
+    // validateExact's own order (its edges, then its faces), each check made that a grown
+    // tolerance enters: a grown edge's every check, an edge at a grown vertex its ends there, and
+    // the faces either bounds, whose loops' joins read both.
+    Checker c{solid, tolerance, {}};
+    std::unordered_set<const Face*> faces;
+    for (const Edge& e : solid.edges()) {
+        if (!e.alive || !e.halfEdge || !e.halfEdge->twin) continue;
+        const bool grown = grownEdges.count(&e) != 0;
+        if (!grown && grownVertices.count(e.halfEdge->origin) == 0 &&
+            grownVertices.count(e.halfEdge->twin->origin) == 0) {
+            continue;
+        }
+        c.checkEdge(e, grown);
+        for (const HalfEdge* h : {e.halfEdge, e.halfEdge->twin}) faces.insert(h->face);
+    }
+    for (const Face& f : solid.faces()) {
+        if (f.alive && faces.count(&f) != 0) c.checkFace(f);
+    }
+    std::vector<ExactIssue> out = std::move(c.issues);
     return out;
 }
 

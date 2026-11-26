@@ -340,7 +340,7 @@ public:
         if (!problem_.empty()) return;
         // As the reader does (Rulings 64 and 66): where every issue is a shortfall by rounding
         // alone, each tolerance grows to the validator's own measure and the copy is validated
-        // again; otherwise the first issue is the problem.
+        // again (the checks those tolerances enter); otherwise the first issue is the problem.
         auto issues = topo::validateExact(dst, growth.resolution);
         if (!issues.empty()) {
             const topo::RoundingTakeUp takeUp =
@@ -353,7 +353,9 @@ public:
                 grow(*s.tolerance, s.measured, "a refitted pcurve strays ");
             }
             if (!problem_.empty()) return;
-            issues = topo::validateExact(dst, growth.resolution);
+            std::vector<topo::ExactIssue> again =
+                topo::validateTakenUp(dst, growth.resolution, takeUp);
+            issues = std::move(again);  // takeUp's issues are these, until now
         }
         if (!issues.empty()) fail(issues.front().detail);
     }

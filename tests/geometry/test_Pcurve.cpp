@@ -1313,3 +1313,52 @@ TEST(PeakOfGap, APeakThatCannotPassWithinIsNotSearchedFor) {
     EXPECT_NEAR(peakOf(xs, gaps, p, 9.95), 10.0, 1e-13);
     EXPECT_GT(p.asked, 0);
 }
+
+// A pcurve's first sample placed from near its start (the end of the pcurve before it in a loop,
+// at the vertex they share) is the point the search of the whole surface finds: a rim of a closed
+// B-spline cylinder from part of the way round to past its seam, its start given a hair off, or a
+// period off either way, is the same parameter line, starting in the surface's own range at the
+// search's (u, v), as near as Newton's method settles, and measured alike. Given from the far side
+// of the cylinder, where Newton's method lands a diameter off the point, or as no number, the
+// search is made: the pcurve is the one without it, to the last bit.
+TEST(Pcurve, AFirstSamplePlacedFromNearItsStartIsTheSearchesPoint) {
+    const double tol = 1e-7;
+    const NurbsSurface cyl = NurbsSurface::makeCylinder({1, -2, 0}, {0, 0, 1}, 1.5, 2.0);
+    ASSERT_TRUE(cyl.periodicU());
+    const double period = cyl.uMax() - cyl.uMin();
+    const CircleCurve rim(Frame::fromAxis({1, -2, 1.2}, {0, 0, 1}), 1.5);
+    const double t0 = 1.0;
+    const double t1 = 1.0 + 0.9 * kTwoPi;
+    const Pcurve searched = pcurveOn(cyl, rim, t0, t1, tol);
+    ASSERT_NE(as<Line2D>(searched), nullptr) << searched.problem;
+    const math::Vec2 start = searched.curve->evaluate(searched.start);
+    for (const math::Vec2& near : {start + math::Vec2(1e-4, -1e-4), start + math::Vec2(period, 0.0),
+                                   start + math::Vec2(-period, 1e-3)}) {
+        SCOPED_TRACE(near.x);
+        const Pcurve placed = pcurveOn(cyl, rim, t0, t1, tol, 0.0, &near);
+        ASSERT_NE(as<Line2D>(placed), nullptr) << placed.problem;
+        expectFollows(cyl, rim, t0, t1, placed, 2e-9);
+        const math::Vec2 a = placed.curve->evaluate(placed.start);
+        EXPECT_GE(a.x, cyl.uMin());
+        EXPECT_LT(a.x, cyl.uMax());
+        EXPECT_NEAR(a.x, start.x, 1e-12);
+        EXPECT_NEAR(a.y, start.y, 1e-12);
+        EXPECT_NEAR(placed.deviation, searched.deviation, 1e-12);
+    }
+    const auto sameBits = [](double x, double y) {
+        return x == y && std::signbit(x) == std::signbit(y);
+    };
+    for (const math::Vec2& far : {start + math::Vec2(0.5 * period, 0.0),
+                                  math::Vec2(std::numeric_limits<double>::quiet_NaN(), start.y)}) {
+        const Pcurve placed = pcurveOn(cyl, rim, t0, t1, tol, 0.0, &far);
+        ASSERT_NE(as<Line2D>(placed), nullptr) << placed.problem;
+        for (const auto& ends :
+             {std::pair{placed.start, searched.start}, std::pair{placed.end, searched.end}}) {
+            const math::Vec2 p = placed.curve->evaluate(ends.first);
+            const math::Vec2 q = searched.curve->evaluate(ends.second);
+            EXPECT_TRUE(sameBits(p.x, q.x) && sameBits(p.y, q.y))
+                << p.x << " " << p.y << " vs " << q.x << " " << q.y;
+        }
+        EXPECT_TRUE(sameBits(placed.deviation, searched.deviation));
+    }
+}

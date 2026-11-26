@@ -4618,6 +4618,10 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
         for (topo::Wire* wire : loops) {
             const std::vector<topo::HalfEdge*> ring =
                 wire != nullptr ? ringOf(*wire, limitHalfEdges) : std::vector<topo::HalfEdge*>{};
+            // The end of the pcurve before each in the loop, at the vertex they share: where
+            // the next one's first sample is placed from (geo::pcurveOn's startNear).
+            math::Vec2 endBefore;
+            const math::Vec2* startNear = nullptr;
             for (topo::HalfEdge* h : ring) {
                 if (stop()) return read;
                 topo::Edge& e = *h->edge;
@@ -4639,8 +4643,8 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
                     // gap measured, which may peak between the samples that measured it, and the
                     // resolution) in the same call, and the edge's tolerance covers what is
                     // measured.
-                    geo::Pcurve pc =
-                        geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1, base, limit);
+                    geo::Pcurve pc = geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1, base,
+                                                   limit, startNear);
                     if (!pc.problem.empty() || pc.curve == nullptr) {
                         read.problem = std::isfinite(pc.standOff) && pc.standOff > limit
                                            ? "its curve stands " + threeFigures(pc.standOff) +
@@ -4663,6 +4667,8 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
                      (f.exactSurface->evaluate(b.x, b.y) - h->next->origin->point).length(),
                      "its pcurve ends", "from its vertex", &f, &e);
                 if (!read.problem.empty()) return read;
+                endBefore = b;
+                startNear = &endBefore;
             }
         }
         // The face's sense, and its seams laid out, as soon as its pcurves exist: a face that
@@ -4758,7 +4764,8 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     // period, or split by a band's seam, and the validator's measure of the same gap can come out
     // a last bit larger (where sin, cos and atan2 round otherwise, as macOS's do). Only where every
     // issue is such a shortfall does each tolerance grow to the validator's own measure, held to
-    // the limit as every other gap is, and the solid is validated again; otherwise the first issue
+    // the limit as every other gap is, and the solid is validated again (the checks those grown
+    // tolerances enter: every other found nothing, and reads as it did); otherwise the first issue
     // that is not one is reported as ever, and nothing is taken up, so that no shortfall's growth
     // covers a pcurve that strays beside it.
     if (!issues.empty()) {
@@ -4775,7 +4782,8 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
         }
         if (!read.problem.empty()) return read;
         if (stop()) return read;
-        issues = topo::validateExact(solid, resolution);
+        std::vector<topo::ExactIssue> again = topo::validateTakenUp(solid, resolution, takeUp);
+        issues = std::move(again);  // takeUp's issues are these, until now
     }
     if (!issues.empty()) {
         read.problem = issues.front().detail + whereIn(issues.front().face, issues.front().edge);

@@ -1034,6 +1034,83 @@ TEST(ExactValidator, RoundingShortfallsAloneAreEachTakenUpWhereTheyAreBound) {
     EXPECT_LE(alone.rim->tolerance - rimBefore, 1e-12);
 }
 
+namespace {
+
+/// Whether @p a and @p b are the same issues, in the same order.
+void expectSameIssues(const std::vector<topo::ExactIssue>& a,
+                      const std::vector<topo::ExactIssue>& b) {
+    ASSERT_EQ(a.size(), b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        EXPECT_EQ(a[i].kind, b[i].kind) << i;
+        EXPECT_EQ(a[i].face, b[i].face) << i;
+        EXPECT_EQ(a[i].edge, b[i].edge) << i;
+        EXPECT_EQ(a[i].halfEdge, b[i].halfEdge) << i;
+        EXPECT_EQ(a[i].detail, b[i].detail) << i;
+    }
+}
+
+}  // namespace
+
+// The second validation of a take-up (Ruling 66) makes again only the checks the grown tolerances
+// enter, and finds what validateExact finds. Before they grow, it finds every issue the take-up
+// was of, in validateExact's order; once they have, nothing. What it does not look at again: the
+// course of an edge whose own tolerance did not grow, though it meets a vertex that did (the
+// seam, at the rim's vertex: its ends there are checked again, not how far it strays), and every
+// edge and face away from them (the top rim, on its cap). Spoiled after the take-up, each is
+// what the whole validation finds, and the second does not.
+TEST(ExactValidator, ValidatingATakeUpAgainChecksWhatItGrew) {
+    RimOffItsVertex alone(1e-3, 1e-3 - 1e-9 - 1e-14);
+    ASSERT_NE(alone.rim, nullptr);
+    const auto issues = topo::validateExact(*alone.cyl, kTol);
+    ASSERT_FALSE(issues.empty());
+    const topo::RoundingTakeUp takeUp = topo::roundingShortfalls(*alone.cyl, issues, kTol);
+    ASSERT_EQ(takeUp.beyond, nullptr) << (takeUp.beyond ? takeUp.beyond->detail : "");
+    bool vertexGrows = false;
+    for (const topo::RoundingShortfall& s : takeUp.shortfalls) {
+        vertexGrows = vertexGrows || s.tolerance == &alone.vertex->tolerance;
+    }
+    EXPECT_TRUE(vertexGrows) << "the rim's vertex is among what grows";
+    expectSameIssues(topo::validateTakenUp(*alone.cyl, kTol, takeUp), issues);
+
+    for (const topo::RoundingShortfall& s : takeUp.shortfalls) {
+        *s.tolerance = std::max(*s.tolerance, s.measured);
+    }
+    EXPECT_TRUE(topo::validateTakenUp(*alone.cyl, kTol, takeUp).empty());
+    EXPECT_TRUE(topo::validateExact(*alone.cyl, kTol).empty());
+
+    // The seam, its line bowed 5e-3 out at its middle between the same ends; the top rim's
+    // circle moved 1e-3 out.
+    topo::Edge* seam = nullptr;
+    topo::Edge* top = nullptr;
+    for (auto& e : alone.cyl->edges()) {
+        if (e.halfEdge->twin->face == e.halfEdge->face) seam = &e;
+        if (&e != alone.rim && dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get())) top = &e;
+    }
+    ASSERT_NE(seam, nullptr);
+    ASSERT_NE(top, nullptr);
+    ASSERT_TRUE(seam->halfEdge->origin == alone.vertex ||
+                seam->halfEdge->twin->origin == alone.vertex)
+        << "the seam meets the rim's vertex";
+    const Vec3 a = seam->exactCurve->evaluate(seam->curveStart);
+    const Vec3 b = seam->exactCurve->evaluate(seam->curveEnd);
+    const Vec3 middle = (a + b) * 0.5;
+    const Vec3 out = Vec3(middle.x - 3.0, middle.y + 2.0, 0.0).normalized();
+    seam->exactCurve = std::make_shared<geo::NurbsCurve>(
+        std::vector<Vec3>{a, middle + out * 1e-2, b}, std::vector<double>{1, 1, 1},
+        std::vector<double>{0, 0, 0, 1, 1, 1}, 2);
+    seam->curveStart = 0.0;
+    seam->curveEnd = 1.0;
+    const auto* circle = static_cast<const geo::CircleCurve*>(top->exactCurve.get());
+    top->exactCurve = std::make_shared<geo::CircleCurve>(circle->frame(), circle->radius() + 1e-3);
+
+    std::set<const topo::Edge*> strays;
+    for (const auto& i : topo::validateExact(*alone.cyl, kTol)) {
+        if (i.kind == ExactIssueKind::PcurveOffCurve) strays.insert(i.edge);
+    }
+    EXPECT_EQ(strays, (std::set<const topo::Edge*>{seam, top})) << "what the whole one finds";
+    EXPECT_TRUE(topo::validateTakenUp(*alone.cyl, kTol, takeUp).empty());
+}
+
 // The rounding allowed is that of the magnitudes a measure is computed from: the same rim on a
 // cylinder placed a million along its own axis is allowed a million times the rounding.
 TEST(ExactValidator, RoundingIsOfTheMagnitudesAMeasureIsComputedFrom) {

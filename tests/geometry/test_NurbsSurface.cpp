@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/geometry/curves/NurbsCurve.h"
@@ -1331,4 +1333,113 @@ TEST(NurbsSurfaceTest, APointOnAPatchsEdgeIsFoundFromBesideIt) {
         EXPECT_NEAR(u2, 0.0, 1e-12);
         EXPECT_NEAR(v2, 1.0 - from, 1e-12);
     }
+}
+
+namespace {
+
+/// NurbsSurface::project's search as it was before it stopped at rounding's width, from (@p u,
+/// @p v): it stood still only where its step in u and v was a 1e-15 of their ranges. @p steps
+/// receives how many it took (100: it never stood still).
+std::pair<double, double> everyStep(const NurbsSurface& s, const Vec3& point, double u, double v,
+                                    int& steps) {
+    const double u0 = s.uMin(), u1 = s.uMax();
+    const double v0 = s.vMin(), v1 = s.vMax();
+    const auto keep = [](double t, double lo, double hi, bool closed) {
+        if (!closed) return std::clamp(t, lo, hi);
+        const double period = hi - lo;
+        t = lo + std::fmod(t - lo, period);
+        return t < lo ? t + period : t;
+    };
+    const auto shorten = [](double t, double d, double lo, double hi, bool closed, double& alpha) {
+        if (closed || d == 0.0) return;
+        if (t + d < lo && t > lo) alpha = std::min(alpha, 0.5 * (t - lo) / -d);
+        if (t + d > hi && t < hi) alpha = std::min(alpha, 0.5 * (hi - t) / d);
+    };
+    u = keep(u, u0, u1, s.closedU());
+    v = keep(v, v0, v1, s.closedV());
+    steps = 0;
+    for (int iter = 0; iter < 100; ++iter) {
+        ++steps;
+        const SurfacePoint at = s.evaluateWithDerivatives(u, v);
+        const Vec3 r = at.point - point;
+        const double a = at.du.dot(at.du);
+        const double b = at.du.dot(at.dv);
+        const double c = at.dv.dot(at.dv);
+        const double damping = 1e-14 * (a + c) + 1e-300;
+        const double det = (a + damping) * (c + damping) - b * b;
+        if (!(det > 0.0)) break;
+        const double gu = r.dot(at.du);
+        const double gv = r.dot(at.dv);
+        double du = -((c + damping) * gu - b * gv) / det;
+        double dv = -((a + damping) * gv - b * gu) / det;
+        double alphaU = 1.0;
+        double alphaV = 1.0;
+        shorten(u, du, u0, u1, s.closedU(), alphaU);
+        shorten(v, dv, v0, v1, s.closedV(), alphaV);
+        du *= alphaU;
+        dv *= alphaV;
+        const bool still = std::abs(du) <= 1e-15 * (u1 - u0) && std::abs(dv) <= 1e-15 * (v1 - v0);
+        u = keep(u + du, u0, u1, s.closedU());
+        v = keep(v + dv, v0, v1, s.closedV());
+        if (still) break;
+    }
+    return {u, v};
+}
+
+/// Whether @p a and @p b are the same doubles, bit for bit.
+bool sameBits(std::pair<double, double> a, std::pair<double, double> b) {
+    return a.first == b.first && a.second == b.second &&
+           std::signbit(a.first) == std::signbit(b.first) &&
+           std::signbit(a.second) == std::signbit(b.second);
+}
+
+}  // namespace
+
+// A search far from the origin stops once its steps are rounding's width: on a cylinder written as
+// a rational B-spline (a quarter circle a span, its knots doubled) placed a hundred from the
+// origin, a point at a quarter's end was crossed back and forth across the knot (the surface's
+// speed in u changes there) by rounding's width, the step never small enough in u to stand still,
+// for all of its 100 steps; elsewhere such a search wandered in rounding's width as long. Round
+// the circle and up the cylinder, each search from the point before (as a pcurve's samples are
+// placed), and across its seam, the point found is as near as every step of the search finds, to
+// rounding, and the same point to rounding. A search given the surface where it starts takes its
+// first step from it and ends where it would without it, to the last bit; given it where it starts
+// outside the domain, it evaluates the surface again where it is taken to, as without.
+TEST(NurbsSurfaceTest, ASearchFarFromTheOriginStopsAtRoundingsWidth) {
+    const Vec3 centre(100.0, -40.0, 30.0);
+    const NurbsSurface cylinder = NurbsSurface::makeCylinder(centre, Vec3(0, 0, 1), 0.45, 4.0);
+    ASSERT_TRUE(cylinder.closedU());
+    int wandered = 0;
+    for (const double height : {0.0, 0.3, 1.7, 4.0}) {
+        double u = cylinder.uMin();
+        double v = cylinder.vMin();
+        for (int k = 0; k <= 64; ++k) {
+            const double angle = kTwoPi * k / 64.0;
+            const Vec3 point =
+                centre + Vec3(0.45 * std::cos(angle), 0.45 * std::sin(angle), height);
+            int steps = 0;
+            const auto all = everyStep(cylinder, point, u, v, steps);
+            if (steps == 100) ++wandered;
+            const auto found = cylinder.project(point, u, v);
+            // Rounding's width: a few units in the last place of the point's coordinates.
+            const double width = 16.0 * 2.2e-16 * (2.0 * point.length());
+            const Vec3 there = cylinder.evaluate(found.first, found.second);
+            const Vec3 thereAll = cylinder.evaluate(all.first, all.second);
+            EXPECT_LE((there - point).length(), (thereAll - point).length() + width)
+                << "k " << k << " height " << height;
+            EXPECT_LE((there - thereAll).length(), width) << "k " << k << " height " << height;
+            const SurfacePoint at = cylinder.evaluateWithDerivatives(u, v);
+            EXPECT_TRUE(sameBits(cylinder.project(point, u, v, &at), found))
+                << "given where it starts";
+            u = found.first;
+            v = found.second;
+        }
+        // From a period past the domain: evaluated where it is taken to, as without.
+        const Vec3 point = centre + Vec3(0.45, 0.0, height);
+        const double outside = cylinder.uMax() + 0.25;
+        const SurfacePoint there = cylinder.evaluateWithDerivatives(outside, v);
+        EXPECT_TRUE(sameBits(cylinder.project(point, outside, v, &there),
+                             cylinder.project(point, outside, v)));
+    }
+    EXPECT_GT(wandered, 0) << "every step of some searches is rounding's";
 }
