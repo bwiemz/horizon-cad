@@ -684,13 +684,9 @@ public:
             size = std::max(size, (hi - lo).length());
         }
         size_ = std::max(size, 1e-300);
-        finder_ = std::make_unique<PointIndex>(points_, 1e-9 * size_);
-        // Vertices at one place are one point (a revolve's axis point where two cones meet is a
-        // vertex of each): each is its place's first.
-        for (std::size_t i = 0; i < vertices_.size(); ++i) {
-            const std::optional<std::size_t> there = finder_->find(points_[i]);
-            place_.push_back(there.has_value() ? there.value() : i);
-        }
+        const double within = 1e-9 * size_;
+        finder_ = std::make_unique<PointIndex>(points_, within);
+        placeVertices(within);
         around_.resize(vertices_.size());
         for (auto& e : own.edges()) {
             if (!e.alive || e.halfEdge == nullptr || e.halfEdge->twin == nullptr) continue;
@@ -797,6 +793,51 @@ private:
         topo::Edge* edge = nullptr;
         std::size_t to = 0;
     };
+
+    /// Vertices at one place are one point (a revolve's axis point where two cones meet is a
+    /// vertex of each, or two a rounding apart): each vertex's place is that of the first vertex
+    /// before it in the construction's order within @p within of it, or its own. Found through a
+    /// grid of cells @p within * 64 wide, searching each vertex's cell and its neighbours, so
+    /// the order is the vertices', not the grid's.
+    void placeVertices(double within) {
+        using Key = std::tuple<std::int64_t, std::int64_t, std::int64_t>;
+        struct KeyHash {
+            std::size_t operator()(const Key& k) const {
+                const auto h = [](std::int64_t v) { return std::hash<std::int64_t>{}(v); };
+                return h(std::get<0>(k)) * 73856093u ^ h(std::get<1>(k)) * 19349663u ^
+                       h(std::get<2>(k)) * 83492791u;
+            }
+        };
+        const double cell = std::max(within, 1e-300) * 64.0;
+        const double reach = 1e18 * cell;
+        std::unordered_map<Key, std::vector<std::size_t>, KeyHash> grid;
+        place_.resize(points_.size());
+        for (std::size_t i = 0; i < points_.size(); ++i) {
+            place_[i] = i;
+            const math::Vec3& p = points_[i];
+            if (!(std::abs(p.x) < reach && std::abs(p.y) < reach && std::abs(p.z) < reach)) {
+                continue;  // not finite, or beyond the cells' reach: a place of its own
+            }
+            const Key key{static_cast<std::int64_t>(std::floor(p.x / cell)),
+                          static_cast<std::int64_t>(std::floor(p.y / cell)),
+                          static_cast<std::int64_t>(std::floor(p.z / cell))};
+            std::size_t first = i;
+            for (std::int64_t dx = -1; dx <= 1; ++dx) {
+                for (std::int64_t dy = -1; dy <= 1; ++dy) {
+                    for (std::int64_t dz = -1; dz <= 1; ++dz) {
+                        const auto found = grid.find(Key{
+                            std::get<0>(key) + dx, std::get<1>(key) + dy, std::get<2>(key) + dz});
+                        if (found == grid.end()) continue;
+                        for (const std::size_t j : found->second) {
+                            if (j < first && (points_[j] - p).length() <= within) first = j;
+                        }
+                    }
+                }
+            }
+            if (first != i) place_[i] = place_[first];
+            grid[key].push_back(i);
+        }
+    }
     std::size_t edgesCount() const {
         std::size_t n = 0;
         for (const auto& steps : around_) n += steps.size();
@@ -805,7 +846,9 @@ private:
     std::vector<topo::Vertex*> vertices_;
     std::vector<math::Vec3> points_;
     std::unordered_map<const topo::Vertex*, std::size_t> index_;
-    std::vector<std::size_t> place_;      ///< each vertex's place: the first vertex there
+    /// Each vertex's place: that of the first vertex before it within the tolerance, or its own
+    /// (placeVertices).
+    std::vector<std::size_t> place_;
     std::unique_ptr<PointIndex> finder_;  ///< made in the constructor, always
     std::vector<std::vector<Step>> around_;
     double size_ = 1.0;

@@ -4090,6 +4090,103 @@ TEST(BridgeNumbering, ALemonAndAnAppleAreNumberedAsMastersWere) {
     }
 }
 
+// A profile touching the axis at one point, a diamond: its two cones meet at their apex, where
+// master's revolve keeps a vertex of each (Ruling 45's review). Each exact seam is named after
+// master's edge where its first chord lies, and every exact edge's name names an edge of the
+// faceted copy lying on it (its own, or one of its chords): a seam whose chords are not found from
+// the apex keeps its own name, and master's chord there is renumbered past it, silently, which
+// this catches. A whole turn and a quarter.
+TEST(BridgeNumbering, ConesMeetingAtAnAxisPointAreNamedAsMastersWere) {
+    const Profile diamond = {line({0, 0}, {1, -1}), line({1, -1}, {2, 0}), line({2, 0}, {1, 1}),
+                             line({1, 1}, {0, 0})};
+    // Tilted and off the origin, the apex is turned to points a rounding apart: master's sewer
+    // welds each cone's, and the two cones' vertices there need not be bitwise one.
+    const Vec3 normal = Vec3(1, 2, 3).normalized();
+    const Vec3 across = Vec3(3, 0, -1).normalized();
+    const hz::draft::SketchPlane tilted(Vec3(0.3, 0.7, 1.1), normal, across);
+    struct Case {
+        const char* what;
+        double angle;
+        hz::draft::SketchPlane plane;
+        std::set<std::string> seams;  ///< the exact solid's seams, named as master named them
+    };
+    const std::set<std::string> wholeTurn = {"x/revolved:{0}/seam:0", "x/revolved:{1}/seam:1",
+                                             "x/revolved:{2}/seam:1", "x/revolved:{3}/seam:1"};
+    const std::vector<Case> cases = {
+        {"a whole turn", 2 * kPi, hz::draft::SketchPlane(), wholeTurn},
+        {"a quarter turn", kPi / 2, hz::draft::SketchPlane(), {}},
+        {"a whole turn, tilted", 2 * kPi, tilted, wholeTurn},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        // The axis is the sketch's y axis through its origin, as `revolved` turns it.
+        std::string why;
+        const auto out = hz::model::Revolve::exactAndBridge(
+            diamond, c.plane, c.plane.origin(), c.plane.yAxis(), c.angle, "x", 8, 0.0, &why);
+        ASSERT_NE(out.faceted, nullptr) << why;
+        ASSERT_NE(out.exact, nullptr) << why;
+        std::set<std::string> seams;
+        for (const auto& e : out.exact->edges()) {
+            const hz::topo::HalfEdge* he = e.halfEdge;
+            if (e.alive && hz::model::logicalFace(he->face->topoId.tag()) ==
+                               hz::model::logicalFace(he->twin->face->topoId.tag())) {
+                seams.insert(e.topoId.tag());
+            }
+        }
+        std::set<std::string> expected;
+        for (const std::string& seam : c.seams) expected.insert(named(seam, &diamond));
+        EXPECT_EQ(seams, expected);
+        std::map<std::string, int> onTheCopy;
+        for (const auto& e : out.faceted->edges()) {
+            ++onTheCopy[e.topoId.tag()];
+            ++onTheCopy[hz::model::logicalEdge(e.topoId.tag())];
+        }
+        for (const auto& e : out.exact->edges()) {
+            if (!e.alive) continue;
+            EXPECT_GT(onTheCopy[e.topoId.tag()], 0)
+                << e.topoId.tag() << " names no edge of the copy";
+        }
+        expectChordsOnTheirEdges(*out.faceted, *out.exact);
+    }
+}
+
+// The same diamond, its cones' two vertices at the apex moved a rounding apart (2e-12, within the
+// 1e-9 of its size that names are matched within): they are still one place, so naming the copy
+// again (model::nameAsMastersNamed) finds each seam's chord from the apex and changes no name.
+// Vertices merged only where they are bitwise one would leave a seam's chord unfound, and master's
+// edge there renumbered.
+TEST(BridgeNumbering, VerticesARoundingApartAreOnePlace) {
+    const Profile diamond = {line({0, 0}, {1, -1}), line({1, -1}, {2, 0}), line({2, 0}, {1, 1}),
+                             line({1, 1}, {0, 0})};
+    auto out = revolved(diamond, 2 * kPi);
+    ASSERT_NE(out.faceted, nullptr);
+    ASSERT_NE(out.exact, nullptr);
+    std::vector<hz::topo::Vertex*> apex;
+    for (auto& v : out.faceted->vertices()) {
+        if (v.alive && v.point.length() < 1e-12) apex.push_back(&v);
+    }
+    ASSERT_EQ(apex.size(), 2u) << "a vertex of each cone at the apex";
+    apex[0]->point = Vec3(1e-12, 0, 0);
+    apex[1]->point = Vec3(-1e-12, 0, 0);
+    std::multiset<std::string> before;
+    for (const auto& e : out.faceted->edges()) before.insert(e.topoId.tag());
+    hz::model::nameAsMastersNamed(*out.faceted, *out.exact);
+    std::multiset<std::string> after;
+    for (const auto& e : out.faceted->edges()) after.insert(e.topoId.tag());
+    EXPECT_EQ(after, before);
+    std::set<std::string> onTheCopy;  // each edge's name, and its curve's
+    for (const std::string& tag : after) {
+        onTheCopy.insert(tag);
+        onTheCopy.insert(hz::model::logicalEdge(tag));
+    }
+    for (const auto& e : out.exact->edges()) {
+        if (e.alive) {
+            EXPECT_EQ(onTheCopy.count(e.topoId.tag()), 1u) << e.topoId.tag() << " names no edge";
+        }
+    }
+    expectChordsOnTheirEdges(*out.faceted, *out.exact);
+}
+
 // A NURBS surface of revolution from a rim to a pole, an ogive's nose, at 12 segments (Ruling 24:
 // its points inside its first meridian turned to master's angles), and its flat base, one disc as
 // master's whole turn made it: every place is master's. Its seam (the arc at u = 0, two chords)
