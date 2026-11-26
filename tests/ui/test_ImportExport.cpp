@@ -29,6 +29,7 @@
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/DwgImport.h"
@@ -328,18 +329,29 @@ TEST(ImportExportTest, APlotThatDoesNotFitIsSaidFirst) {
     EXPECT_FALSE(QFileInfo::exists(path));
 }
 
-// A part whose curved face cannot yet go out as designed (a sphere, closed
-// all round) is exported as its facets, and the user is told which and why;
-// one that can (a box has none to tell) says nothing.
+// A part whose curved face cannot yet go out as designed (a sphere in
+// facets, closed all round: one named by position, as a part saved before
+// persistent naming builds it) is exported as its facets, and the user is
+// told which and why; one that can (a box has none to tell; a sphere
+// primitive is exact, stage 3, and goes out on its sphere) says nothing.
 TEST(ImportExportTest, StepExportSaysWhatWentOutAsFacets) {
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());
-    MainWindow w;
-    {
+    const auto sphere = [](MainWindow& window) {
         FormFiller filler(QStringLiteral("Sphere"),
                           FormAnswers().number(QStringLiteral("size0"), 5.0));
-        action(w, "action_sphere")->trigger();
+        action(window, "action_sphere")->trigger();
         ASSERT_TRUE(filler.seen());
+    };
+    MainWindow w;
+    sphere(w);
+    {
+        hz::doc::Document& part = *w.activeDocument();
+        ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+        part.featureTree().feature(0)->setNaming(hz::model::NamingScheme::Positional);
+        part.featureTree().markChanged();
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        ASSERT_EQ(part.exactSolid(), nullptr) << "built in facets, as master built it";
     }
     {
         DialogResponder told(QMessageBox::Ok, QStringLiteral("Export STEP"));
@@ -358,6 +370,19 @@ TEST(ImportExportTest, StepExportSaysWhatWentOutAsFacets) {
     }
     EXPECT_FALSE(told.seen()) << "nothing to say";
     EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("box.step"))));
+
+    MainWindow exact;
+    sphere(exact);
+    ASSERT_NE(exact.activeDocument()->exactSolid(), nullptr) << exact.activeDocument()->exactNote();
+    DialogResponder toldOfTheSphere(QMessageBox::Ok, QStringLiteral("Export STEP"), 1000);
+    {
+        FilePicker picker(dir.filePath(QStringLiteral("sphere.step")));
+        action(exact, "export_step")->trigger();
+    }
+    EXPECT_FALSE(toldOfTheSphere.seen()) << "on its sphere: nothing to say";
+    QFile written(dir.filePath(QStringLiteral("sphere.step")));
+    ASSERT_TRUE(written.open(QIODevice::ReadOnly));
+    EXPECT_TRUE(written.readAll().contains("SPHERICAL_SURFACE"));
 }
 
 // A STEP file that does not say which unit its lengths are in is not read as

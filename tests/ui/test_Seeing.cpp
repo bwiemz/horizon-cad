@@ -18,7 +18,9 @@
 
 #include "UiTestSupport.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/FeatureTree.h"
 #include "horizon/math/Vec4.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/render/Camera.h"
 #include "horizon/render/DisplayMode.h"
 #include "horizon/ui/MainWindow.h"
@@ -240,11 +242,6 @@ TEST(SeeingTest, TheMassPropertiesOfABoxInTheDocumentsUnit) {
 
 namespace {
 
-void cylinder(MainWindow& w) {
-    run(w, "action_cylinder", QStringLiteral("Cylinder"),
-        FormAnswers().number(QStringLiteral("size0"), 5.0).number(QStringLiteral("size1"), 10.0));
-}
-
 /// Until nothing runs on a worker (a rebuild, a measurement).
 void settle(MainWindow& w) {
     QElapsedTimer waited;
@@ -252,6 +249,21 @@ void settle(MainWindow& w) {
     while (w.backgroundWorkRunning() && waited.elapsed() < 30'000) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     }
+}
+
+/// A cylinder of radius 5 and height 10, made with the Cylinder command and named by position,
+/// as a part saved before persistent naming names it: built in facets as master built it (32 round
+/// its side), with no exact part, so Mass Properties measures it as modelled and ideally. (Named
+/// as a new one is, it is exact: stage 3.)
+void cylinder(MainWindow& w) {
+    run(w, "action_cylinder", QStringLiteral("Cylinder"),
+        FormAnswers().number(QStringLiteral("size0"), 5.0).number(QStringLiteral("size1"), 10.0));
+    settle(w);
+    hz::doc::Document& part = *w.activeDocument();
+    part.featureTree().feature(0)->setNaming(hz::model::NamingScheme::Positional);
+    part.featureTree().markChanged();
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_EQ(part.exactSolid(), nullptr) << "built in facets";
 }
 
 /// The Mass Properties box open now, not blocking (the ideal on a worker).
@@ -270,7 +282,8 @@ QMessageBox* openMassBox() {
 }  // namespace
 
 // A cylinder of radius 5 and height 10 as modelled, 32 facets, and ideally
-// (Phase 141): 780.3613 mm3 and 785.3982 (25 pi 10).
+// (Phase 141): 780.3613 mm3 and 785.3982 (25 pi 10). Named by position: a
+// Stable cylinder primitive is exact (stage 3).
 TEST(SeeingTest, TheMassPropertiesOfACylinderAsModelledAndIdeal) {
     MainWindow w;
     w.setRebuildMode(MainWindow::RebuildMode::Never);  // measured here

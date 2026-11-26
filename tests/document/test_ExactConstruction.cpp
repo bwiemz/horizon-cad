@@ -1,0 +1,461 @@
+// Exact construction (stage 3): a part made of primitives is exact. Each Stable primitive builds
+// its body through the exact primitives, in the frame it stands in, and the faceted part every
+// operation not yet converted reads is that body's bridge copy (model::facetExact at the
+// feature's own resolution): master's facets, vertex for vertex, named for the exact faces and
+// edges. The build carries the exact part beside it while every body is a new body with an exact
+// form; any other operation drops it, and what that operation builds is master's. A primitive
+// whose exact build fails fails, saying why; one named by position builds as master did.
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <cmath>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "StepTestText.h"
+#include "horizon/document/Document.h"
+#include "horizon/document/FeatureTree.h"
+#include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftLine.h"
+#include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/MeshData.h"
+#include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
+#include "horizon/math/Quaternion.h"
+#include "horizon/math/Units.h"
+#include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Naming.h"
+#include "horizon/modeling/Pattern.h"
+#include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/SolidTessellator.h"
+#include "horizon/topology/HalfEdge.h"
+#include "horizon/topology/Solid.h"
+
+using hz::doc::BodyOperation;
+using hz::doc::Document;
+using hz::doc::DocumentType;
+using hz::doc::PrimitiveFeature;
+using hz::math::Vec2;
+using hz::math::Vec3;
+
+namespace {
+
+constexpr double kPi = hz::math::kPi;
+
+/// The solids @p text holds, read as File > Import > STEP reads them, in millimetres.
+std::unique_ptr<hz::topo::Solid> read(const std::string& text) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto solids = hz::io::StepFormat::fromString(text, nullptr, nullptr, inMillimetres);
+    EXPECT_EQ(solids.size(), 1u) << hz::io::StepFormat::lastError();
+    return solids.empty() ? nullptr : std::move(solids.front());
+}
+
+std::unique_ptr<hz::doc::ImportedBodyFeature> imported(std::unique_ptr<hz::topo::Solid> body,
+                                                       const std::string& source) {
+    return std::make_unique<hz::doc::ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(body)), source);
+}
+
+/// A cut of the rectangle from (x0, y0) to (x1, y1) on the XY plane, @p height up.
+std::unique_ptr<hz::doc::ExtrudeFeature> cut(double x0, double y0, double x1, double y1,
+                                             double height) {
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    const auto line = [&sketch](Vec2 a, Vec2 b) {
+        sketch->addEntity(std::make_shared<hz::draft::DraftLine>(a, b));
+    };
+    line({x0, y0}, {x1, y0});
+    line({x1, y0}, {x1, y1});
+    line({x1, y1}, {x0, y1});
+    line({x0, y1}, {x0, y0});
+    auto feature = std::make_unique<hz::doc::ExtrudeFeature>(sketch, Vec3(0, 0, 1), height);
+    feature->setOperation(BodyOperation::Cut);
+    return feature;
+}
+
+double volumeOf(const hz::topo::Solid& solid) {
+    return hz::model::MassPropertiesCalculator::compute(solid).volume;
+}
+
+std::set<std::string> faceNames(const hz::topo::Solid& solid) {
+    std::set<std::string> names;
+    for (const auto& face : solid.faces()) names.insert(face.topoId.tag());
+    return names;
+}
+
+/// The logical faces of @p solid's faces (model::logicalFace): a curved face's facets, its one.
+std::set<std::string> logicalFaces(const hz::topo::Solid& solid) {
+    std::set<std::string> names;
+    for (const auto& face : solid.faces()) names.insert(hz::model::logicalFace(face.topoId.tag()));
+    return names;
+}
+
+/// The logical edges of @p solid's edges that part two logical faces (model::logicalEdge).
+std::set<std::string> logicalEdges(const hz::topo::Solid& solid) {
+    std::set<std::string> names;
+    for (const auto& edge : solid.edges()) {
+        const hz::topo::HalfEdge* he = edge.halfEdge;
+        if (he == nullptr || he->twin == nullptr || he->face == nullptr ||
+            he->twin->face == nullptr) {
+            continue;
+        }
+        if (hz::model::logicalFace(he->face->topoId.tag()) ==
+            hz::model::logicalFace(he->twin->face->topoId.tag())) {
+            continue;
+        }
+        names.insert(hz::model::logicalEdge(edge.topoId.tag()));
+    }
+    return names;
+}
+
+/// The exact part named as the faceted part is: the same logical faces and the same logical
+/// edges between them, and every face exact.
+void expectNamedAsItsFacets(const hz::topo::Solid& exact, const hz::topo::Solid& faceted) {
+    EXPECT_EQ(faceNames(exact), logicalFaces(faceted));
+    EXPECT_EQ(logicalEdges(exact), logicalEdges(faceted));
+    for (const auto& face : exact.faces()) {
+        EXPECT_NE(face.exactSurface, nullptr) << face.topoId.tag();
+    }
+}
+
+/// The exact part's kept mesh covers each of its faces and encloses @p volume within the mesh's
+/// own error, its area times its tolerance.
+void expectMeshed(const Document& part, double volume) {
+    ASSERT_NE(part.exactMesh(), nullptr);
+    const hz::geo::MeshData& mesh = *part.exactMesh();
+    ASSERT_TRUE(mesh.hasFaces());
+    EXPECT_EQ(std::set<std::string>(mesh.faceTags.begin(), mesh.faceTags.end()),
+              faceNames(*part.exactSolid()));
+    double vol6 = 0.0;
+    double area = 0.0;
+    const auto corner = [&mesh](std::size_t i) {
+        return Vec3(mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]);
+    };
+    for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+        const Vec3 a = corner(mesh.indices[t]);
+        const Vec3 b = corner(mesh.indices[t + 1]);
+        const Vec3 c = corner(mesh.indices[t + 2]);
+        vol6 += a.dot(b.cross(c));
+        area += 0.5 * (b - a).cross(c - a).length();
+    }
+    EXPECT_NEAR(vol6 / 6.0, volume,
+                area * hz::model::SolidTessellator::displayTolerance(*part.exactSolid()));
+}
+
+/// Master's faceted body for @p feature, as its PrimitiveFeature::execute built it: the factory's
+/// solid at the feature's segment count, stood where the feature stands.
+std::unique_ptr<hz::topo::Solid> mastersBody(const PrimitiveFeature& feature) {
+    using hz::model::PrimitiveFactory;
+    const int n = feature.segments();
+    std::unique_ptr<hz::topo::Solid> solid;
+    switch (feature.kind()) {
+        case PrimitiveFeature::Kind::Box:
+            solid = PrimitiveFactory::makeBox(feature.p0(), feature.p1(), feature.p2());
+            break;
+        case PrimitiveFeature::Kind::Cylinder:
+            solid = PrimitiveFactory::makeCylinder(feature.p0(), feature.p1(), n);
+            break;
+        case PrimitiveFeature::Kind::Sphere:
+            solid = PrimitiveFactory::makeSphere(feature.p0(), n);
+            break;
+        case PrimitiveFeature::Kind::Cone:
+            solid = PrimitiveFactory::makeCone(feature.p0(), feature.p1(), feature.p2(), n);
+            break;
+        case PrimitiveFeature::Kind::Torus:
+            solid = PrimitiveFactory::makeTorus(feature.p0(), feature.p1(), n);
+            break;
+    }
+    if (!solid || !feature.isPlaced()) return solid;
+    const Vec3 z(0.0, 0.0, 1.0);
+    const Vec3 to = feature.axisDirection().normalized();
+    const Vec3 turnAxis = z.cross(to);
+    const double angle = std::atan2(turnAxis.length(), z.dot(to));
+    const hz::math::Quaternion turn =
+        turnAxis.length() > 1e-12
+            ? hz::math::Quaternion::fromAxisAngle(turnAxis.normalized(), angle)
+            : hz::math::Quaternion::fromAxisAngle(Vec3(1.0, 0.0, 0.0), angle);
+    return hz::model::Pattern::transformed(
+        *solid, hz::math::Mat4::translation(feature.basePoint()) * hz::math::Mat4::rotation(turn));
+}
+
+/// A part of @p feature alone.
+void buildAlone(Document& part, std::unique_ptr<hz::doc::Feature> feature) {
+    part.setType(DocumentType::Part);
+    part.featureTree().addFeature(std::move(feature));
+}
+
+}  // namespace
+
+// A cylinder of radius 5 and height 10 is three exact faces, and the mass tool measures its exact
+// volume. Its faceted copy is master's: 32 facets round its side and its two caps, each named
+// for the exact face it lies on.
+TEST(ExactConstruction, ACylinderPrimitiveIsThreeExactFaces) {
+    Document part;
+    buildAlone(part, PrimitiveFeature::makeCylinder(5.0, 10.0));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    EXPECT_EQ(part.exactSolid()->faceCount(), 3u);
+    const double volume = kPi * 25.0 * 10.0;
+    const auto mass = hz::model::MassPropertiesCalculator::compute(*part.exactOrFacetedSolid());
+    ASSERT_TRUE(mass.valid) << mass.problem;
+    EXPECT_NEAR(mass.volume, volume, volume * 1e-9);
+
+    ASSERT_NE(part.solid(), nullptr);
+    EXPECT_EQ(part.solid()->faceCount(), 34u);
+    EXPECT_EQ(part.solid()->edges().size(), 96u);
+    EXPECT_EQ(part.solid()->vertices().size(), 64u);
+    EXPECT_EQ(logicalFaces(*part.solid()), faceNames(*part.exactSolid()));
+    expectNamedAsItsFacets(*part.exactSolid(), *part.solid());
+    expectMeshed(part, volume);
+}
+
+// Two primitives made new bodies are both exact in the part, each named for its own feature.
+TEST(ExactConstruction, TwoNewBodiesAreBothExact) {
+    Document part;
+    part.setType(DocumentType::Part);
+    part.featureTree().addFeature(PrimitiveFeature::makeCylinder(2.0, 3.0));
+    auto box = PrimitiveFeature::makeBox(1.0, 2.0, 3.0);
+    ASSERT_TRUE(box->setVector("basePoint", Vec3(10.0, 0.0, 0.0)));
+    part.featureTree().addFeature(std::move(box));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    EXPECT_EQ(part.exactSolid()->faceCount(), 9u);
+    EXPECT_EQ(part.exactSolid()->shellCount(), 2u);
+    expectNamedAsItsFacets(*part.exactSolid(), *part.solid());
+    std::set<std::string> features;
+    for (const auto& name : faceNames(*part.exactSolid())) {
+        features.insert(name.substr(0, name.find('/')));
+    }
+    EXPECT_EQ(features, (std::set<std::string>{part.featureTree().feature(0)->featureID(),
+                                               part.featureTree().feature(1)->featureID()}));
+    const double volume = kPi * 4.0 * 3.0 + 6.0;
+    EXPECT_NEAR(volumeOf(*part.exactSolid()), volume, volume * 1e-9);
+    EXPECT_EQ(part.solid()->faceCount(), 34u + 6u);
+    expectMeshed(part, volume);
+}
+
+// An imported cylinder and a sphere primitive, each a new body: the part is exact, the import's
+// faces with their NURBS carriers, the sphere's without. Its bodies are told apart by their exact
+// volumes.
+TEST(ExactConstruction, AnImportAndAPrimitiveAreBothExact) {
+    Document part;
+    part.setType(DocumentType::Part);
+    part.featureTree().addFeature(
+        imported(read(hz::step_text::externalStyleCylinder()), "cylinder.step"));
+    auto sphere = PrimitiveFeature::makeSphere(1.5);
+    ASSERT_TRUE(sphere->setVector("basePoint", Vec3(5.0, 0.0, 0.5)));
+    part.featureTree().addFeature(std::move(sphere));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    const hz::topo::Solid* exact = part.exactSolid();
+    ASSERT_NE(exact, nullptr) << part.exactNote();
+    EXPECT_EQ(exact->faceCount(), 4u);
+    EXPECT_EQ(exact->shellCount(), 2u);
+    expectNamedAsItsFacets(*exact, *part.solid());
+    const double volume = 2.0 * kPi + 4.5 * kPi;
+    EXPECT_NEAR(volumeOf(*exact), volume, volume * 1e-9);
+    expectMeshed(part, volume);
+
+    const auto bodies = hz::model::Pattern::separate(*exact);
+    ASSERT_EQ(bodies.size(), 2u);
+    std::multiset<long> volumes;  // in millionths
+    for (const auto& body : bodies) volumes.insert(std::lround(volumeOf(*body) * 1e6));
+    EXPECT_EQ(volumes,
+              (std::multiset<long>{std::lround(2.0 * kPi * 1e6), std::lround(4.5 * kPi * 1e6)}));
+}
+
+// A part mixing an import that encloses a void (a block with a ball out of it) and a primitive
+// sphere: the void, one face bounded by its seam, has corners that span nothing, and is told from a
+// body by its exact signed volume, so the part is two bodies, the block with its void and the
+// sphere.
+TEST(ExactConstruction, AMixedPartsVoidStaysWithItsBody) {
+    Document part;
+    part.setType(DocumentType::Part);
+    part.featureTree().addFeature(imported(read(hz::step_text::blockWithABall()), "block.step"));
+    auto sphere = PrimitiveFeature::makeSphere(1.5);
+    ASSERT_TRUE(sphere->setVector("basePoint", Vec3(10.0, 2.0, 2.0)));
+    part.featureTree().addFeature(std::move(sphere));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    const hz::topo::Solid* exact = part.exactSolid();
+    ASSERT_NE(exact, nullptr) << part.exactNote();
+    EXPECT_EQ(exact->shellCount(), 3u);
+    const auto groups = hz::model::Pattern::bodyShells(*exact);
+    ASSERT_EQ(groups.size(), 2u);
+    std::multiset<std::size_t> sizes;
+    for (const auto& group : groups) sizes.insert(group.size());
+    EXPECT_EQ(sizes, (std::multiset<std::size_t>{1u, 2u})) << "the void with the block";
+}
+
+// Review focus 5: a cut after a primitive and an import (two new bodies) drops the exact part, and
+// what it builds on their faceted copies is master's: the face count, the volume and every face's
+// name master's build gave the same document (recorded from 0fe10934, before primitives were
+// exact): the sphere's 16 rows of 32 facets less the two rows inside the slab (facets 224 to 287),
+// the cylinder's 32 and its caps, and the slab's caps and its one wall inside the part.
+TEST(ExactConstruction, ACutAfterItDropsTheExactPart) {
+    Document part;
+    part.setType(DocumentType::Part);
+    auto cylinder = imported(read(hz::step_text::externalStyleCylinder()), "cylinder.step");
+    cylinder->restoreFeatureID("imported_1");
+    part.featureTree().addFeature(std::move(cylinder));
+    auto sphere = PrimitiveFeature::makeSphere(1.5);
+    sphere->restoreFeatureID("primitive_1");
+    ASSERT_TRUE(sphere->setVector("basePoint", Vec3(5.0, 0.0, 0.5)));
+    part.featureTree().addFeature(std::move(sphere));
+    auto slab = cut(0, -2, 7, 2, 1.0);
+    slab->restoreFeatureID("extrude_1");
+    // The wall at x = 0, the one inside the part, is named for its line, the sketch's fourth (its
+    // id is the process's: e4 when this test ran alone on master).
+    const std::string wall =
+        "extrude_1/side:e" + std::to_string(slab->sketch()->entities()[3]->id());
+    part.featureTree().addFeature(std::move(slab));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    EXPECT_FALSE(part.exactMesh());
+    EXPECT_TRUE(part.exactNote().empty()) << "none, by design: " << part.exactNote();
+
+    ASSERT_NE(part.solid(), nullptr);
+    EXPECT_EQ(part.solid()->faceCount(), 486u);
+    EXPECT_EQ(part.solid()->edges().size(), 996u);
+    EXPECT_EQ(part.solid()->shellCount(), 3u);
+    const double masters = 11.877898820156553;
+    EXPECT_NEAR(volumeOf(*part.solid()), masters, masters * 1e-12);
+    std::set<std::string> expected{"imported_1/face:1",         "imported_1/face:2",
+                                   "extrude_1/cap_bottom",      "extrude_1/cap_top/piece:0",
+                                   "extrude_1/cap_top/piece:1", wall};
+    for (int k = 0; k < 32; ++k) expected.insert("imported_1/face:0/facet:" + std::to_string(k));
+    for (int k = 0; k < 512; ++k) {
+        if (k < 224 || k >= 288) expected.insert("primitive_1/band/facet:" + std::to_string(k));
+    }
+    EXPECT_EQ(faceNames(*part.solid()), expected);
+}
+
+// Decision 1b: a primitive whose exact build fails fails, saying why; it is never built by
+// master's faceted construction in its place. A torus with no tube has no exact form.
+TEST(ExactConstruction, AFailedExactBuildFailsTheFeature) {
+    const auto torus = PrimitiveFeature::makeTorus(5.0, 0.0);
+    std::string why;
+    const hz::doc::FeatureOutput out = torus->executeWithExact({}, nullptr, &why);
+    EXPECT_EQ(out.faceted, nullptr);
+    EXPECT_EQ(out.exact, nullptr);
+    EXPECT_EQ(why.rfind("could not be built exactly: ", 0), 0u) << why;
+    why.clear();
+    EXPECT_EQ(torus->execute(nullptr, &why), nullptr);
+    EXPECT_EQ(why.rfind("could not be built exactly: ", 0), 0u) << why;
+
+    Document part;
+    buildAlone(part, PrimitiveFeature::makeTorus(5.0, 0.0));
+    EXPECT_FALSE(part.rebuildModel());
+    EXPECT_EQ(part.failedFeatureIndex(), 0);
+    EXPECT_EQ(
+        part.lastBuildMessage().rfind("Feature 'Torus' failed: could not be built exactly: ", 0),
+        0u)
+        << part.lastBuildMessage();
+    EXPECT_EQ(part.solid(), nullptr);
+    EXPECT_EQ(part.exactSolid(), nullptr);
+}
+
+// A primitive named by position (a part saved before persistent naming) builds as master did:
+// its factory's faces, `cylinder/side<i>`, and no exact part.
+TEST(ExactConstruction, APositionalPrimitiveBuildsAsMasterDid) {
+    auto cylinder = PrimitiveFeature::makeCylinder(5.0, 10.0);
+    cylinder->setNaming(hz::model::NamingScheme::Positional);
+    const auto masters = mastersBody(*cylinder);
+    ASSERT_NE(masters, nullptr);
+    Document part;
+    buildAlone(part, std::move(cylinder));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    EXPECT_TRUE(part.exactNote().empty()) << part.exactNote();
+    ASSERT_NE(part.solid(), nullptr);
+    std::set<std::string> expected{"cylinder/top", "cylinder/bottom"};
+    for (int i = 0; i < 32; ++i) expected.insert("cylinder/side" + std::to_string(i));
+    EXPECT_EQ(faceNames(*part.solid()), expected);
+    EXPECT_EQ(faceNames(*part.solid()), faceNames(*masters));
+    EXPECT_DOUBLE_EQ(volumeOf(*part.solid()), volumeOf(*masters));
+}
+
+// Each primitive, stood anywhere, is exact, and its faceted copy is master's body vertex for
+// vertex, with master's counts: built in the frame master's placement moves it to, its seam
+// along that frame's x where master's ring starts, and cut at master's counts (a sphere's rows
+// and a torus's tube at half its segments).
+TEST(ExactConstruction, EachPrimitiveStandsWhereMastersStood) {
+    struct Case {
+        const char* what;
+        std::unique_ptr<PrimitiveFeature> feature;
+        double volume;
+    };
+    std::vector<Case> cases;
+    cases.push_back({"a box", PrimitiveFeature::makeBox(2.0, 3.0, 4.0), 24.0});
+    cases.push_back({"a cylinder", PrimitiveFeature::makeCylinder(2.0, 5.0), kPi * 4.0 * 5.0});
+    cases.push_back({"a sphere", PrimitiveFeature::makeSphere(3.0), 4.0 / 3.0 * kPi * 27.0});
+    cases.push_back({"a frustum", PrimitiveFeature::makeCone(3.0, 1.0, 4.0),
+                     kPi * 4.0 / 3.0 * (9.0 + 3.0 + 1.0)});
+    cases.push_back({"a cone", PrimitiveFeature::makeCone(0.0, 2.0, 3.0), kPi * 4.0 * 3.0 / 3.0});
+    cases.push_back(
+        {"a torus", PrimitiveFeature::makeTorus(5.0, 1.5), 2.0 * kPi * kPi * 5.0 * 2.25});
+    for (Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        ASSERT_TRUE(c.feature->setVector("basePoint", Vec3(1.0, -2.0, 3.0)));
+        ASSERT_TRUE(c.feature->setVector("axisDirection", Vec3(0.3, 1.0, 0.6)));
+        if (c.feature->isFaceted()) {
+            ASSERT_TRUE(c.feature->setParameter("segments", 24));
+        }
+        const auto masters = mastersBody(*c.feature);
+        ASSERT_NE(masters, nullptr);
+        // Named as master's Stable primitive named it: its faces' logical names are the exact
+        // faces'.
+        hz::model::scopeToFeature(*masters, c.feature->featureID());
+        hz::model::nameFacetsLogically(*masters);
+        Document part;
+        buildAlone(part, std::move(c.feature));
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+        EXPECT_NEAR(volumeOf(*part.exactSolid()), c.volume, c.volume * 1e-9);
+        const hz::topo::Solid& faceted = *part.solid();
+        EXPECT_EQ(faceted.faceCount(), masters->faceCount());
+        EXPECT_EQ(faceted.edges().size(), masters->edges().size());
+        EXPECT_EQ(faceted.vertices().size(), masters->vertices().size());
+        for (const auto& v : faceted.vertices()) {
+            double nearest = 1e300;
+            for (const auto& w : masters->vertices()) {
+                nearest = std::min(nearest, (v.point - w.point).length());
+            }
+            EXPECT_LT(nearest, 1e-12 * 10.0) << v.point.x << " " << v.point.y << " " << v.point.z;
+        }
+        EXPECT_NEAR(volumeOf(faceted), volumeOf(*masters), 1e-12 * c.volume);
+        EXPECT_EQ(faceNames(*part.exactSolid()), logicalFaces(*masters));
+        expectNamedAsItsFacets(*part.exactSolid(), faceted);
+    }
+}
+
+// A torus whose tube meets or crosses its axis, which master's factory refused, is the exact
+// primitive's "apple" (the tube's circle on the frame's x side of the axis, turned about it): a
+// spindle (ring 5, tube 6) is exact, its volume the closed form's, 2 pi (pi r^2 R - M), M the
+// moment about the axis of the tube's piece across it. A horn (tube as wide as its ring) comes to
+// a cusp at its pole, which the read point does not mesh yet (Ruling 9): built, and shown from its
+// facets, saying why.
+TEST(ExactConstruction, ATorusWhoseTubeMeetsItsAxisIsAnApple) {
+    const double R = 5.0;
+    const double r = 6.0;
+    Document spindle;
+    buildAlone(spindle, PrimitiveFeature::makeTorus(R, r));
+    ASSERT_TRUE(spindle.rebuildModel()) << spindle.lastBuildMessage();
+    ASSERT_NE(spindle.exactSolid(), nullptr) << spindle.exactNote();
+    // The piece of the tube's disc across the axis, u = x - R from -r to -R: its moment about the
+    // axis, the integral of (u + R) 2 sqrt(r^2 - u^2).
+    const double s = std::sqrt(r * r - R * R);
+    const double across = 2.0 * (-s * s * s / 3.0 - R * R * s / 2.0 +
+                                 R * r * r / 2.0 * std::asin(-R / r) + R * r * r * kPi / 4.0);
+    const double volume = 2.0 * kPi * (kPi * r * r * R - across);
+    EXPECT_NEAR(volumeOf(*spindle.exactSolid()), volume, volume * 1e-9);
+
+    Document horn;
+    buildAlone(horn, PrimitiveFeature::makeTorus(R, R));
+    ASSERT_TRUE(horn.rebuildModel()) << horn.lastBuildMessage();
+    ASSERT_NE(horn.solid(), nullptr);
+    EXPECT_EQ(horn.exactSolid(), nullptr);
+    EXPECT_NE(horn.exactNote().find("cusp"), std::string::npos) << horn.exactNote();
+}

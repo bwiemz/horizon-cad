@@ -12,6 +12,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/IdCounter.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Extrude.h"
@@ -897,8 +898,21 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
+    /// Its body in facets: under Stable naming, its exact body's bridge copy (executeWithExact);
+    /// under the older schemes, master's faceted primitive.
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
+    /// Under Stable naming, built exactly (stage 3): the exact primitive (model::exact) in the
+    /// frame it stands in, its faces named for this feature (`<featureID>/side`), its edges
+    /// after them (model::nameEdgesLogically), and its bridge copy cut at facetResolution(),
+    /// master's counts, its edges named by model::nameBridgeEdges. Under the older schemes,
+    /// master's faceted primitive and no exact body.
+    FeatureOutput executeWithExact(const BuildContext& context,
+                                   std::unique_ptr<topo::Solid> inputSolid,
+                                   std::string* reason = nullptr) const override;
+    /// {segments(), 0}, and for a sphere its rows from pole to pole, for a torus its count round
+    /// its tube, at half the segments as master's PrimitiveFactory cut them (at least 2 and 3).
+    model::FacetResolution facetResolution() const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     /// Where it stands (Phase 134): its base point, and the way its own z
@@ -918,11 +932,14 @@ public:
     double p1() const { return m_p1; }  ///< Box:height Cyl:height Cone:topR Torus:minR
     double p2() const { return m_p2; }  ///< Box:depth Cone:height
 
-    /// Facets around the axis, the "segments" parameter.  Curved primitives
-    /// are tessellated at construction, so this is the accuracy knob: their
-    /// volumes converge to the analytic value from below as it rises.  A box
-    /// has no such knob and does not report the parameter.  With a chord
-    /// tolerance set, this is the count derived from it for the widest radius.
+    /// Facets around the axis, the "segments" parameter. Under Stable naming
+    /// the primitive is exact (stage 3), and this shapes only its faceted copy,
+    /// which the operations not yet converted read (facetResolution()); under
+    /// the older schemes it is tessellated at construction, and this is the
+    /// accuracy knob: their volumes converge to the analytic value from below
+    /// as it rises. A box has no such knob and does not report the parameter.
+    /// With a chord tolerance set, this is the count derived from it for the
+    /// widest radius.
     int segments() const;
     /// Chord-sag budget, the "chordTolerance" parameter.  When positive, the
     /// facet count is derived from it and the governing radius on every
@@ -936,6 +953,13 @@ public:
 
 private:
     PrimitiveFeature() = default;
+
+    /// Master's faceted primitive, named as its scheme names it (the Positional and FromGeometry
+    /// schemes build it still).
+    std::unique_ptr<topo::Solid> facetedAsMaster(std::string* reason) const;
+    /// The turn and move that stand it where it goes: its z axis turned onto the axis direction
+    /// (the shortest turn, half round for -Z), then moved to the base point.
+    math::Mat4 placement() const;
 
     Kind m_kind = Kind::Box;
     math::Vec3 m_basePoint{0.0, 0.0, 0.0};
@@ -1052,27 +1076,30 @@ struct BuildResult {
     /// feature (null if nothing before it made a solid), so the user sees
     /// what they had, not an empty viewport.
     std::unique_ptr<topo::Solid> solid;
-    /// The part's exact counterpart (stage 2), beside `solid`, its faceted
-    /// copy, which every feature, Boolean and reader of ideal labels works
-    /// on: while every feature that has made the part is an imported body
-    /// made a new body (ImportedBodyFeature::exactBody), those bodies as
-    /// read, exact, gathered as `solid` gathers their facets, named as its
-    /// facets' logical faces and edges are, and meshed once for the display.
-    /// Shared: a later build reuses it while the imports it was made from are
-    /// as they were (BuildOptions::previous). Null when the part has none by
-    /// design (no import, or any other feature or a Boolean after one) or the
-    /// build did not make one (BuildOptions::exactCounterpart). One that
-    /// could not be had (an import not exact, a face that could not be meshed
-    /// or measured, a volume other than its facets') holds no solid and says
-    /// why. Document::exactSolid(), exactMesh() and exactNote() read it.
+    /// The part's exact counterpart (stage 2), the part built exactly (stage
+    /// 3), beside `solid`, its faceted copy, which every feature, Boolean and
+    /// reader of ideal labels not yet converted works on: while every feature
+    /// that has made the part made a new body (or the first) and built it
+    /// exactly (FeatureOutput::exact: an imported body as read,
+    /// ImportedBodyFeature::exactBody; a Stable primitive), those exact bodies
+    /// gathered as `solid` gathers their facets, named as its facets' logical
+    /// faces and edges are, and meshed once for the display. Shared: a later
+    /// build reuses it while the exact part it was made from is as it was
+    /// (BuildOptions::previous). Null when the part has none by design (a
+    /// feature not built exactly, or any other feature or a Boolean after
+    /// one) or the build did not make one (BuildOptions::exactCounterpart).
+    /// One that could not be had (an import not exact, a face that could not
+    /// be meshed or measured, a volume other than its facets') holds no solid
+    /// and says why. Document::exactSolid(), exactMesh() and exactNote() read
+    /// it.
     std::shared_ptr<const ExactCounterpart> exact;
     int lastSuccessfulFeature = -1;
     std::string failureMessage;
     int failedFeatureIndex = -1;
     bool cancelled = false;  ///< stopped by BuildControl::cancel; no solid
     /// Built without the exact counterpart it would have had (BuildOptions::
-    /// exactCounterpart false, the part made of imports alone): a part to be
-    /// built again before it is shown.
+    /// exactCounterpart false, the part made of bodies built exactly alone): a
+    /// part to be built again before it is shown.
     bool withoutExact = false;
     /// Where each sketch that follows a face was placed (Phase 157), by id:
     /// what a build of a copy (on a worker) gives the document it copied.
@@ -1100,8 +1127,8 @@ struct BuildOptions {
     /// leaves it out, and does not pay for its mesh.
     bool exactCounterpart = true;
     /// A counterpart an earlier build made, reused where it was made from the
-    /// imports the part has now: a rebuild of an import-only part for any
-    /// other reason meshes nothing again.
+    /// exact part the part has now: a rebuild for any other reason meshes
+    /// nothing again.
     std::shared_ptr<const ExactCounterpart> previous;
 };
 

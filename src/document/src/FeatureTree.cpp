@@ -17,6 +17,7 @@
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/geometry/Frame.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
@@ -26,6 +27,7 @@
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
 #include "horizon/modeling/EdgeProjection.h"
+#include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/Faceting.h"
@@ -1160,9 +1162,10 @@ std::map<std::string, double> PrimitiveFeature::parameters() const {
             params = {{"majorRadius", m_p0}, {"minorRadius", m_p1}};
             break;
     }
-    // A box is exact; the curved kinds are tessellated at construction, so the
-    // facet count is a real parameter of the shape rather than a display
-    // setting.  Only they report it.
+    // A box has no curved face; the curved kinds are cut into facets (their
+    // faceted copy, stage 3; their shape under the older schemes), so the
+    // facet count is a real parameter rather than a display setting. Only
+    // they report it.
     if (isFaceted()) {
         params["segments"] = static_cast<double>(segments());
         params["chordTolerance"] = m_chordTolerance;
@@ -1219,8 +1222,27 @@ int PrimitiveFeature::segments() const {
     return model::PrimitiveFactory::segmentsForTolerance(radius, m_chordTolerance);
 }
 
-std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
-                                                       std::string* reason) const {
+model::FacetResolution PrimitiveFeature::facetResolution() const {
+    model::FacetResolution resolution;
+    resolution.segmentsPerTurn = segments();  // a chord tolerance's count already
+    if (m_kind == Kind::Sphere) resolution.minorSegments = std::max(2, segments() / 2);
+    if (m_kind == Kind::Torus) resolution.minorSegments = std::max(3, segments() / 2);
+    return resolution;
+}
+
+math::Mat4 PrimitiveFeature::placement() const {
+    const math::Vec3 z(0.0, 0.0, 1.0);
+    const math::Vec3 to = m_axisDirection.normalized();
+    const math::Vec3 turnAxis = z.cross(to);
+    const double angle = std::atan2(turnAxis.length(), z.dot(to));
+    const math::Quaternion turn =
+        turnAxis.length() > 1e-12
+            ? math::Quaternion::fromAxisAngle(turnAxis.normalized(), angle)
+            : math::Quaternion::fromAxisAngle(math::Vec3(1.0, 0.0, 0.0), angle);
+    return math::Mat4::translation(m_basePoint) * math::Mat4::rotation(turn);
+}
+
+std::unique_ptr<topo::Solid> PrimitiveFeature::facetedAsMaster(std::string* reason) const {
     const int n = segments();
     std::unique_ptr<topo::Solid> solid;
     switch (m_kind) {
@@ -1254,18 +1276,66 @@ std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Sol
         model::nameEdgesLogically(*solid);
     }
     if (!isPlaced()) return solid;
-    // Stood where it goes: its z axis turned onto the axis direction (the
-    // shortest turn, half round for -Z), then moved to the base point.
-    const math::Vec3 z(0.0, 0.0, 1.0);
-    const math::Vec3 to = m_axisDirection.normalized();
-    const math::Vec3 turnAxis = z.cross(to);
-    const double angle = std::atan2(turnAxis.length(), z.dot(to));
-    const math::Quaternion turn =
-        turnAxis.length() > 1e-12
-            ? math::Quaternion::fromAxisAngle(turnAxis.normalized(), angle)
-            : math::Quaternion::fromAxisAngle(math::Vec3(1.0, 0.0, 0.0), angle);
-    return model::Pattern::transformed(
-        *solid, math::Mat4::translation(m_basePoint) * math::Mat4::rotation(turn));
+    return model::Pattern::transformed(*solid, placement());
+}
+
+std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                       std::string* reason) const {
+    return executeWithExact(BuildContext{}, std::move(inputSolid), reason).faceted;
+}
+
+FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/,
+                                                 std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                 std::string* reason) const {
+    FeatureOutput out;
+    if (naming() != model::NamingScheme::Stable) {
+        out.faceted = facetedAsMaster(reason);
+        return out;
+    }
+    // Built in the frame master's placement moves its primitive to: the seam along that frame's
+    // x, where master's ring starts, so the bridge's vertices are master's.
+    const geo::Frame frame = isPlaced() ? geo::Frame{}.transformed(placement()) : geo::Frame{};
+    std::unique_ptr<topo::Solid> exact;
+    std::string why =
+        "these dimensions do not make a solid: they must be positive (a cone may have one zero "
+        "radius)";
+    try {
+        switch (m_kind) {
+            case Kind::Box:
+                exact = model::exact::makeBox(frame, m_p0, m_p1, m_p2);
+                break;
+            case Kind::Cylinder:
+                exact = model::exact::makeCylinder(frame, m_p0, m_p1);
+                break;
+            case Kind::Sphere:
+                exact = model::exact::makeSphere(frame, m_p0);
+                break;
+            case Kind::Cone:
+                exact = model::exact::makeCone(frame, m_p0, m_p1, m_p2);
+                break;
+            case Kind::Torus:
+                exact = model::exact::makeTorus(frame, m_p0, m_p1);
+                break;
+        }
+    } catch (const std::exception& e) {
+        why = e.what();
+    }
+    if (!exact) {
+        if (reason) *reason = "could not be built exactly: " + why;
+        return out;
+    }
+    // This feature's names (`<featureID>/side`), its edges after the faces they part.
+    model::scopeToFeature(*exact, featureID());
+    model::nameEdgesLogically(*exact);
+    auto bridge = model::facetExact(*exact, facetResolution());
+    if (!bridge.solid) {
+        if (reason) *reason = "its exact form could not be cut into facets: " + bridge.error;
+        return out;
+    }
+    model::nameBridgeEdges(*bridge.solid, *exact);
+    out.faceted = std::move(bridge.solid);
+    out.exact = std::move(exact);
+    return out;
 }
 
 bool PrimitiveFeature::isPlaced() const {

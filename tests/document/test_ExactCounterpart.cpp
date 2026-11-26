@@ -732,10 +732,14 @@ TEST(ExactCounterpart, ABuildThatAsksForNoneMakesNone) {
     EXPECT_EQ(part.exactCounterpart(), nullptr);
     EXPECT_TRUE(part.needsBuild()) << "to be built with it before it is shown";
 
-    // A part with no import has no counterpart to leave out: built so, it is built.
+    // A part made of primitives is exact (stage 3): built so, it is left to be built with it, as
+    // an import is. One with no counterpart to leave out (a box cut) is built.
     Document box;
     box.setType(DocumentType::Part);
     box.featureTree().addFeature(hz::doc::PrimitiveFeature::makeBox(1.0, 2.0, 3.0));
+    ASSERT_TRUE(box.rebuildModel(none)) << box.lastBuildMessage();
+    EXPECT_TRUE(box.needsBuild()) << "to be built with its exact part before it is shown";
+    box.featureTree().addFeature(cut(0.25, 0.25, 0.75, 0.75, 1.0));
     ASSERT_TRUE(box.rebuildModel(none)) << box.lastBuildMessage();
     EXPECT_FALSE(box.needsBuild());
 }

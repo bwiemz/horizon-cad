@@ -24,6 +24,8 @@ double volumeOf(const Document& doc) {
 
 }  // namespace
 
+// Two boxes, each a feature; and since a part made of primitives is exact (stage 3), its exact
+// part, a step of its own after them (BuildControl).
 TEST(BuildControlTest, ABuildCountsItsFeatures) {
     Document doc;
     doc.featureTree().addFeature(PrimitiveFeature::makeBox(2, 3, 4));
@@ -32,8 +34,9 @@ TEST(BuildControlTest, ABuildCountsItsFeatures) {
     const auto result = doc.featureTree().buildWithDiagnostics(&control);
     EXPECT_FALSE(result.cancelled);
     EXPECT_NE(result.solid, nullptr);
-    EXPECT_EQ(control.total.load(), 2);
-    EXPECT_EQ(control.done.load(), 2);
+    EXPECT_NE(result.exact, nullptr);
+    EXPECT_EQ(control.total.load(), 3) << "two features and the exact part";
+    EXPECT_EQ(control.done.load(), 3);
 }
 
 TEST(BuildControlTest, ACancelledBuildStopsAndLeavesTheModelAsItWas) {

@@ -169,8 +169,9 @@ public:
     topo::Solid* solid() { return m_solid.get(); }
 
     /// The part's exact counterpart from the last build (BuildResult::exact):
-    /// its imported bodies as read, exact, beside solid(), their faceted copy,
-    /// while only imports have made the part. Null when it has none.
+    /// the part built exactly (its imported bodies as read, its primitives),
+    /// beside solid(), their faceted copy, while only bodies built exactly
+    /// have made the part. Null when it has none.
     const topo::Solid* exactSolid() const;
     /// Its mesh, made once by its build at its display tolerance
     /// (model::SolidTessellator::displayTolerance), as the display draws it:
@@ -189,13 +190,13 @@ public:
     /// tolerance (model::SolidTessellator::displayTolerance). Null without a
     /// solid.
     std::shared_ptr<const geo::MeshData> exactOrFacetedMesh() const;
-    /// Why the part has no exact counterpart where its imports would give it
+    /// Why the part has no exact counterpart where its bodies would give it
     /// one (ExactCounterpart::note); empty otherwise.
     const std::string& exactNote() const;
     /// The last counterpart a build made, shown or not (a feature after the
-    /// imports hides it, and its undo shows it again): what the next build of
-    /// this document, or of a copy of it, reuses while the imports it was made
-    /// from are the part's still (BuildOptions::previous).
+    /// bodies built exactly hides it, and its undo shows it again): what the
+    /// next build of this document, or of a copy of it, reuses while the exact
+    /// part it was made from is the part's still (BuildOptions::previous).
     const std::shared_ptr<const ExactCounterpart>& exactCounterpart() const { return m_exactKept; }
     /// Forget the exact counterpart, shown and kept: for a document read in
     /// place of what it held, whose imports' names may be the old ones'.
