@@ -385,9 +385,16 @@ void ExactFollower::follow(const Feature& feature, bool first,
             m_part.reset();
             m_note.clear();
             m_noteKept = false;
+            m_would = false;
             return;
         }
         if (!m_open || !m_note.empty()) return;
+        if (!m_keep) {
+            // A body it would have had (an import's is not copied to tell whether it is exact,
+            // as a build keeping none never shows a note).
+            m_would = true;
+            return;
+        }
         if (exactTool == nullptr) {
             // An import whose body has no exact form: the part has none, and says why. Made
             // from what it says, it is kept for reuse as one made from a body.

@@ -44,6 +44,15 @@ struct ExactCounterpart {
 /// which no Boolean combines, and built it exactly: FeatureOutput::exact).
 class ExactFollower {
 public:
+    /// @p keep: whether the build keeps the part's exact solid (BuildOptions::exactCounterpart).
+    /// A follower that does not keeps no body, and says only whether the part would have one
+    /// (following()).
+    explicit ExactFollower(bool keep = true) : m_keep(keep) {}
+
+    /// Whether the build keeps an exact body a feature makes a new body of now
+    /// (BuildContext::keepExact): it keeps the part's exact solid, and the part is still exact.
+    bool accepting() const { return m_keep && m_open && m_note.empty(); }
+
     /// Follow @p feature, just applied to the part; @p first when there was no part before it;
     /// @p exactTool the exact body it built (FeatureOutput::exact), null where it built none. Each
     /// is joined to the part's exact solid (Pattern::append) as the part collects its facets. Any
@@ -53,8 +62,9 @@ public:
     void follow(const Feature& feature, bool first,
                 std::unique_ptr<topo::Solid> exactTool) noexcept;
 
-    /// Whether the part so far has an exact solid, and so a counterpart, or a note why not.
-    bool following() const { return m_part != nullptr || !m_note.empty(); }
+    /// Whether the part so far has an exact solid, and so a counterpart, or a note why not; for a
+    /// follower that keeps none, whether it would have.
+    bool following() const { return m_part != nullptr || !m_note.empty() || m_would; }
 
     /// The counterpart of the part followed, @p faceted its faceted copy: @p previous when it was
     /// made from the same exact part (madeFrom), so that nothing is meshed again; otherwise made
@@ -74,6 +84,8 @@ private:
     std::string m_note;       ///< why the part has none: an import not exact, or no memory for it
     bool m_noteKept = false;  ///< the note is an import's, and its counterpart kept for reuse
     bool m_open = true;       ///< false once the part is no longer bodies built exactly
+    bool m_keep = true;       ///< whether the part's exact solid is kept (else only m_would)
+    bool m_would = false;     ///< kept nothing, but the part so far would have one
 };
 
 }  // namespace hz::doc

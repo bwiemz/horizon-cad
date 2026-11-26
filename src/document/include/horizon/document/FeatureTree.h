@@ -66,6 +66,11 @@ class Feature;
 struct BuildContext {
     const topo::Solid* part = nullptr;
     std::vector<const Feature*> before;
+    /// Whether the build keeps the exact body this feature builds (stage 3): it wants the part's
+    /// exact counterpart, the part is exact so far, and the feature makes a new body of it (or
+    /// the first). An import copies its body as read for it only then (Ruling 20). A converted
+    /// feature builds its exact body whatever this says: its faceted copy is cut from it.
+    bool keepExact = false;
 };
 
 /// What a feature builds (stage 3): its body in facets, as every operation not yet converted
@@ -990,7 +995,8 @@ public:
     /// (the faceted copy; Phase 141).
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
-    /// execute()'s faceted copy, and exactBody() (null where its body is not exact).
+    /// execute()'s faceted copy, and, where the build keeps it (BuildContext::keepExact),
+    /// exactBody() (null where its body is not exact).
     FeatureOutput executeWithExact(const BuildContext& context,
                                    std::unique_ptr<topo::Solid> inputSolid,
                                    std::string* reason = nullptr) const override;

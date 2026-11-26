@@ -227,6 +227,29 @@ private:
     mutable int m_reads = 0;
 };
 
+/// An import that counts the copies of its body as read its builds made for the exact part
+/// (FeatureOutput::exact).
+class Counting : public ImportedBodyFeature {
+public:
+    explicit Counting(std::unique_ptr<hz::topo::Solid> body)
+        : ImportedBodyFeature(std::shared_ptr<const hz::topo::Solid>(std::move(body)),
+                              "part.step") {}
+
+    hz::doc::FeatureOutput executeWithExact(const hz::doc::BuildContext& context,
+                                            std::unique_ptr<hz::topo::Solid> input,
+                                            std::string* reason) const override {
+        hz::doc::FeatureOutput out =
+            ImportedBodyFeature::executeWithExact(context, std::move(input), reason);
+        if (out.exact) ++m_copies;
+        return out;
+    }
+
+    int copies() const { return m_copies; }
+
+private:
+    mutable int m_copies = 0;
+};
+
 }  // namespace
 
 // An imported cylinder's part has its exact counterpart: three whole faces on their surfaces,
@@ -821,4 +844,50 @@ TEST(ExactCounterpart, ALargePartIsMeshedToItsSizeASmallOneToATenth) {
         EXPECT_EQ(part.exactMesh()->indices,
                   hz::model::SolidTessellator::tessellate(*part.exactSolid(), c.tolerance).indices);
     }
+}
+
+// Ruling 20: an import's body as read is copied for the exact part only where the build keeps it.
+// A build that wants no counterpart (an assembly's component, facetedOnly()) copies none, and is
+// left to be built with it; nor does FeatureTree::build(). One that wants it copies each import
+// once, and has it. Once the part is no longer exact (a cut), an import after it is not copied,
+// nor is one a Boolean joins to the part.
+TEST(ExactCounterpart, AnImportsBodyIsCopiedOnlyWhenTheBuildKeepsIt) {
+    Document part;
+    part.setType(DocumentType::Part);
+    auto first = std::make_unique<Counting>(read(hz::step_text::externalStyleCylinder()));
+    const Counting* cylinder = first.get();
+    part.featureTree().addFeature(std::move(first));
+
+    hz::doc::BuildOptions none;
+    none.exactCounterpart = false;
+    ASSERT_TRUE(part.rebuildModel(none)) << part.lastBuildMessage();
+    EXPECT_EQ(cylinder->copies(), 0) << "no counterpart wanted, no copy";
+    EXPECT_TRUE(part.needsBuild()) << "to be built with it before it is shown";
+    ASSERT_NE(part.featureTree().build(), nullptr);
+    EXPECT_EQ(cylinder->copies(), 0) << "FeatureTree::build() makes no counterpart";
+
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(cylinder->copies(), 1);
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    EXPECT_EQ(part.exactSolid()->faceCount(), 3u);
+    EXPECT_FALSE(part.needsBuild());
+
+    part.featureTree().addFeature(cut(0, -2, 2, 2, 1.0));
+    auto later = std::make_unique<Counting>(read(hz::step_text::cClip(Vec3(10, 0, 0))));
+    const Counting* clip = later.get();
+    part.featureTree().addFeature(std::move(later));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    EXPECT_EQ(cylinder->copies(), 2) << "the part was exact until the cut";
+    EXPECT_EQ(clip->copies(), 0) << "after the cut";
+
+    Document joined;
+    importInto(joined, read(hz::step_text::externalStyleCylinder()));
+    auto again = std::make_unique<Counting>(read(hz::step_text::cClip()));
+    again->setOperation(BodyOperation::Join);
+    const Counting* join = again.get();
+    joined.featureTree().addFeature(std::move(again));
+    ASSERT_TRUE(joined.rebuildModel()) << joined.lastBuildMessage();
+    EXPECT_EQ(joined.exactSolid(), nullptr);
+    EXPECT_EQ(join->copies(), 0) << "joined by a Boolean";
 }

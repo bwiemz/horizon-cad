@@ -1529,7 +1529,8 @@ FeatureOutput ImportedBodyFeature::executeWithExact(const BuildContext& context,
                                                     std::string* reason) const {
     FeatureOutput out;
     out.faceted = executeIn(context, std::move(inputSolid), reason);
-    if (out.faceted) out.exact = exactBody();
+    // A copy of a body as read may be large: made only for a build that keeps it.
+    if (out.faceted && context.keepExact) out.exact = exactBody();
     return out;
 }
 
@@ -1911,15 +1912,18 @@ bool prepareSketches(const Feature& feature, const topo::Solid* part, Placed& pl
 ///
 /// The exact body a creating feature built (Feature::executeWithExact) goes
 /// to @p exactTool when given, once the feature has applied: what the build's
-/// ExactFollower joins to the part's exact solid.
+/// ExactFollower joins to the part's exact solid. @p keepExact says whether
+/// the build keeps it (BuildContext::keepExact).
 std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_ptr<topo::Solid> part,
                                           std::string* reason,
                                           const std::vector<const Feature*>& before, Placed& placed,
-                                          std::unique_ptr<topo::Solid>* exactTool = nullptr) {
+                                          std::unique_ptr<topo::Solid>* exactTool = nullptr,
+                                          bool keepExact = false) {
     try {
         if (!prepareSketches(feature, part.get(), placed, reason)) return nullptr;
         BuildContext context;
         context.before = before;
+        context.keepExact = exactTool != nullptr && keepExact;
         if (!feature.createsNewBody()) {
             return executeContained(feature, std::move(part), reason, context);
         }
@@ -2520,7 +2524,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
     if (control) control->total = limit;
 
     std::unique_ptr<topo::Solid> solid;
-    ExactFollower exact;
+    ExactFollower exact(options.exactCounterpart);
     std::vector<const Feature*> before;
     Placed placed;
     // Where each sketch was placed, and the edges projected into it as they
@@ -2569,9 +2573,12 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
         const Feature& feature = *m_features[static_cast<size_t>(i)];
         std::string reason = feature.expressionError();  // Phase 155
         const bool first = solid == nullptr;
+        // Its exact body kept only where it joins an exact part as a body of it (Ruling 20).
+        const bool keep = exact.accepting() && feature.createsNewBody() &&
+                          (first || feature.operation() == BodyOperation::NewBody);
         std::unique_ptr<topo::Solid> exactTool;
         auto next = reason.empty() ? applyFeature(feature, std::move(solid), &reason, before,
-                                                  placed, &exactTool)
+                                                  placed, &exactTool, keep)
                                    : nullptr;
         if (!next) {
             result.failedFeatureIndex = i;
