@@ -504,6 +504,65 @@ TEST(Migration, AStableFeaturesFaceIsKeptThroughAnOldJoin) {
     EXPECT_TRUE(laterOpened.report.skipped.empty()) << joined(laterOpened.report.skipped);
 }
 
+// A face to go up to refers to something only while the extent goes up to a face: one kept beside
+// another extent (a file keeps it, and a change of extent leaves it) is not judged, says nothing,
+// and stays as it was (the review of Task 11, finding 2). One in use is judged as any reference.
+TEST(Migration, AFaceToGoUpToIsJudgedOnlyWhileItIsGoneUpTo) {
+    Document doc;
+    doc.setType(DocumentType::Part);
+    auto base = square(10.0);
+    doc.addSketch(base);
+    auto old = std::make_unique<ExtrudeFeature>(base, Vec3(0, 0, 1), 5.0);
+    old->setNaming(NamingScheme::Positional);
+    const std::string top = old->featureID() + "/cap_top";
+    const std::string bottom = old->featureID() + "/cap_bottom";
+    doc.featureTree().addFeature(std::move(old));
+
+    auto blindSketch = square(2.0);
+    doc.addSketch(blindSketch);
+    auto blind = std::make_unique<ExtrudeFeature>(blindSketch, Vec3(0, 0, 1), 2.0);
+    blind->setUpToFace(top);  // to the distance: its face to go up to is kept, unused
+    doc.featureTree().addFeature(std::move(blind));
+    auto box = PrimitiveFeature::makeBox(4, 4, 4);
+    const std::string boxTop = box->featureID() + "/top";
+    doc.featureTree().addFeature(std::move(box));
+    auto blindHole = HoleFeature::make(boxTop, Vec3(2, 2, 4), 1.0, 2.0);
+    blindHole->setReference("upToFace", bottom);  // blind: kept, unused
+    doc.featureTree().addFeature(std::move(blindHole));
+
+    auto upToSketch = square(2.0);
+    doc.addSketch(upToSketch);
+    auto upTo = std::make_unique<ExtrudeFeature>(upToSketch, Vec3(0, 0, 1), 2.0);
+    upTo->setExtent(ExtrudeFeature::Extent::UpToFace);
+    upTo->setUpToFace(top);
+    doc.featureTree().addFeature(std::move(upTo));
+    auto upToHole = HoleFeature::make(boxTop, Vec3(1, 1, 4), 1.0, 2.0);
+    ASSERT_TRUE(upToHole->setParameter("extent", 2));  // up to a face
+    upToHole->setReference("upToFace", bottom);
+    doc.featureTree().addFeature(std::move(upToHole));
+
+    Opened opened = openText(asFormat(doc, 31));
+    const std::vector<std::string> expected = {
+        notCarried("feature 5 (Extrude)", top, "the face it goes up to", "named the old way"),
+        notCarried("feature 6 (Hole)", bottom, "the face it goes up to", "named the old way")};
+    EXPECT_EQ(opened.report.skipped, expected) << joined(opened.report.skipped);
+    const FeatureTree& tree = opened.doc->featureTree();
+    const auto* keptExtrude = dynamic_cast<const ExtrudeFeature*>(tree.feature(1));
+    ASSERT_NE(keptExtrude, nullptr);
+    EXPECT_EQ(keptExtrude->upToFace(), top) << "as it was";
+    const auto* keptHole = dynamic_cast<const HoleFeature*>(tree.feature(3));
+    ASSERT_NE(keptHole, nullptr);
+    EXPECT_EQ(keptHole->face(), boxTop);
+    EXPECT_EQ(keptHole->upToFace(), bottom) << "as it was";
+    const auto* droppedExtrude = dynamic_cast<const ExtrudeFeature*>(tree.feature(4));
+    ASSERT_NE(droppedExtrude, nullptr);
+    EXPECT_TRUE(droppedExtrude->upToFace().empty());
+    const auto* droppedHole = dynamic_cast<const HoleFeature*>(tree.feature(5));
+    ASSERT_NE(droppedHole, nullptr);
+    EXPECT_TRUE(droppedHole->upToFace().empty());
+    EXPECT_EQ(droppedHole->face(), boxTop);
+}
+
 // Each converted feature drawn with fewer than 12 chords a turn is said to be round now, in words
 // for what it is; one drawn finer, a box and a polygon say nothing.
 TEST(Migration, ACoarseFeatureIsSaidToBeRoundNow) {

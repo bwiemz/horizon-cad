@@ -206,11 +206,14 @@ bool ExtrudeFeature::setReference(const std::string& name, const std::string& va
 }
 
 std::vector<StoredReference> ExtrudeFeature::storedReferences() const {
+    // Its face to go up to while it goes up to one: kept otherwise (a file keeps it, and a change
+    // of extent leaves it), it refers to nothing.
+    if (m_extent != Extent::UpToFace) return {};
     return {{StoredReference::Kind::Face, m_upToFace, "the face it goes up to"}};
 }
 
 void ExtrudeFeature::setStoredReference(std::size_t index, std::string name) {
-    if (index == 0) m_upToFace = std::move(name);
+    if (index == 0 && m_extent == Extent::UpToFace) m_upToFace = std::move(name);
 }
 
 std::map<std::string, math::Vec3> ExtrudeFeature::vectors() const {
@@ -2409,14 +2412,19 @@ bool HoleFeature::setReference(const std::string& name, const std::string& value
 }
 
 std::vector<StoredReference> HoleFeature::storedReferences() const {
-    return {{StoredReference::Kind::Face, m_face, "the face it is drilled into"},
-            {StoredReference::Kind::Face, m_upToFace, "the face it goes up to"}};
+    std::vector<StoredReference> references = {
+        {StoredReference::Kind::Face, m_face, "the face it is drilled into"}};
+    // Its face to go up to while it goes up to one, as an extrusion's.
+    if (m_extent == Extent::UpToFace) {
+        references.push_back({StoredReference::Kind::Face, m_upToFace, "the face it goes up to"});
+    }
+    return references;
 }
 
 void HoleFeature::setStoredReference(std::size_t index, std::string name) {
     if (index == 0) {
         m_face = std::move(name);
-    } else if (index == 1) {
+    } else if (index == 1 && m_extent == Extent::UpToFace) {
         m_upToFace = std::move(name);
     }
 }

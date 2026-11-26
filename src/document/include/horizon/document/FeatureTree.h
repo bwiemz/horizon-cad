@@ -238,11 +238,13 @@ public:
         (void)value;
         return false;
     }
-    /// Every face and edge of the part it keeps by name (format 32's migration), in a fixed
-    /// order: an extrusion's face to go up to; a hole's face and its face to go up to; a mirror's
-    /// face; a shell's removed faces; a fillet's or a chamfer's edges. One for each place it can
-    /// keep one (an empty name: none kept there), and one for each of a list's. Its sketches'
-    /// (the face one is on, the edges projected into one) are theirs, not its.
+    /// Every face and edge of the part it refers to by name (format 32's migration), in a fixed
+    /// order: an extrusion's face to go up to; a hole's face, and its face to go up to; a
+    /// mirror's face; a shell's removed faces; a fillet's or a chamfer's edges. One for each place
+    /// it can keep one (an empty name: none kept there), and one for each of a list's. A face to
+    /// go up to is one only while the extent goes up to a face: kept beside another extent, it
+    /// refers to nothing. Its sketches' (the face one is on, the edges projected into one) are
+    /// theirs, not its.
     virtual std::vector<StoredReference> storedReferences() const { return {}; }
     /// Keep @p name in place of storedReferences()[@p index]; an empty one drops it: a place
     /// keeps none, and a list is one shorter, so that the indices after it move down (drop from
