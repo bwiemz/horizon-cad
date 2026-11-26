@@ -179,18 +179,28 @@ public:
     static double sheetScale(const DrawingDocumentSpec& spec, const topo::Solid& faceted,
                              const model::TitleBlock& room);
 
+    /// The step of the tolerance a sheet whose views are at most @p scale is cut at (Ruling 34):
+    /// its quarter octaves above 1:1, rounded up, 4 log2(@p scale), so that the tolerance,
+    /// kChordOnPaper halved every four steps, is no coarser than kChordOnPaper / @p scale, and
+    /// every scale of one step is cut alike. A scale a sheet cannot be drawn at is 1:1, step 0.
+    static int toleranceStep(double scale);
+
     /// What a sheet whose views are at most @p scale draws a part from, where it has an exact
     /// part @p exact (Document::exactSolid; stage 3): its exact faces cut into facets, 32 a turn
     /// and so finely that no chord sags more than kChordOnPaper on paper (model::facetExact at
-    /// kChordOnPaper / @p scale mm; an import's faces as its own bridge cuts them, Ruling 17).
+    /// kChordOnPaper / 2^(k / 4) mm, k its toleranceStep; an import's faces as its own bridge
+    /// cuts them, Ruling 17, its rims into at most 400 chords, Ruling 32, so that an imported rim
+    /// over about 325 mm in radius sags a little more than 0.01 mm on paper at 1:1).
     /// Its edges are named so that dimensions, callouts, tolerances and datums find theirs by
     /// model::logicalEdge as on the faceted part: a curve's chords logically
     /// (model::nameEdgesLogically), a chord of an exact edge inside one face (a seam) as that
-    /// edge. Every other line inside a face is `<face>/line:<n>` (Ruling 31), a name of this copy
-    /// alone: the lines, and so their names, depend on the sheet's scale, and the faceted part's
-    /// lines (`<face>/seam:<n>`) are none of them, so a dimension on one of those is lost, and
-    /// said to be, never measured on a line elsewhere. A part with no exact part is drawn from its
-    /// faceted solid (Document::solid), as before. Null, with why, where it cannot be cut.
+    /// edge. Every other line inside a face is `<face>/line:<n>/at:<k>` (Rulings 31 and 34), a
+    /// name of this copy alone: the lines depend on the tolerance, and so their names carry its
+    /// step k. A dimension placed on one resolves on a copy cut at that step, and on no other: at
+    /// another scale it is lost, and said to be, never measured on a line elsewhere; and the
+    /// faceted part's lines (`<face>/seam:<n>`) are none of them. A part with no exact part is
+    /// drawn from its faceted solid (Document::solid), as before. Null, with why, where it cannot
+    /// be cut.
     static std::unique_ptr<topo::Solid> cutForSheet(const topo::Solid& exact, double scale,
                                                     std::string* error = nullptr);
 

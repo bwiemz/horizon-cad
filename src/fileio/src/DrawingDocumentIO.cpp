@@ -152,10 +152,11 @@ bool usableScale(double s) {
 /// cutForSheet; Ruling 31): logically (model::nameEdgesLogically), so that a curve's chords
 /// share its logical name, as the faceted part's do; a chord of an exact edge inside one face (a
 /// cylinder's seam) keeps the name model::facetExact gave it, its exact edge's; and every other
-/// line inside a face is `<face>/line:<n>`, in storage order, a name the faceted part's lines
-/// (`<face>/seam:<n>`) never have. A dimension or callout on one of those is then lost, and said
-/// to be, rather than bound to a line somewhere else.
-void nameForSheet(topo::Solid& copy, const topo::Solid& exact) {
+/// line inside a face is `<face>/line:<n>/at:<step>`, in storage order, @p step the copy's
+/// tolerance step (Ruling 34), a name the faceted part's lines (`<face>/seam:<n>`) and a copy at
+/// another step never have. A dimension or callout on one of those is then lost, and said to be,
+/// rather than bound to a line somewhere else.
+void nameForSheet(topo::Solid& copy, const topo::Solid& exact, int step) {
     std::unordered_set<std::string> exactNames;
     for (const topo::Edge& e : exact.edges()) {
         if (e.topoId.isValid()) exactNames.insert(e.topoId.tag());
@@ -180,8 +181,10 @@ void nameForSheet(topo::Solid& copy, const topo::Solid& exact) {
         const bool onExact = !was.empty() && (exactNames.count(was) != 0 ||
                                               (was.find("/chord:") != std::string::npos &&
                                                exactNames.count(model::logicalEdge(was)) != 0));
-        e.topoId = topo::TopologyID::fromTag(
-            onExact ? was : face + "/line:" + std::to_string(next[face]++));
+        e.topoId =
+            topo::TopologyID::fromTag(onExact ? was
+                                              : face + "/line:" + std::to_string(next[face]++) +
+                                                    "/at:" + std::to_string(step));
     }
 }
 
@@ -735,11 +738,18 @@ double DrawingDocumentIO::sheetScale(const DrawingDocumentSpec& spec, const topo
     return chosen;
 }
 
+int DrawingDocumentIO::toleranceStep(double scale) {
+    if (!usableScale(scale)) return 0;
+    // A scale on a step (1:1, 2:1, 1:2) is on it, whatever log2's last bit says.
+    return static_cast<int>(std::ceil(4.0 * std::log2(scale) - 1e-9));
+}
+
 std::unique_ptr<topo::Solid> DrawingDocumentIO::cutForSheet(const topo::Solid& exact, double scale,
                                                             std::string* error) {
+    const int step = toleranceStep(scale);
     model::FacetResolution resolution;
     resolution.segmentsPerTurn = 32;
-    resolution.chordTolerance = kChordOnPaper / (usableScale(scale) ? scale : 1.0);
+    resolution.chordTolerance = kChordOnPaper * std::exp2(-static_cast<double>(step) / 4.0);
     model::FacetedSolid cut;
     try {
         cut = model::facetExact(exact, resolution);
@@ -751,7 +761,7 @@ std::unique_ptr<topo::Solid> DrawingDocumentIO::cutForSheet(const topo::Solid& e
         if (error != nullptr) *error = "its exact part could not be cut into facets: " + cut.error;
         return nullptr;
     }
-    nameForSheet(*cut.solid, exact);
+    nameForSheet(*cut.solid, exact, step);
     return std::move(cut.solid);
 }
 

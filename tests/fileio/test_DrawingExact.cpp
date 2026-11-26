@@ -34,6 +34,7 @@
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/math/Units.h"
 #include "horizon/modeling/DrawingView.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
 using hz::doc::Document;
@@ -435,4 +436,52 @@ TEST(DrawingExact, ASectionIsCutFromTheExactFaces) {
     const auto [inside, off] = sag(drawing.views[4]);
     EXPECT_LE(inside, kOnPaper);
     EXPECT_LE(off, kOnPaper);
+}
+
+// Ruling 34: an outline line of a sheet's copy is named for the tolerance the copy was cut at,
+// `<face>/line:<n>/at:<k>` (k = 4 log2 of the scale, rounded up). A dimension placed on one, the
+// cylinder's outline at -x, measuring its height, is measured again when the sheet is saved and
+// opened at the same scale; at 2:1 the copy is cut finer, has no line of that name, and the
+// dimension is lost and said to be, not measured on whichever line took that number.
+TEST(DrawingExact, ADimensionOnAnOutlineHoldsAtItsScaleAndIsLostAtAnother) {
+    const TempFolder folder("outline");
+    Document part;
+    part.featureTree().addFeature(cylinder());
+    savePart(folder.file("cylinder.hzpart"), part);
+    EXPECT_EQ(DrawingDocumentIO::toleranceStep(1.0), 0);
+    EXPECT_EQ(DrawingDocumentIO::toleranceStep(2.0), 4);
+    EXPECT_EQ(DrawingDocumentIO::toleranceStep(0.5), -4);
+    EXPECT_EQ(DrawingDocumentIO::toleranceStep(5.0), 10);
+
+    const Drawing atOne = loadSheet(folder, folder.file("cylinder.hzpart"), standardSheet(1.0));
+    const DrawingView& front = viewOf(atOne, StandardView::Front);
+    std::string outline;
+    for (const ProjectedEdge& e : front.edges) {
+        if (e.kind == ProjectedEdge::Kind::Silhouette && e.a.x < -49.0)
+            outline = e.sourceEdge.tag();
+    }
+    ASSERT_EQ(outline.rfind("primitive_1/side/line:", 0), 0u) << outline;
+    ASSERT_EQ(outline.substr(outline.size() - 5), "/at:0") << outline;
+    EXPECT_EQ(hz::model::logicalEdge(outline), outline) << "its step is no chord's number";
+
+    DrawingDocumentSpec spec;
+    spec.views = DrawingDocumentIO::viewsOf(atOne);
+    ASSERT_EQ(spec.views[0].kind, StandardView::Front);
+    spec.views[0].dimensions.push_back({outline, hz::io::DrawingDimensionSpec::Kind::Length});
+    const Drawing again = loadSheet(folder, folder.file("cylinder.hzpart"), spec);
+    ASSERT_EQ(again.views[0].dimensions.size(), 1u) << "saved and opened at 1:1";
+    EXPECT_NEAR(again.views[0].dimensions[0].value, 40.0, 1e-9);
+
+    for (DrawingViewSpec& v : spec.views) v.scale = 2.0;
+    EXPECT_TRUE(
+        loadSheet(folder, folder.file("cylinder.hzpart"), spec).views[0].dimensions.empty());
+    const auto finer = DrawingDocumentIO::cutForSheet(*part.exactSolid(), 2.0);
+    ASSERT_NE(finer, nullptr);
+    for (const auto& e : finer->edges()) {
+        EXPECT_NE(hz::model::logicalEdge(e.topoId.tag()), outline);
+    }
+    std::vector<std::string> lost;
+    const Drawing atTwo = DrawingDocumentIO::build(*finer, spec, &lost);
+    EXPECT_TRUE(atTwo.views[0].dimensions.empty());
+    EXPECT_EQ(lost, std::vector<std::string>{"view 1: a length"});
 }
