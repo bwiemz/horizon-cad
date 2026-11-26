@@ -564,11 +564,6 @@ void AssemblyWorkbench::showPlacements(const doc::AssemblyDocument& asmDoc) {
     view.update();
 }
 
-AssemblyWorkbench::StepExport AssemblyWorkbench::stepExport() {
-    if (!assembly()) return {};
-    return io::gatherAssemblyStep(*assembly(), m_host.documents());
-}
-
 void AssemblyWorkbench::onCheckInterference() {
     if (!assembly()) {
         m_host.showStatus(tr("Check Interference is only available in an assembly document"));

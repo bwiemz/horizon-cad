@@ -781,7 +781,10 @@ TEST(AssembliesTest, TheTreeKeepsNoChoiceFromAnotherAssembly) {
 }
 
 // An assembly goes out as a STEP assembly (Phase 153): each part once, and
-// each component a use of it, by its name, where it is placed.
+// each component a use of it, by its name, where it is placed. (Re-baselined
+// for Task 10: its parts are built for the export with their exact
+// counterparts, in copies of their own, and in Auto on a worker: the file is
+// written once they are.)
 TEST(AssembliesTest, AnAssemblyExportsAsAStepAssembly) {
     QTemporaryDir dir;
     const QString block = dir.filePath(QStringLiteral("block.hzpart"));
@@ -801,6 +804,8 @@ TEST(AssembliesTest, AnAssemblyExportsAsAStepAssembly) {
         FilePicker picker(step);
         trigger(w, "export_step");
     }
+    EXPECT_TRUE(w.backgroundWorkRunning()) << "its parts built for it on a worker";
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 30000));
     EXPECT_FALSE(told.seen()) << "everything written as designed: nothing to say";
     const auto read = hz::io::StepFormat::loadAssembly(step.toStdString());
     ASSERT_EQ(read.parts.size(), 2u) << hz::io::StepFormat::lastError();
@@ -1207,12 +1212,13 @@ TEST(AssembliesTest, AnAssemblyIsPlacedAsAComponent) {
     EXPECT_EQ(shown[QStringLiteral("Parts only")], QStringList({QStringLiteral("1 block x3")}));
 
     // STEP: its parts placed with the rest, in one level, their transforms
-    // composed with its.
+    // composed with its (once built for it, on a worker in Auto: Task 10).
     const QString step = dir.filePath(QStringLiteral("rig.step"));
     {
         FilePicker picker(step);
         trigger(w, "export_step");
     }
+    ASSERT_TRUE(waitUntil([&] { return !w.backgroundWorkRunning(); }, 30000));
     const auto read = hz::io::StepFormat::loadAssembly(step.toStdString());
     ASSERT_EQ(read.parts.size(), 1u) << hz::io::StepFormat::lastError();
     ASSERT_EQ(read.occurrences.size(), 3u) << "the block, and the pair's two";
@@ -1462,12 +1468,16 @@ TEST(AssembliesTest, AMirroredComponentIsItsPartMirrored) {
     ASSERT_EQ(bom.lines.size(), 2u);
     EXPECT_EQ(bom.lines[1].partName, "block (mirrored)");
 
+    // Its parts built for the export here, where the rebuild mode keeps work
+    // off workers (Task 10): written at once.
+    w.setRebuildMode(MainWindow::RebuildMode::Never);
     const QString step = dir.filePath(QStringLiteral("pair.step"));
     DialogResponder told(QMessageBox::Ok, QStringLiteral("Export STEP"), 1000);
     {
         FilePicker picker(step);
         trigger(w, "export_step");
     }
+    EXPECT_FALSE(w.backgroundWorkRunning());
     const auto read = hz::io::StepFormat::loadAssembly(step.toStdString());
     ASSERT_EQ(read.parts.size(), 2u) << hz::io::StepFormat::lastError();
     EXPECT_EQ(read.parts[1].name, "block (mirrored)");

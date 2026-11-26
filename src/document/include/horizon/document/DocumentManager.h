@@ -137,18 +137,13 @@ public:
                           const std::string& assemblyDir = {}, std::string* why = nullptr,
                           const std::vector<std::string>& within = {});
 
-    /// Resolve @p instance for an export of its assembly, which writes each
-    /// part as the part's own export does (Document::exactOrFacetedSolid):
-    /// Resolved, as resolveComponent resolves it where it has no solid yet,
-    /// and its part, and each part a subassembly of it places, then built
-    /// with its exact counterpart (BuildOptions{}) where it was built without
-    /// it, for its components alone, or not since its features changed. Only
-    /// an export asks for this: a component drawn, mated or checked for
-    /// interference is resolved by resolveComponent, which builds a part no
-    /// tab shows without the counterpart, as that is cheaper. The counterpart
-    /// built here stays with its part, as a tab's does. True when it is
-    /// resolved.
-    bool resolveForExport(ComponentInstance& instance, const std::string& assemblyDir = {});
+    /// Read the part at @p path into @p into, a document of the caller's own:
+    /// not registered, not kept, not built, and nothing a component holds
+    /// changed. For an export of an assembly, which builds a copy of each part
+    /// with its exact counterpart apart from the part the assembly draws,
+    /// mates and checks (Ruling 20). False when it cannot be read (or no part
+    /// loader is set).
+    bool readPart(const std::string& path, Document& into) const;
 
     /// Whether every file the assembly at @p path places, at any depth,
     /// passes @p allowed (given each one's path as resolveComponent would

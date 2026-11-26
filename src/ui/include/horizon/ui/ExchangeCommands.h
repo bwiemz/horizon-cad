@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/fileio/AssemblyStepExport.h"
 #include "horizon/fileio/DxfFormat.h"
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/StepAssemblyFiles.h"
@@ -75,8 +76,11 @@ public:
     /// write the mesh its build kept (for tests).
     std::uint64_t tessellations() const { return m_tessellations; }
 
-    /// A STEP import, or a drawing's, is running on a worker.
-    bool busy() const { return m_importTask != nullptr || m_drawingTask != nullptr; }
+    /// A STEP import, or a drawing's, or the building of an assembly's parts
+    /// for its STEP export, is running on a worker.
+    bool busy() const {
+        return m_importTask != nullptr || m_drawingTask != nullptr || m_stepExportTask != nullptr;
+    }
     /// Stop it; what it wrote goes too.
     void cancelWork();
 
@@ -155,8 +159,15 @@ private:
     /// typed. Empty when its user cancels, or will not have the file the
     /// document was read from replaced.
     QString askExportPath(const QString& format, const QString& filter, const QString& suffix);
-    /// The active assembly written as a STEP assembly (Phase 153).
+    /// The active assembly written as a STEP assembly (Phase 153), asked for
+    /// where first: its parts built for it here, or on a worker
+    /// (io::prepareAssemblyStep, finishAssemblyStep).
     void exportAssemblyStep();
+    void onStepExportFinished();
+    /// @p gathered written to @p fileName as the assembly @p title, and what
+    /// could not be written as asked said.
+    void writeAssemblyStep(const QString& fileName, const QString& title,
+                           const io::AssemblyStepExport& gathered);
     /// What a STEP export could not write as asked: the curved faces kept in
     /// facets, and the components left out (@p unread, whose parts could
     /// not be read, and those in @p report).
@@ -174,6 +185,10 @@ private:
     QString m_drawingVerb;                         ///< its undo step's name
     std::weak_ptr<doc::Document> m_drawingTarget;  ///< what it goes into
     std::uint64_t m_tessellations = 0;             ///< tessellations()
+    /// An assembly's parts built for its STEP export, and where it goes.
+    std::unique_ptr<BackgroundTask<io::AssemblyStepExport>> m_stepExportTask;
+    QString m_stepExportFile;
+    QString m_stepExportTitle;
 };
 
 }  // namespace hz::ui

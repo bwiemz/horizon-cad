@@ -945,7 +945,7 @@ Details are in the log:
         <translation type="unfinished">已取消拖动：所有零部件保持原位</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+16"/>
         <source>Check Interference is only available in an assembly document</source>
         <translation type="unfinished">干涉检查仅在装配体文档中可用</translation>
     </message>
@@ -2739,7 +2739,7 @@ Details are in the log:
 <context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+129"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">未给出长度单位</translation>
     </message>
@@ -2794,11 +2794,12 @@ Details are in the log:
         <location line="-142"/>
         <location line="+15"/>
         <location line="+136"/>
+        <location line="+153"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-150"/>
+        <location line="-303"/>
         <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">已取消导入</translation>
@@ -2894,34 +2895,35 @@ Details are in the log:
     <message>
         <location line="+8"/>
         <location line="+5"/>
-        <location line="+240"/>
+        <location line="+303"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">导出 %1</translation>
     </message>
     <message>
-        <location line="-283"/>
+        <location line="-346"/>
         <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
         <translation type="unfinished">Horizon CAD 不写入 DWG 文件：请使用以 %1 结尾的文件名。</translation>
     </message>
     <message>
         <location line="+16"/>
         <location line="+3"/>
-        <location line="+22"/>
+        <location line="+26"/>
         <source>STEP</source>
         <translation type="unfinished">STEP</translation>
     </message>
     <message>
-        <location line="-22"/>
-        <location line="+22"/>
+        <location line="-26"/>
+        <location line="+26"/>
         <source>STEP Files (*.step *.stp)</source>
         <translation type="unfinished">STEP 文件 (*.step *.stp)</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+28"/>
-        <location line="+52"/>
+        <location line="-22"/>
+        <location line="+63"/>
         <location line="+18"/>
+        <location line="+56"/>
+        <location line="+24"/>
         <location line="+17"/>
         <location line="+34"/>
         <location line="+134"/>
@@ -2929,38 +2931,54 @@ Details are in the log:
         <translation type="unfinished">无法导出</translation>
     </message>
     <message>
-        <location line="-279"/>
-        <location line="+28"/>
-        <location line="+51"/>
-        <location line="+18"/>
+        <location line="-342"/>
+        <location line="+81"/>
+        <location line="+55"/>
+        <location line="+24"/>
         <location line="+17"/>
         <location line="+168"/>
         <source>Exported %1.</source>
         <translation type="unfinished">已导出 %1。</translation>
     </message>
     <message>
-        <location line="-273"/>
+        <location line="-336"/>
+        <location line="+61"/>
         <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
         <translation type="unfinished">STEP 导出会写入装配体的零部件；此装配体的零件均无法读取</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="-56"/>
+        <source>A STEP export is already being written</source>
+        <translation type="unfinished">STEP 导出已在写入中</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Assembly</source>
         <translation type="unfinished">装配体</translation>
     </message>
     <message>
         <location line="+22"/>
+        <source>Building the parts to export...</source>
+        <translation type="unfinished">正在构建要导出的零件...</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>STEP export cancelled: nothing was written</source>
+        <translation type="unfinished">STEP 导出已取消：未写入任何内容</translation>
+    </message>
+    <message>
+        <location line="+38"/>
         <source>Left out: &quot;%1&quot;: its part could not be read</source>
         <translation type="unfinished">已忽略：&quot;%1&quot;：无法读取其零件</translation>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+117"/>
+        <location line="+127"/>
         <source>Left out: %1</source>
         <translation type="unfinished">已忽略：%1</translation>
     </message>
     <message numerus="yes">
-        <location line="-109"/>
+        <location line="-119"/>
         <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
         <translation type="unfinished">
             <numerusform>%n 个曲面以小平面形式写入，而非写在其曲面上。</numerusform>
@@ -2995,7 +3013,7 @@ Details are in the log:
         <translation type="unfinished">STL 文件 (*.stl)</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+15"/>
         <location line="+3"/>
         <source>glTF</source>
         <translation type="unfinished">glTF</translation>
@@ -3006,7 +3024,7 @@ Details are in the log:
         <translation type="unfinished">glTF 二进制 (*.glb)</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+22"/>
         <source>DXF export writes a drawing; this document has nothing drawn</source>
         <translation type="unfinished">DXF 导出会写入工程图；此文档没有绘制任何内容</translation>
     </message>
@@ -4965,7 +4983,7 @@ begin building your part.</source>
         <translation type="unfinished">展开图</translation>
     </message>
     <message>
-        <location line="+495"/>
+        <location line="+499"/>
         <source>Shown from facets</source>
         <translation type="unfinished">按小平面显示</translation>
     </message>
@@ -5090,7 +5108,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 未估计其误差：只测量了一次，未细分。</translation>
     </message>
     <message>
-        <location line="-2765"/>
+        <location line="-2769"/>
         <source>Radial</source>
         <translation type="unfinished">径向</translation>
     </message>
@@ -5321,7 +5339,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+97"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1095"/>
+        <location line="+1099"/>
         <location line="+502"/>
         <location line="+1021"/>
         <location line="+600"/>
@@ -5330,7 +5348,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-3309"/>
+        <location line="-3313"/>
         <source>Cancel</source>
         <translation type="unfinished">取消</translation>
     </message>
@@ -5351,17 +5369,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2949"/>
+        <location line="+2953"/>
         <source>None</source>
         <translation type="unfinished">无</translation>
     </message>
     <message>
-        <location line="-2943"/>
+        <location line="-2947"/>
         <source>%1 selected</source>
         <translation>已选择 %1 个</translation>
     </message>
     <message>
-        <location line="+409"/>
+        <location line="+413"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (已恢复)</translation>
     </message>
@@ -6283,12 +6301,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">理想值</translation>
     </message>
     <message>
-        <location line="-3661"/>
+        <location line="-3665"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">无法计算。</translation>
     </message>
     <message>
-        <location line="+3682"/>
+        <location line="+3686"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">已在测量质量属性</translation>
     </message>
@@ -6464,7 +6482,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">已取消重建：模型保持上次更改之前的状态。</translation>
     </message>
     <message>
-        <location line="-3325"/>
+        <location line="-3329"/>
         <source>0 selected</source>
         <translation>已选择 0 个</translation>
     </message>
@@ -7738,7 +7756,7 @@ view and edit its properties.</source>
 <context>
     <name>hz::ui::ViewportWidget</name>
     <message>
-        <location filename="../src/ui/src/ViewportWidget.cpp" line="+41"/>
+        <location filename="../src/ui/src/ViewportWidget.cpp" line="+50"/>
         <source>Viewport</source>
         <translation type="unfinished">视口</translation>
     </message>
@@ -7748,7 +7766,7 @@ view and edit its properties.</source>
         <translation type="unfinished">所显示的工程图或模型。可通过菜单、功能区和键盘快捷键进行操作。</translation>
     </message>
     <message>
-        <location line="+448"/>
+        <location line="+593"/>
         <source>The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.</source>
         <translation type="unfinished">图形驱动程序提供的是 OpenGL %1.%2；Horizon CAD 需要 3.3。</translation>
     </message>

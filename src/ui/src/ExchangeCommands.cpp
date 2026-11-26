@@ -68,6 +68,7 @@ ExchangeCommands::~ExchangeCommands() = default;
 void ExchangeCommands::cancelWork() {
     if (m_importTask) m_importTask->cancel();
     if (m_drawingTask) m_drawingTask->cancel();
+    if (m_stepExportTask) m_stepExportTask->cancel();
 }
 
 std::optional<ExchangeCommands::Progress> ExchangeCommands::progress() const {
@@ -458,22 +459,75 @@ void ExchangeCommands::onExportStep() {
 }
 
 void ExchangeCommands::exportAssemblyStep() {
-    // Each part once, and each component a use of it where it is placed.
-    const AssemblyWorkbench::StepExport gathered = m_assemblies.stepExport();
-    if (gathered.occurrences.empty()) {
+    const std::shared_ptr<doc::AssemblyDocument> assembly = m_host.currentAssembly();
+    const auto placed = [](const doc::ComponentInstance& comp) { return !comp.suppressed; };
+    if (std::none_of(assembly->components().begin(), assembly->components().end(), placed)) {
         m_host.showStatus(
             tr("STEP export writes an assembly's components; none of this one's parts can be "
                "read"));
+        return;
+    }
+    if (m_stepExportTask) {
+        m_host.showStatus(tr("A STEP export is already being written"));
         return;
     }
     const QString fileName =
         askExportPath(tr("STEP"), tr("STEP Files (*.step *.stp)"), QStringLiteral(".step"));
     if (fileName.isEmpty()) return;
     const QString title =
-        m_host.currentAssembly()->filePath().empty()
+        assembly->filePath().empty()
             ? tr("Assembly")
-            : QFileInfo(QString::fromStdString(m_host.currentAssembly()->filePath()))
-                  .completeBaseName();
+            : QFileInfo(QString::fromStdString(assembly->filePath())).completeBaseName();
+    // Each part once, and each component a use of it where it is placed: each part built for the
+    // export with its exact counterpart, in a copy of its own, never the part the assembly draws
+    // and mates (Ruling 20). Those builds go to a worker where the rebuild mode sends work there:
+    // in Auto, whenever there is one, its time not known, as an opened part's is not.
+    io::AssemblyStepJob job = io::prepareAssemblyStep(*assembly, m_host.documents());
+    if (!m_host.onWorker(job.builds() > 0)) {
+        writeAssemblyStep(fileName, title, io::finishAssemblyStep(std::move(job)));
+        return;
+    }
+    auto prepared = std::make_shared<io::AssemblyStepJob>(std::move(job));
+    m_stepExportTask = std::make_unique<BackgroundTask<io::AssemblyStepExport>>(
+        [prepared](const std::atomic<bool>& cancelled) {
+            return io::finishAssemblyStep(std::move(*prepared), &cancelled);
+        });
+    m_stepExportFile = fileName;
+    m_stepExportTitle = title;
+    m_stepExportTask->start([this] {
+        QMetaObject::invokeMethod(this, &ExchangeCommands::onStepExportFinished,
+                                  Qt::QueuedConnection);
+    });
+    m_host.setPrompt(tr("Building the parts to export..."));
+    m_host.backgroundWorkChanged();
+}
+
+void ExchangeCommands::onStepExportFinished() {
+    if (!m_stepExportTask || !m_stepExportTask->finished()) return;
+    const std::unique_ptr<BackgroundTask<io::AssemblyStepExport>> task =
+        std::move(m_stepExportTask);
+    m_host.backgroundWorkChanged();
+    m_host.setPrompt(tr("Ready"));
+    if (task->cancelled()) {
+        m_host.showStatus(tr("STEP export cancelled: nothing was written"), 10000);
+        return;
+    }
+    if (!task->error().empty()) {
+        m_host.reportFileError(tr("Could not export"), m_stepExportFile.toStdString(),
+                               task->error());
+        return;
+    }
+    writeAssemblyStep(m_stepExportFile, m_stepExportTitle, task->take());
+}
+
+void ExchangeCommands::writeAssemblyStep(const QString& fileName, const QString& title,
+                                         const io::AssemblyStepExport& gathered) {
+    if (gathered.occurrences.empty()) {
+        m_host.showStatus(
+            tr("STEP export writes an assembly's components; none of this one's parts can be "
+               "read"));
+        return;
+    }
     io::StepFormat::WriteReport report;
     if (!io::StepFormat::saveAssembly(fileName.toStdString(), title.toStdString(), gathered.parts,
                                       gathered.occurrences, {}, &report)) {

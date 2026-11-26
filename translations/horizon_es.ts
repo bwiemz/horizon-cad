@@ -951,7 +951,7 @@ Los detalles están en el registro:
         <translation type="unfinished">Arrastre cancelado: todo está donde estaba</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+16"/>
         <source>Check Interference is only available in an assembly document</source>
         <translation type="unfinished">Comprobar interferencias solo está disponible en un documento de ensamblaje</translation>
     </message>
@@ -2752,7 +2752,7 @@ Los detalles están en el registro:
 <context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+129"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">Unidad de longitud no indicada</translation>
     </message>
@@ -2807,11 +2807,12 @@ Los detalles están en el registro:
         <location line="-142"/>
         <location line="+15"/>
         <location line="+136"/>
+        <location line="+153"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-150"/>
+        <location line="-303"/>
         <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">Importación cancelada</translation>
@@ -2911,34 +2912,35 @@ Los detalles están en el registro:
     <message>
         <location line="+8"/>
         <location line="+5"/>
-        <location line="+240"/>
+        <location line="+303"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">Exportar %1</translation>
     </message>
     <message>
-        <location line="-283"/>
+        <location line="-346"/>
         <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
         <translation type="unfinished">Horizon CAD no escribe archivos DWG: dé al archivo un nombre que termine en %1.</translation>
     </message>
     <message>
         <location line="+16"/>
         <location line="+3"/>
-        <location line="+22"/>
+        <location line="+26"/>
         <source>STEP</source>
         <translation type="unfinished">STEP</translation>
     </message>
     <message>
-        <location line="-22"/>
-        <location line="+22"/>
+        <location line="-26"/>
+        <location line="+26"/>
         <source>STEP Files (*.step *.stp)</source>
         <translation type="unfinished">Archivos STEP (*.step *.stp)</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+28"/>
-        <location line="+52"/>
+        <location line="-22"/>
+        <location line="+63"/>
         <location line="+18"/>
+        <location line="+56"/>
+        <location line="+24"/>
         <location line="+17"/>
         <location line="+34"/>
         <location line="+134"/>
@@ -2946,38 +2948,54 @@ Los detalles están en el registro:
         <translation type="unfinished">No se pudo exportar</translation>
     </message>
     <message>
-        <location line="-279"/>
-        <location line="+28"/>
-        <location line="+51"/>
-        <location line="+18"/>
+        <location line="-342"/>
+        <location line="+81"/>
+        <location line="+55"/>
+        <location line="+24"/>
         <location line="+17"/>
         <location line="+168"/>
         <source>Exported %1.</source>
         <translation type="unfinished">Se exportó %1.</translation>
     </message>
     <message>
-        <location line="-273"/>
+        <location line="-336"/>
+        <location line="+61"/>
         <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
         <translation type="unfinished">La exportación STEP escribe los componentes de un ensamblaje; no se puede leer ninguna de las piezas de este</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="-56"/>
+        <source>A STEP export is already being written</source>
+        <translation type="unfinished">Ya se está escribiendo una exportación STEP</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Assembly</source>
         <translation type="unfinished">Ensamblaje</translation>
     </message>
     <message>
         <location line="+22"/>
+        <source>Building the parts to export...</source>
+        <translation type="unfinished">Construyendo las piezas para exportar...</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>STEP export cancelled: nothing was written</source>
+        <translation type="unfinished">Exportación STEP cancelada: no se escribió nada</translation>
+    </message>
+    <message>
+        <location line="+38"/>
         <source>Left out: &quot;%1&quot;: its part could not be read</source>
         <translation type="unfinished">Omitido: &quot;%1&quot;: no se pudo leer su pieza</translation>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+117"/>
+        <location line="+127"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Omitido: %1</translation>
     </message>
     <message numerus="yes">
-        <location line="-109"/>
+        <location line="-119"/>
         <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
         <translation type="unfinished">
             <numerusform>%n cara curva se escribió como sus facetas, no sobre su superficie.</numerusform>
@@ -3014,7 +3032,7 @@ Los detalles están en el registro:
         <translation type="unfinished">Archivos STL (*.stl)</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+15"/>
         <location line="+3"/>
         <source>glTF</source>
         <translation type="unfinished">glTF</translation>
@@ -3025,7 +3043,7 @@ Los detalles están en el registro:
         <translation type="unfinished">glTF binario (*.glb)</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+22"/>
         <source>DXF export writes a drawing; this document has nothing drawn</source>
         <translation type="unfinished">La exportación DXF escribe un dibujo; este documento no tiene nada dibujado</translation>
     </message>
@@ -4987,7 +5005,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Desarrollo plano</translation>
     </message>
     <message>
-        <location line="+495"/>
+        <location line="+499"/>
         <source>Shown from facets</source>
         <translation type="unfinished">Mostrado a partir de facetas</translation>
     </message>
@@ -5115,7 +5133,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
-        <location line="-2765"/>
+        <location line="-2769"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -5346,7 +5364,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <location line="+97"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1095"/>
+        <location line="+1099"/>
         <location line="+502"/>
         <location line="+1021"/>
         <location line="+600"/>
@@ -5355,7 +5373,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-3309"/>
+        <location line="-3313"/>
         <source>Cancel</source>
         <translation type="unfinished">Cancelar</translation>
     </message>
@@ -5376,17 +5394,17 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2949"/>
+        <location line="+2953"/>
         <source>None</source>
         <translation type="unfinished">Ninguno</translation>
     </message>
     <message>
-        <location line="-2943"/>
+        <location line="-2947"/>
         <source>%1 selected</source>
         <translation>%1 seleccionado(s)</translation>
     </message>
     <message>
-        <location line="+409"/>
+        <location line="+413"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (recuperado)</translation>
     </message>
@@ -6313,12 +6331,12 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">ideal</translation>
     </message>
     <message>
-        <location line="-3661"/>
+        <location line="-3665"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">No se pudo calcular.</translation>
     </message>
     <message>
-        <location line="+3682"/>
+        <location line="+3686"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">Ya se están midiendo las propiedades físicas</translation>
     </message>
@@ -6494,7 +6512,7 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">Reconstrucción cancelada: el modelo está como antes del último cambio.</translation>
     </message>
     <message>
-        <location line="-3325"/>
+        <location line="-3329"/>
         <source>0 selected</source>
         <translation>0 seleccionado</translation>
     </message>
@@ -7768,7 +7786,7 @@ ver y editar sus propiedades.</translation>
 <context>
     <name>hz::ui::ViewportWidget</name>
     <message>
-        <location filename="../src/ui/src/ViewportWidget.cpp" line="+41"/>
+        <location filename="../src/ui/src/ViewportWidget.cpp" line="+50"/>
         <source>Viewport</source>
         <translation type="unfinished">Ventana gráfica</translation>
     </message>
@@ -7778,7 +7796,7 @@ ver y editar sus propiedades.</translation>
         <translation type="unfinished">El dibujo o el modelo, tal como se muestra. Trabaje en él desde los menús, la cinta de opciones y los métodos abreviados de teclado.</translation>
     </message>
     <message>
-        <location line="+448"/>
+        <location line="+593"/>
         <source>The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.</source>
         <translation type="unfinished">El controlador gráfico ofrece OpenGL %1.%2; Horizon CAD necesita 3.3.</translation>
     </message>

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
@@ -68,20 +69,24 @@ double volumeOf(const std::vector<std::unique_ptr<hz::topo::Solid>>& solids) {
 }  // namespace
 
 // Two parts made of primitives, one of them resolved already for its mates, as a component no tab
-// shows is (built without its exact counterpart): both go out exact, the cylinder's side a
-// CYLINDRICAL_SURFACE and the cone's a CONICAL_SURFACE, no face in facets, and they read back to
-// their closed forms.
+// shows is (built without its exact counterpart), the other not read at all: both go out exact,
+// the cylinder's side a CYLINDRICAL_SURFACE and the cone's a CONICAL_SURFACE, no face in facets,
+// and they read back to their closed forms. Each was built exactly for the export alone, in a copy
+// of its own: the resolved part is as it was, built in facets alone (Ruling 20), and the other
+// component is not resolved.
 TEST(AssemblyStepExport, TwoPrimitivePartsExportExact) {
     hz::doc::DocumentManager manager;
     loadPrimitives(manager);
     hz::doc::AssemblyDocument assembly;
     const std::uint64_t cylinder = place(assembly, "cylinder.hzpart", {0, 0, 0});
-    place(assembly, "cone.hzpart", {20, 0, 0});
+    const std::uint64_t cone = place(assembly, "cone.hzpart", {20, 0, 0});
     ASSERT_TRUE(manager.resolveComponent(*assembly.component(cylinder), ComponentState::Resolved));
-    const auto& mated = assembly.component(cylinder)->resolvedPart;
+    const auto mated = assembly.component(cylinder)->resolvedPart;
     ASSERT_NE(mated, nullptr);
     ASSERT_NE(mated->solid(), nullptr);
     EXPECT_EQ(mated->exactSolid(), nullptr) << "built for its mates alone, in facets";
+    const auto builds = mated->builds();
+    const hz::topo::Solid* faceted = mated->solid();
 
     const hz::io::AssemblyStepExport gathered = hz::io::gatherAssemblyStep(assembly, manager);
     EXPECT_TRUE(gathered.unread.empty());
@@ -91,8 +96,11 @@ TEST(AssemblyStepExport, TwoPrimitivePartsExportExact) {
         ASSERT_EQ(part.bodies.size(), 1u) << part.name;
         EXPECT_TRUE(hz::topo::hasExactFaces(*part.bodies.front())) << part.name;
     }
-    EXPECT_EQ(gathered.parts.front().bodies.front(), mated->exactSolid())
-        << "the part's own exact counterpart, built for the export";
+    EXPECT_EQ(mated->builds(), builds) << "the part is not built again";
+    EXPECT_EQ(mated->solid(), faceted);
+    EXPECT_EQ(mated->exactSolid(), nullptr) << "nor given its counterpart";
+    EXPECT_TRUE(mated->needsBuild()) << "still built for its components alone";
+    EXPECT_EQ(assembly.component(cone)->resolvedPart, nullptr) << "nor is the other resolved";
 
     hz::io::StepFormat::WriteReport report;
     const std::string text = hz::io::StepFormat::assemblyToString(
@@ -133,4 +141,56 @@ TEST(AssemblyStepExport, AMirroredPrimitivePartExportsExact) {
     ASSERT_EQ(back.size(), 2u) << hz::io::StepFormat::lastError();
     const double cone = kPi * 6.0 * (16.0 + 4.0 + 1.0) / 3.0;
     EXPECT_NEAR(volumeOf(back), 2.0 * cone, 2e-9 * cone) << "the mirror faces out";
+}
+
+// A part a tab shows is built with its exact counterpart already: the export writes that very
+// counterpart, and builds nothing.
+TEST(AssemblyStepExport, APartATabShowsIsWrittenAsItsTabBuiltIt) {
+    hz::doc::DocumentManager manager;
+    loadPrimitives(manager);
+    const auto shown = manager.openPart("/parts/cylinder.hzpart");
+    ASSERT_NE(shown, nullptr);
+    ASSERT_TRUE(shown->rebuildModel()) << shown->lastBuildMessage();
+    ASSERT_NE(shown->exactSolid(), nullptr) << shown->exactNote();
+    const auto builds = shown->builds();
+    hz::doc::AssemblyDocument assembly;
+    place(assembly, "cylinder.hzpart", {0, 0, 0});
+
+    const hz::io::AssemblyStepExport gathered = hz::io::gatherAssemblyStep(assembly, manager);
+    ASSERT_EQ(gathered.parts.size(), 1u);
+    ASSERT_EQ(gathered.parts.front().bodies.size(), 1u);
+    EXPECT_EQ(gathered.parts.front().bodies.front(), shown->exactSolid()) << "the tab's own";
+    EXPECT_EQ(shown->builds(), builds);
+}
+
+// An export made ready on the window's thread (prepareAssemblyStep) is built and gathered on
+// another (finishAssemblyStep), while the window rebuilds the part: it reads only what is its own,
+// copies and counterparts, never the part.
+TEST(AssemblyStepExport, APreparedExportIsBuiltOnAWorkerWhileThePartChanges) {
+    hz::doc::DocumentManager manager;
+    loadPrimitives(manager);
+    hz::doc::AssemblyDocument assembly;
+    const std::uint64_t cylinder = place(assembly, "cylinder.hzpart", {0, 0, 0});
+    place(assembly, "cylinder.hzpart", {30, 0, 0}, /*mirrored=*/true);
+    ASSERT_TRUE(manager.resolveComponent(*assembly.component(cylinder), ComponentState::Resolved));
+    const auto part = assembly.component(cylinder)->resolvedPart;
+    ASSERT_NE(part, nullptr);
+
+    hz::io::AssemblyStepJob job = hz::io::prepareAssemblyStep(assembly, manager);
+    EXPECT_EQ(job.builds(), 1u) << "one copy of the one part, mirrored or not";
+    hz::io::AssemblyStepExport gathered;
+    std::thread worker(
+        [&job, &gathered] { gathered = hz::io::finishAssemblyStep(std::move(job)); });
+    for (int k = 0; k < 3; ++k) {
+        part->featureTree().markChanged();
+        part->rebuildModel(hz::doc::BuildOptions{});
+    }
+    worker.join();
+    ASSERT_EQ(gathered.parts.size(), 2u);
+    ASSERT_EQ(gathered.occurrences.size(), 2u);
+    for (const auto& written : gathered.parts) {
+        ASSERT_EQ(written.bodies.size(), 1u) << written.name;
+        EXPECT_TRUE(hz::topo::hasExactFaces(*written.bodies.front())) << written.name;
+        EXPECT_NE(written.bodies.front(), part->exactSolid()) << "its own copy's";
+    }
 }

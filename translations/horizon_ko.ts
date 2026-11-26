@@ -945,7 +945,7 @@ Details are in the log:
         <translation type="unfinished">끌기가 취소되었습니다: 모든 항목이 원래 위치에 있습니다</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+16"/>
         <source>Check Interference is only available in an assembly document</source>
         <translation type="unfinished">간섭 검사는 어셈블리 문서에서만 사용할 수 있습니다</translation>
     </message>
@@ -2739,7 +2739,7 @@ Details are in the log:
 <context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+129"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">길이 단위가 주어지지 않음</translation>
     </message>
@@ -2794,11 +2794,12 @@ Details are in the log:
         <location line="-142"/>
         <location line="+15"/>
         <location line="+136"/>
+        <location line="+153"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-150"/>
+        <location line="-303"/>
         <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">가져오기가 취소되었습니다</translation>
@@ -2894,34 +2895,35 @@ Details are in the log:
     <message>
         <location line="+8"/>
         <location line="+5"/>
-        <location line="+240"/>
+        <location line="+303"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">%1 내보내기</translation>
     </message>
     <message>
-        <location line="-283"/>
+        <location line="-346"/>
         <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
         <translation type="unfinished">Horizon CAD는 DWG 파일을 쓰지 않습니다. 파일 이름이 %1(으)로 끝나도록 하십시오.</translation>
     </message>
     <message>
         <location line="+16"/>
         <location line="+3"/>
-        <location line="+22"/>
+        <location line="+26"/>
         <source>STEP</source>
         <translation type="unfinished">STEP</translation>
     </message>
     <message>
-        <location line="-22"/>
-        <location line="+22"/>
+        <location line="-26"/>
+        <location line="+26"/>
         <source>STEP Files (*.step *.stp)</source>
         <translation type="unfinished">STEP 파일 (*.step *.stp)</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+28"/>
-        <location line="+52"/>
+        <location line="-22"/>
+        <location line="+63"/>
         <location line="+18"/>
+        <location line="+56"/>
+        <location line="+24"/>
         <location line="+17"/>
         <location line="+34"/>
         <location line="+134"/>
@@ -2929,38 +2931,54 @@ Details are in the log:
         <translation type="unfinished">내보낼 수 없음</translation>
     </message>
     <message>
-        <location line="-279"/>
-        <location line="+28"/>
-        <location line="+51"/>
-        <location line="+18"/>
+        <location line="-342"/>
+        <location line="+81"/>
+        <location line="+55"/>
+        <location line="+24"/>
         <location line="+17"/>
         <location line="+168"/>
         <source>Exported %1.</source>
         <translation type="unfinished">%1을(를) 내보냈습니다.</translation>
     </message>
     <message>
-        <location line="-273"/>
+        <location line="-336"/>
+        <location line="+61"/>
         <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
         <translation type="unfinished">STEP 내보내기는 어셈블리의 구성 요소를 기록합니다. 이 어셈블리의 부품을 하나도 읽을 수 없습니다</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="-56"/>
+        <source>A STEP export is already being written</source>
+        <translation type="unfinished">STEP 내보내기를 이미 쓰는 중입니다</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Assembly</source>
         <translation type="unfinished">어셈블리</translation>
     </message>
     <message>
         <location line="+22"/>
+        <source>Building the parts to export...</source>
+        <translation type="unfinished">내보낼 부품을 만드는 중...</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>STEP export cancelled: nothing was written</source>
+        <translation type="unfinished">STEP 내보내기가 취소됨: 아무것도 쓰지 않음</translation>
+    </message>
+    <message>
+        <location line="+38"/>
         <source>Left out: &quot;%1&quot;: its part could not be read</source>
         <translation type="unfinished">생략됨: &quot;%1&quot;: 부품을 읽을 수 없습니다</translation>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+117"/>
+        <location line="+127"/>
         <source>Left out: %1</source>
         <translation type="unfinished">생략됨: %1</translation>
     </message>
     <message numerus="yes">
-        <location line="-109"/>
+        <location line="-119"/>
         <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
         <translation type="unfinished">
             <numerusform>곡면 %n개를 곡면 자체가 아닌 패싯으로 기록했습니다.</numerusform>
@@ -2995,7 +3013,7 @@ Details are in the log:
         <translation type="unfinished">STL 파일 (*.stl)</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+15"/>
         <location line="+3"/>
         <source>glTF</source>
         <translation type="unfinished">glTF</translation>
@@ -3006,7 +3024,7 @@ Details are in the log:
         <translation type="unfinished">glTF 바이너리 (*.glb)</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+22"/>
         <source>DXF export writes a drawing; this document has nothing drawn</source>
         <translation type="unfinished">DXF 내보내기는 도면을 기록합니다. 이 문서에는 그려진 것이 없습니다</translation>
     </message>
@@ -4965,7 +4983,7 @@ begin building your part.</source>
         <translation type="unfinished">전개도</translation>
     </message>
     <message>
-        <location line="+495"/>
+        <location line="+499"/>
         <source>Shown from facets</source>
         <translation type="unfinished">패싯으로 표시됨</translation>
     </message>
@@ -5090,7 +5108,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
     </message>
     <message>
-        <location line="-2765"/>
+        <location line="-2769"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -5321,7 +5339,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+97"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1095"/>
+        <location line="+1099"/>
         <location line="+502"/>
         <location line="+1021"/>
         <location line="+600"/>
@@ -5330,7 +5348,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-3309"/>
+        <location line="-3313"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -5351,17 +5369,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2949"/>
+        <location line="+2953"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-2943"/>
+        <location line="-2947"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
     <message>
-        <location line="+409"/>
+        <location line="+413"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (복구됨)</translation>
     </message>
@@ -6283,12 +6301,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">이상적</translation>
     </message>
     <message>
-        <location line="-3661"/>
+        <location line="-3665"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">계산할 수 없습니다.</translation>
     </message>
     <message>
-        <location line="+3682"/>
+        <location line="+3686"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">질량 특성을 이미 측정하고 있습니다</translation>
     </message>
@@ -6464,7 +6482,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-3325"/>
+        <location line="-3329"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>
@@ -7738,7 +7756,7 @@ view and edit its properties.</source>
 <context>
     <name>hz::ui::ViewportWidget</name>
     <message>
-        <location filename="../src/ui/src/ViewportWidget.cpp" line="+41"/>
+        <location filename="../src/ui/src/ViewportWidget.cpp" line="+50"/>
         <source>Viewport</source>
         <translation type="unfinished">뷰포트</translation>
     </message>
@@ -7748,7 +7766,7 @@ view and edit its properties.</source>
         <translation type="unfinished">표시된 도면 또는 모델입니다. 메뉴, 리본, 바로 가기 키로 작업합니다.</translation>
     </message>
     <message>
-        <location line="+448"/>
+        <location line="+593"/>
         <source>The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.</source>
         <translation type="unfinished">그래픽 드라이버가 OpenGL %1.%2을(를) 제공합니다. Horizon CAD에는 3.3이 필요합니다.</translation>
     </message>
