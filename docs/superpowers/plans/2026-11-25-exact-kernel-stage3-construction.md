@@ -36,6 +36,7 @@
 - Never clang-format a `CMakeLists.txt`.
 - No local `const` returned by value (CI's `performance-no-automatic-move`).
 - No gtest macro as the unbraced body of an `if` (GCC 11's `-Werror=dangling-else`).
+- Commits stay separated by concern, never mixed: exact builders, bridge wiring, consumers and migration each land in their own task's commits. A regression on the 64-body corpus then bisects to one of them (owner, A5).
 
 ## Conventions (stages 1–2's hold; these are added)
 
@@ -386,6 +387,7 @@
   - The mass dialog integrates an exact part on a `BackgroundTask` under the same rule as the faceted path: `RebuildMode::Always`, or `Auto` with `kWorkerIdealFaces` or more curved faces.
   - `StlExport::save(path, const geo::MeshData&)` and `GltfExport::saveMesh(path, const geo::MeshData&)`. `ExchangeCommands` passes `exactMesh()` when it was made at the export's tolerance.
   - `gatherAssemblyStep` writes each component's `exactOrFacetedSolid()`. Components to be exported are resolved with the counterpart (`BuildOptions{}`), not `facetedOnly()`.
+  - **On an exact part, a selected or hovered face is highlighted from the faceted copy, not from the exact display mesh** (owner, A1). The highlight draws the faces of `solid()` whose `logicalFace` is the pick's tag, so a coarse part shows the chords a pick acts on. This lives in the viewport's highlight overlay (`src/ui/src/ViewportWidget.cpp`).
 
 - [ ] **Step 1: Write the failing tests.**
   - `Scripting.MassOfAPrimitivePartIsExact`: π·25·10 within 1e-9.
@@ -394,6 +396,7 @@
   - `ExactDisplay.ExactMassRunsOnAWorkerWhenAsked`: under `RebuildMode::Always` the dialog's result arrives through the task.
   - `ExactDisplay.StlExportReusesTheKeptMesh`: the tessellation counter does not move.
   - `AssemblyStepExport.TwoPrimitivePartsExportExact`: the text has CYLINDRICAL_SURFACE.
+  - `ExactDisplay.AFaceHighlightIsDrawnFromTheFacetedCopy`: on a 6-segment cylinder primitive, the side's highlight polygons are the faceted copy's 6 side facets.
 - [ ] **Step 2: Run them, expect failure.**
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run them; run the full ctest with scripting built.** Build scripting with the pybind11 venv, as CI does.
@@ -419,7 +422,7 @@
     3. **Low segment counts.** Each converted feature whose effective segments per turn are under 12 is reported in `approximated`: `"<feature>: drawn as a <n>-sided prism before; round now"`.
     4. **Stale caches.** The tessellation cache of a format 31 or older file is dropped.
   - Files are written as version 32.
-  - `loadDocumentChecked` merges the migration's report into the load's, so `skipped` entries make the part read in part. The existing rule then refuses to save over it without asking.
+  - `loadDocumentChecked` merges the migration's report into the load's, so `skipped` entries make the part read in part. A lost reference never stops the part being written. The existing rule turns Save into Save As, and replacing the original file asks first, with Cancel as the default (owner, A2).
 
 - [ ] **Step 1: Write the failing tests.**
   - `Migration.AStablePartCarriesItsFacetNames` (Review Focus 4, part side): a format 31 part with a fillet on `…/chord:3` of an extruded arc's rim opens with an empty report. The fillet builds, and its result equals master's recorded volume within 1e-9.
@@ -450,6 +453,10 @@
   - `AssemblyDocument.AnOldMateThatResolvesToNothingIsReported`.
   - `AssemblyDocument.AnOldMateOnAFacetResolves` (Review Focus 4, assembly side): a mate on `…/facet:7` of a cylinder gives an empty report and a resolved mate.
   - `DrawingDocumentIO.ALostDimensionIsReported`.
+  - `ImportExport.AMigratedPartWithALostReferenceCanStillBeSaved` (owner, A2):
+    - Save writes a new file through Save As.
+    - Saving over the original writes it after the "Replace the File It Was Read From?" confirmation.
+    - Cancel writes nothing.
 - [ ] **Step 2: Run them, expect failure.**
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run them; run the full ctest with window tests on offscreen.**
@@ -561,6 +568,9 @@
 
 ## Decisions this plan makes (the controller's, for the owner to check)
 
+The owner approved these on 2026-11-26, with amendments A1–A5. A1, A2 and A5 are written into Tasks 10 and 12 and the Global Constraints; A3 is the line below; A4 (the validator's O(n²) checks in Release) was measured in Task 15 and needed no change.
+
+
 - **Two solids still.** The part's faceted solid is the bridge copy of its exact part.
   - Booleans, fillets, shell, draft, patterns, mirror, mates, sketch on a face, picks and the AI's face lists keep reading facets until their stages.
   - Because the bridge uses each feature's own segment count, master's facet counts and logical names hold, so their results do not move.
@@ -570,11 +580,11 @@
 - **Horn and spindle tori are NURBS surfaces of revolution,** in primitives and revolves. A typed `Torus` is made only when R > r, so nothing new reaches `Torus::invert`'s limit, which is stage 6.
 - **Drawings are drawn through the bridge at 0.01 mm on paper.** Projected edges stay straight segments, fine enough at the sheet's scale. True 2D arcs and ellipses in views, and in DXF exports of sheets, are carried to a later stage.
 - **Old naming schemes are converted at open,** and their references are reported, never guessed (spec: Migration). The legacy builders stay only for code and tests that set those schemes, and stage 7 deletes them.
-- **Low segment counts are reported as approximated, which does not block saving.** A lost reference is reported as left out, which does block it.
+- **Low segment counts are reported as approximated, which does not block saving.** A lost reference is reported as left out. That forces Save As, or an explicit confirmation before the original is replaced; it never refuses to write the file (owner, A2).
 - **A fillet's "fewer than 4 arc segments" report waits for stage 6.** Fillets are not exact yet, so their segments still shape them.
 - **An imported body whose exact form fails keeps Ruling 10's behaviour after migration:** it opens from its facets, with a note. It is not a converted feature's failure, and its facets are its bridge.
 - **One PR,** as stages 1 and 2 were. Migration must land with exact construction, or an old six-sided "cylinder" would turn round silently.
 - **`segments` and `chordTolerance` no longer shape the exact part, but they still shape its bridge copy** until Booleans are exact (stage 5), so that features after them keep master's results. The display meshes the exact part at the display tolerance. A per-feature coarse display (spec: Migration) waits until the bridge's last user goes.
 - **Pole cases construction never makes stay on the regression list:** a hole touching a pole, a zero-length edge along one, and an edge a hair past an apex. Only imports make them. A recognised sphere's frame z is moot, because construction sets every frame and imports are never recognised (goal 7).
-- **Kept from stage 2 unless the owner says otherwise:** the display's 0.35 rad angle floor, and Ruling 67's acceptance (Task 15 now works it down).
+- **Superseded by the owner (A3):** the display's angle limit is now 0.5 rad, with a part-relative tolerance (#245, merged as 6e822892). Ruling 67's acceptance stands, and Task 15 worked it down.
 - **Carried, unchanged:** the platform-dependent facet grid in `trimmedFacets` (stage 7 deletes the bridge), the validator's O(n²) checks (stage 5), and the spindle torus's `Torus::invert` (stage 6).
