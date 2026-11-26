@@ -36,6 +36,7 @@
 #include "horizon/math/ModelTolerance.h"
 #include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/ExactPrimitives.h"
+#include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/TrimmedFaceMesher.h"
 #include "horizon/topology/ExactTolerance.h"
@@ -2175,6 +2176,60 @@ TEST(TrimmedFaceMesher, FacesMeetAtPolesBetweenTwoMeridians) {
                     << relative;
             }
         }
+    }
+}
+
+// Ruling 9: a pole where the surface opens at under 30 degrees and wider further out (an
+// apple's, a horn torus's or a spindle's near one) is a cusp the mesher does not mesh yet: it is
+// refused at once, decided from the pole's geometry, where refinement toward it ran for some 12 s
+// to the model's resolution or the triangle cap. The boundary falls between R/r = 0.86 (an
+// opening of 30.7 degrees, meshed) and 0.87 (29.5, refused). A pole that opens at one angle (a
+// B-spline cone's apex at 5 degrees) or closes in further out (a lemon's tip at 11.5) is no cusp
+// and meshes, its volume the exact one within its area times the tolerance.
+TEST(TrimmedFaceMesher, ACuspAtAPoleIsRefusedAtOnceAndAnApexOrATipStillMeshes) {
+    const auto meshAtAThousandth = [](const topo::Solid& solid) {
+        MeshOptions options;
+        options.chordTolerance = 1e-3 * topo::exactExtent(solid);
+        return TrimmedFaceMesher::meshSolid(solid, options);
+    };
+    const double limit = HZ_TIME_LIMITS ? 0.5 : 5.0;
+    for (const double major : {2.0, 1.9, 1.74}) {
+        SCOPED_TRACE(major);
+        const auto apple = model::exact::makeTorus(geo::Frame{}, major, 2.0);
+        const auto start = std::chrono::steady_clock::now();
+        const auto meshes = meshAtAThousandth(*apple);
+        const std::chrono::duration<double> took = std::chrono::steady_clock::now() - start;
+        ASSERT_EQ(meshes.size(), 1u);
+        EXPECT_EQ(meshes.front().problem, model::detail::kCuspRefusal);
+        EXPECT_TRUE(meshes.front().triangles.empty());
+        EXPECT_LT(took.count(), limit);
+    }
+    const double kPi = math::kPi;
+    const std::unique_ptr<topo::Solid> meshed[] = {
+        model::exact::makeTorus(geo::Frame{}, 1.72, 2.0),  // R/r 0.86: an opening of 30.7 degrees
+        pole_solids::bSplineCone(4.0 * std::tan(5.0 * kPi / 180.0), 4.0),
+        pole_solids::lemon(1.96, 2.0),
+    };
+    for (const auto& solid : meshed) {
+        ASSERT_NE(solid, nullptr);
+        EXPECT_TRUE(topo::validateExact(*solid, topo::exactTolerance(*solid)).empty());
+        const auto meshes = meshAtAThousandth(*solid);
+        double volume = 0.0;
+        double area = 0.0;
+        for (const FaceMesh& m : meshes) {
+            EXPECT_EQ(m.problem, "");
+            EXPECT_FALSE(m.triangles.empty());
+            for (const auto& t : m.triangles) {
+                const Vec3& a = m.points[t[0]];
+                const Vec3& b = m.points[t[1]];
+                const Vec3& c = m.points[t[2]];
+                volume += a.dot(b.cross(c)) / 6.0;
+                area += 0.5 * (b - a).cross(c - a).length();
+            }
+        }
+        const model::MassProperties exact = model::MassPropertiesCalculator::compute(*solid);
+        ASSERT_TRUE(exact.valid) << exact.problem;
+        EXPECT_NEAR(volume, exact.volume, area * 1e-3 * topo::exactExtent(*solid));
     }
 }
 

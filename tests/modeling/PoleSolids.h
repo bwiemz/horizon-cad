@@ -15,7 +15,9 @@
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Arc2D.h"
 #include "horizon/geometry/curves/Line2D.h"
+#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
+#include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
@@ -223,6 +225,68 @@ inline std::unique_ptr<topo::Solid> coneSector(const geo::Frame& frame, double r
     as.straight(out, s2);
     as.straight(e2, in);
     as.straight(e1, s3);
+    return as.take();
+}
+
+/// A cone of B-spline geometry about z: its side the straight line from its apex at the origin to
+/// (@p r, 0, @p h) turned a whole turn (NurbsSurface::makeRevolution), seamed at u = 0, and a
+/// flat top. Its apex opens at one angle, however small: no cusp.
+inline std::unique_ptr<topo::Solid> bSplineCone(double r, double h) {
+    const double turn = math::kTwoPi;
+    const auto line =
+        geo::LineCurve(math::Vec3{0, 0, 0}, math::Vec3{r, 0, h}).toNurbs(0.0, std::hypot(r, h));
+    const auto surface = std::make_shared<geo::NurbsSurface>(
+        geo::NurbsSurface::makeRevolution(*line, {0, 0, 0}, {0, 0, 1}, turn));
+    const double v0 = surface->vMin();
+    const double v1 = surface->vMax();
+    const double u1 = surface->uMax();
+    Assembly as;
+    topo::Vertex* apex = as.vertex({0, 0, 0});
+    topo::Vertex* rim = as.vertex({r, 0, h});
+    // Counter-clockwise in (u, v): up the seam at its far side, back along the rim, down the seam.
+    topo::Face* side = as.face("cone/side", surface);
+    topo::HalfEdge* up = as.line(apex, {u1, v0}, {u1, v1});
+    topo::HalfEdge* back = as.line(rim, {u1, v1}, {0.0, v1});
+    topo::HalfEdge* down = as.line(rim, {0.0, v1}, {0.0, v0});
+    as.loop(side, {up, back, down});
+    topo::Face* top = as.face("cone/top", std::make_shared<geo::Plane>(geo::Frame::fromAxis(
+                                              {0, 0, h}, {0, 0, 1}, {1, 0, 0})));
+    topo::HalfEdge* cap =
+        as.halfEdge(rim, std::make_shared<geo::Arc2D>(math::Vec2{0, 0}, r, 0.0, turn));
+    as.loop(top, {cap});
+    as.straight(up, down);
+    geo::Frame rimFrame;
+    rimFrame.origin = {0, 0, h};
+    as.edge(cap, back, std::make_shared<geo::CircleCurve>(rimFrame, r), 0.0, turn);
+    return as.take();
+}
+
+/// A lemon about z: the arc of the circle of radius @p r about (-@p R, 0, 0) (R < r) on the
+/// x > 0 side of the axis, turned a whole turn, a B-spline surface with a pole at each tip. Its
+/// tips are sharp (their opening angle atan(sqrt(r^2 - R^2) / R)) but close in further out, the
+/// other way from an apple's: no cusp.
+inline std::unique_ptr<topo::Solid> lemon(double R, double r) {
+    const double reach = std::sqrt(r * r - R * R);
+    geo::Frame f;
+    f.origin = {-R, 0, 0};
+    f.x = math::Vec3{R, 0, -reach} / r;  // the south tip
+    f.y = math::Vec3{reach, 0, R} / r;   // out from the axis, then up
+    f.z = f.x.cross(f.y);
+    const double sweep = 2.0 * std::acos(R / r);
+    const auto arc = std::make_shared<geo::CircleCurve>(f, r);
+    const auto surface = std::make_shared<geo::NurbsSurface>(geo::NurbsSurface::makeRevolution(
+        *arc->toNurbs(0.0, sweep), {0, 0, 0}, {0, 0, 1}, math::kTwoPi));
+    const double v0 = surface->vMin();
+    const double v1 = surface->vMax();
+    const double u1 = surface->uMax();
+    Assembly as;
+    topo::Vertex* south = as.vertex({0, 0, -reach});
+    topo::Vertex* north = as.vertex({0, 0, reach});
+    topo::Face* face = as.face("lemon/skin", surface);
+    topo::HalfEdge* up = as.line(south, {u1, v0}, {u1, v1});
+    topo::HalfEdge* down = as.line(north, {0.0, v1}, {0.0, v0});
+    as.loop(face, {up, down});
+    as.edge(up, down, arc, 0.0, sweep);
     return as.take();
 }
 

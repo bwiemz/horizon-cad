@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "horizon/geometry/surfaces/Surface.h"
+#include "horizon/math/Constants.h"
 #include "horizon/math/ModelTolerance.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
@@ -109,7 +110,37 @@ struct Plan {
     Vec2 hi;
     Spacing spacing;
     std::vector<Pole> poles;
+    /// Why the face is not meshed, decided from its geometry before any triangle is made: a cusp
+    /// at one of its poles (comesToACusp). Empty for a face that is meshed.
+    std::string refusal;
 };
+
+/// The opening angle below which a pole whose surface opens out from it, wider further out (the
+/// way a horn torus's apple meets its axis), is a cusp the mesher does not mesh (Ruling 9). The
+/// probe found the read point (a ten-thousandth of the part) meshing such poles down to 25.8
+/// degrees and failing from 24.5 (each decade finer failing some 3 degrees wider): 30 degrees
+/// keeps about a decade and a half in hand, and refuses spindles from R/r 0.87 that still mesh. A
+/// pole whose surface opens at one angle (a cone's apex, typed or a B-spline's, at any angle tried
+/// down to 2 degrees) or closes in further out (a lemon's tip, down to 11) meshes, and is not
+/// refused.
+inline constexpr double kCuspAngle = 30.0 * math::kPi / 180.0;
+
+/// What a face with a cusp at a pole is refused with.
+inline constexpr const char* kCuspRefusal =
+    "the face comes to a cusp at a pole (its surface opens from the pole at under 30 degrees, "
+    "wider further out), which the read point does not mesh yet";
+
+/// Whether @p s comes to a cusp at the pole @p pole, which a loop of a face runs along from
+/// @p end to @p start in (u, v), the face lying on the side of the pole's line where @p before
+/// (the loop's point before @p end) and @p after (its point after @p start) lie: the surface
+/// opens from the pole at under kCuspAngle at a small distance in, and wider a little further in.
+/// Each opening angle is that of the circle through the surface's points at three longitudes
+/// across the run, at that distance in (a ring of a surface of revolution), seen from the pole.
+/// @p extent is the face's extent in (u, v), the distances in a thousandth and a hundredth of it.
+/// False where it cannot tell (the face on both sides of the line, a run too short to give a
+/// circle).
+bool comesToACusp(const geo::Surface& s, const Vec3& pole, const Vec2& end, const Vec2& start,
+                  const Vec2& before, const Vec2& after, const Vec2& extent);
 
 /// One segment of an edge's samples, by its index in the edge's own order.
 using Segment = std::pair<const Edge*, std::size_t>;

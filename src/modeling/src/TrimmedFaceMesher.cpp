@@ -112,6 +112,11 @@ public:
             out.problem = "the face has no exact surface";
             return out;
         }
+        // A face its plan refuses (a cusp at a pole, Ruling 9) is refused at once.
+        if (const Plan* plan = edges_.plan(&f); plan != nullptr && !plan->refusal.empty()) {
+            out.problem = plan->refusal;
+            return out;
+        }
         Boundary b;
         out.problem = boundaryOf(f, edges_.plan(&f), b);
         if (out.problem.empty()) out.problem = triangulate(f, b, out, halve);

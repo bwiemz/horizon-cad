@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -11,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "../TimeLimits.h"
 #include "PoleSolids.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
@@ -655,9 +657,10 @@ TEST(ExactPrimitives, TurnedPrimitivesSeamAlongTheFramesX) {
 
 // A horn torus (R = r) is the apple of a tube that touches the axis: its two poles are one
 // vertex, and its volume is the ring torus's, 2 pi^2 R r^2. Its pole is a cusp (its arc meets the
-// axis along it), which the read point's mesher does not mesh: it refines toward the cusp until a
-// triangle's sides are below the model's resolution, and says so (as for a spindle within some 5%
-// of a horn). Tracked in stage 3's list; it is valid and measures exactly.
+// axis along it), which the read point does not mesh yet: it refuses it at once, saying so, where
+// it refined toward the cusp for some 12 s before failing. So too a spindle near a horn. Tracked
+// in the spec's stage 3 regression list (docs/superpowers/specs/2026-11-24-exact-kernel-design.md,
+// "A horn torus, and a spindle near one"; Ruling 9).
 TEST(ExactPrimitives, AHornTorusIsAnAppleWithOnePole) {
     for (const geo::Frame& frame : placements()) {
         const auto horn = model::exact::makeTorus(frame, 2, 2);
@@ -673,6 +676,31 @@ TEST(ExactPrimitives, AHornTorusIsAnAppleWithOnePole) {
         ASSERT_TRUE(props.valid) << props.problem;
         const double volume = 2.0 * kPi * kPi * 2.0 * 4.0;
         EXPECT_NEAR(props.volume, volume, 1e-9 * volume);
+    }
+}
+
+// Ruling 9: the read point refuses a cusp at a pole at once, with why, deciding it from the
+// pole's geometry before any triangle is made: within half a second (in Debug; under a
+// sanitizer, which runs code 3-15 times slower, within five, still well short of the 12 s it
+// once refined for).
+TEST(ExactPrimitives, TheReadPointRefusesACuspAtOnce) {
+    const double limit = HZ_TIME_LIMITS ? 0.5 : 5.0;
+    for (const double major : {2.0, 1.9}) {  // a horn, and a spindle within 5% of one
+        SCOPED_TRACE(major);
+        const auto apple = model::exact::makeTorus(placements().back(), major, 2.0);
+        ASSERT_NE(apple, nullptr);
+        std::string problem;
+        const auto start = std::chrono::steady_clock::now();
+        const auto polygons = model::BoundaryMesh::extractFacePolygons(
+            *apple, model::BoundaryMesh::defaultChordTolerance(*apple), &problem);
+        const std::chrono::duration<double> took = std::chrono::steady_clock::now() - start;
+        EXPECT_NE(problem.find("torus/patch: the face comes to a cusp at a pole"),
+                  std::string::npos)
+            << problem;
+        EXPECT_NE(problem.find("which the read point does not mesh yet"), std::string::npos)
+            << problem;
+        EXPECT_TRUE(polygons.empty());
+        EXPECT_LT(took.count(), limit);
     }
 }
 

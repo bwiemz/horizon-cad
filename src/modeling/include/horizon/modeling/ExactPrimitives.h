@@ -64,8 +64,9 @@ std::unique_ptr<topo::Solid> makeCone(const geo::Frame& base, double bottomRadiu
 /// revolution with poles where the circle meets the axis, bounded by one seam (that arc) from
 /// the south pole to the north; a horn's two poles are one vertex, and a tube that clears the
 /// axis by no more than the model resolution is a horn. majorRadius must be positive. A horn's
-/// pole is a cusp, which the read point's mesher does not mesh (nor a spindle's within some 5%
-/// of a horn): it says so.
+/// pole is a cusp, as is a spindle's whose surface opens from its pole at under 30 degrees (R/r
+/// above about 0.866): the read point refuses such a face at once, saying so (Ruling 9; the
+/// spec's stage 3 regression list), though it validates and its mass is exact.
 std::unique_ptr<topo::Solid> makeTorus(const geo::Frame& base, double majorRadius,
                                        double minorRadius);
 
