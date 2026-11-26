@@ -17,8 +17,10 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/fileio/NativeFormat.h"
 #include "horizon/geometry/MeshData.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/math/BoundingBox.h"
@@ -410,5 +412,123 @@ TEST(SheetMetalFeature, EveryWayItFoldsIsExact) {
         const auto facetedBox = boundsOf(doc);
         EXPECT_LT((exactBox.min() - facetedBox.min()).length(), 1e-9);
         EXPECT_LT((exactBox.max() - facetedBox.max()).length(), 1e-9);
+    }
+}
+
+// Ruling 28: a flange's faces are named after its own sketch, the same in every build and every
+// session, so a hole drilled into a flange by the face's stored name builds when the part is built
+// again, after other entities were made, and when it is saved and opened again. (Master named
+// them after lines it made anew in each build, from the count every entity takes its id from:
+// such a hole was lost at the next build.)
+TEST(SheetMetalFeature, AHoleOnAFlangeSurvivesARebuild) {
+    auto sketch = polyline({{0, 0}, {50, 0}, {50, 30}});
+    const std::string firstLine = "e" + std::to_string(sketch->entities().front()->id());
+    Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    doc.addSketch(sketch);
+    doc.featureTree().addFeature(std::make_unique<SheetMetalFeature>(sketch, 2.0, 1.0, 20.0));
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+    const double flange = volumeOf(doc);
+    // The first flat's face on the sketch's side: y = 0, from x = 0 to 47, 20 wide.
+    std::string face;
+    for (const auto& f : doc.solid()->faces()) {
+        hz::math::BoundingBox box;
+        const hz::topo::HalfEdge* he = f.outerLoop->halfEdge;
+        do {
+            box.expand(he->origin->point);
+            he = he->next;
+        } while (he != f.outerLoop->halfEdge);
+        if (box.max().y < 1e-9 && box.min().y > -1e-9 && box.max().x > 40.0) {
+            face = f.topoId.tag();
+        }
+    }
+    ASSERT_FALSE(face.empty());
+    EXPECT_EQ(face, doc.featureTree().feature(0)->featureID() + "/flat:" + firstLine);
+    doc.featureTree().addFeature(hz::doc::HoleFeature::make(face, Vec3(20, 0, 10), 4.0, 1.0));
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+    const double drilled = volumeOf(doc);
+    EXPECT_LT(drilled, flange - 10.0) << "a hole 4 across and 1 deep";
+
+    // Built again, twice, after other entities took ids from the count.
+    for (int i = 0; i < 7; ++i) (void)hz::draft::DraftEntity::newId();
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+    EXPECT_NEAR(volumeOf(doc), drilled, 1e-9 * drilled);
+
+    // Saved and opened again in this session.
+    Document opened;
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(
+        hz::io::NativeFormat::documentToJson(doc, false), opened, &error))
+        << error;
+    ASSERT_EQ(opened.featureTree().featureCount(), 2u);
+    ASSERT_TRUE(opened.rebuildModel()) << opened.lastBuildMessage();
+    EXPECT_NEAR(volumeOf(opened), drilled, 1e-9 * drilled);
+}
+
+// Ruling 28: the names are the sketch's, not the build's. Two builds in one session, other
+// entities made between them, name every face and edge alike. The scheme, for the sketch's
+// segments S0, S1, ... in the order they run (a line `e<id>`, a polyline's segment k `e<id>.<k>`):
+// each flat's face on the sketch's side `flat:<S>`, and a thickness away `flat:<S>:back`; each
+// bend's `bend:<S>-<S'>` and `bend:<S>-<S'>:back` (the corner from S to S'); the near end
+// `start:<S0>`, the far end `end:<Sn>`; the caps `cap_bottom` and `cap_top`, as master named them.
+TEST(SheetMetalFeature, ItsNamesAreTheSameInEveryBuild) {
+    const auto namesOf = [](const hz::topo::Solid& solid) {
+        std::set<std::string> names;
+        for (const auto& f : solid.faces()) names.insert("F " + f.topoId.tag());
+        for (const auto& e : solid.edges()) names.insert("E " + e.topoId.tag());
+        return names;
+    };
+    const auto faceNamesOf = [](const hz::topo::Solid& solid) {
+        std::set<std::string> names;
+        for (const auto& f : solid.faces()) names.insert(f.topoId.tag());
+        return names;
+    };
+    {
+        SCOPED_TRACE("a Z of lines, flipped");
+        auto sketch = polyline({{0, 0}, {40, 0}, {40, 30}, {80, 30}});
+        std::vector<std::string> s;
+        for (const auto& e : sketch->entities()) s.push_back("e" + std::to_string(e->id()));
+        SheetMetalFeature flange(sketch, 2.0, 1.0, 20.0);
+        flange.restoreFeatureID("sheetmetal_7");
+        ASSERT_TRUE(flange.setParameter("flip", 1.0));
+        std::string why;
+        const auto once = flange.executeWithExact({}, nullptr, &why);
+        ASSERT_NE(once.exact, nullptr) << why;
+        for (int i = 0; i < 11; ++i) (void)hz::draft::DraftEntity::newId();
+        const auto again = flange.executeWithExact({}, nullptr, &why);
+        ASSERT_NE(again.exact, nullptr) << why;
+        EXPECT_EQ(namesOf(*again.exact), namesOf(*once.exact));
+        EXPECT_EQ(namesOf(*again.faceted), namesOf(*once.faceted));
+        const std::string f = "sheetmetal_7/";
+        EXPECT_EQ(
+            faceNamesOf(*once.exact),
+            (std::set<std::string>{
+                f + "cap_bottom", f + "cap_top", f + "flat:" + s[0], f + "flat:" + s[0] + ":back",
+                f + "flat:" + s[1], f + "flat:" + s[1] + ":back", f + "flat:" + s[2],
+                f + "flat:" + s[2] + ":back", f + "bend:" + s[0] + "-" + s[1],
+                f + "bend:" + s[0] + "-" + s[1] + ":back", f + "bend:" + s[1] + "-" + s[2],
+                f + "bend:" + s[1] + "-" + s[2] + ":back", f + "start:" + s[0],
+                f + "end:" + s[2]}));
+    }
+    {
+        SCOPED_TRACE("an L drawn as one polyline");
+        auto sketch = std::make_shared<Sketch>();
+        sketch->addEntity(std::make_shared<hz::draft::DraftPolyline>(
+            std::vector<Vec2>{{0, 0}, {50, 0}, {50, 30}}, false));
+        const std::string e = "e" + std::to_string(sketch->entities().front()->id());
+        SheetMetalFeature flange(sketch, 2.0, 1.0, 20.0);
+        flange.restoreFeatureID("sheetmetal_8");
+        std::string why;
+        const auto out = flange.executeWithExact({}, nullptr, &why);
+        ASSERT_NE(out.exact, nullptr) << why;
+        const std::string f = "sheetmetal_8/";
+        EXPECT_EQ(
+            faceNamesOf(*out.exact),
+            (std::set<std::string>{f + "cap_bottom", f + "cap_top", f + "flat:" + e + ".0",
+                                   f + "flat:" + e + ".0:back", f + "flat:" + e + ".1",
+                                   f + "flat:" + e + ".1:back", f + "bend:" + e + ".0-" + e + ".1",
+                                   f + "bend:" + e + ".0-" + e + ".1:back", f + "start:" + e + ".0",
+                                   f + "end:" + e + ".1"}));
     }
 }

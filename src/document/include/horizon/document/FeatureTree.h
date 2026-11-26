@@ -885,6 +885,26 @@ private:
 /// the sheet's surface its thickness grows from; the material is to the left
 /// of the lines as they run, or to the right when flipped. Its flat pattern
 /// is strip() developed (model::developedLength, bendLinePositions).
+///
+/// Its names (Stable naming; Ruling 28), after its own sketch, so that they are
+/// the same in every build and every session: with S a segment of the sketch
+/// as the lines run, `e<id>` for a line and `e<id>.<k>` for a polyline's
+/// segment k (as a profile names them),
+///   - `<featureID>/flat:<S>`: the flat along S, its face on the sketch's side
+///     (the surface the thickness grows from); `<featureID>/flat:<S>:back`, its
+///     face a thickness away;
+///   - `<featureID>/bend:<S>-<S'>` and `<featureID>/bend:<S>-<S'>:back`: the
+///     bend round the corner from S to the next segment S', on the sketch's
+///     side (its outside where it bends toward the material, its inside where
+///     it bends away) and a thickness away;
+///   - `<featureID>/start:<S>` and `<featureID>/end:<S>`: the ends across the
+///     thickness, at the first segment's start and the last one's end;
+///   - `<featureID>/cap_bottom` and `<featureID>/cap_top`: the faces at the
+///     sketch and a width along its normal, as master named them.
+/// Edges are named after the faces they part (model::nameEdgesLogically); the
+/// bridge copy's facets, chords and seams after the face or edge they are of.
+/// Master named every other face after a line it made anew in each build, a
+/// name no two builds shared.
 class SheetMetalFeature : public Feature {
 public:
     SheetMetalFeature(std::shared_ptr<Sketch> sketch, double thickness, double bendRadius,
@@ -899,21 +919,17 @@ public:
                                          std::string* reason = nullptr) const override;
     /// Under Stable naming, built exactly (stage 3): the strip's exact profile
     /// (model::SheetMetalSolid::profile), each bend an inside and an outside arc,
-    /// laid on the sketch as master laid its cross-section, and extruded by
-    /// model::Extrude::exact, so each bend is two cylinders; its bridge copy is
-    /// cut at facetResolution() (model::buildWithBridge). Named as master's
-    /// flange was where it can be (Ruling 26): master built the cross-section's
-    /// polygon from lines it made anew each build, a face of each,
-    /// `<featureID>/side:e<id>`; the flats and the two ends are those very
-    /// lines, made first and in master's order, so each flat, both caps and every
-    /// edge of a flat or a cap keep master's names. Each bend's arcs are made
-    /// after them, so its faces, `<featureID>/side:e<id>` of an arc, are named
-    /// after entities none of master's lines was, their facets, chords and seams
+    /// laid on the sketch as master laid its cross-section (its flats master's
+    /// very lines, in master's order, so the bridge's vertices and where its
+    /// caps' loops start are master's), and extruded by model::Extrude::exact,
+    /// so each bend is two cylinders; its faces named after the sketch (see the
+    /// class), its edges after them, and its bridge copy cut at
+    /// facetResolution() (model::buildWithBridge), its facets, chords and seams
     /// numbered as the bridge numbers them (`/facet:<k>`, `/chord:<k>`,
-    /// `/seam:<k>`); master's names of its chords' faces and edges are gone. One
-    /// whose exact form cannot be built fails, with "could not be built exactly:
-    /// <why>". Under the older schemes, master's faceted flange (each bend in
-    /// segmentsPerBend() chords) and no exact body.
+    /// `/seam:<k>`). One whose exact form cannot be built fails, with "could not
+    /// be built exactly: <why>". Under the older schemes, master's faceted flange
+    /// (each bend in segmentsPerBend() chords, every side face named after a
+    /// line made in that build) and no exact body.
     FeatureOutput executeWithExact(const BuildContext& context,
                                    std::unique_ptr<topo::Solid> inputSolid,
                                    std::string* reason = nullptr) const override;
