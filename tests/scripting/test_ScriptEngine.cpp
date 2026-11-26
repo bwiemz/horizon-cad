@@ -2,9 +2,11 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <sstream>
 #include <string>
 
 #include "horizon/document/Document.h"
+#include "horizon/math/Constants.h"
 #include "horizon/scripting/ScriptContext.h"
 #include "horizon/scripting/ScriptEngine.h"
 
@@ -183,6 +185,33 @@ print(round(mp2.mass, 3), mp.valid)
     ASSERT_TRUE(res.ok) << res.error;
     // Box 2x2x3: volume 12, unit mass 12, centroid z = 1.5; density 2 -> mass 24.
     EXPECT_EQ(res.output, "12.0 12.0 1.5\n24.0 True\n");
+}
+
+// Task 10: a part made of a primitive is exact (stage 3), and a script measures it as the window
+// does, as its exact counterpart (Document::exactOrFacetedSolid): a cylinder of radius 5 and
+// height 10 to its closed form, 25 pi 10, not its 32 facets' 780.36.
+TEST(Scripting, MassOfAPrimitivePartIsExact) {
+    hz::doc::Document doc;
+    doc.setType(hz::doc::DocumentType::Part);
+    ScriptContext ctx(doc);
+
+    ScriptEngine engine;
+    auto res = engine.run(R"(
+doc.add_cylinder(5.0, 10.0)
+doc.rebuild()
+mp = doc.mass_properties()
+print(repr(mp.volume), mp.valid)
+)",
+                          &ctx);
+    ASSERT_TRUE(res.ok) << res.error;
+    ASSERT_NE(doc.exactSolid(), nullptr) << doc.exactNote();
+    std::istringstream said(res.output);
+    double volume = 0.0;
+    std::string valid;
+    said >> volume >> valid;
+    const double exact = hz::math::kPi * 25.0 * 10.0;
+    EXPECT_NEAR(volume, exact, 1e-9 * exact) << res.output;
+    EXPECT_EQ(valid, "True") << res.output;
 }
 
 TEST(ScriptEngineTest, ScriptAddsTransparentDatum) {
@@ -502,6 +531,8 @@ TEST(ScriptEngineTest, ScriptsCannotConstructADocument) {
 
 // The analyses mesh the solid's bounding box. A cylinder is not its box, so
 // they refuse it and say why, where they used to report the box's results.
+// (Re-baselined for Task 10: what fills the box is measured as the part is,
+// exactly: pi/4 of it, 79%, where its 32 facets filled 78%.)
 TEST(ScriptEngineTest, AnalysesRefuseASolidThatIsNotABox) {
     hz::doc::Document doc;
     doc.setType(hz::doc::DocumentType::Part);
@@ -520,8 +551,8 @@ TEST(ScriptEngineTest, AnalysesRefuseASolidThatIsNotABox) {
         &ctx);
     ASSERT_TRUE(res.ok) << res.error;
     EXPECT_EQ(res.output.substr(0, 33), "False True\nFalse True\nFalse True\n") << res.output;
-    // A faceted unit-radius cylinder fills about pi/4 of its box.
-    EXPECT_NE(res.output.find("fills 78% of its box"), std::string::npos) << res.output;
+    // A unit-radius cylinder fills pi/4 of its box.
+    EXPECT_NE(res.output.find("fills 79% of its box"), std::string::npos) << res.output;
 }
 
 TEST(ScriptEngineTest, AnalysesOfABoxRunAndSayNothingIsWrong) {
