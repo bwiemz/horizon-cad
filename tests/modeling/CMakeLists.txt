@@ -34,6 +34,7 @@ add_executable(hz_modeling_tests
     test_IdealMassProperties.cpp
     test_ExactMass.cpp
     test_ExactTransform.cpp
+    test_FacetExact.cpp
     test_Measure.cpp
     test_DrawingProjection.cpp
     test_SectionView.cpp

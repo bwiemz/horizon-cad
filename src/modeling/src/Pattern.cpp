@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "ExactMass.h"
 #include "horizon/geometry/Pcurve.h"
 #include "horizon/geometry/curves/Arc2D.h"
 #include "horizon/geometry/curves/Circle2D.h"
@@ -949,6 +950,85 @@ std::unique_ptr<topo::Solid> Pattern::collect(const topo::Solid& a, const topo::
     return out;
 }
 
+namespace {
+
+/// Whether @p shell is a part built exactly: its faces carry exact surfaces and none a NURBS
+/// carrier. Its corners do not span its curved faces (a cylinder's two, one on each rim, enclose
+/// nothing), nor is it described by curves for facetCurved to cut.
+bool exactWithoutCarriers(const Shell& shell) {
+    bool exact = false;
+    for (const Face* f : shell.faces) {
+        if (f == nullptr || !f->alive) continue;
+        if (f->surface) return false;
+        exact = exact || f->exactSurface != nullptr;
+    }
+    return exact;
+}
+
+/// The box round @p shell's exact geometry: its corners, points along its edges' exact curves
+/// (topo::kLoopSamples on each), and over each curved face its surface at a grid of as many
+/// points each way across the rectangle its outer loop spans in (u, v), unwrapped as the exact
+/// validator unwraps it.
+BoundingBox exactShellBox(const Shell& shell, const math::ModelTolerance& tolerance,
+                          std::size_t limit) {
+    constexpr int kSamples = topo::kLoopSamples;
+    BoundingBox box;
+    for (const Face* f : shell.faces) {
+        if (f == nullptr || !f->alive) continue;
+        std::vector<const Wire*> loops{f->outerLoop};
+        loops.insert(loops.end(), f->innerLoops.begin(), f->innerLoops.end());
+        for (const Wire* w : loops) {
+            std::vector<const HalfEdge*> ring;
+            if (w == nullptr || !topo::loopHalfEdges(*f, *w, limit, ring)) continue;
+            for (const HalfEdge* h : ring) {
+                box.expand(h->origin->point);
+                const Edge* e = h->edge;
+                if (e == nullptr || !e->exactCurve) continue;
+                for (int i = 0; i < kSamples; ++i) {
+                    const double t = e->curveStart + (e->curveEnd - e->curveStart) *
+                                                         static_cast<double>(i) / (kSamples - 1);
+                    box.expand(e->exactCurve->evaluate(t));
+                }
+            }
+        }
+        const auto& surface = f->exactSurface;
+        if (!surface || surface->kind() == geo::SurfaceKind::Plane || f->outerLoop == nullptr) {
+            continue;
+        }
+        std::vector<const HalfEdge*> ring;
+        if (!topo::loopHalfEdges(*f, *f->outerLoop, limit, ring)) continue;
+        std::vector<double> allowances;
+        bool pcurves = true;
+        for (const HalfEdge* h : ring) {
+            pcurves = pcurves && h->pcurve != nullptr && h->edge != nullptr;
+            if (pcurves) allowances.push_back(topo::joinAllowance(*h, tolerance));
+        }
+        topo::LoopPolygon poly;
+        if (!pcurves ||
+            !topo::unwrapLoop(ring, kSamples, *surface, topo::uPeriod(*surface),
+                              topo::vPeriod(*surface), allowances, poly,
+                              topo::loopSense(*f, true)) ||
+            poly.empty()) {
+            continue;
+        }
+        math::Vec2 lo = poly.front().a;
+        math::Vec2 hi = lo;
+        for (const auto& seg : poly) {
+            lo = {std::min(lo.x, seg.a.x), std::min(lo.y, seg.a.y)};
+            hi = {std::max(hi.x, seg.a.x), std::max(hi.y, seg.a.y)};
+        }
+        for (int i = 0; i < kSamples; ++i) {
+            for (int j = 0; j < kSamples; ++j) {
+                box.expand(surface->evaluate(lo.x + (hi.x - lo.x) * i / (kSamples - 1),
+                                             lo.y + (hi.y - lo.y) * j / (kSamples - 1)));
+            }
+        }
+    }
+    return box;
+}
+
+}  // namespace
+
 std::vector<std::vector<const topo::Shell*>> Pattern::bodyShells(const topo::Solid& solid) {
     // A shell is either the outside of a body or a cavity inside one: an
     // enclosed void comes out of a Boolean as a second shell of the same
@@ -974,7 +1054,28 @@ std::vector<std::vector<const topo::Shell*>> Pattern::bodyShells(const topo::Sol
     // Measured on its facets when it is described by curves, whose corners
     // do not span its faces (measureShells).
     std::vector<Part> parts;
-    const auto measures = measureShells(solid);
+    auto measures = measureShells(solid);
+    // A shell of a part built exactly by its exact faces: its signed volume integrated on them
+    // (coarse: its sign is what tells a body from a cavity), its box round its exact geometry.
+    // Where they cannot be integrated, it is measured by its corners, as well as can be.
+    std::vector<bool> exact;
+    exact.reserve(solid.shells().size());
+    for (const auto& shell : solid.shells()) exact.push_back(exactWithoutCarriers(shell));
+    if (std::find(exact.begin(), exact.end(), true) != exact.end()) {
+        const auto measured = detail::measureShellVolumes(solid, true, nullptr, exact);
+        if (measured.problem.empty() && measured.volumes.size() == measures.size()) {
+            const math::ModelTolerance tolerance = topo::exactTolerance(solid);
+            const std::size_t limit = 2 * solid.edges().size() + 1;
+            std::size_t at = 0;
+            for (const auto& shell : solid.shells()) {
+                if (exact[at]) {
+                    measures[at].volume = measured.volumes[at];
+                    measures[at].box = exactShellBox(shell, tolerance, limit);
+                }
+                ++at;
+            }
+        }
+    }
     std::size_t index = 0;
     for (const auto& shell : solid.shells()) {
         const ShellMeasure& measure = measures[index++];
