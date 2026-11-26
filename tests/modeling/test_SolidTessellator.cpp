@@ -16,10 +16,12 @@
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/ExactTolerance.h"
@@ -437,4 +439,36 @@ TEST(SolidTessellatorTest, ALargePartIsDrawnToItsSizeASmallOneToATenth) {
     const auto drawn = SolidTessellator::tessellate(*large);
     EXPECT_EQ(drawn.indices, SolidTessellator::tessellate(*large, 1.5e-4 * across).indices);
     EXPECT_LT(drawn.indices.size(), SolidTessellator::tessellate(*large, 0.1).indices.size());
+}
+
+// A part of several bodies is drawn at the tolerance of them all: its size is the box round every
+// body (topo::exactExtent of them together), as the solid they are joined into gives it, found
+// before they are joined, so that each can be meshed on its own at the part's tolerance. Two
+// cylinders 3.5 across and 1000 apart are a part about 1002 across, drawn to 1.5e-4 of that where
+// each alone is drawn to 0.1.
+TEST(SolidTessellatorTest, APartOfSeveralBodiesIsDrawnAtTheToleranceOfThemAll) {
+    const auto near = exactCylinder(1.0, 2.0);
+    const auto far =
+        hz::model::exact::makeCylinder(hz::geo::Frame::fromAxis({1000, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    ASSERT_NE(near, nullptr);
+    ASSERT_NE(far, nullptr);
+    hz::topo::Solid joined;
+    Pattern::append(joined, *near, hz::math::Mat4::identity());
+    Pattern::append(joined, *far, hz::math::Mat4::identity());
+    const std::vector<const hz::topo::Solid*> bodies{near.get(), far.get()};
+
+    const double across = std::sqrt(1002.0 * 1002.0 + 2.0 * 2.0 + 2.0 * 2.0);
+    EXPECT_NEAR(hz::topo::exactExtent(bodies), across, 1e-12 * across);
+    EXPECT_NEAR(hz::topo::exactExtent(bodies), hz::topo::exactExtent(joined), 1e-12 * across);
+    EXPECT_NEAR(SolidTessellator::displayTolerance(bodies), 1.5e-4 * across, 1e-12 * across);
+    EXPECT_NEAR(SolidTessellator::displayTolerance(bodies),
+                SolidTessellator::displayTolerance(joined), 1e-12 * across);
+    EXPECT_EQ(SolidTessellator::displayTolerance(*near), 0.1);
+    EXPECT_EQ(SolidTessellator::displayTolerance(*far), 0.1);
+
+    // One body is the body; none is nothing.
+    EXPECT_EQ(hz::topo::exactExtent(std::vector<const hz::topo::Solid*>{near.get()}),
+              hz::topo::exactExtent(*near));
+    EXPECT_EQ(hz::topo::exactExtent(std::vector<const hz::topo::Solid*>{}), 0.0);
+    EXPECT_EQ(SolidTessellator::displayTolerance(std::vector<const hz::topo::Solid*>{}), 0.1);
 }

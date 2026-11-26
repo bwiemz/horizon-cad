@@ -263,6 +263,10 @@ double SolidTessellator::displayTolerance(const topo::Solid& solid) {
     return std::max(kDisplayTolerance, kDisplayRelativeTolerance * topo::exactExtent(solid));
 }
 
+double SolidTessellator::displayTolerance(const std::vector<const topo::Solid*>& bodies) {
+    return std::max(kDisplayTolerance, kDisplayRelativeTolerance * topo::exactExtent(bodies));
+}
+
 geo::MeshData SolidTessellator::tessellate(const topo::Solid& solid) {
     return tessellate(solid, displayTolerance(solid));
 }

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <string>
+#include <vector>
 
 #include "horizon/geometry/MeshData.h"
 #include "horizon/topology/Solid.h"
@@ -58,6 +59,11 @@ public:
     /// (topo::exactExtent, the diagonal of the box round its vertices and exact edges, the size
     /// its model tolerance comes from), or kDisplayTolerance where that is larger.
     static double displayTolerance(const topo::Solid& solid);
+
+    /// The chord tolerance a part of @p bodies is drawn at: displayTolerance of the solid they are
+    /// joined into, from the size of them all (topo::exactExtent of them together), found before
+    /// they are joined, so that each can be meshed on its own at the part's tolerance.
+    static double displayTolerance(const std::vector<const topo::Solid*>& bodies);
 };
 
 }  // namespace hz::model
