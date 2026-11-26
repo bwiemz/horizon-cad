@@ -945,9 +945,10 @@ TEST(ExactCounterpart, APartOpenInATabIsBuiltWithIt) {
 
 // The owner's display tolerance: the counterpart is meshed for the display, and so for its part
 // file's cache, to 0.1 up to about 667 across, and beyond that to 1.5e-4 of its size (its
-// diagonal, topo::exactExtent). A cylinder of radius 200 and height 200, written as STEP and
-// imported, is 600 across; one of radius 1000 and height 2000 is 2000 sqrt 3 across, meshed to
-// 0.52.
+// diagonal, topo::exactExtent), stepped down to a quarter octave (Ruling 29). A cylinder of radius
+// 200 and height 200, written as STEP and imported, is 600 across; one of radius 1000 and height
+// 2000 is 2000 sqrt 3 across, meshed to 0.1 x 2^(9/4) = 0.476 (0.52 by the owner's formula).
+// (Re-baselined for Ruling 29: it was meshed to 0.52.)
 TEST(ExactCounterpart, ALargePartIsMeshedToItsSizeASmallOneToATenth) {
     struct Case {
         double radius;
@@ -957,7 +958,7 @@ TEST(ExactCounterpart, ALargePartIsMeshedToItsSizeASmallOneToATenth) {
     };
     const double across = 2000.0 * std::sqrt(3.0);
     for (const Case& c :
-         {Case{200.0, 200.0, 600.0, 0.1}, Case{1000.0, 2000.0, across, 1.5e-4 * across}}) {
+         {Case{200.0, 200.0, 600.0, 0.1}, Case{1000.0, 2000.0, across, 0.1 * std::exp2(2.25)}}) {
         SCOPED_TRACE(c.radius);
         const auto cylinder = hz::model::exact::makeCylinder(
             hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), c.radius, c.height);
@@ -1127,10 +1128,53 @@ TEST(ExactCounterpart, AnUnchangedRebuildMeshesNothing) {
     EXPECT_EQ(again.madeFrom, first->madeFrom);
 }
 
+// Ruling 29: a large part's display tolerance steps by quarter octaves, so a body nudged a few
+// millimetres, the part's size changing by well under a step, leaves every other body's mesh as it
+// was. An imported cylinder of radius 400 and height 800, a primitive cylinder beside it, the part
+// about 1441 across: drawn to 0.2 (the owner's formula, 0.216, changes with every millimetre). The
+// primitive moved 5 mm out, the part 0.2% larger: the import keeps its mesh, the very one.
+TEST(ExactCounterpart, ASmallSizeChangeOfALargePartKeepsTheOtherBodiesMeshes) {
+    const auto large = hz::model::exact::makeCylinder(
+        hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 400.0, 800.0);
+    ASSERT_NE(large, nullptr);
+    Document part;
+    importInto(part, read(hz::io::StepFormat::toString({large.get()})));
+    auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(1.0, 2.0);
+    cylinder->setOperation(BodyOperation::NewBody);
+    ASSERT_TRUE(cylinder->setVector("basePoint", Vec3(500, 0, 0)));
+    hz::doc::PrimitiveFeature* primitive = cylinder.get();
+    part.featureTree().addFeature(std::move(cylinder));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    const double before = hz::topo::exactExtent(*part.exactSolid());
+    EXPECT_GT(before, 667.0);
+    EXPECT_DOUBLE_EQ(hz::model::SolidTessellator::displayTolerance(*part.exactSolid()), 0.2);
+    const auto first = part.exactCounterpart();
+    ASSERT_NE(first, nullptr);
+    ASSERT_EQ(first->bodies.size(), 2u);
+    EXPECT_EQ(first->bodiesMeshed, 2u);
+
+    ASSERT_TRUE(primitive->setVector("basePoint", Vec3(505, 0, 0)));
+    part.featureTree().markChanged();
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    const double after = hz::topo::exactExtent(*part.exactSolid());
+    EXPECT_GT(after, before);
+    EXPECT_LT(after, 1.01 * before) << "under 1% larger";
+    EXPECT_NE(1.5e-4 * after, 1.5e-4 * before) << "the owner's formula alone would mesh it again";
+    EXPECT_DOUBLE_EQ(hz::model::SolidTessellator::displayTolerance(*part.exactSolid()), 0.2);
+    const hz::doc::ExactCounterpart& nudged = counterpartOf(part);
+    ASSERT_EQ(nudged.bodies.size(), 2u);
+    EXPECT_EQ(nudged.bodiesMeshed, 1u) << "the primitive alone";
+    EXPECT_EQ(nudged.bodies[0].mesh, first->bodies[0].mesh) << "the import's, as it was";
+    expectMeshed(part, kPi * 400.0 * 400.0 * 800.0 + 2.0 * kPi);
+}
+
 // The controller's ruling (Task 8): each body is meshed at the part's display tolerance, not its
-// own, so a body that grows the part past about 667 across (where 1.5e-4 of its size passes 0.1)
-// changes every body's tolerance, and every body is meshed again, as it must be: the import too,
-// though it is as it was. Its mesh is the one the part's new tolerance gives it.
+// own, so a body that grows the part past a step of it (here past about 667 across, where 1.5e-4
+// of its size passes 0.1, into 0.1 sqrt 2, Ruling 29) changes every body's tolerance, and every
+// body is meshed again, as it must be: the import too, though it is as it was. Its mesh is the one
+// the part's new tolerance gives it.
 TEST(ExactCounterpart, AToleranceChangeRemeshesEveryBody) {
     Document part;
     hz::doc::PrimitiveFeature* primitive = nullptr;
@@ -1147,8 +1191,7 @@ TEST(ExactCounterpart, AToleranceChangeRemeshesEveryBody) {
     ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
     ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
     const double tolerance = hz::model::SolidTessellator::displayTolerance(*part.exactSolid());
-    const double across = std::sqrt(1002.0 * 1002.0 + 2.0 * 2.0 + 2.0 * 2.0);
-    EXPECT_NEAR(tolerance, 1.5e-4 * across, 1e-12 * across);
+    EXPECT_DOUBLE_EQ(tolerance, 0.1 * std::sqrt(2.0));
     const hz::doc::ExactCounterpart& grown = counterpartOf(part);
     ASSERT_EQ(grown.bodies.size(), 2u);
     EXPECT_EQ(grown.bodiesMeshed, 2u) << "the import meshed again at the part's new tolerance";

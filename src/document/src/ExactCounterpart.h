@@ -24,8 +24,8 @@ struct BodyMesh {
     /// ExactCounterpart::madeFrom has them, for one body) and the tolerance it was meshed at, the
     /// part's (model::SolidTessellator::displayTolerance of all its bodies), hashed. A body alike
     /// in a part whose tolerance has changed is meshed again, at the new one: a part that has grown
-    /// past about 667 across, or one past it whose size has changed at all (its tolerance is
-    /// 1.5e-4 of its size there).
+    /// past about 667 across, or one past it whose size has crossed a quarter-octave step of its
+    /// tolerance (Ruling 29); a part a little larger or smaller keeps it.
     std::uint64_t fingerprint = 0;
     /// Its mesh at that tolerance, as ExactCounterpart::mesh is made, its faces' names as they
     /// are. Null with a note.

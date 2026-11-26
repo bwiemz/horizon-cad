@@ -224,8 +224,9 @@ TEST(GltfExportTest, SaveSolidWritesFile) {
 }
 
 // A part goes out as the display draws it (SolidTessellator::displayTolerance): one above about
-// 667 across to 1.5e-4 of its diagonal, not to 0.1. A cylinder of radius 1000 and height 2000,
-// 2000 sqrt 3 across, goes out with the display's triangles, fewer than 0.1 would give it.
+// 667 across to about 1.5e-4 of its diagonal (a quarter-octave step at or below it), not to 0.1. A
+// cylinder of radius 1000 and height 2000, 2000 sqrt 3 across, goes out with the display's
+// triangles, fewer than 0.1 would give it.
 TEST(GltfExportTest, ALargePartGoesOutAsItIsDrawn) {
     const auto cylinder = hz::model::exact::makeCylinder(
         hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 1000.0, 2000.0);
