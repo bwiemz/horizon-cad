@@ -9,7 +9,9 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <functional>
 #include <map>
 #include <memory>
@@ -19,10 +21,12 @@
 #include <utility>
 #include <vector>
 
+#include "../TimeLimits.h"
 #include "StepTestText.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/Curve3.h"
+#include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Units.h"
@@ -756,4 +760,65 @@ TEST(FacetExact, AnImportBesideABodyBuiltExactlyIsCutEachItsOwnWay) {
     expected.insert(expected.end(), own.begin(), own.end());
     std::sort(expected.begin(), expected.end());
     EXPECT_EQ(facetsOf(*bridge.solid), expected);
+}
+
+// Ruling 32: an import is untrusted, and a tolerance may ask for any number of steps. A cylinder's
+// trimmed side cut to a nanometre asks for some 70,000 steps round it: it is cut at its grid's
+// cap, 400, its rims into 400 chords each and inside it no more steps either way, in a moment.
+// (Its rims cut into 4096 chords each, the most a curve is, the cut by ears of its outline took
+// 21 s in Debug.)
+TEST(FacetExact, AFaceAskingForMoreThanItsGridsCapIsCutWithinIt) {
+    const auto slant = readOne(hz::step_text::slantCylinder(1.0, 2.0, 0.3));
+    ASSERT_NE(slant, nullptr);
+    const auto started = std::chrono::steady_clock::now();
+    const auto fine = facetExact(*slant, FacetResolution{32, 1e-9});
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    ASSERT_NE(fine.solid, nullptr) << fine.error;
+    EXPECT_TRUE(fine.solid->isValid()) << fine.solid->validationReport();
+    EXPECT_TRUE(fine.outlined.empty());
+    // Two rims of 400 chords each, and no more inside than the cap's square.
+    std::size_t onTheBottom = 0;
+    for (const auto& v : fine.solid->vertices()) {
+        if (std::abs(v.point.z) < 1e-9) ++onTheBottom;
+    }
+    EXPECT_EQ(onTheBottom, 400u);
+    EXPECT_LE(fine.solid->vertexCount(), 2u * 400u + 400u * 400u);
+    std::printf("[   INFO   ] cut to a nanometre in %.3f s, %zu vertices\n", seconds,
+                fine.solid->vertexCount());
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 1.0);
+#else
+    EXPECT_LT(seconds, 10.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
+#endif
+#endif
+}
+
+// Ruling 32: a surface whose knots are finite but span no finite range (from -1e308 to 1e308) has
+// nothing to measure a cut by. Its face is refused, saying so, by both bridges; never a crash, nor
+// a grid without end.
+TEST(FacetExact, AFaceWithNoFiniteParameterRangeIsRefused) {
+    auto slant = readOne(hz::step_text::slantCylinder(1.0, 2.0, 0.3));
+    ASSERT_NE(slant, nullptr);
+    std::string side;
+    for (auto& face : slant->faces()) {
+        if (!face.exactSurface || face.exactSurface->kind() != geo::SurfaceKind::Cylinder) continue;
+        constexpr double kFar = 1e308;
+        face.surface = std::make_shared<geo::NurbsSurface>(
+            std::vector<std::vector<Vec3>>{{{1, 0, 0}, {1, 0, 2}}, {{0, 1, 0}, {0, 1.5, 2}}},
+            std::vector<std::vector<double>>{{1, 1}, {1, 1}},
+            std::vector<double>{-kFar, -kFar, kFar, kFar}, std::vector<double>{0, 0, 1, 1}, 1, 1);
+        side = face.topoId.tag();
+    }
+    ASSERT_FALSE(side.empty());
+    for (const double tolerance : {0.0, 1e-3}) {
+        SCOPED_TRACE(tolerance);
+        const auto bridge = facetExact(*slant, FacetResolution{32, tolerance});
+        EXPECT_EQ(bridge.solid, nullptr);
+        EXPECT_EQ(bridge.error, "face " + side + "'s surface has no finite parameter range");
+    }
+    const auto imported = facetCurved(*slant);
+    EXPECT_EQ(imported.solid, nullptr);
+    EXPECT_EQ(imported.error, "face " + side + "'s surface has no finite parameter range");
 }

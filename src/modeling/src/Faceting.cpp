@@ -129,13 +129,23 @@ double roundingChord(const std::vector<Vec3>& points) {
 /// The most chords one curve is cut into, as PrimitiveFactory::segmentsForTolerance stops.
 constexpr int kMostSteps = 4096;
 
+/// The most points a face cut within its trim is gridded with each way, and so the most steps its
+/// own curvature cuts it into each way under a chord tolerance (Ruling 32): a face that asks for
+/// more, however its curvature or the tolerance asks (an import is untrusted), is cut at it. A
+/// grid over a rectangle of a face's (u, v) has no more than its square of facets.
+constexpr std::size_t kGridCap = 400;
+
+/// The most pieces one edge of a region cut within its trim is cut into, bridging to a hole or
+/// listed in the cells of its grid (Ruling 32): past it the region is not cut so.
+constexpr double kMostAlong = 65536.0;
+
 /// The fewest pieces, @p least or more, that a curve from @p t0 to @p t1 (@p at its points) is cut
 /// into at equal steps of its parameter with no piece's chord sagging more than @p tolerance off
 /// it, each measured at points between its ends; at most kMostSteps. @p least itself where the
 /// tolerance is not positive, or its pieces keep within it.
 int piecesWithin(const std::function<Vec3(double)>& at, double t0, double t1, int least,
                  double tolerance) {
-    if (!(tolerance > 0.0)) return least;
+    if (!(tolerance > 0.0) || least >= kMostSteps) return least;
     // Whether cut into @p n, some chord sags more than the tolerance (each measured at points
     // between its ends).
     const auto sags = [&](int n) {
@@ -178,8 +188,8 @@ int piecesWithin(const std::function<Vec3(double)>& at, double t0, double t1, in
 /// curve, equal lengths apart, as many as keep each chord within
 /// @p maxAngle of turning, and at least @p least chords of a curve that
 /// turns at all; with a positive @p tolerance, as many more as keep each
-/// chord sagging no more than it (Ruling 17: a drawing's copy of an import).
-/// The ends its vertices.
+/// chord sagging no more than it (Ruling 17: a drawing's copy of an import),
+/// up to the grid's cap (kGridCap, Ruling 32). The ends its vertices.
 std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle, int least = 1,
                              double tolerance = 0.0) {
     const Vec3 p = e.halfEdge->origin->point;
@@ -218,7 +228,10 @@ std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle, int least = 1,
             const double f = span > 0.0 ? (target - length[i - 1]) / span : 0.0;
             return c->evaluate(ts[i - 1] + (ts[i] - ts[i - 1]) * f);
         };
-        n = piecesWithin(along, 0.0, 1.0, n, tolerance);
+        // No more than the grid's cap for the tolerance's sake (Ruling 32): an untrusted curve,
+        // or a tolerance however fine, asks for no more of its faces' outlines than that.
+        n = std::max(
+            n, std::min(piecesWithin(along, 0.0, 1.0, n, tolerance), static_cast<int>(kGridCap)));
     }
     std::vector<Vec3> out{p};
     size_t at = 1;
@@ -586,6 +599,12 @@ std::optional<std::vector<std::vector<Vec3>>> gridFacets(const Rectangle& r, Sur
     if (!bottomPole && !topPole && bottom.size() != top.size()) return std::nullopt;
     if (!leftPole && !rightPole && left.size() != right.size()) return std::nullopt;
     if (nu < 1 || nv < 1) return std::nullopt;
+    // No more facets than the cap's square (Ruling 32): a face that asks for more, however its
+    // edges are cut, is cut within its trim instead, its points inside within the cap.
+    if (static_cast<double>(nu) * static_cast<double>(nv) >
+        static_cast<double>(kGridCap) * static_cast<double>(kGridCap)) {
+        return std::nullopt;
+    }
 
     // Each side by its index, bottom and top left to right, left and right
     // bottom to top (the loop runs top and left the other way); a pole's
@@ -1041,8 +1060,9 @@ std::optional<Clipped> earClip(std::vector<RegionVertex>& vertices, std::vector<
         const RegionVertex mCopy = vertices[hole[mAt]];
         const RegionVertex toCopy = vertices[to];
         const double length = std::hypot(mCopy.x - toCopy.x, mCopy.y - toCopy.y);
-        const auto pieces =
-            spacing > 0.0 ? static_cast<std::size_t>(std::ceil(length / spacing)) : std::size_t{1};
+        const double wanted = spacing > 0.0 ? std::ceil(length / spacing) : 1.0;
+        if (!(wanted <= kMostAlong)) return std::nullopt;  // or not a number
+        const auto pieces = static_cast<std::size_t>(std::max(wanted, 1.0));
         const auto bridge = [&](bool back) {
             for (std::size_t k = 1; k < pieces; ++k) {
                 const double t =
@@ -1407,11 +1427,22 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
     double su = 0.0;
     double sv = 0.0;
     if (tolerance > 0.0) {
+        // A region with no finite extent in (u, v) has no steps to take (Ruling 32).
+        for (const double c : {u0, u1, v0, v1, u1 - u0, v1 - v0}) {
+            if (!std::isfinite(c)) return std::nullopt;
+        }
         const std::pair<double, double> steps = sagSteps(map.surface(), u0, u1, v0, v1, tolerance);
         const auto turnsU = static_cast<double>(piecesAcross(map, low, high, 0, maxAngle, 0.0));
         const auto turnsV = static_cast<double>(piecesAcross(map, lowV, highV, 1, maxAngle, 0.0));
-        su = 1.0 / std::min(steps.first, (u1 - u0) / turnsU);
-        sv = 1.0 / std::min(steps.second, (v1 - v0) / turnsV);
+        // Steps across a range, as many as its curvature and turning ask, at least one and no
+        // more than the grid's cap; the cap where they ask for no number.
+        const auto count = [](double range, double step, double turns) {
+            const double n = std::ceil(std::max(range / step, turns) - 1e-9);
+            if (!std::isfinite(n) || !(n > 0.0)) return static_cast<double>(kGridCap);
+            return std::clamp(n, 1.0, static_cast<double>(kGridCap));
+        };
+        su = count(u1 - u0, steps.first, turnsU) / (u1 - u0);
+        sv = count(v1 - v0, steps.second, turnsV) / (v1 - v0);
     } else {
         const UV mid{0.5 * (u0 + u1), 0.5 * (v0 + v1)};
         const double du = 1e-4 * (u1 - u0);
@@ -1467,7 +1498,10 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
                      lengths.end());
     double spacing = lengths.empty() ? 0.0 : lengths[lengths.size() / 2];
     if (tolerance > 0.0) {
-        spacing = std::min(spacing, 1.0);  // a step each way
+        // A step each way; and no nearer than the cap's grid, however densely the outline's
+        // points lie (Ruling 32), so a bridge or an edge listed in the grid is so many pieces.
+        const double widest = std::max((u1 - u0) * su, (v1 - v0) * sv);
+        spacing = std::min(1.0, std::max(spacing, widest / static_cast<double>(kGridCap)));
     } else {
         const auto turnsU = piecesAcross(map, low, high, 0, maxAngle, 0.0);
         const auto turnsV = piecesAcross(map, lowV, highV, 1, maxAngle, 0.0);
@@ -1500,10 +1534,12 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
     std::vector<std::size_t> beside;
     const double x0 = u0 * su, x1 = u1 * su, y0 = v0 * sv, y1 = v1 * sv;
     const auto nx = spacing > 0.0
-                        ? static_cast<std::size_t>(std::min(400.0, std::floor((x1 - x0) / spacing)))
+                        ? static_cast<std::size_t>(std::min(static_cast<double>(kGridCap),
+                                                            std::floor((x1 - x0) / spacing)))
                         : 0;
     const auto ny = spacing > 0.0
-                        ? static_cast<std::size_t>(std::min(400.0, std::floor((y1 - y0) / spacing)))
+                        ? static_cast<std::size_t>(std::min(static_cast<double>(kGridCap),
+                                                            std::floor((y1 - y0) / spacing)))
                         : 0;
     if (nx > 1 && ny > 1) {
         const double cw = (x1 - x0) / static_cast<double>(nx);
@@ -1522,8 +1558,9 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
         for (const auto& edge : boundary) {
             const RegionVertex& p = vertices[edge.first];
             const RegionVertex& q = vertices[edge.second];
-            const auto pieces =
-                static_cast<std::size_t>(std::ceil(std::hypot(q.x - p.x, q.y - p.y) / step));
+            const double wanted = std::ceil(std::hypot(q.x - p.x, q.y - p.y) / step);
+            if (!(wanted <= kMostAlong)) return std::nullopt;  // or not a number
+            const auto pieces = static_cast<std::size_t>(wanted);
             for (std::size_t k = 0; k <= pieces; ++k) {
                 const double t =
                     pieces == 0 ? 0.0 : static_cast<double>(k) / static_cast<double>(pieces);
@@ -1736,6 +1773,16 @@ bool cutAsImported(const Face& face, const std::function<std::vector<Vec3>(const
         return points;
     };
     const auto& surface = face.surface;
+    if (surface != nullptr) {
+        // A surface whose parameters span no finite range (an untrusted file's: its knots finite,
+        // their span not) has nothing to measure a cut by (Ruling 32).
+        const double spanU = surface->uMax() - surface->uMin();
+        const double spanV = surface->vMax() - surface->vMin();
+        if (!std::isfinite(spanU) || !std::isfinite(spanV) || !(spanU > 0.0) || !(spanV > 0.0)) {
+            error = "face " + face.topoId.tag() + "'s surface has no finite parameter range";
+            return false;
+        }
+    }
     const bool curved = surface != nullptr && !isFlat(*surface);
 
     if (curved) {
