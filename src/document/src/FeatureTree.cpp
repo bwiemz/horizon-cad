@@ -1079,6 +1079,31 @@ constexpr const char* kNoPrimitive =
     "these dimensions do not make a solid: they must be positive (a cone may have one zero "
     "radius, a torus's tube must be thinner than its ring)";
 
+/// The exact box master's factory made of @p width x @p height x @p depth from @p base, a size
+/// of which may be negative: the box on the other side of the base along that axis (Ruling 19).
+/// It is the exact box of the sizes' extents from its least corner, each face named for where
+/// master's is: `box/left` at x = 0 and `box/right` at x = width, whichever side that is (and so
+/// `front` and `back` along y, `bottom` and `top` along z). Null where a size is 0 or not finite.
+std::unique_ptr<topo::Solid> exactBox(const geo::Frame& base, double width, double height,
+                                      double depth) {
+    geo::Frame least = base;
+    least.origin = base.origin + base.x * std::min(width, 0.0) + base.y * std::min(height, 0.0) +
+                   base.z * std::min(depth, 0.0);
+    auto box = model::exact::makeBox(least, std::abs(width), std::abs(height), std::abs(depth));
+    if (!box) return nullptr;
+    const auto swapNames = [&box](const char* a, const char* b) {
+        for (auto& face : box->faces()) {
+            const std::string tag = face.topoId.tag();
+            if (tag == a) face.topoId = topo::TopologyID::fromTag(b);
+            if (tag == b) face.topoId = topo::TopologyID::fromTag(a);
+        }
+    };
+    if (width < 0.0) swapNames("box/left", "box/right");
+    if (height < 0.0) swapNames("box/front", "box/back");
+    if (depth < 0.0) swapNames("box/bottom", "box/top");
+    return box;
+}
+
 }  // namespace
 
 std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeBox(double width, double height,
@@ -1313,7 +1338,7 @@ FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/
     try {
         switch (m_kind) {
             case Kind::Box:
-                exact = model::exact::makeBox(frame, m_p0, m_p1, m_p2);
+                exact = exactBox(frame, m_p0, m_p1, m_p2);
                 break;
             case Kind::Cylinder:
                 exact = model::exact::makeCylinder(frame, m_p0, m_p1);

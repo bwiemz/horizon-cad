@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -23,6 +24,7 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/MeshData.h"
+#include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
@@ -452,5 +454,91 @@ TEST(ExactConstruction, ATorusWhoseTubeReachesItsAxisIsRefusedAsBefore) {
         EXPECT_EQ(part.lastBuildMessage(), masters);
         EXPECT_EQ(part.solid(), nullptr);
         EXPECT_EQ(part.exactSolid(), nullptr);
+    }
+}
+
+// Ruling 19: a box with a negative size is built as master built it, on the other side of its base
+// along that axis: the exact box of its extents, each face named as master's factory names the
+// face in that place (`left` at x = 0 and `right` at x = width, whichever side that is). Its
+// faceted copy is master's: its counts, volume and box, and each face's name and where it is, and
+// every edge's name, as recorded at 0fe10934. Its exact part is the same box.
+TEST(ExactConstruction, ABoxWithANegativeSizeIsBuiltAsBefore) {
+    struct Case {
+        const char* what;
+        std::unique_ptr<PrimitiveFeature> feature;
+        Vec3 min;
+        Vec3 max;
+        std::map<std::string, Vec3> centres;  ///< each face's corners' mean, by its role
+    };
+    std::vector<Case> cases;
+    cases.push_back({"-2 x 3 x -4, at the origin",
+                     PrimitiveFeature::makeBox(-2.0, 3.0, -4.0),
+                     {-2, 0, -4},
+                     {0, 3, 0},
+                     {{"bottom", {-1, 1.5, 0}},
+                      {"front", {-1, 0, -2}},
+                      {"right", {-2, 1.5, -2}},
+                      {"back", {-1, 3, -2}},
+                      {"left", {0, 1.5, -2}},
+                      {"top", {-1, 1.5, -4}}}});
+    cases.push_back({"-2 x -3 x 4, stood at (1, 2, 3) along (0.3, 1, 0.6)",
+                     PrimitiveFeature::makeBox(-2.0, -3.0, 4.0),
+                     {-0.91714598003856818, 0.38090033269053247, 3},
+                     {2.4108158580520391, 5.5979992606877049, 7.9827287912243978},
+                     {{"bottom", {0.24856205988429569, 1.3285401996143196, 4.4948186373673185}},
+                      {"front", {0.53969988910315569, 3.7989996303438529, 4.2456821978060999}},
+                      {"right", {-0.21173805101254867, 3.1275398299581716, 5.7405008351734192}},
+                      {"back", {0.95396998891031537, 2.1798999630343849, 6.7370465934182988}},
+                      {"left", {1.7054079290260198, 2.8513597634200654, 5.2422279560509795}},
+                      {"top", {1.2451078181291753, 4.6503593937639183, 6.4879101538570794}}}});
+    ASSERT_TRUE(cases[1].feature->setVector("basePoint", Vec3(1.0, 2.0, 3.0)));
+    ASSERT_TRUE(cases[1].feature->setVector("axisDirection", Vec3(0.3, 1.0, 0.6)));
+    const char* edges[] = {"back|bottom",  "back|left",   "back|right",   "back|top",
+                           "bottom|front", "bottom|left", "bottom|right", "front|left",
+                           "front|right",  "front|top",   "left|top",     "right|top"};
+    for (Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        const std::string id = c.feature->featureID();
+        Document part;
+        buildAlone(part, std::move(c.feature));
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        ASSERT_NE(part.solid(), nullptr);
+        const hz::topo::Solid& faceted = *part.solid();
+        EXPECT_EQ(faceted.faceCount(), 6u);
+        EXPECT_EQ(faceted.edges().size(), 12u);
+        EXPECT_EQ(faceted.vertices().size(), 8u);
+        EXPECT_NEAR(volumeOf(faceted), 24.0, 24.0 * 1e-12);
+        hz::math::BoundingBox box;
+        for (const auto& v : faceted.vertices()) box.expand(v.point);
+        EXPECT_LT((box.min() - c.min).length(), 1e-12 * 10.0);
+        EXPECT_LT((box.max() - c.max).length(), 1e-12 * 10.0);
+        std::set<std::string> names;
+        for (const auto& face : faceted.faces()) {
+            const std::string& tag = face.topoId.tag();
+            names.insert(tag);
+            ASSERT_EQ(tag.rfind(id + "/", 0), 0u) << tag;
+            const auto expected = c.centres.find(tag.substr(id.size() + 1));
+            ASSERT_NE(expected, c.centres.end()) << tag;
+            Vec3 centre;
+            int corners = 0;
+            const hz::topo::HalfEdge* he = face.outerLoop->halfEdge;
+            do {
+                centre = centre + he->origin->point;
+                ++corners;
+                he = he->next;
+            } while (he != face.outerLoop->halfEdge);
+            centre = centre / static_cast<double>(corners);
+            EXPECT_LT((centre - expected->second).length(), 1e-12 * 10.0) << tag;
+        }
+        EXPECT_EQ(names.size(), 6u);
+        std::set<std::string> expectedEdges;
+        for (const char* e : edges) expectedEdges.insert(id + "/edge:" + e);
+        std::set<std::string> edgeNames;
+        for (const auto& e : faceted.edges()) edgeNames.insert(e.topoId.tag());
+        EXPECT_EQ(edgeNames, expectedEdges);
+
+        ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+        EXPECT_NEAR(volumeOf(*part.exactSolid()), 24.0, 24.0 * 1e-9);
+        expectNamedAsItsFacets(*part.exactSolid(), faceted);
     }
 }
