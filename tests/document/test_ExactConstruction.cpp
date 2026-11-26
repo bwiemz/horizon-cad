@@ -37,6 +37,7 @@
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
@@ -716,6 +717,122 @@ TEST(ExactConstruction, AFailedExactExtrudeFailsTheFeature) {
     EXPECT_FALSE(part.rebuildModel());
     EXPECT_EQ(
         part.lastBuildMessage().rfind("Feature 'Extrude' failed: could not be built exactly: ", 0),
+        0u)
+        << part.lastBuildMessage();
+    EXPECT_EQ(part.solid(), nullptr);
+    EXPECT_EQ(part.exactSolid(), nullptr);
+}
+
+namespace {
+
+/// A quarter circle of radius 3 about the origin from the axis at (0, -3) to (3, 0), then a line
+/// up to the axis at (0, 4), on @p sketch: a hemisphere under a cone, 30 pi a whole turn.
+void drawPoleAndApex(hz::doc::Sketch& sketch) {
+    sketch.addEntity(std::make_shared<hz::draft::DraftArc>(Vec2(0, 0), 3, -kPi / 2, 0));
+    sketch.addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(3, 0), Vec2(0, 4)));
+    sketch.addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 4), Vec2(0, -3)));
+}
+
+/// @p sketch turned by @p angle about its y axis, "revolve_1".
+std::unique_ptr<hz::doc::RevolveFeature> revolveOf(const std::shared_ptr<hz::doc::Sketch>& sketch,
+                                                   double angle) {
+    auto revolve =
+        std::make_unique<hz::doc::RevolveFeature>(sketch, Vec3(0, 0, 0), Vec3(0, 1, 0), angle);
+    revolve->restoreFeatureID("revolve_1");
+    return revolve;
+}
+
+}  // namespace
+
+// A revolve is exact (stage 3): a hemisphere under a cone (a pole and an apex), a whole turn and a
+// quarter, 30 pi and a quarter of it. Its faceted part is master's: its counts recorded at
+// 9314271e, before the revolve was exact (288 faces, 544 edges, 258 vertices a whole turn; 74, 146
+// and 74 a quarter), its logical faces master's logical names.
+TEST(ExactConstruction, ARevolveIsExact) {
+    struct Case {
+        double angle;
+        std::size_t faces, edges, vertices;
+        std::set<std::string> names;
+    };
+    const std::vector<Case> cases = {
+        {2 * kPi, 288, 544, 258, {"revolve_1/revolved:{0}", "revolve_1/revolved:{1}"}},
+        {kPi / 2,
+         74,
+         146,
+         74,
+         {"revolve_1/cap_end", "revolve_1/cap_start", "revolve_1/revolved:{0}",
+          "revolve_1/revolved:{1}"}}};
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.angle);
+        auto sketch = std::make_shared<hz::doc::Sketch>();
+        drawPoleAndApex(*sketch);
+        Document part;
+        part.setType(DocumentType::Part);
+        part.addSketch(sketch);
+        part.featureTree().addFeature(revolveOf(sketch, c.angle));
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+        const double volume = 15.0 * c.angle;
+        EXPECT_NEAR(volumeOf(*part.exactSolid()), volume, volume * 1e-9);
+
+        const hz::topo::Solid& faceted = *part.solid();
+        EXPECT_EQ(faceted.faceCount(), c.faces);
+        EXPECT_EQ(faceted.edges().size(), c.edges);
+        EXPECT_EQ(faceted.vertices().size(), c.vertices);
+        EXPECT_EQ(logicalFaces(faceted), namedFor(c.names, *sketch));
+        expectNamedAsItsFacets(*part.exactSolid(), faceted);
+        expectMeshed(part, volume);
+    }
+}
+
+// A revolve named by position (a part saved before persistent naming) builds as master did: its
+// faceted revolve, `revolved_<i>_<k>`, and no exact part.
+TEST(ExactConstruction, APositionalRevolveBuildsAsMasterDid) {
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    drawPoleAndApex(*sketch);
+    auto revolve = revolveOf(sketch, kPi / 2);
+    revolve->setNaming(hz::model::NamingScheme::Positional);
+    hz::doc::FeatureOutput out = revolve->executeWithExact({}, nullptr, nullptr);
+    ASSERT_NE(out.faceted, nullptr);
+    EXPECT_EQ(out.exact, nullptr);
+    EXPECT_EQ(out.faceted->faceCount(), 74u);
+    EXPECT_EQ(faceNames(*out.faceted).count("revolve_1/revolved_0_0"), 1u);
+
+    Document part;
+    part.setType(DocumentType::Part);
+    part.addSketch(sketch);
+    part.featureTree().addFeature(std::move(revolve));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    EXPECT_TRUE(part.exactNote().empty()) << part.exactNote();
+}
+
+// Decision 1b: a revolve whose exact build fails fails, saying why; master's faceted construction
+// never builds it in its place. A disc that touches the axis turns to a horn, its cusp on the
+// axis, which master faceted and the exact revolve cannot build.
+TEST(ExactConstruction, AFailedExactRevolveFailsTheFeature) {
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    sketch->addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(1, 0), 1.0));
+    std::string masters;
+    EXPECT_NE(hz::model::Revolve::execute(sketch->entities(), sketch->plane(), Vec3(),
+                                          Vec3(0, 1, 0), 2 * kPi, "x", 32, 0.0, &masters,
+                                          hz::model::NamingScheme::FromGeometry),
+              nullptr)
+        << "master faceted it: " << masters;
+    auto revolve = revolveOf(sketch, 2 * kPi);
+    std::string why;
+    const hz::doc::FeatureOutput out = revolve->executeWithExact({}, nullptr, &why);
+    EXPECT_EQ(out.faceted, nullptr);
+    EXPECT_EQ(out.exact, nullptr);
+    EXPECT_EQ(why.rfind("could not be built exactly: ", 0), 0u) << why;
+
+    Document part;
+    part.setType(DocumentType::Part);
+    part.addSketch(sketch);
+    part.featureTree().addFeature(std::move(revolve));
+    EXPECT_FALSE(part.rebuildModel());
+    EXPECT_EQ(
+        part.lastBuildMessage().rfind("Feature 'Revolve' failed: could not be built exactly: ", 0),
         0u)
         << part.lastBuildMessage();
     EXPECT_EQ(part.solid(), nullptr);

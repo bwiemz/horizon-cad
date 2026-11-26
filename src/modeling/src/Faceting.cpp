@@ -2582,17 +2582,26 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
                               "corner to corner");
             }
         }
-        // A pole's side: its one point, spread over its coordinate in (u, v).
-        const auto poleSide = [&r](Side side, std::size_t n) {
+        // A pole's side: its one point, spread over its coordinate in (u, v) as the side across
+        // it runs, where that is no pole (so each column inside runs from the pole to that side's
+        // point, straight in (u, v): on a NURBS surface of revolution, whose u is no angle
+        // between its knots, the turned profile), and evenly where it is.
+        const auto poleSide = [&r, &sides](Side side, std::size_t n) {
             const bool alongU = side == kBottom || side == kTop;
+            const Side across = side == kBottom ? kTop
+                                : side == kTop  ? kBottom
+                                : side == kLeft ? kRight
+                                                : kLeft;
+            const std::vector<SidePoint>& other = sides[across];
+            const bool follow = !r.pole[across] && other.size() == n + 1;
             const Vec3 point = r.polePoint[side];
             std::vector<SidePoint> out;
             for (std::size_t i = 0; i <= n; ++i) {
                 const double f = static_cast<double>(i) / static_cast<double>(n);
-                out.push_back(
-                    {point,
-                     alongU ? math::Vec2(r.u0 + (r.u1 - r.u0) * f, side == kBottom ? r.v0 : r.v1)
-                            : math::Vec2(side == kLeft ? r.u0 : r.u1, r.v0 + (r.v1 - r.v0) * f)});
+                const double u = follow ? other[i].uv.x : r.u0 + (r.u1 - r.u0) * f;
+                const double v = follow ? other[i].uv.y : r.v0 + (r.v1 - r.v0) * f;
+                out.push_back({point, alongU ? math::Vec2(u, side == kBottom ? r.v0 : r.v1)
+                                             : math::Vec2(side == kLeft ? r.u0 : r.u1, v)});
             }
             return out;
         };

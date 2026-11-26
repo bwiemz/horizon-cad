@@ -1,7 +1,9 @@
 #include "horizon/modeling/Revolve.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <deque>
 #include <iomanip>
 #include <limits>
@@ -9,6 +11,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -217,20 +220,50 @@ double Revolve::profileRadius(const std::vector<std::shared_ptr<draft::DraftEnti
 
 namespace {
 
-/// One closed loop, revolved: the solid execute() builds for a profile that
-/// is a single loop. @p axisDir is a unit vector.
-std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validation,
-                                         const draft::SketchPlane& plane, const Vec3& axisPoint,
-                                         const Vec3& axisDir, double angle,
-                                         const std::string& featureID, int segments,
-                                         double chordTolerance, std::string* reason,
-                                         NamingScheme naming) {
-    const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
+/// The name's prefix master's faceted revolve gave the band over chord @p i of @p sampled, the
+/// ring of @p validation's loop: by position, or (Stable) after the profile element the chord was
+/// cut from, as a facet of the surface it sweeps (`revolved:<source>/facet:`, and the chord's
+/// number on an arc, `<arcfacet>.`). A band is also found by it, for its ideal surface.
+std::string bandPrefix(const ringstack::SampledProfile& sampled,
+                       const ProfileValidationResult& validation, size_t i, bool stable) {
+    if (!stable) return "revolved_" + std::to_string(i) + "_";
+    const int s = i < sampled.edgeSource.size() ? sampled.edgeSource[i] : -1;
+    std::string prefix =
+        "revolved:" +
+        (s < 0 ? std::string("closing") : validation.edgeSources[static_cast<size_t>(s)]) +
+        "/facet:";
+    if (s >= 0 && sampled.sourceFacets[static_cast<size_t>(s)] > 1) {
+        prefix += std::to_string(sampled.edgeFacet[i]) + ".";
+    }
+    return prefix;
+}
+
+/// Master's faceted revolve of one closed loop, before it is sewn: its sampled ring, each point
+/// in the half-plane it turns in, and the polygons it sews (outward, named as its scheme names
+/// them).
+struct RevolveSoup {
+    ringstack::SampledProfile sampled;
+    std::vector<Cylindrical> cyl;
+    double tol = 0.0;  ///< its planarity tolerance, at its widest radius
+    std::vector<SolidSewer::InputFace> faces;
+};
+
+/// @p validation's loop turned as master's faceted revolve turns it, not yet sewn: nullopt, with
+/// @p reason in master's words, where master refuses it. @p axisDir is a unit vector.
+std::optional<RevolveSoup> revolveSoup(const ProfileValidationResult& validation,
+                                       const draft::SketchPlane& plane, const Vec3& axisPoint,
+                                       const Vec3& axisDir, double angle,
+                                       const std::string& featureID, int segments,
+                                       double chordTolerance, std::string* reason,
+                                       NamingScheme naming) {
+    const auto fail = [reason](std::string why) -> std::optional<RevolveSoup> {
         if (reason) *reason = std::move(why);
-        return nullptr;
+        return std::nullopt;
     };
-    const ringstack::SampledProfile sampled = ringstack::sampleProfile(
-        validation.orderedEdges, 1e-6, ringstack::ProfileResolution{segments, chordTolerance});
+    RevolveSoup soup;
+    soup.sampled = ringstack::sampleProfile(validation.orderedEdges, 1e-6,
+                                            ringstack::ProfileResolution{segments, chordTolerance});
+    const ringstack::SampledProfile& sampled = soup.sampled;
     const std::vector<Vec2>& verts2D = sampled.vertices;
     const size_t N = verts2D.size();
     if (N < 3) {
@@ -262,10 +295,12 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
     if (maxRadius <= 0.0) {
         return fail("the whole profile lies on the axis");
     }
-    const double tol = kPlanarityTol * maxRadius;
+    soup.tol = kPlanarityTol * maxRadius;
+    const double tol = soup.tol;
     const Vec3 refDir = radial[widest].normalized();
 
-    std::vector<Cylindrical> cyl(N);
+    soup.cyl.resize(N);
+    std::vector<Cylindrical>& cyl = soup.cyl;
     for (size_t i = 0; i < N; ++i) {
         const double r = radial[i].dot(refDir);
         if (r < -tol || (radial[i] - refDir * r).length() > tol) {
@@ -308,22 +343,11 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
     // sweeps. A band is also found by the prefix its facets share
     // (bandPrefix), for its ideal surface.
     const bool stable = naming == NamingScheme::Stable;
-    const auto source = [&](size_t i) -> std::string {
-        const int s = i < sampled.edgeSource.size() ? sampled.edgeSource[i] : -1;
-        return s < 0 ? std::string("closing") : validation.edgeSources[static_cast<size_t>(s)];
+    const auto bandRole = [&](size_t i, size_t k) {
+        return bandPrefix(sampled, validation, i, stable) + std::to_string(k);
     };
-    const auto bandPrefix = [&](size_t i) -> std::string {
-        if (!stable) return "revolved_" + std::to_string(i) + "_";
-        std::string prefix = "revolved:" + source(i) + "/facet:";
-        const int s = i < sampled.edgeSource.size() ? sampled.edgeSource[i] : -1;
-        if (s >= 0 && sampled.sourceFacets[static_cast<size_t>(s)] > 1) {
-            prefix += std::to_string(sampled.edgeFacet[i]) + ".";
-        }
-        return prefix;
-    };
-    const auto bandRole = [&](size_t i, size_t k) { return bandPrefix(i) + std::to_string(k); };
 
-    std::vector<SolidSewer::InputFace> faces;
+    std::vector<SolidSewer::InputFace>& faces = soup.faces;
     faces.reserve(ringCount * N + 2);
 
     // A band square to the axis is flat. In a full turn, stably named, it is
@@ -368,7 +392,7 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
         if (std::min(cyl[i].radius, cyl[j].radius) > tol) {
             face.holes.push_back(iWider ? jCircle : iCircle);
         }
-        std::string name = bandPrefix(i);
+        std::string name = bandPrefix(sampled, validation, i, stable);
         const std::string facet = "/facet:";
         if (name.size() > facet.size() &&
             name.compare(name.size() - facet.size(), facet.size(), facet) == 0) {
@@ -394,7 +418,26 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
     }
 
     ringstack::orientOutward(faces);
-    auto solid = SolidSewer::sew(faces);
+    return soup;
+}
+
+/// One closed loop, revolved: the solid execute() builds for a profile that
+/// is a single loop. @p axisDir is a unit vector.
+std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validation,
+                                         const draft::SketchPlane& plane, const Vec3& axisPoint,
+                                         const Vec3& axisDir, double angle,
+                                         const std::string& featureID, int segments,
+                                         double chordTolerance, std::string* reason,
+                                         NamingScheme naming) {
+    const auto fail = [reason](std::string why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = std::move(why);
+        return nullptr;
+    };
+    const auto soup = revolveSoup(validation, plane, axisPoint, axisDir, angle, featureID, segments,
+                                  chordTolerance, reason, naming);
+    if (!soup) return nullptr;
+    const RevolveSoup& made = *soup;
+    auto solid = SolidSewer::sew(made.faces);
     if (solid == nullptr) {
         return fail("the revolved faces could not be joined into a closed solid");
     }
@@ -402,15 +445,18 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
     // -----------------------------------------------------------------------
     // Geometry: the ideal each band of facets approximates.
     // -----------------------------------------------------------------------
+    const bool stable = naming == NamingScheme::Stable;
+    const size_t N = made.sampled.vertices.size();
     for (size_t i = 0; i < N; ++i) {
         const size_t j = (i + 1) % N;
         // A chord of a profile arc sweeps a cone, but what it approximates is
         // the torus-like surface of the arc, so there is no cone to record.
-        if (sampled.edgeArc[i] >= 0) continue;
-        tagAnalyticSurface(*solid, featureID + "/" + bandPrefix(i),
-                           sweptSurface(cyl[i], cyl[j], axisPoint, axisDir, tol));
+        if (made.sampled.edgeArc[i] >= 0) continue;
+        tagAnalyticSurface(*solid,
+                           featureID + "/" + bandPrefix(made.sampled, validation, i, stable),
+                           sweptSurface(made.cyl[i], made.cyl[j], axisPoint, axisDir, made.tol));
     }
-    tagRimArcs(*solid, axisPoint, axisDir, tol);
+    tagRimArcs(*solid, axisPoint, axisDir, made.tol);
 
     if (stable) {
         nameEdgesLogically(*solid);
@@ -424,6 +470,19 @@ std::unique_ptr<topo::Solid> revolveLoop(const ProfileValidationResult& validati
 
     return solid;
 }
+
+}  // namespace
+
+namespace {
+
+// The exact revolve's (below).
+std::optional<std::string> placementRefusal(const ProfileRegions& found,
+                                            const draft::SketchPlane& plane, const Vec3& axisPoint,
+                                            const Vec3& axisDir);
+ExactAndBridge buildExactAndBridge(const ProfileRegions& found, const draft::SketchPlane& plane,
+                                   const Vec3& axisPoint, const Vec3& axisDir, double angle,
+                                   const std::string& featureID, int segments,
+                                   double chordTolerance, std::string* reason);
 
 }  // namespace
 
@@ -447,6 +506,16 @@ std::unique_ptr<topo::Solid> Revolve::execute(
 
     const ProfileRegions found = ProfileValidator::regions(profile);
     if (!found.ok()) return fail(found.errorMessage);
+    if (naming == NamingScheme::Stable) {
+        // The exact revolve's bridge copy: master's facets, named for the exact faces and edges
+        // they lie on, and numbered as master's.
+        if (auto refused = placementRefusal(found, plane, axisPoint, axisDir)) {
+            return fail(std::move(*refused));
+        }
+        return buildExactAndBridge(found, plane, axisPoint, axisDir, angle, featureID, segments,
+                                   chordTolerance, reason)
+            .faceted;
+    }
     if (found.isSingleLoop()) {
         return revolveLoop(found.regions.front().outer, plane, axisPoint, axisDir, angle, featureID,
                            segments, chordTolerance, reason, naming);
@@ -1223,6 +1292,167 @@ std::unique_ptr<topo::Solid> revolveExactly(const ProfileRegions& found,
     return solid;
 }
 
+/// Points welded as SolidSewer::sew welds them, within its weld tolerance: a point of master's
+/// ring on the axis, turned to each step, is one point however its rounding left it. Every other
+/// point master's revolve shares between its polygons is one value, found again at once.
+class Welder {
+public:
+    /// The index of @p p's point: the same value's, or one within the weld tolerance of it, or
+    /// @p p's, added. @p p's coordinates must be finite.
+    std::size_t at(const Vec3& p) {
+        const Exact key{p.x, p.y, p.z};
+        const auto same = exact_.find(key);
+        if (same != exact_.end()) return same->second;
+        const Cell k = cellOf(p);
+        for (std::int64_t dx = -1; dx <= 1; ++dx) {
+            for (std::int64_t dy = -1; dy <= 1; ++dy) {
+                for (std::int64_t dz = -1; dz <= 1; ++dz) {
+                    const auto found = cells_.find({k[0] + dx, k[1] + dy, k[2] + dz});
+                    if (found == cells_.end()) continue;
+                    for (const std::size_t i : found->second) {
+                        if (points[i].distanceTo(p) <= SolidSewer::kDefaultWeldTol) {
+                            exact_.emplace(key, i);
+                            return i;
+                        }
+                    }
+                }
+            }
+        }
+        points.push_back(p);
+        cells_[k].push_back(points.size() - 1);
+        exact_.emplace(key, points.size() - 1);
+        return points.size() - 1;
+    }
+
+    std::vector<Vec3> points;
+
+private:
+    using Exact = std::array<double, 3>;
+    using Cell = std::array<std::int64_t, 3>;
+    struct ExactHash {
+        std::size_t operator()(const Exact& e) const {
+            const std::hash<double> h;
+            return (h(e[0]) * 1000003u ^ h(e[1])) * 1000003u ^ h(e[2]);
+        }
+    };
+    struct CellHash {
+        std::size_t operator()(const Cell& c) const {
+            const std::hash<std::int64_t> h;
+            return (h(c[0]) * 73856093u) ^ (h(c[1]) * 19349663u) ^ (h(c[2]) * 83492791u);
+        }
+    };
+    static Cell cellOf(const Vec3& p) {
+        const double cell = SolidSewer::kDefaultWeldTol;
+        return {static_cast<std::int64_t>(std::floor(p.x / cell)),
+                static_cast<std::int64_t>(std::floor(p.y / cell)),
+                static_cast<std::int64_t>(std::floor(p.z / cell))};
+    }
+    std::unordered_map<Exact, std::size_t, ExactHash> exact_;
+    std::unordered_map<Cell, std::vector<std::size_t>, CellHash> cells_;
+};
+
+/// Master's faceted revolve of @p found as it named what it made (Ruling 21): the polygons its
+/// Stable revolveLoop sewed (revolveSoup at {segments, chordTolerance}) for each region's outer
+/// loop and, for a profile of several loops, each hole's cutter (turned a twentieth further at
+/// each end through part of a turn, as master's execute turned it), in order, each named as it
+/// named the face sewn from it, its points welded as the sewer welded them; the edges in the order
+/// the sewer met them in each. A profile of several loops was then master's Booleans: what they
+/// split or merged has no place here, and keeps the bridge's own numbers (Ruling 23). Empty where
+/// master refused it, or a point of it is not finite (or not within the welder's reach).
+/// @p axisDir is a unit vector.
+MastersFacets mastersRevolve(const ProfileRegions& found, const draft::SketchPlane& plane,
+                             const Vec3& axisPoint, const Vec3& axisDir, double angle,
+                             const std::string& featureID, int segments, double chordTolerance) {
+    // The loops master turned, as its execute turned them.
+    const bool fullTurn = std::abs(angle - 2.0 * math::kPi) <= 1e-9;
+    const double extra = fullTurn ? 0.0 : 0.05 * angle;
+    const double cutterAngle = std::min(angle + 2.0 * extra, 2.0 * math::kPi);
+    const auto turned = [&](const Vec3& v) {
+        return rotateAroundAxis(axisPoint + v, axisPoint, axisDir, -extra) - axisPoint;
+    };
+    const draft::SketchPlane cutterPlane(
+        rotateAroundAxis(plane.origin(), axisPoint, axisDir, -extra), turned(plane.normal()),
+        turned(plane.xAxis()));
+    std::vector<RevolveSoup> soups;
+    int holeCount = 0;
+    for (size_t r = 0; r < found.regions.size(); ++r) {
+        const ProfileRegion& region = found.regions[r];
+        const std::string regionID = r == 0 ? featureID : featureID + "~region" + std::to_string(r);
+        std::string why;
+        auto soup = revolveSoup(region.outer, plane, axisPoint, axisDir, angle, regionID, segments,
+                                chordTolerance, &why, NamingScheme::Stable);
+        if (!soup) return {};
+        soups.push_back(std::move(*soup));
+        for (const auto& hole : region.holes) {
+            auto cutter = revolveSoup(hole, cutterPlane, axisPoint, axisDir, cutterAngle,
+                                      featureID + "~hole" + std::to_string(holeCount++), segments,
+                                      chordTolerance, &why, NamingScheme::Stable);
+            if (!cutter) return {};
+            soups.push_back(std::move(*cutter));
+        }
+    }
+    MastersFacets out;
+    // A cell of the welder must be had for every point: its coordinates finite and within reach.
+    const double reach = 1e15 * SolidSewer::kDefaultWeldTol;
+    for (const RevolveSoup& soup : soups) {
+        for (const auto& face : soup.faces) {
+            for (const Vec3& p : face.points) {
+                if (!(std::abs(p.x) < reach && std::abs(p.y) < reach && std::abs(p.z) < reach)) {
+                    return out;
+                }
+            }
+        }
+    }
+    Welder welder;
+    const auto loopOf = [&welder](const std::vector<Vec3>& points) {
+        std::vector<std::size_t> indices;
+        indices.reserve(points.size());
+        for (const Vec3& p : points) {
+            const std::size_t i = welder.at(p);
+            if (indices.empty() || indices.back() != i) indices.push_back(i);
+        }
+        while (indices.size() > 1 && indices.front() == indices.back()) indices.pop_back();
+        return indices;
+    };
+    for (const RevolveSoup& soup : soups) {
+        for (const auto& face : soup.faces) {
+            std::vector<std::size_t> outer = loopOf(face.points);
+            if (outer.size() < 3) continue;
+            std::vector<std::vector<std::size_t>> holes;
+            for (const auto& hole : face.holes) {
+                std::vector<std::size_t> h = loopOf(hole);
+                if (h.size() >= 3) holes.push_back(std::move(h));
+            }
+            out.faces.push_back(std::move(outer));
+            out.holes.push_back(std::move(holes));
+            out.faceNames.push_back(face.topoId.tag());
+        }
+    }
+    out.points = std::move(welder.points);
+    return out;
+}
+
+/// The exact revolve of @p found (which master turns) and its bridge copy at {@p segments,
+/// @p chordTolerance} (buildWithBridge), numbered as master's revolve numbered the same places
+/// (mastersRevolve). @p axisDir is a unit vector.
+ExactAndBridge buildExactAndBridge(const ProfileRegions& found, const draft::SketchPlane& plane,
+                                   const Vec3& axisPoint, const Vec3& axisDir, double angle,
+                                   const std::string& featureID, int segments,
+                                   double chordTolerance, std::string* reason) {
+    FacetResolution resolution;
+    resolution.segmentsPerTurn = segments;
+    resolution.chordTolerance = chordTolerance;
+    const MastersConstruction masters = [&] {
+        return mastersRevolve(found, plane, axisPoint, axisDir, angle, featureID, segments,
+                              chordTolerance);
+    };
+    return buildWithBridge(
+        [&](std::string& why) {
+            return revolveExactly(found, plane, axisPoint, axisDir, angle, featureID, why);
+        },
+        resolution, masters, reason);
+}
+
 }  // namespace
 
 std::unique_ptr<topo::Solid> Revolve::exact(
@@ -1241,6 +1471,23 @@ std::unique_ptr<topo::Solid> Revolve::exact(
             return revolveExactly(found, plane, axisPoint, axisDirection, angle, featureID, why);
         },
         reason);
+}
+
+Revolve::ExactAndBridge Revolve::exactAndBridge(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+    const draft::SketchPlane& plane, const Vec3& axisPoint, const Vec3& axisDirection, double angle,
+    const std::string& featureID, int segments, double chordTolerance, std::string* reason) {
+    const auto fail = [reason](std::string why) {
+        if (reason) *reason = std::move(why);
+        return ExactAndBridge{};
+    };
+    if (segments < 3) return fail("a revolve needs at least 3 steps per turn");
+    const ProfileRegions found = ProfileValidator::regions(profile);
+    auto refused = refusal(found, axisDirection, angle);
+    if (!refused) refused = placementRefusal(found, plane, axisPoint, axisDirection.normalized());
+    if (refused) return fail(std::move(*refused));
+    return buildExactAndBridge(found, plane, axisPoint, axisDirection.normalized(), angle,
+                               featureID, segments, chordTolerance, reason);
 }
 
 }  // namespace hz::model

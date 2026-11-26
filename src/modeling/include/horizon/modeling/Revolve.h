@@ -7,6 +7,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/ExactBuild.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
@@ -33,6 +34,11 @@ namespace hz::model {
 ///
 /// A full revolution of a profile that stays clear of the axis is a torus-like
 /// shell of genus 1.
+///
+/// That is master's faceted construction, which execute() builds under the older
+/// naming schemes. Under Stable naming (stage 3) the revolve is built exactly
+/// (exact()), and execute() gives its bridge copy: the same facets, cut from the
+/// exact faces.
 class Revolve {
 public:
     /// Angular steps around the axis for a full revolution.  A partial
@@ -63,10 +69,18 @@ public:
     /// @param chordTolerance When positive, profile arcs are instead faceted at
     ///                      the count their own radius needs to keep every
     ///                      chord within it.
-    /// @param naming        Stable: each band is named after the profile element
-    ///                      it sweeps, `revolved:<source>`, in facets, and the
-    ///                      edges logically. Otherwise by position, as before.
-    /// @return The revolved solid, or nullptr if the profile or angle is invalid.
+    /// @param naming        Stable: the solid is exact()'s bridge copy
+    ///                      (exactAndBridge()): master's facets, vertex for vertex,
+    ///                      each named for the exact face it lies on
+    ///                      (`revolved:<source>/facet:<k>`), numbered as master's;
+    ///                      a profile's holes are then inner loops or cavities, not
+    ///                      Booleans. FromGeometry and Positional build master's
+    ///                      faceted revolve as before, its bands named by position
+    ///                      under Positional.
+    /// @return The revolved solid, or nullptr if the profile or angle is invalid
+    ///         (or, under Stable naming, its exact form cannot be built or cut into
+    ///         facets: "could not be built exactly: <why>", "its exact form could not
+    ///         be cut into facets: <why>").
     static std::unique_ptr<topo::Solid> execute(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const math::Vec3& axisPoint,
@@ -107,6 +121,26 @@ public:
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const math::Vec3& axisPoint,
         const math::Vec3& axisDirection, double angle, const std::string& featureID,
+        std::string* reason = nullptr);
+
+    /// exact()'s solid and its bridge copy, what Revolve::execute gives under Stable naming.
+    using ExactAndBridge = model::ExactAndBridge;
+
+    /// The revolve built exactly and its bridge copy (model::buildWithBridge: model::facetExact at
+    /// {segments, chordTolerance}, its edges named by model::nameBridgeEdges), numbered as master's
+    /// faceted revolve numbered the same places, facets, chords and seams (model::nameAsMasters,
+    /// Ruling 21): described from the polygons master's Stable revolve sewed, each region's outer
+    /// loop's and each hole's cutter's. A profile of several loops was then master's Booleans:
+    /// what they split or merged (a cap's pieces, the edges of a merged hole) keeps the bridge's
+    /// own numbers (Ruling 23). Through part of a turn a flat face is one facet, a sector (master
+    /// cut it into a quad a step). An exact seam of several chords is renamed with them, after
+    /// master's edge at its first chord. Both null, with @p reason as exact() and execute() give
+    /// it, where either cannot be made.
+    static ExactAndBridge exactAndBridge(
+        const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+        const draft::SketchPlane& plane, const math::Vec3& axisPoint,
+        const math::Vec3& axisDirection, double angle, const std::string& featureID,
+        int segments = kDefaultSegments, double chordTolerance = 0.0,
         std::string* reason = nullptr);
 };
 

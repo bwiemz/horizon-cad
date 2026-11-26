@@ -107,6 +107,14 @@ Profile poleAndApex() {
 }
 const double kPoleAndApexVolume = 30.0 * kPi;
 
+/// A tangent ogive, 4 high on a base of radius 2: an arc of radius 5 about (-3, 0), across the
+/// axis, from the base's rim to the tip on the axis, a NURBS surface of revolution with one pole.
+Profile ogive() {
+    auto nose = std::make_shared<DraftArc>(Vec2(-3, 0), 5, 0.0, std::atan2(4.0, 3.0));
+    const Vec2 tip = nose->endPoint();
+    return {nose, line(tip, {0, 0}), line({0, 0}, {2, 0})};
+}
+
 /// A 2 x 3 rectangle from 2 to 4 off the axis: a washer.
 Profile washer() {
     return {line({2, 0}, {4, 0}), line({4, 0}, {4, 3}), line({4, 3}, {2, 3}), line({2, 3}, {2, 0})};
@@ -229,6 +237,86 @@ void expectValidMeshedAndExact(const hz::topo::Solid& solid, double volume) {
         solid, hz::model::BoundaryMesh::defaultChordTolerance(solid), &problem);
     EXPECT_TRUE(problem.empty()) << problem;
     EXPECT_FALSE(polygons.empty());
+}
+
+/// Revolve::execute of @p profile by @p angle about @p plane's y axis under @p naming, at 32
+/// segments a turn, which must build: under Stable the exact revolve's bridge copy, under
+/// FromGeometry master's faceted construction.
+std::unique_ptr<hz::topo::Solid> faceted(const Profile& profile, double angle,
+                                         const SketchPlane& plane = SketchPlane(),
+                                         NamingScheme naming = NamingScheme::Stable) {
+    std::string why;
+    auto solid = Revolve::execute(profile, plane, plane.origin(), plane.yAxis(), angle, "x", 32,
+                                  0.0, &why, naming);
+    EXPECT_NE(solid, nullptr) << why;
+    return solid;
+}
+
+/// The size of @p solid: its vertices' box's diagonal.
+double sizeOf(const hz::topo::Solid& solid) {
+    Vec3 lo(1e300, 1e300, 1e300);
+    Vec3 hi(-1e300, -1e300, -1e300);
+    for (const auto& v : solid.vertices()) {
+        lo = Vec3(std::min(lo.x, v.point.x), std::min(lo.y, v.point.y), std::min(lo.z, v.point.z));
+        hi = Vec3(std::max(hi.x, v.point.x), std::max(hi.y, v.point.y), std::max(hi.z, v.point.z));
+    }
+    return (hi - lo).length();
+}
+
+/// Every vertex of @p bridge is one of master's faceted construction's (FromGeometry naming, the
+/// construction of master's Stable one but for a whole turn's flat faces, which it fanned from a
+/// point on the axis), within 1e-12 of the size.
+void expectMastersVertices(const hz::topo::Solid& bridge, const Profile& profile, double angle,
+                           const SketchPlane& plane = SketchPlane()) {
+    const auto masters = faceted(profile, angle, plane, NamingScheme::FromGeometry);
+    ASSERT_NE(masters, nullptr);
+    const double size = sizeOf(*masters);
+    for (const auto& v : bridge.vertices()) {
+        double nearest = 1e300;
+        for (const auto& w : masters->vertices()) {
+            nearest = std::min(nearest, (v.point - w.point).length());
+        }
+        EXPECT_LT(nearest, 1e-12 * size) << v.point.x << " " << v.point.y << " " << v.point.z;
+    }
+}
+
+/// Each vertex of each face of @p bridge lies on the exact face it is a facet of, within
+/// @p within.
+void expectOnTheExactFaces(const hz::topo::Solid& bridge, const hz::topo::Solid& exact,
+                           double within) {
+    std::map<std::string, const hz::topo::Face*> byName;
+    for (const auto& face : exact.faces()) byName[face.topoId.tag()] = &face;
+    for (const auto& face : bridge.faces()) {
+        const auto found = byName.find(hz::model::logicalFace(face.topoId.tag()));
+        ASSERT_NE(found, byName.end()) << face.topoId.tag();
+        const hz::geo::Surface& s = *found->second->exactSurface;
+        std::vector<const hz::topo::Wire*> loops{face.outerLoop};
+        loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+        for (const hz::topo::Wire* w : loops) {
+            const hz::topo::HalfEdge* he = w->halfEdge;
+            do {
+                const Vec3& p = he->origin->point;
+                const Vec2 uv = s.invert(p);
+                EXPECT_LT((s.evaluate(uv.x, uv.y) - p).length(), within) << face.topoId.tag();
+                he = he->next;
+            } while (he != w->halfEdge);
+        }
+    }
+}
+
+/// The logical faces of @p solid's faces (model::logicalFace).
+std::set<std::string> logicalFaces(const hz::topo::Solid& solid) {
+    std::set<std::string> names;
+    for (const auto& face : solid.faces()) {
+        if (face.alive) names.insert(hz::model::logicalFace(face.topoId.tag()));
+    }
+    return names;
+}
+
+/// The exact solid named as its bridge copy is: the same logical faces and logical edges.
+void expectNamedAsItsFacets(const hz::topo::Solid& exact, const hz::topo::Solid& bridge) {
+    EXPECT_EQ(faceNames(exact), logicalFaces(bridge));
+    EXPECT_EQ(logicalEdges(exact), logicalEdges(bridge));
 }
 
 }  // namespace
@@ -612,4 +700,159 @@ TEST(ExactRevolve, WhatMasterRefusesItRefusesAlike) {
     EXPECT_EQ(Revolve::exact(touching, SketchPlane(), Vec3(), Vec3(0, 1, 0), kTwoPi, "x", &why),
               nullptr);
     EXPECT_EQ(why.rfind("could not be built exactly: ", 0), 0u) << why;
+}
+
+// Under Stable naming Revolve::execute gives the exact revolve's bridge copy (model::facetExact at
+// its segments and chord tolerance): master's facets, vertex for vertex, each named for the exact
+// face it lies on and lying on it within 1e-9 of the size. Its counts are master's, recorded from
+// master's Stable revolve at 9314271e at 32 segments a turn: through a whole turn a full turn's
+// flat face was already one face, a disc or a ring.
+TEST(ExactRevolve, TheBridgeIsMastersFacets) {
+    struct Case {
+        const char* what;
+        Profile profile;
+        double angle;
+        std::size_t faces, edges, vertices;
+        SketchPlane plane;
+    };
+    const double almost = 359.9 * kPi / 180.0;
+    std::vector<Case> cases;
+    cases.push_back({"a rectangle", rectangle(), kTwoPi, 34, 96, 64, SketchPlane()});
+    cases.push_back({"a triangle", triangle(), kTwoPi, 33, 64, 33, SketchPlane()});
+    cases.push_back({"a half disc", semicircle(), kTwoPi, 512, 992, 482, SketchPlane()});
+    cases.push_back(
+        {"a half disc, a quarter turn", semicircle(), kPi / 2.0, 130, 265, 137, SketchPlane()});
+    cases.push_back({"a torus", offAxisCircle(), kTwoPi, 1024, 2048, 1024, SketchPlane()});
+    cases.push_back(
+        {"a torus, a quarter turn", offAxisCircle(), kPi / 2.0, 258, 544, 288, SketchPlane()});
+    cases.push_back({"a pole and an apex", poleAndApex(), kTwoPi, 288, 544, 258, SketchPlane()});
+    cases.push_back({"a pole and an apex, a quarter turn", poleAndApex(), kPi / 2.0, 74, 146, 74,
+                     SketchPlane()});
+    cases.push_back(
+        {"a pole and an apex, 359.9 degrees", poleAndApex(), almost, 290, 554, 266, SketchPlane()});
+    cases.push_back({"a pole and an apex on a tilted sketch", poleAndApex(), kTwoPi, 288, 544, 258,
+                     inclined()});
+    cases.push_back({"a washer", washer(), kTwoPi, 66, 192, 128, SketchPlane()});
+    // A NURBS surface of revolution from a rim to a pole: its columns follow the rim's, so its
+    // facets are master's (its 160 and the base; master's Stable counts, its FromGeometry
+    // construction fanning the base from its centre).
+    cases.push_back({"an ogive", ogive(), kTwoPi, 161, 320, 161, SketchPlane()});
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        const auto exact = revolved(c.profile, c.angle, c.plane);
+        const auto bridge = faceted(c.profile, c.angle, c.plane);
+        ASSERT_NE(exact, nullptr);
+        ASSERT_NE(bridge, nullptr);
+        EXPECT_EQ(bridge->faceCount(), c.faces);
+        EXPECT_EQ(bridge->edges().size(), c.edges);
+        EXPECT_EQ(bridge->vertices().size(), c.vertices);
+        EXPECT_TRUE(bridge->isValid()) << bridge->validationReport();
+        expectMastersVertices(*bridge, c.profile, c.angle, c.plane);
+        expectOnTheExactFaces(*bridge, *exact, 1e-9 * sizeOf(*bridge));
+        expectNamedAsItsFacets(*exact, *bridge);
+    }
+}
+
+// Two differ from master on purpose. Through part of a turn a flat face is one plane, a sector of
+// a disc or a ring, and its bridge is one face, as every plane's is: master cut it into a quad for
+// each step (the rectangle's quarter turn was 26 faces, 44 edges and 20 vertices, the washer's
+// 34, 68 and 36). The vertices are master's.
+TEST(ExactRevolve, APartialTurnsFlatFaceIsOneFacet) {
+    struct Case {
+        const char* what;
+        Profile profile;
+        std::size_t faces, edges, vertices;
+    };
+    // Two sectors, eight facets of the wall and the caps; the washer's two walls.
+    const std::vector<Case> cases = {{"a rectangle", rectangle(), 12, 30, 20},
+                                     {"a washer", washer(), 20, 54, 36}};
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        const auto exact = revolved(c.profile, kPi / 2.0);
+        const auto bridge = faceted(c.profile, kPi / 2.0);
+        ASSERT_NE(exact, nullptr);
+        ASSERT_NE(bridge, nullptr);
+        EXPECT_EQ(bridge->faceCount(), c.faces);
+        EXPECT_EQ(bridge->edges().size(), c.edges);
+        EXPECT_EQ(bridge->vertices().size(), c.vertices);
+        expectMastersVertices(*bridge, c.profile, kPi / 2.0);
+        expectOnTheExactFaces(*bridge, *exact, 1e-9 * sizeOf(*bridge));
+        expectNamedAsItsFacets(*exact, *bridge);
+    }
+}
+
+// A profile with a hole is no longer master's Boolean of cutters (Ruling 23): through a whole turn
+// the hole's cavity is a shell of the bridge, and each flat end one ring with no seam across it
+// (1090 faces, 2240 edges, 1152 vertices; master's 1092, 2244 and 1152, each end in two pieces);
+// through a quarter turn each cap is one face with the hole's polygon, its corners the hole's own
+// ring (276 faces, 598 edges, 324 vertices; master's Boolean cut each cap in two along its cutter's
+// facets, turned a twentieth further at each end, 324, 684 and 360).
+TEST(ExactRevolve, AHoledProfilesBridgeHasItsHolesAsLoops) {
+    const Profile p = holed();
+    const auto whole = faceted(p, kTwoPi);
+    ASSERT_NE(whole, nullptr);
+    EXPECT_EQ(whole->shellCount(), 2u);
+    EXPECT_EQ(whole->faceCount(), 1090u);
+    EXPECT_EQ(whole->edges().size(), 2240u);
+    EXPECT_EQ(whole->vertices().size(), 1152u);
+    const auto quarter = faceted(p, kPi / 2.0);
+    ASSERT_NE(quarter, nullptr);
+    EXPECT_EQ(quarter->shellCount(), 1u);
+    EXPECT_EQ(quarter->faceCount(), 276u);
+    EXPECT_EQ(quarter->edges().size(), 598u);
+    EXPECT_EQ(quarter->vertices().size(), 324u);
+    for (const auto* bridge : {whole.get(), quarter.get()}) {
+        EXPECT_TRUE(bridge->isValid()) << bridge->validationReport();
+        const auto exact = revolved(p, bridge == whole.get() ? kTwoPi : kPi / 2.0);
+        ASSERT_NE(exact, nullptr);
+        expectOnTheExactFaces(*bridge, *exact, 1e-9 * sizeOf(*bridge));
+        expectNamedAsItsFacets(*exact, *bridge);
+    }
+}
+
+// Under the older schemes Revolve::execute builds master's faceted revolve as before; under
+// Stable, a revolve only the exact construction refuses is refused, with its reason.
+TEST(ExactRevolve, OnlyStableNamingBuildsExactly) {
+    const auto positional =
+        faceted(rectangle(), kPi / 2.0, SketchPlane(), NamingScheme::Positional);
+    ASSERT_NE(positional, nullptr);
+    EXPECT_EQ(positional->faceCount(), 26u) << "master's facets of the flat ends";
+    std::string why;
+    EXPECT_EQ(Revolve::execute({circle({1, 0}, 1)}, SketchPlane(), Vec3(), Vec3(0, 1, 0), kTwoPi,
+                               "x", 32, 0.0, &why, NamingScheme::Stable),
+              nullptr);
+    EXPECT_EQ(why.rfind("could not be built exactly: ", 0), 0u) << why;
+    EXPECT_EQ(Revolve::execute(rectangle(), SketchPlane(), Vec3(), Vec3(0, 1, 0), kTwoPi, "x", 2,
+                               0.0, &why, NamingScheme::Stable),
+              nullptr);
+    EXPECT_EQ(why, "a revolve needs at least 3 steps per turn");
+}
+
+// Not master's: a NURBS surface of revolution that comes to the axis at both ends (a lemon) has no
+// side to take its columns from, and facetExact cuts it at equal steps of its u, which between the
+// quarter turns of its rational arcs is no angle. Its counts are master's (352, 672, 322 at 32
+// segments), and each facet lies on it, but its vertices between the quarter turns miss master's,
+// by as much as 1.6% of its radius: tracked in the task's report, not fixed here.
+TEST(ExactRevolve, ALemonsBridgeIsCutEvenlyInItsU) {
+    const Profile p = lemon();
+    const auto exact = revolved(p, kTwoPi);
+    const auto bridge = faceted(p, kTwoPi);
+    const auto masters = faceted(p, kTwoPi, SketchPlane(), NamingScheme::FromGeometry);
+    ASSERT_NE(exact, nullptr);
+    ASSERT_NE(bridge, nullptr);
+    ASSERT_NE(masters, nullptr);
+    EXPECT_EQ(bridge->faceCount(), 352u);
+    EXPECT_EQ(bridge->edges().size(), 672u);
+    EXPECT_EQ(bridge->vertices().size(), 322u);
+    expectOnTheExactFaces(*bridge, *exact, 1e-9 * sizeOf(*bridge));
+    double worst = 0.0;
+    for (const auto& v : bridge->vertices()) {
+        double nearest = 1e300;
+        for (const auto& w : masters->vertices()) {
+            nearest = std::min(nearest, (v.point - w.point).length());
+        }
+        worst = std::max(worst, nearest);
+    }
+    EXPECT_GT(worst, 1e-3);
+    EXPECT_LT(worst, 0.02);
 }

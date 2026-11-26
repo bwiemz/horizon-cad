@@ -482,9 +482,12 @@ void PartCommands::onRevolveSketch() {
     const math::Vec3 axisPoint = plane.origin();
     const math::Vec3 axisDir = axis->currentIndex() == 1 ? plane.xAxis() : plane.yAxis();
 
+    // Built as the feature will be (Stable naming: exactly, and its bridge copy), so a profile
+    // only the exact construction refuses is refused here, before the document changes.
     std::string why;
     auto probe = model::Revolve::execute(sketch->entities(), plane, axisPoint, axisDir, angle,
-                                         "probe", model::Revolve::kDefaultSegments, 0.0, &why);
+                                         "probe", model::Revolve::kDefaultSegments, 0.0, &why,
+                                         model::NamingScheme::Stable);
     if (!probe) {
         m_host.showStatus(tr("Revolve failed: %1").arg(QString::fromStdString(why)));
         return;

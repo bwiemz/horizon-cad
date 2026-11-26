@@ -324,7 +324,12 @@ std::unordered_map<PointPair, std::string, PointPairHash> mastersEdgeNames(
             ++faces.count;
         }
     };
-    for (std::size_t f = 0; f < masters.faces.size(); ++f) walk(masters.faces[f], f);
+    for (std::size_t f = 0; f < masters.faces.size(); ++f) {
+        walk(masters.faces[f], f);
+        if (f < masters.holes.size()) {
+            for (const auto& hole : masters.holes[f]) walk(hole, f);
+        }
+    }
     if (!masters.edges.empty()) {
         for (const auto& e : masters.edges) order.push_back(unordered(e.first, e.second));
     }

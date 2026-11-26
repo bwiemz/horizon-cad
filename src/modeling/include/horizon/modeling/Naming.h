@@ -87,12 +87,15 @@ void nameBridgeEdges(topo::Solid& faceted, const topo::Solid& exact);
 /// its faces (each a loop of points) with master's names for them, and its edges in the order
 /// master made them, each a pair of points, which is the order nameEdgesLogically numbered them
 /// in. With no edges given, the order a sewer (SolidSewer) first meets them going round the
-/// faces in order, as it makes them.
+/// faces in order (each face's outer loop, then its holes), as it makes them.
 struct MastersFacets {
     std::vector<math::Vec3> points;
     std::vector<std::vector<std::size_t>> faces;
     std::vector<std::string> faceNames;
     std::vector<std::pair<std::size_t, std::size_t>> edges;
+    /// Each face's holes, each a loop of points, where it has any (a ring, as a whole turn's
+    /// flat face of master's revolve was): holes[f] for faces[f], as far as holes reaches.
+    std::vector<std::vector<std::vector<std::size_t>>> holes;
 };
 
 /// @p soup, the polygons one of master's faceted primitives sewed in order

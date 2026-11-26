@@ -426,14 +426,34 @@ void RevolveFeature::restoreFeatureID(const std::string& id) {
     bumpCounter(s_nextID, id, "revolve_");
 }
 
-std::unique_ptr<topo::Solid> RevolveFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
+std::unique_ptr<topo::Solid> RevolveFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
                                                      std::string* reason) const {
+    return executeWithExact(BuildContext{}, std::move(inputSolid), reason).faceted;
+}
+
+FeatureOutput RevolveFeature::executeWithExact(const BuildContext& /*context*/,
+                                               std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                               std::string* reason) const {
     // Placed on a face that has moved, the sketch takes its axis along.
     const math::Mat4 placement = m_sketch->placement();
-    return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(),
-                                   placement.transformPoint(m_axisPoint),
-                                   placement.transformDirection(m_axisDir), m_angle, m_featureID,
-                                   segments(), m_chordTolerance, reason, naming());
+    const math::Vec3 axisPoint = placement.transformPoint(m_axisPoint);
+    const math::Vec3 axisDir = placement.transformDirection(m_axisDir);
+    FeatureOutput out;
+    if (naming() != model::NamingScheme::Stable) {
+        out.faceted = model::Revolve::execute(m_sketch->entities(), m_sketch->plane(), axisPoint,
+                                              axisDir, m_angle, m_featureID, segments(),
+                                              m_chordTolerance, reason, naming());
+        return out;
+    }
+    // Built exactly (stage 3); the faceted revolve every operation not yet converted reads is its
+    // bridge copy, master's facets named for the exact faces they lie on and numbered as master's
+    // (Ruling 21).
+    auto built =
+        model::Revolve::exactAndBridge(m_sketch->entities(), m_sketch->plane(), axisPoint, axisDir,
+                                       m_angle, m_featureID, segments(), m_chordTolerance, reason);
+    out.faceted = std::move(built.faceted);
+    out.exact = std::move(built.exact);
+    return out;
 }
 
 // ---------------------------------------------------------------------------
