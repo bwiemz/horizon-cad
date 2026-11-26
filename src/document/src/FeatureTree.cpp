@@ -114,6 +114,25 @@ void bumpCounter(math::IdCounter<int>& counter, const std::string& id, const std
     }
 }
 
+/// A list of faces or edges kept by name, as storedReferences() lists it: one for each.
+std::vector<StoredReference> storedList(const std::vector<topo::TopologyID>& ids,
+                                        StoredReference::Kind kind, const char* what) {
+    std::vector<StoredReference> references;
+    references.reserve(ids.size());
+    for (const auto& id : ids) references.push_back({kind, id.tag(), what});
+    return references;
+}
+
+/// setStoredReference() for such a list: entry @p index renamed, or dropped for an empty name.
+void setStoredListEntry(std::vector<topo::TopologyID>& ids, std::size_t index, std::string name) {
+    if (index >= ids.size()) return;
+    if (name.empty()) {
+        ids.erase(ids.begin() + static_cast<std::ptrdiff_t>(index));
+        return;
+    }
+    ids[index] = topo::TopologyID::fromTag(name);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -184,6 +203,14 @@ bool ExtrudeFeature::setReference(const std::string& name, const std::string& va
     if (name != "upToFace") return false;
     m_upToFace = value;
     return true;
+}
+
+std::vector<StoredReference> ExtrudeFeature::storedReferences() const {
+    return {{StoredReference::Kind::Face, m_upToFace, "the face it goes up to"}};
+}
+
+void ExtrudeFeature::setStoredReference(std::size_t index, std::string name) {
+    if (index == 0) m_upToFace = std::move(name);
 }
 
 std::map<std::string, math::Vec3> ExtrudeFeature::vectors() const {
@@ -722,6 +749,14 @@ void ShellFeature::restoreFeatureID(const std::string& id) {
     bumpCounter(s_nextID, id, "shell_");
 }
 
+std::vector<StoredReference> ShellFeature::storedReferences() const {
+    return storedList(m_removedFaceIds, StoredReference::Kind::Face, "a face it removes");
+}
+
+void ShellFeature::setStoredReference(std::size_t index, std::string name) {
+    setStoredListEntry(m_removedFaceIds, index, std::move(name));
+}
+
 std::map<std::string, double> ShellFeature::parameters() const {
     return {{"thickness", m_thickness}};
 }
@@ -779,6 +814,14 @@ void FilletFeature::restoreFeatureID(const std::string& id) {
     if (id.empty()) return;
     m_featureID = id;
     bumpCounter(s_nextID, id, "fillet_");
+}
+
+std::vector<StoredReference> FilletFeature::storedReferences() const {
+    return storedList(m_edgeIds, StoredReference::Kind::Edge, "an edge it rounds");
+}
+
+void FilletFeature::setStoredReference(std::size_t index, std::string name) {
+    setStoredListEntry(m_edgeIds, index, std::move(name));
 }
 
 std::map<std::string, double> FilletFeature::parameters() const {
@@ -846,6 +889,14 @@ void ChamferFeature::restoreFeatureID(const std::string& id) {
     if (id.empty()) return;
     m_featureID = id;
     bumpCounter(s_nextID, id, "chamfer_");
+}
+
+std::vector<StoredReference> ChamferFeature::storedReferences() const {
+    return storedList(m_edgeIds, StoredReference::Kind::Edge, "an edge it bevels");
+}
+
+void ChamferFeature::setStoredReference(std::size_t index, std::string name) {
+    setStoredListEntry(m_edgeIds, index, std::move(name));
 }
 
 std::map<std::string, double> ChamferFeature::parameters() const {
@@ -2164,6 +2215,14 @@ bool MirrorFeature::setReference(const std::string& name, const std::string& val
     return true;
 }
 
+std::vector<StoredReference> MirrorFeature::storedReferences() const {
+    return {{StoredReference::Kind::Face, m_face, "the face it mirrors in"}};
+}
+
+void MirrorFeature::setStoredReference(std::size_t index, std::string name) {
+    if (index == 0) m_face = std::move(name);
+}
+
 void MirrorFeature::setTargets(std::vector<std::string> targets) {
     m_targets.clear();
     for (auto& id : targets) {
@@ -2347,6 +2406,19 @@ bool HoleFeature::setReference(const std::string& name, const std::string& value
         return true;
     }
     return false;
+}
+
+std::vector<StoredReference> HoleFeature::storedReferences() const {
+    return {{StoredReference::Kind::Face, m_face, "the face it is drilled into"},
+            {StoredReference::Kind::Face, m_upToFace, "the face it goes up to"}};
+}
+
+void HoleFeature::setStoredReference(std::size_t index, std::string name) {
+    if (index == 0) {
+        m_face = std::move(name);
+    } else if (index == 1) {
+        m_upToFace = std::move(name);
+    }
 }
 
 std::unique_ptr<topo::Solid> HoleFeature::execute(std::unique_ptr<topo::Solid> inputSolid,

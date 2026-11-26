@@ -27,6 +27,7 @@ add_library(Horizon::AtomicFile ALIAS hz_atomic_file)
 
 add_library(hz_fileio STATIC
     src/NativeFormat.cpp
+    src/Migration.cpp
     src/BinaryFormat.cpp
     src/StlExporter.cpp
     src/StepFormat.cpp

@@ -40,6 +40,7 @@
 #include "horizon/drafting/LineType.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/AtomicFile.h"
+#include "horizon/fileio/Migration.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/MeshData.h"
 #include "horizon/math/Units.h"
@@ -1270,7 +1271,7 @@ static void noteSkipped(ImportReport* report, const std::string& kind, size_t in
 
 /// Populate a Document from a parsed envelope of format @p fileVersion (one
 /// checkVersion() accepted). Shared by load() and BinaryFormat.
-static bool loadDocumentRoot(const json& root, int /*fileVersion*/, doc::Document& doc,
+static bool loadDocumentRoot(const json& root, int fileVersion, doc::Document& doc,
                              ImportReport* report, const SharedImports* shared) {
     if (!root.contains("version") || !root.contains("entities")) return false;
 
@@ -2100,6 +2101,20 @@ static bool loadDocumentRoot(const json& root, int /*fileVersion*/, doc::Documen
                                   }),
                    sketches.end());
 
+    // A part built from facets (format 31 or older) is built exactly now, its features named
+    // Stable: what that changes is said with what the read left out (spec: Migration).
+    if (fileVersion <= kLastFacetedFormat) {
+        const ImportReport migrated = migrateToExact(doc, fileVersion);
+        if (report != nullptr) {
+            report->skipped.insert(report->skipped.end(), migrated.skipped.begin(),
+                                   migrated.skipped.end());
+            report->approximated.insert(report->approximated.end(), migrated.approximated.begin(),
+                                        migrated.approximated.end());
+            report->converted.insert(report->converted.end(), migrated.converted.begin(),
+                                     migrated.converted.end());
+        }
+    }
+
     return true;
 }
 
@@ -2647,6 +2662,13 @@ std::shared_ptr<geo::MeshData> NativeFormat::loadPartMesh(const std::string& fil
     }
 
     if (!root.contains("tessellationCache")) return nullptr;
+    // The cache of a part of format 31 or older is master's facets, not the part this build makes
+    // of it (format 32 builds it exactly): the part is built instead.
+    if (const auto version = root.find("version");
+        version == root.end() || !version->is_number_integer() ||
+        version->get<long long>() <= kLastFacetedFormat) {
+        return nullptr;
+    }
 
     try {
         const auto& cache = root.at("tessellationCache");

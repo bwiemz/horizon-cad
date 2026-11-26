@@ -66,6 +66,18 @@ const char* bodyOperationName(BodyOperation operation);
 /// Parse a persisted spelling; nullopt when it is not one of the four.
 std::optional<BodyOperation> bodyOperationFromName(std::string_view name);
 
+/// A face or an edge of the part a feature keeps by its name (format 32's migration): what an old
+/// part's migration judges, and drops where the name can no longer mean what it meant
+/// (io::migrateToExact).
+struct StoredReference {
+    enum class Kind { Face, Edge };
+    Kind kind = Kind::Face;
+    /// Its whole name (a TopologyID's tag); empty where none is kept there.
+    std::string name;
+    /// What it is to the feature, for a report: "the face it goes up to", "an edge it rounds".
+    std::string what;
+};
+
 /// Abstract base class for parametric modeling features.
 ///
 /// Each feature can produce a solid from an optional input solid.
@@ -226,6 +238,19 @@ public:
         (void)value;
         return false;
     }
+    /// Every face and edge of the part it keeps by name (format 32's migration), in a fixed
+    /// order: an extrusion's face to go up to; a hole's face and its face to go up to; a mirror's
+    /// face; a shell's removed faces; a fillet's or a chamfer's edges. One for each place it can
+    /// keep one (an empty name: none kept there), and one for each of a list's. Its sketches'
+    /// (the face one is on, the edges projected into one) are theirs, not its.
+    virtual std::vector<StoredReference> storedReferences() const { return {}; }
+    /// Keep @p name in place of storedReferences()[@p index]; an empty one drops it: a place
+    /// keeps none, and a list is one shorter, so that the indices after it move down (drop from
+    /// the last to the first). An index it has not is passed over.
+    virtual void setStoredReference(std::size_t index, std::string name) {
+        (void)index;
+        (void)name;
+    }
 
     /// Whether vector @p name is a point (not a direction).
     static bool isPoint(const std::string& name) {
@@ -299,6 +324,8 @@ public:
         return {{"upToFace", m_upToFace}};
     }
     bool setReference(const std::string& name, const std::string& value) override;
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
 
     std::string name() const override;
     std::string featureID() const override;
@@ -539,6 +566,8 @@ public:
 
     double thickness() const { return m_thickness; }
     const std::vector<topo::TopologyID>& removedFaceIds() const { return m_removedFaceIds; }
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
     Method method() const { return m_method; }
 
 private:
@@ -566,6 +595,8 @@ public:
 
     double radius() const { return m_radius; }
     const std::vector<topo::TopologyID>& edgeIds() const { return m_edgeIds; }
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
 
     /// Chords across each blend arc, the "arcSegments" parameter.  A blend is
     /// faceted across its arc, so this is what decides how much material the
@@ -607,6 +638,8 @@ public:
 
     double distance() const { return m_distance; }
     const std::vector<topo::TopologyID>& edgeIds() const { return m_edgeIds; }
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
 
 private:
     std::vector<topo::TopologyID> m_edgeIds;
@@ -770,6 +803,8 @@ public:
         return {{"planeFace", m_face}};
     }
     bool setReference(const std::string& name, const std::string& value) override;
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
 
     const std::vector<std::string>& targets() const { return m_targets; }
     /// Each feature is mirrored once, however often it is listed.
@@ -859,6 +894,8 @@ public:
         return {{"face", m_face}, {"upToFace", m_upToFace}};
     }
     bool setReference(const std::string& name, const std::string& value) override;
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
 
     Type type() const { return m_type; }
     Extent extent() const { return m_extent; }
