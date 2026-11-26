@@ -5,6 +5,8 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QStatusBar>
 #include <cmath>
 #include <optional>
@@ -33,10 +35,23 @@ void trigger(MainWindow& w, const char* name) {
     action->trigger();
 }
 
+/// Until nothing runs on a worker: a part whose last build took 300 ms or more (an exact
+/// primitive with its exact part, in an MSVC Debug build) is built again on one, and its model is
+/// the one before until that build is applied.
+void settle(MainWindow& w) {
+    QElapsedTimer waited;
+    waited.start();
+    while (w.backgroundWorkRunning() && waited.elapsed() < 30'000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+}
+
+/// Trigger @p command, answering its form, and wait for the part it changed to be built.
 void run(MainWindow& w, const char* command, const QString& title, FormAnswers answers) {
     FormFiller filler(title, std::move(answers));
     trigger(w, command);
     EXPECT_TRUE(filler.seen()) << "no \"" << title.toStdString() << "\" form";
+    settle(w);
 }
 
 /// A 10 x 10 x 10 box from the origin, seen from the front, right and above,

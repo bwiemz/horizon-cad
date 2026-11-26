@@ -5,16 +5,21 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QStatusBar>
 #include <QTreeWidget>
 #include <cmath>
 #include <memory>
+#include <sstream>
+#include <string>
 
 #include "UiTestSupport.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/FeatureTreePanel.h"
 #include "horizon/ui/MainWindow.h"
@@ -32,11 +37,25 @@ QAction* action(MainWindow& w, const char* name) {
     return found;
 }
 
-/// Trigger a ribbon command whose form is titled `title`, answering it.
+/// Until nothing runs on a worker. A part whose last build took 300 ms or more is built again
+/// on a worker (RebuildMode::Auto), and its model is the one before until that build is applied:
+/// a sphere's, exact and with its exact part, takes that long in an MSVC Debug build, and the
+/// cut after it was read before it was built.
+void settle(MainWindow& w) {
+    QElapsedTimer waited;
+    waited.start();
+    while (w.backgroundWorkRunning() && waited.elapsed() < 30'000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+}
+
+/// Trigger a ribbon command whose form is titled `title`, answering it, and wait for the part it
+/// changed to be built.
 void run(MainWindow& w, const char* command, const QString& title, FormAnswers answers) {
     FormFiller filler(title, std::move(answers));
     action(w, command)->trigger();
     EXPECT_TRUE(filler.seen()) << "no \"" << title.toStdString() << "\" form";
+    settle(w);
 }
 
 double partVolume(const hz::doc::Document& doc) {
@@ -45,6 +64,18 @@ double partVolume(const hz::doc::Document& doc) {
 
 size_t bodies(const hz::doc::Document& doc) {
     return doc.solid() ? doc.solid()->shellCount() : 0;
+}
+
+/// The part's shells as a failure says them: whether a build still ran, and each shell's signed
+/// volume (a cavity's is negative).
+std::string shellsOf(const MainWindow& w, const hz::doc::Document& doc) {
+    std::ostringstream out;
+    out << "a build still running: " << (w.backgroundWorkRunning() ? "yes" : "no")
+        << "; shells' signed volumes:";
+    if (doc.solid() != nullptr) {
+        for (const auto& shell : doc.solid()->shells()) out << ' ' << hz::topo::signedVolume(shell);
+    }
+    return out.str();
 }
 
 /// A 10 x 10 x 10 box made with the Box command.
@@ -253,6 +284,7 @@ TEST(SolidCommandsTest, AHollowPartIsOneBody) {
     run(w, "action_sphere", QStringLiteral("Sphere"),
         FormAnswers().number(QStringLiteral("size0"), 2.0).combine(BodyOperation::Cut));
     ASSERT_EQ(doc.failedFeatureIndex(), -1) << doc.lastBuildMessage();
+    SCOPED_TRACE(shellsOf(w, doc));
     ASSERT_EQ(bodies(doc), 2u) << "the outside and the cavity";
     const double hollow = partVolume(doc);
 
