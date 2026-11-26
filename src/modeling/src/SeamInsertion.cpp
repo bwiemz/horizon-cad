@@ -1163,11 +1163,16 @@ std::string cutAcross(Solid& solid, Face& face, const math::ModelTolerance& tole
         }
         at[k] = crossingU(loop, xs[k], splits[k], leaving[k]);
     }
-    if (splits[0] && splits[1] && splits[0]->h->edge == splits[1]->h->edge) {
+    // Each read through a reference: an element of an array of optionals is not one the
+    // unchecked-optional-access check can tie a test to.
+    const std::optional<Split>& first = splits[0];
+    const std::optional<Split>& second = splits[1];
+    if (first && second && first->h->edge == second->h->edge) {
         return kNoSeam + "the line across it that halves it meets one edge twice";
     }
     for (std::size_t k = 0; k < 2; ++k) {
-        if (splits[k]) leaving[k] = applySplit(solid, *splits[k]);
+        const std::optional<Split>& split = splits[k];
+        if (split) leaving[k] = applySplit(solid, *split);
     }
     Vertex* va = leaving[0]->origin;
     Vertex* vb = leaving[1]->origin;
@@ -1376,24 +1381,24 @@ std::vector<Face*> turnBackwardRims(Solid& solid, const math::ModelTolerance& to
             }
         }
         // Flipping every rim of the group satisfies the same ties: which of the two is decided by
-        // the rims held as written, else by the fewer turns.
-        std::optional<int> flip;
+        // the rims held as written, else by the fewer turns (-1 until one is).
+        int flip = -1;
         std::size_t turns = 0;
         for (const std::size_t r : group) {
             turns += static_cast<std::size_t>(turn[r]);
             for (const bool h : held[r]) {
                 const int want = turn[r] ^ (h ? 1 : 0);
-                if (flip && *flip != want) holds = false;
+                if (flip >= 0 && flip != want) holds = false;
                 flip = want;
             }
         }
         if (!holds) continue;
-        if (!flip) {
+        if (flip < 0) {
             if (2 * turns == group.size()) continue;  // as many either way: which cannot be told
             flip = 2 * turns > group.size() ? 1 : 0;
         }
         for (const std::size_t r : group) {
-            if ((turn[r] ^ *flip) == 0) continue;
+            if ((turn[r] ^ flip) == 0) continue;
             turnRim(*rims[r]);
             for (Face* f : {rims[r]->halfEdge->face, rims[r]->halfEdge->twin->face}) {
                 if (listed.insert(f).second) turned.push_back(f);
