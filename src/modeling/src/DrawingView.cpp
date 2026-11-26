@@ -111,19 +111,21 @@ std::vector<std::pair<math::Vec2, math::Vec2>> centreLinesOf(const topo::Solid& 
             known =
                 frames.emplace(face.analyticSurface.get(), MateGeometry::frameForFace(face)).first;
         }
-        const std::optional<MateFrame>& frame = known->second;
-        if (!frame || frame->kind != MateFrameKind::Cylindrical || frame->radius <= 0.0) continue;
-        const double tol = kFitTolerance * std::max(1.0, frame->radius);
+        const std::optional<MateFrame>& cached = known->second;
+        if (!cached) continue;
+        const MateFrame frame = *cached;  // a few numbers: read once it is known to be there
+        if (frame.kind != MateFrameKind::Cylindrical || frame.radius <= 0.0) continue;
+        const double tol = kFitTolerance * std::max(1.0, frame.radius);
         Cylinder* into = nullptr;
         for (Cylinder& c : cylinders) {
-            if (std::abs(c.radius - frame->radius) <= tol &&
-                sameAxis(c, frame->origin, frame->direction, tol)) {
+            if (std::abs(c.radius - frame.radius) <= tol &&
+                sameAxis(c, frame.origin, frame.direction, tol)) {
                 into = &c;
                 break;
             }
         }
         if (into == nullptr) {
-            cylinders.push_back({frame->origin, frame->direction.normalized(), frame->radius, {}});
+            cylinders.push_back({frame.origin, frame.direction.normalized(), frame.radius, {}});
             into = &cylinders.back();
         }
         const topo::HalfEdge* start =
