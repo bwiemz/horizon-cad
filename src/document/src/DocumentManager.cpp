@@ -327,6 +327,36 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
     return false;
 }
 
+namespace {
+
+/// @p instance's part, and each part a subassembly of it places, built with its exact counterpart
+/// where it needs a build (Document::needsBuild): built without it, for its components alone, or
+/// not since its features changed. A subassembly nests no deeper than resolving it allowed
+/// (kMaxPlacesDepth).
+void buildWithExact(ComponentInstance& instance) {
+    if (instance.resolvedAssembly) {
+        for (auto& child : instance.resolvedAssembly->components()) {
+            if (!child.suppressed) buildWithExact(child);
+        }
+        return;
+    }
+    if (instance.resolvedPart && instance.resolvedPart->needsBuild()) {
+        instance.resolvedPart->rebuildModel(BuildOptions{});
+    }
+}
+
+}  // namespace
+
+bool DocumentManager::resolveForExport(ComponentInstance& instance,
+                                       const std::string& assemblyDir) {
+    if (instance.solid() == nullptr &&
+        !resolveComponent(instance, ComponentState::Resolved, assemblyDir)) {
+        return false;
+    }
+    buildWithExact(instance);
+    return true;
+}
+
 bool DocumentManager::resolveSubassembly(ComponentInstance& instance, ComponentState mode,
                                          const std::string& fullPath, const std::string& key,
                                          const std::vector<std::string>& within, std::string* why,

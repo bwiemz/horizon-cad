@@ -6,8 +6,11 @@
 #include <utility>
 
 #include "horizon/document/AssemblyDocument.h"
+#include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
 #include "horizon/math/Mat4.h"
+#include "horizon/modeling/Pattern.h"
+#include "horizon/topology/Solid.h"
 
 namespace hz::io {
 
@@ -20,6 +23,27 @@ std::string partFile(const doc::ComponentInstance& comp, const std::string& dir)
     fs::path path(comp.partPath);
     if (path.is_relative() && !dir.empty()) path = fs::path(dir) / path;
     return path.lexically_normal().string();
+}
+
+/// What @p comp's part is written as: as the part's own export writes it, its exact counterpart
+/// where it has one (Document::sharedExactSolid), mirrored for a mirrored component, kept in
+/// @p held; else the solid it places (ComponentInstance::solid). A mirror that could not keep the
+/// exact geometry (Pattern::transformed's problem; a reflection keeps it) is the component's
+/// faceted mirror, as before stage 3, its curved faces said in the write's report.
+const topo::Solid* exportedSolid(const doc::ComponentInstance& comp,
+                                 std::vector<std::shared_ptr<const topo::Solid>>& held) {
+    std::shared_ptr<const topo::Solid> exact =
+        comp.resolvedPart ? comp.resolvedPart->sharedExactSolid() : nullptr;
+    if (exact == nullptr) return comp.solid();
+    if (comp.mirrored) {
+        std::string problem;
+        std::shared_ptr<const topo::Solid> mirror =
+            model::Pattern::transformed(*exact, doc::ComponentInstance::ownMirror(), &problem);
+        if (mirror == nullptr || !problem.empty()) return comp.solid();
+        exact = std::move(mirror);
+    }
+    held.push_back(std::move(exact));
+    return held.back().get();
 }
 
 }  // namespace
@@ -59,15 +83,14 @@ AssemblyStepExport gatherAssemblyStep(doc::AssemblyDocument& assembly,
             if (added) {
                 std::string partName = fs::path(file).stem().string();
                 if (comp.mirrored) partName += " (mirrored)";
-                out.parts.push_back({std::move(partName), {solid}});
+                out.parts.push_back({std::move(partName), {exportedSolid(comp, out.held)}});
             }
             out.occurrences.push_back({known->second, name, outer * comp.transform});
         };
     for (auto& comp : assembly.components()) {
         if (comp.suppressed) continue;
-        if (comp.solid() == nullptr) {
-            documents.resolveComponent(comp, doc::ComponentState::Resolved, dir);
-        }
+        // Its part built with its exact counterpart, for the export alone (DocumentManager).
+        documents.resolveForExport(comp, dir);
         place(comp, dir, math::Mat4::identity(), comp.name);
     }
     return out;
