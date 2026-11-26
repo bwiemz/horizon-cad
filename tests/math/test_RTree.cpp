@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <random>
 #include <vector>
@@ -436,4 +437,119 @@ TEST(RTreeTest, EveryQueryAgreesWithASweepWhateverTheEntriesShape) {
                 << "plane " << plane << ", q " << q;
         }
     }
+}
+
+// A tree packed at once (RTree::load) answers every query as one built by inserting the same
+// entries one at a time, whatever their shape: points, as a profile's ends are, boxes spread in
+// x and y, and boxes all in one plane. It is a tree like any other after: inserts and removals
+// keep answering as a sweep does. An empty load is an empty tree; a load replaces what was there.
+TEST(RTreeTest, ATreePackedAtOnceAnswersAsOneBuiltEntryByEntry) {
+    for (const int shape : {0, 1, 2}) {
+        SCOPED_TRACE(shape);
+        std::vector<BoundingBox> boxes;
+        for (uint64_t i = 0; i < 3000; ++i) {
+            const double a = static_cast<double>((i * 2654435761u) % 1000) / 10.0;
+            const double b = static_cast<double>((i * 40503u) % 1000) / 10.0;
+            const Vec3 corner = shape == 2 ? Vec3(0.0, a, b) : Vec3(a, b, 0.0);
+            const Vec3 size = shape == 0 ? Vec3() : Vec3(0.5, 0.25, 0.0);
+            boxes.emplace_back(corner, corner + size);
+        }
+        RTree<uint64_t> packed;
+        packed.insert(99999, BoundingBox(Vec3(-5, -5, -5), Vec3(-4, -4, -4)));  // replaced
+        std::vector<std::pair<uint64_t, BoundingBox>> entries;
+        for (uint64_t i = 0; i < boxes.size(); ++i) entries.emplace_back(i, boxes[i]);
+        packed.load(entries);
+        RTree<uint64_t> inserted;
+        for (uint64_t i = 0; i < boxes.size(); ++i) inserted.insert(i, boxes[i]);
+        EXPECT_EQ(packed.size(), boxes.size());
+
+        const auto sweep = [&boxes](const BoundingBox& query) {
+            std::vector<uint64_t> hits;
+            for (uint64_t i = 0; i < boxes.size(); ++i) {
+                if (boxes[i].intersects(query)) hits.push_back(i);
+            }
+            return hits;
+        };
+        for (int q = 0; q < 300; ++q) {
+            const double x = static_cast<double>((q * 40503u) % 1000) / 10.0 - 5.0;
+            const double y = static_cast<double>((q * 2246822519u) % 1000) / 10.0 - 5.0;
+            const Vec3 corner = shape == 2 ? Vec3(-1.0, x, y) : Vec3(x, y, -1.0);
+            const BoundingBox query(corner, corner + Vec3(3.0, 3.0, 3.0));
+            EXPECT_EQ(sorted(packed.query(query)), sorted(inserted.query(query))) << q;
+            EXPECT_EQ(sorted(packed.query(query)), sweep(query)) << q;
+        }
+
+        // Still a tree: add some, take some away.
+        for (uint64_t i = 0; i < 500; ++i) {
+            const double a = static_cast<double>((i * 2246822519u) % 1000) / 10.0;
+            const Vec3 corner = shape == 2 ? Vec3(0.0, a, a) : Vec3(a, a, 0.0);
+            boxes.emplace_back(corner, corner + Vec3(0.1, 0.1, 0.0));
+            packed.insert(boxes.size() - 1, boxes.back());
+        }
+        for (uint64_t i = 0; i < boxes.size(); i += 3) {
+            EXPECT_TRUE(packed.remove(i, boxes[i]));
+            boxes[i] = BoundingBox(Vec3(1e9, 1e9, 1e9), Vec3(1e9, 1e9, 1e9));  // gone
+        }
+        for (int q = 0; q < 100; ++q) {
+            const double x = static_cast<double>((q * 2654435761u) % 1000) / 10.0;
+            const Vec3 corner = shape == 2 ? Vec3(-1.0, x, x) : Vec3(x, x, -1.0);
+            const BoundingBox query(corner, corner + Vec3(4.0, 4.0, 4.0));
+            EXPECT_EQ(sorted(packed.query(query)), sweep(query)) << q;
+        }
+    }
+
+    RTree<uint64_t> none;
+    none.insert(1, BoundingBox(Vec3(0, 0, 0), Vec3(1, 1, 1)));
+    none.load({});
+    EXPECT_TRUE(none.empty());
+    EXPECT_TRUE(none.query(BoundingBox(Vec3(-1, -1, -1), Vec3(2, 2, 2))).empty());
+    none.insert(2, BoundingBox(Vec3(0, 0, 0), Vec3(1, 1, 1)));
+    EXPECT_EQ(none.query(BoundingBox(Vec3(-1, -1, -1), Vec3(2, 2, 2))).size(), 1u);
+}
+
+// Ruling 22: a box with a coordinate that is not a number (as a fuzzed file can give) is no
+// trouble to a tree packed at once. It sorts last, so the sort is given a strict weak order (NaN
+// compares false both ways, which std::sort may not be given), it meets no query, and every
+// finite box beside it, before it or after it, is found as a sweep finds it. A box spanning the
+// whole of an axis, whose centre is no number either, is found wherever it reaches.
+TEST(RTreeTest, ABoxThatIsNotANumberIsHeldNowhereAndTheRestAreFound) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    std::vector<BoundingBox> boxes;
+    for (uint64_t i = 0; i < 2000; ++i) {
+        const double a = static_cast<double>((i * 2654435761u) % 1000) / 10.0;
+        const double b = static_cast<double>((i * 40503u) % 1000) / 10.0;
+        if (i % 97 == 0) {
+            boxes.emplace_back(Vec3(nan, b, 0.0), Vec3(nan, b, 0.0));  // no x
+        } else if (i % 89 == 0) {
+            boxes.emplace_back(Vec3(a, nan, nan), Vec3(a + 1.0, nan, nan));  // no y, no z
+        } else if (i % 83 == 0) {
+            boxes.emplace_back(Vec3(-inf, b, 0.0), Vec3(inf, b + 0.5, 0.0));  // all of x
+        } else {
+            boxes.emplace_back(Vec3(a, b, 0.0), Vec3(a + 0.5, b + 0.25, 0.0));
+        }
+    }
+    // Some leaves lead with a box that is not a number: it must not take its node's box with it.
+    std::swap(boxes[0], boxes[1]);
+    std::vector<std::pair<uint64_t, BoundingBox>> entries;
+    for (uint64_t i = 0; i < boxes.size(); ++i) entries.emplace_back(i, boxes[i]);
+    RTree<uint64_t> tree;
+    tree.load(entries);
+    EXPECT_EQ(tree.size(), boxes.size());
+    for (int q = 0; q < 300; ++q) {
+        const double x = static_cast<double>((q * 40503u) % 1000) / 10.0 - 5.0;
+        const double y = static_cast<double>((q * 2246822519u) % 1000) / 10.0 - 5.0;
+        const BoundingBox query(Vec3(x, y, -1.0), Vec3(x + 3.0, y + 3.0, 1.0));
+        std::vector<uint64_t> expected;
+        for (uint64_t i = 0; i < boxes.size(); ++i) {
+            if (boxes[i].intersects(query)) expected.push_back(i);
+        }
+        EXPECT_EQ(sorted(tree.query(query)), expected) << q;
+    }
+    // Only boxes that are not a number: a tree that finds nothing.
+    RTree<uint64_t> none;
+    none.load({{1, BoundingBox(Vec3(nan, nan, nan), Vec3(nan, nan, nan))},
+               {2, BoundingBox(Vec3(nan, 0, 0), Vec3(nan, 1, 1))}});
+    EXPECT_EQ(none.size(), 2u);
+    EXPECT_TRUE(none.query(BoundingBox(Vec3(-1e9, -1e9, -1e9), Vec3(1e9, 1e9, 1e9))).empty());
 }

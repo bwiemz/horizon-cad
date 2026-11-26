@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <functional>
 #include <limits>
@@ -56,6 +57,108 @@ double wrapTwoPi(double a) {
 
 double nearestRepresentative(double x, double ref, double period) {
     return x + period * std::round((ref - x) / period);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Peaks between samples (peakOfGap)
+// ---------------------------------------------------------------------------------------------
+
+/// The part of a bracket's larger side a golden-section probe takes: (3 - sqrt 5) / 2.
+constexpr double kGolden = 0.3819660112501051;
+/// The most probes one peak's search makes: pinning a peak to rounding takes some 40 at most (a
+/// bracket shrinks by 0.618 a probe, and only to the root of rounding's share of the peak's
+/// height), so this only stops a gap that is not a number.
+constexpr int kMostPeakProbes = 64;
+/// How many units in the last place of the points a gap is measured between pin its peak: two
+/// searches of one peak from different samples then part by rounding alone.
+constexpr double kPeakUlps = 4.0;
+
+/// What a gap's points' magnitude @p reach rounds a gap measured between them to.
+double peakRounding(double reach) {
+    const double r = kPeakUlps * std::numeric_limits<double>::epsilon() * reach;
+    return std::isfinite(r) ? r : 0.0;
+}
+
+/// The k for which @p x lies between @p at[k] and @p at[k + 1], @p at in order either way (at
+/// least two of them); held to the first and last pair.
+size_t bracketOf(const std::vector<double>& at, double x) {
+    const bool rising = at.back() >= at.front();
+    const auto it = rising ? std::upper_bound(at.begin(), at.end(), x)
+                           : std::upper_bound(at.begin(), at.end(), x, std::greater<>());
+    const auto k = static_cast<size_t>(std::max<std::ptrdiff_t>(it - at.begin() - 1, 0));
+    return std::min(k, at.size() - 2);
+}
+
+struct Peak {
+    double at = 0.0;   ///< where it was found
+    double gap = 0.0;  ///< its gap there
+};
+
+/// The peaks peakOfGap searches for, highest first: each where it was found and its gap, which is
+/// never below its sample's. @p above is a gap known beside the samples' own (the searches that
+/// cannot lift a peak past it, or past @p within, are not made).
+template <class GapAt>
+std::vector<Peak> searchPeaks(const std::vector<double>& at, const std::vector<double>& gaps,
+                              const GapAt& gapAt, double rounding, double above, double within) {
+    std::vector<Peak> found;
+    const size_t n = std::min(at.size(), gaps.size());
+    if (n < 2) return found;
+    double best = std::isfinite(above) ? above : 0.0;
+    for (size_t i = 0; i < n; ++i) best = std::max(best, gaps[i]);  // a NaN is passed over
+    struct Rising {
+        size_t i;
+        double height;  ///< how far it rises above the lower of the samples about it
+        double reach;   ///< the most its peak may come to: its height again above it (a smooth
+                        ///< peak rises at most a quarter of it above an inner sample, an eighth
+                        ///< above an end one)
+    };
+    std::vector<Rising> rising;
+    for (size_t i = 0; i < n; ++i) {
+        const double g = gaps[i];
+        if (!std::isfinite(g)) continue;
+        if ((i > 0 && !(g >= gaps[i - 1])) || (i + 1 < n && !(g >= gaps[i + 1]))) continue;
+        // Its height over the samples about it: an inner sample's two neighbours; an end
+        // sample's two on its inner side, for the one beside it alone bounds nothing of a peak
+        // near the far side of the end interval (its rise there can be all but nothing).
+        double low = g;
+        if (i > 0) low = std::min(low, gaps[i - 1]);
+        if (i + 1 < n) low = std::min(low, gaps[i + 1]);
+        if (i == 0 && n > 2) low = std::min(low, gaps[2]);
+        if (i + 1 == n && n > 2) low = std::min(low, gaps[n - 3]);
+        const double height = g - low;
+        // A rise within rounding has no peak to pin beyond it.
+        if (height > rounding) rising.push_back({i, height, g + height});
+    }
+    std::sort(rising.begin(), rising.end(),
+              [](const Rising& a, const Rising& b) { return a.reach > b.reach; });
+    for (const Rising& r : rising) {
+        if (!(r.reach > std::max(best, within))) break;  // nor can any after it
+        double a = at[r.i == 0 ? 0 : r.i - 1];
+        double b = at[r.i + 1 == n ? n - 1 : r.i + 1];
+        if (a > b) std::swap(a, b);
+        double c = at[r.i];
+        double fc = gaps[r.i];
+        // A smooth peak falls off as the square of the way from it: once the bracket is this
+        // narrow, its best point is within rounding of the peak (its height bounds its curvature,
+        // to 4 times its height over the bracket's width squared about an inner sample and 1/2
+        // at an end, wherever between the samples it lies; 8 covers both).
+        const double settled = (b - a) * std::sqrt(rounding / (8.0 * r.height));
+        for (int probe = 0; probe < kMostPeakProbes && b - a > settled; ++probe) {
+            const double x = b - c > c - a ? c + kGolden * (b - c) : c - kGolden * (c - a);
+            if (!(x > a && x < b) || x == c) break;  // no room left between them
+            const double fx = gapAt(x);
+            if (fx > fc) {
+                (x > c ? a : b) = c;
+                c = x;
+                fc = fx;
+            } else {
+                (x > c ? b : a) = x;
+            }
+        }
+        found.push_back({c, fc});
+        best = std::max(best, fc);
+    }
+    return found;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -445,23 +548,27 @@ std::optional<Form> closedFormCandidate(const Surface& s, const Curve3& c, doubl
     return std::nullopt;
 }
 
-/// The largest distance between the closed form's image and the curve, along it and at its
-/// ends.
-double measureForm(const Surface& s, const Curve3& c, const Form& f, double t0, double t1) {
+/// The largest distance between the closed form's image and the curve, at its ends and along
+/// it: pcurveGap's, the validator's measure, at 49 points and at the peaks between them that could
+/// pass @p within; and where the form's parameter is affine in the curve's, each of those points'
+/// distance from the curve's point at the same parameter too, which a form running the wrong way
+/// or at the wrong speed cannot pass.
+double measureForm(const Surface& s, const Curve3& c, const Form& f, double t0, double t1,
+                   double within) {
     constexpr int kChecks = 48;
+    std::vector<double> at;
+    at.reserve(kChecks + 1);
     double dev = 0.0;
     for (int k = 0; k <= kChecks; ++k) {
         const double lambda = static_cast<double>(k) / kChecks;
-        const Vec2 uv = f.curve->evaluate(f.start + lambda * (f.end - f.start));
-        const Vec3 p = s.evaluate(uv.x, uv.y);
-        double d = 0.0;
+        at.push_back(f.start + lambda * (f.end - f.start));
         if (f.affine) {
-            d = (p - c.evaluate(t0 + lambda * (t1 - t0))).length();
-        } else {
-            d = (p - c.evaluate(c.closestParameter(p))).length();
+            const Vec2 uv = f.curve->evaluate(at.back());
+            const Vec3 p = s.evaluate(uv.x, uv.y);
+            dev = std::max(dev, (p - c.evaluate(t0 + lambda * (t1 - t0))).length());
         }
-        dev = std::max(dev, d);
     }
+    dev = std::max(dev, pcurveGap(s, *f.curve, at, c, within).strays);
     const Vec2 a = f.curve->evaluate(f.start);
     const Vec2 b = f.curve->evaluate(f.end);
     dev = std::max(dev, (s.evaluate(a.x, a.y) - c.evaluate(t0)).length());
@@ -487,6 +594,31 @@ struct Sample {
     double speedU = 0.0;
     double speedV = 0.0;
     bool singular = false;
+    /// On a NURBS surface, the surface where it was evaluated at @c evaluatedAt (its point and
+    /// first derivatives, evaluateWithDerivatives'): the first step of Newton's method from this
+    /// sample's (u, v), while that is still uv, to the last bit.
+    SurfacePoint surface;
+    Vec2 evaluatedAt{std::numeric_limits<double>::quiet_NaN(),
+                     std::numeric_limits<double>::quiet_NaN()};
+    /// The (u, v) of the sample it was placed from, as it was then (not a number where it was
+    /// placed from none, or moved since): placed from that again, it would be placed where it
+    /// is, to the last bit (Inverter::place reads nothing else of it).
+    Vec2 placedFrom{std::numeric_limits<double>::quiet_NaN(),
+                    std::numeric_limits<double>::quiet_NaN()};
+};
+
+/// Whether @p a and @p b are the same (u, v), bit for bit (equal and of one sign; a NaN is equal
+/// to nothing).
+bool sameBits(const Vec2& a, const Vec2& b) {
+    return a.x == b.x && a.y == b.y && std::signbit(a.x) == std::signbit(b.x) &&
+           std::signbit(a.y) == std::signbit(b.y);
+}
+
+/// A (u, v) a pcurve's first sample is placed from (pcurveOn's startNear), and how near its point
+/// it must land to be taken.
+struct StartNear {
+    Vec2 uv;
+    double within = 0.0;
 };
 
 /// Places curve points on the surface, each from the (u, v) of the sample before it; one
@@ -499,25 +631,35 @@ public:
     /// A sample at @p t, placed from @p prev.
     Sample at(double t, const Sample* prev) const { return at(t, c_.derivatives(t), prev); }
 
-    /// A sample at @p t, whose point and tangent @p d already has, placed from @p prev.
-    Sample at(double t, const CurveDerivatives& d, const Sample* prev) const {
+    /// A sample at @p t, whose point and tangent @p d already has, placed from @p prev; the first
+    /// (no @p prev) from @p near, where it is given and lands (place).
+    Sample at(double t, const CurveDerivatives& d, const Sample* prev,
+              const StartNear* near = nullptr) const {
         Sample out;
         out.t = t;
         out.point = d.point;
         out.tangent = d.d1;
-        place(out, prev);
+        place(out, prev, near);
         return out;
     }
 
     /// The (u, v) of @p smp's point near @p prev's: from prev's, by Newton on a NURBS surface,
-    /// else the nearest representative of the inverted point.
-    void place(Sample& smp, const Sample* prev) const {
+    /// else the nearest representative of the inverted point. A first sample (no @p prev) on a
+    /// NURBS surface is placed from @p near by Newton too, as a later one is from the sample
+    /// before it, where that lands within @p near's tolerance of its point: no point of the
+    /// surface is nearer it by more, so the search of the whole surface (invert) would find the
+    /// same point (or, where the surface passes it twice, at a seam or a pole, the same point by
+    /// another (u, v)). Elsewhere it is searched for.
+    void place(Sample& smp, const Sample* prev, const StartNear* near = nullptr) const {
         const Vec3& p = smp.point;
         Vec2 uv;
         if (nurbs_ != nullptr && prev != nullptr) {
-            const auto r = nurbs_->project(p, prev->uv.x, prev->uv.y);
+            // Its first step from the surface prev was placed on, already evaluated there.
+            const SurfacePoint* at =
+                sameBits(prev->evaluatedAt, prev->uv) ? &prev->surface : nullptr;
+            const auto r = nurbs_->project(p, prev->uv.x, prev->uv.y, at);
             uv = Vec2(r.first, r.second);
-        } else {
+        } else if (nurbs_ == nullptr || near == nullptr || !landsFrom(*near, p, uv)) {
             uv = s_.invert(p);
         }
         if (prev != nullptr) {
@@ -538,6 +680,13 @@ public:
             here = local(uv);
         }
         smp.uv = uv;
+        smp.placedFrom = prev != nullptr ? prev->uv
+                                         : Vec2(std::numeric_limits<double>::quiet_NaN(),
+                                                std::numeric_limits<double>::quiet_NaN());
+        if (nurbs_ != nullptr) {
+            smp.surface = {here.point, here.du, here.dv};
+            smp.evaluatedAt = uv;
+        }
         smp.gap = (here.point - p).length();
         smp.speedU = here.du.length();
         smp.speedV = here.dv.length();
@@ -554,6 +703,14 @@ private:
         Vec3 du;
         Vec3 dv;
     };
+
+    /// Whether Newton's method from @p near's (u, v) lands within its tolerance of @p p, the
+    /// (u, v) it lands on in @p uv.
+    bool landsFrom(const StartNear& near, const Vec3& p, Vec2& uv) const {
+        const auto r = nurbs_->project(p, near.uv.x, near.uv.y);
+        uv = Vec2(r.first, r.second);
+        return (nurbs_->evaluate(uv.x, uv.y) - p).length() <= near.within;
+    }
 
     /// The surface at @p uv, to first derivatives (a NURBS surface without its second ones).
     Local local(const Vec2& uv) const {
@@ -799,10 +956,12 @@ double distanceNear(const Curve3& c, const Vec3& p, double guess, double lo, dou
                     double settle) {
     if (lo > hi) std::swap(lo, hi);
     double t = std::clamp(guess, lo, hi);
-    CurveDerivatives d = c.derivatives(t);
-    double best = (d.point - p).length();
+    // The point alone first (a curve's derivatives' point is its evaluate's, to the last bit):
+    // where it settles there, as from a matched parameter it mostly does, its derivatives are not
+    // needed.
+    double best = (c.evaluate(t) - p).length();
     for (int it = 0; it < 8 && best > settle; ++it) {
-        if (it > 0) d = c.derivatives(t);
+        const CurveDerivatives d = c.derivatives(t);
         const Vec3 r = d.point - p;
         const double denom = d.d1.dot(d.d1) + r.dot(d.d2);
         if (!(denom > 0.0)) break;
@@ -845,13 +1004,17 @@ struct Measure {
 /// A pcurve's deviation inside each sample interval, the pcurve given by @p at at the samples'
 /// parameters @p params. Strict: at seven points of each, each distance found from the matched
 /// parameter and, where it nears @p target, in full, and what the pcurve strays beyond the
-/// curve's own gap counted kPeakMargin more; this is what a returned pcurve is measured by.
-/// Otherwise a quick look at three points, from the matched parameter alone, to steer
-/// refinement. A fit passes through its samples, so its distance there is the samples' gap,
-/// already counted; a pcurve that does not (a parameter line, which its samples may stand off
-/// by up to the tolerance) is measured at each sample as well, in the interval it starts (the
-/// last sample in the last interval): where @p atSamples gives a sample a bound (not below 0),
-/// by that, else checked as the points between are.
+/// curve's own gap counted kPeakMargin more; and where the distance rises to a point among those,
+/// its peak searched for between them (peakOfGap's search, each point from its matched parameter),
+/// so that an interval reads no lower than the peak found in it, whatever its margin made of the
+/// points; this is what a returned pcurve is measured by. Peaks within the settling distance
+/// (kSettle of the target) decide nothing, and are not searched for. Otherwise a quick look at
+/// three points, from the matched parameter alone, to steer refinement. A fit passes through its
+/// samples, so its distance there is the samples' gap, already counted; a pcurve that does not (a
+/// parameter line, which its samples may stand off by up to the tolerance) is measured at each
+/// sample as well, in the interval it starts (the last sample in the last interval): where
+/// @p atSamples gives a sample a bound (not below 0), by that, else checked as the points between
+/// are.
 template <class At>
 Measure measureAlong(const Surface& s, const Curve3& c, const std::vector<Sample>& samples,
                      const std::vector<double>& params, const At& at, bool strict, double target,
@@ -861,9 +1024,22 @@ Measure measureAlong(const Surface& s, const Curve3& c, const std::vector<Sample
     m.interval.assign(samples.size() - 1, 0.0);
     for (const Sample& smp : samples) m.maxGap = std::max(m.maxGap, smp.gap);
     const int checks = strict ? kChecksPerInterval : kQuickChecks;
+    // Strict, every point measured, in order along the pcurve, for the peaks between them.
+    std::vector<double> checkAt;
+    std::vector<double> checkGap;
+    double reach = 0.0;
+    if (strict) {
+        checkAt.reserve(samples.size() * (kChecksPerInterval + 1));
+        checkGap.reserve(samples.size() * (kChecksPerInterval + 1));
+    }
+    const auto around = [&samples](size_t i) {
+        return std::pair<double, double>{samples[i == 0 ? 0 : i - 1].t,
+                                         samples[std::min(i + 2, samples.size() - 1)].t};
+    };
     for (size_t i = 0; i + 1 < samples.size(); ++i) {
-        const double lo = samples[i == 0 ? 0 : i - 1].t;
-        const double hi = samples[std::min(i + 2, samples.size() - 1)].t;
+        const std::pair<double, double> range = around(i);
+        const double lo = range.first;
+        const double hi = range.second;
         // At samples, each once: an interval's start, and the last interval's end too.
         const bool ends = atSamples != nullptr;
         const int lastK = ends && i + 2 == samples.size() ? checks + 1 : checks;
@@ -883,12 +1059,46 @@ Measure measureAlong(const Surface& s, const Curve3& c, const std::vector<Sample
             double d = distanceNear(c, p, guess, lo, hi, kSettle * target);
             if (strict && d > kSearchAbove * target) d = std::min(d, distanceToCurve(c, p, lo, hi));
             m.interval[i] = std::max(m.interval[i], d);
+            if (strict) {
+                checkAt.push_back(sp);
+                checkGap.push_back(d);
+                reach = std::max(reach, p.length());
+            }
         }
         if (strict) {
             const double gap = std::max(samples[i].gap, samples[i + 1].gap);
             m.interval[i] += kPeakMargin * std::max(0.0, m.interval[i] - gap);
         }
         m.fitDeviation = std::max(m.fitDeviation, m.interval[i]);
+    }
+    if (!strict || checkAt.size() < 2) return m;
+    const auto pointAt = [&](double sp) {
+        const Vec2 uv = at(sp);
+        return s.evaluate(uv.x, uv.y);
+    };
+    // A point between the checks, measured as they are: from its matched parameter.
+    const auto matched = [&](double sp) {
+        const size_t j = bracketOf(params, sp);
+        const double span = params[j + 1] - params[j];
+        const double f = span != 0.0 ? (sp - params[j]) / span : 0.0;
+        return std::pair<size_t, double>{j, samples[j].t + f * (samples[j + 1].t - samples[j].t)};
+    };
+    const auto gapAt = [&](double sp) {
+        const auto found = matched(sp);
+        const auto range = around(found.first);
+        return distanceNear(c, pointAt(sp), found.second, range.first, range.second,
+                            kSettle * target);
+    };
+    for (const Peak& peak : searchPeaks(checkAt, checkGap, gapAt, peakRounding(reach),
+                                        m.fitDeviation, kSettle * target)) {
+        const size_t j = matched(peak.at).first;
+        double d = peak.gap;
+        if (d > kSearchAbove * target) {
+            const auto range = around(j);
+            d = std::min(d, distanceToCurve(c, pointAt(peak.at), range.first, range.second));
+        }
+        m.interval[j] = std::max(m.interval[j], d);
+        m.fitDeviation = std::max(m.fitDeviation, m.interval[j]);
     }
     return m;
 }
@@ -1050,32 +1260,76 @@ void fixSingularStart(std::vector<Sample>& samples) {
                                       [](const Sample& smp) { return !smp.singular; });
     for (auto it = samples.begin(); it != regular && regular != samples.end(); ++it) {
         it->uv.x = regular->uv.x;
+        it->placedFrom = Vec2(std::numeric_limits<double>::quiet_NaN(),
+                              std::numeric_limits<double>::quiet_NaN());  // moved since
     }
 }
 
 /// Places every sample again in order, each from the one before it, so that u and v stay
 /// continuous with the samples between them, and gives a pole or an apex at the start the first
-/// regular u.
+/// regular u. A sample is placed again only where the one before it is not the (u, v) it was
+/// placed from (a sample new before it, or one placed again with other bits, or moved): a
+/// placement reads nothing but its point and that (u, v), so the rest would be placed where they
+/// are, to the last bit. Each sample is projected once, and again only where what it was
+/// projected from has changed.
 void rechain(const Inverter& inv, std::vector<Sample>& samples) {
-    for (size_t i = 1; i < samples.size(); ++i) inv.place(samples[i], &samples[i - 1]);
+    for (size_t i = 1; i < samples.size(); ++i) {
+        if (!sameBits(samples[i].placedFrom, samples[i - 1].uv)) {
+            inv.place(samples[i], &samples[i - 1]);
+        }
+    }
     fixSingularStart(samples);
 }
 
 /// The most fit-and-measure rounds the general method takes.
 constexpr int kMaxRounds = 64;
 
+/// How far the curve stands off the surface: the largest of the samples' gaps, and of their peaks
+/// between them (peakOfGap's search, each point between placed on the surface from the sample
+/// before it). A peak that could not pass @p within (a gap within it needs nothing) is not
+/// searched for.
+double standOffOf(const Inverter& inv, const std::vector<Sample>& samples, double within) {
+    std::vector<double> ts;
+    std::vector<double> gaps;
+    ts.reserve(samples.size());
+    gaps.reserve(samples.size());
+    double most = 0.0;
+    double reach = 0.0;
+    for (const Sample& smp : samples) {
+        ts.push_back(smp.t);
+        gaps.push_back(smp.gap);
+        most = std::max(most, smp.gap);
+        reach = std::max(reach, smp.point.length());
+    }
+    if (samples.size() < 2) return most;
+    const auto gapAt = [&](double t) { return inv.at(t, &samples[bracketOf(ts, t)]).gap; };
+    for (const Peak& p : searchPeaks(ts, gaps, gapAt, peakRounding(reach), 0.0, within)) {
+        most = std::max(most, p.gap);
+    }
+    return most;
+}
+
 Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, double tolerance,
-                     double limit) {
+                     double limit, const Vec2* startNear) {
     const Inverter inv(s, c);
     std::vector<Sample> samples;
     samples.reserve(kMaxSamples);
     const Start start = initialIntervals(c, t0, t1);
     const int initial = start.intervals;
+    // The first sample from the (u, v) it starts near, where that is given; each after it from
+    // the one before.
+    StartNear near;
+    const StartNear* first = nullptr;
+    if (startNear != nullptr) {
+        near = {*startNear, tolerance};
+        first = &near;
+    }
     for (int k = 0; k <= initial; ++k) {
         const double t = t0 + (t1 - t0) * static_cast<double>(k) / initial;
         const Sample* prev = samples.empty() ? nullptr : &samples.back();
-        samples.push_back(start.at.empty() ? inv.at(t, prev)
-                                           : inv.at(t, start.at[static_cast<size_t>(k)], prev));
+        const CurveDerivatives d =
+            start.at.empty() ? c.derivatives(t) : start.at[static_cast<size_t>(k)];
+        samples.push_back(inv.at(t, d, prev, k == 0 ? first : nullptr));
     }
     // Each was placed from the one before it, as rechain would place it again: only a pole at
     // the start is left to give its u.
@@ -1168,12 +1422,17 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
                 s, c, samples, line->params,
                 [&line](double sp) { return line->curve->evaluate(sp); }, true, target, &atSamples);
             allow(lm.maxGap);
-            if (!(lm.maxGap > target) && std::max(lm.fitDeviation, lm.maxGap) <= target) {
+            // The curve's stand-off at its peaks between the samples too, which no pcurve comes
+            // nearer than: allowed for as the samples' gaps are, and counted in the deviation.
+            const double standOff = std::max(standOffOf(inv, samples, tolerance), baseGap);
+            allow(standOff);
+            if (!(lm.maxGap > target) &&
+                std::max({lm.fitDeviation, lm.maxGap, standOff}) <= target) {
                 out.curve = line->curve;
                 out.start = 0.0;
                 out.end = 1.0;
-                out.deviation = std::max({lm.fitDeviation, lm.maxGap, baseGap});
-                out.standOff = std::max(lm.maxGap, baseGap);
+                out.deviation = std::max({lm.fitDeviation, lm.maxGap, standOff});
+                out.standOff = std::max(lm.maxGap, standOff);
                 return out;
             }
         }
@@ -1244,11 +1503,17 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
         allow(m.maxGap);
     }
 
+    // The curve's stand-off at its peaks between the samples too, which no pcurve comes nearer
+    // than: allowed for as the samples' gaps are (the fit was held to them; a gap that peaks
+    // higher between them is the curve's, not the fit's), and counted in the deviation, so that a
+    // curve standing off past the limit between its samples says so.
+    const double standOff = std::max({standOffOf(inv, samples, tolerance), m.maxGap, baseGap});
+    allow(standOff);
     out.curve = fit.curve();
     out.start = out.curve->tMin();
     out.end = out.curve->tMax();
-    out.deviation = std::max({m.fitDeviation, m.maxGap, baseGap});
-    out.standOff = std::max(m.maxGap, baseGap);
+    out.deviation = std::max({m.fitDeviation, m.maxGap, baseGap, standOff});
+    out.standOff = standOff;
     if (out.deviation > target) {
         out.problem = describe(out.deviation, target, samples.size(), out.standOff);
     }
@@ -1258,7 +1523,7 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
 }  // namespace
 
 Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t1, double tolerance,
-                double standOffLimit) {
+                double standOffLimit, const math::Vec2* startNear) {
     if (!std::isfinite(t0) || !std::isfinite(t1) || !std::isfinite(tolerance)) {
         return failed("pcurve deviation is unbounded: the range or the tolerance is not finite");
     }
@@ -1271,8 +1536,9 @@ Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t
     if (const std::optional<Form> form = closedFormCandidate(surface, curve, t0, t1, tolerance)) {
         // A bounded form is taken within the tolerance: a curve that stands off its plane by
         // more is measured on the general path, which finds its gap rather than bounding it.
-        const double dev =
-            form->bound >= 0.0 ? form->bound : measureForm(surface, curve, *form, t0, t1);
+        const double dev = form->bound >= 0.0
+                               ? form->bound
+                               : measureForm(surface, curve, *form, t0, t1, tolerance);
         if (std::isfinite(dev) && dev <= (form->bound >= 0.0 ? tolerance : limit)) {
             Pcurve pc;
             pc.curve = form->curve;
@@ -1283,7 +1549,77 @@ Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t
             return pc;
         }
     }
-    return generalPcurve(surface, curve, t0, t1, tolerance, limit);
+    return generalPcurve(surface, curve, t0, t1, tolerance, limit, startNear);
+}
+
+double peakOfGap(const std::vector<double>& at, const std::vector<double>& gaps,
+                 const std::function<double(double)>& gapAt, double rounding, double within) {
+    double most = 0.0;
+    for (size_t i = 0; i < std::min(at.size(), gaps.size()); ++i) most = std::max(most, gaps[i]);
+    for (const Peak& p : searchPeaks(at, gaps, gapAt, rounding, 0.0, within)) {
+        most = std::max(most, p.gap);
+    }
+    return most;
+}
+
+PcurveGap pcurveGap(const Surface& surface, const Curve2D& pcurve, const std::vector<double>& at,
+                    const Curve3& curve, double within) {
+    PcurveGap out;
+    out.params.reserve(at.size());
+    std::vector<double> gaps;
+    gaps.reserve(at.size());
+    double reach = 0.0;
+    std::vector<Vec3> points;
+    points.reserve(at.size());
+    for (const double s : at) {
+        const Vec2 uv = pcurve.evaluate(s);
+        points.push_back(surface.evaluate(uv.x, uv.y));
+    }
+    // The pcurve and the curve need not share parameters: measured to the nearest point
+    // (closestParameter; a B-spline's, its look along the curve made once for every sample).
+    const auto* nurbs = dynamic_cast<const NurbsCurve*>(&curve);
+    std::vector<double> nearest;
+    if (nurbs != nullptr) nearest = nurbs->closestPoints(points);
+    for (size_t i = 0; i < points.size(); ++i) {
+        const Vec3& p = points[i];
+        const double t = nurbs != nullptr ? nearest[i] : curve.closestParameter(p);
+        const double d = (curve.evaluate(t) - p).length();
+        out.params.push_back(t);
+        gaps.push_back(d);
+        out.strays = std::max(out.strays, d);
+        reach = std::max(reach, p.length());
+    }
+    if (at.size() < 2) return out;
+    // A point between two samples is measured by Newton's method from the parameter between
+    // their nearest points (a closed curve's taken the short way round its period), held to the
+    // curve's range where it does not close.
+    const bool periodic = curve.periodic();
+    const Interval range = curve.range();
+    const double period = range.max - range.min;
+    const bool wraps = periodic && std::isfinite(period) && period > 0.0;
+    const double lo = wraps ? -std::numeric_limits<double>::infinity() : range.min;
+    const double hi = wraps ? std::numeric_limits<double>::infinity() : range.max;
+    const auto pointAt = [&](double s) {
+        const Vec2 uv = pcurve.evaluate(s);
+        return surface.evaluate(uv.x, uv.y);
+    };
+    const auto gapAt = [&](double s) {
+        const size_t k = bracketOf(at, s);
+        const double t0 = out.params[k];
+        double t1 = out.params[k + 1];
+        if (wraps) t1 = nearestRepresentative(t1, t0, period);
+        const double span = at[k + 1] - at[k];
+        const double f = span != 0.0 ? (s - at[k]) / span : 0.0;
+        return distanceNear(curve, pointAt(s), t0 + f * (t1 - t0), lo, hi, 0.0);
+    };
+    for (const Peak& p : searchPeaks(at, gaps, gapAt, peakRounding(reach), 0.0, within)) {
+        // The peak's point measured as the samples are, too: Newton's method found a point of the
+        // curve, never nearer than its nearest, so the nearer of the two is the truer.
+        const Vec3 q = pointAt(p.at);
+        const double nearest = (curve.evaluate(curve.closestParameter(q)) - q).length();
+        out.strays = std::max(out.strays, std::min(p.gap, nearest));
+    }
+    return out;
 }
 
 }  // namespace hz::geo

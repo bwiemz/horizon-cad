@@ -213,10 +213,14 @@ hz::doc::Document* openPartOf(MainWindow& w, uint64_t id) {
     return w.activeDocument();
 }
 
-/// Makes a box part's block @p depth deep, as an edit in its tab does.
+/// Makes a box part's block @p depth deep, as an edit in its tab does: its tree marked changed, so
+/// a build of it as it was (its tab's, on a worker, begun as the tab opened it: a part made of
+/// primitives has an exact part, which a build for its components alone left out) is not applied
+/// over it.
 void deepen(hz::doc::Document& part, double depth) {
     ASSERT_GT(part.featureTree().featureCount(), 0u);
     ASSERT_TRUE(part.featureTree().feature(0)->setParameter("depth", depth));
+    part.featureTree().markChanged();
     ASSERT_TRUE(part.rebuildModel());
     part.setDirty(true);
 }

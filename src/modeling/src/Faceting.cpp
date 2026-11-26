@@ -9,6 +9,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -16,10 +17,19 @@
 #include <utility>
 #include <vector>
 
+#include "horizon/geometry/curves/AnalyticCurves.h"
+#include "horizon/geometry/curves/Curve3.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/geometry/surfaces/Surface.h"
+#include "horizon/math/ModelTolerance.h"
+#include "horizon/math/Vec2.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidSewer.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/HalfEdge.h"
+#include "horizon/topology/LoopUnwrap.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
@@ -1567,6 +1577,354 @@ std::optional<std::vector<std::vector<Vec3>>> offPlaneFacets(
     return facets;
 }
 
+namespace {
+
+// ---------------------------------------------------------------------------
+// The bridge from exact faces (stage 3): facetExact.
+// ---------------------------------------------------------------------------
+
+/// The most chords one curve is cut into, as PrimitiveFactory::segmentsForTolerance stops.
+constexpr int kMostSteps = 4096;
+
+/// How far off a side of a face's rectangle in (u, v) a pcurve's sample may be and still lie
+/// along it, relative to the larger of 1 and the coordinate's size: a guard on parameter
+/// arithmetic (the pcurves of a constructed face are exact lines along their sides), not a
+/// geometric tolerance.
+constexpr double kOnSide = 1e-9;
+
+/// Points along @p e from its half-edge's origin to its end: its vertices and, along its exact
+/// curve, @p samples - 2 between, at equal steps of its parameter; along its NURBS curve where it
+/// has no exact one. For telling whether a face's outline lies in a plane.
+std::vector<Vec3> outlinePoints(const Edge& e, int samples) {
+    std::vector<Vec3> out;
+    if (e.halfEdge == nullptr || e.halfEdge->origin == nullptr) return out;
+    out.push_back(e.halfEdge->origin->point);
+    for (int i = 1; i + 1 < samples; ++i) {
+        const double f = static_cast<double>(i) / static_cast<double>(samples - 1);
+        if (e.exactCurve) {
+            out.push_back(e.exactCurve->evaluate(e.curveStart + (e.curveEnd - e.curveStart) * f));
+        } else if (e.curve) {
+            out.push_back(
+                e.curve->evaluate(e.curve->tMin() + (e.curve->tMax() - e.curve->tMin()) * f));
+        }
+    }
+    if (e.halfEdge->next != nullptr && e.halfEdge->next->origin != nullptr) {
+        out.push_back(e.halfEdge->next->origin->point);
+    }
+    return out;
+}
+
+/// Whether @p face's outline, its edges along their curves, lies in one plane within
+/// @p tolerance: three of its points not in a line, and every point within it of their plane.
+bool flatOutline(const Face& face, double tolerance) {
+    std::vector<Vec3> points;
+    std::vector<const Wire*> loops{face.outerLoop};
+    loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+    for (const Wire* wire : loops) {
+        for (const HalfEdge* he : loopOf(wire)) {
+            const auto along = outlinePoints(*he->edge, topo::kLoopSamples);
+            points.insert(points.end(), along.begin(), along.end());
+        }
+    }
+    if (points.size() < 3) return false;
+    const Vec3& a = points.front();
+    const auto farthest = [&](const std::function<double(const Vec3&)>& from) {
+        std::size_t best = 0;
+        for (std::size_t i = 1; i < points.size(); ++i) {
+            if (from(points[i]) > from(points[best])) best = i;
+        }
+        return points[best];
+    };
+    const Vec3 b = farthest([&a](const Vec3& p) { return (p - a).length(); });
+    const Vec3 ab = b - a;
+    if (!(ab.length() > tolerance)) return false;
+    const Vec3 c = farthest([&a, &ab](const Vec3& p) { return ab.cross(p - a).length(); });
+    const Vec3 normal = ab.cross(c - a);
+    if (!(normal.length() > tolerance * ab.length())) return false;
+    const Vec3 n = normal * (1.0 / normal.length());
+    return std::all_of(points.begin(), points.end(), [&a, &n, tolerance](const Vec3& p) {
+        return std::abs((p - a).dot(n)) <= tolerance;
+    });
+}
+
+/// The chords a curve from @p t0 to @p t1 is cut into at equal steps of its parameter: as many
+/// as keep each within 2 pi / segmentsPerTurn of turning (its whole turning shared among them),
+/// and with a chord tolerance as many more as keep each sagging no more than it.
+int stepsAlong(const std::function<Vec3(double)>& at, double t0, double t1,
+               const FacetResolution& resolution) {
+    constexpr int kDense = 512;
+    std::vector<Vec3> dense(kDense + 1);
+    for (int i = 0; i <= kDense; ++i) {
+        dense[static_cast<std::size_t>(i)] = at(t0 + (t1 - t0) * i / kDense);
+    }
+    const double maxAngle =
+        math::kTwoPi / static_cast<double>(std::max(resolution.segmentsPerTurn, 3));
+    const double turn = turningOf(dense, roundingChord(dense));
+    const int byTurning =
+        std::clamp(static_cast<int>(std::ceil(turn / maxAngle - 1e-9)), 1, kMostSteps);
+    const double tolerance = resolution.chordTolerance;
+    if (!(tolerance > 0.0)) return byTurning;
+    // Whether cut into @p n, some chord sags more than the tolerance (each measured at points
+    // between its ends).
+    const auto sags = [&](int n) {
+        constexpr int kWithin = 8;
+        for (int k = 0; k < n; ++k) {
+            const double a = t0 + (t1 - t0) * k / n;
+            const double b = t0 + (t1 - t0) * (k + 1) / n;
+            const Vec3 p = at(a);
+            const Vec3 chord = at(b) - p;
+            const double length2 = chord.dot(chord);
+            for (int m = 1; m < kWithin; ++m) {
+                const Vec3 q = at(a + (b - a) * m / kWithin);
+                const double t =
+                    length2 > 0.0 ? std::clamp((q - p).dot(chord) / length2, 0.0, 1.0) : 0.0;
+                if ((q - (p + chord * t)).length() > tolerance) return true;
+            }
+        }
+        return false;
+    };
+    if (!sags(byTurning)) return byTurning;
+    int sagging = byTurning;  // the most known to sag
+    int enough = byTurning;   // the least known not to, once found
+    do {
+        sagging = enough;
+        enough = std::min(kMostSteps, 2 * enough);
+    } while (enough < kMostSteps && sags(enough));
+    if (enough == kMostSteps && sags(enough)) return kMostSteps;
+    while (enough - sagging > 1) {
+        const int middle = sagging + (enough - sagging) / 2;
+        if (sags(middle)) {
+            sagging = middle;
+        } else {
+            enough = middle;
+        }
+    }
+    return enough;
+}
+
+/// The chords @p e is cut into by its exact curve alone: a circle or an arc by stepsFor at equal
+/// angles, a line in one, an ellipse or a NURBS curve by stepsAlong. With no exact curve it is
+/// one chord, straight.
+int edgeSteps(const Edge& e, const FacetResolution& resolution) {
+    if (!e.exactCurve) return 1;
+    const double sweep = std::abs(e.curveEnd - e.curveStart);
+    switch (e.exactCurve->kind()) {
+        case geo::CurveKind::Line:
+            return 1;
+        case geo::CurveKind::Circle:
+            if (const auto* circle = dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get())) {
+                return std::min(kMostSteps, resolution.stepsFor(circle->radius(), sweep));
+            }
+            break;
+        default:
+            break;
+    }
+    const geo::Curve3& curve = *e.exactCurve;
+    return stepsAlong([&curve](double t) { return curve.evaluate(t); }, e.curveStart, e.curveEnd,
+                      resolution);
+}
+
+/// The chords across @p surface's own iso-curves along u (@p dir 0) or v (1) over the box
+/// [u0, u1] x [v0, v1], where no edge runs that way (a sphere's u, between its poles): its
+/// widest circle's stepsFor on a surface turned about an axis, a straight generator's one; the
+/// most of stepsAlong over iso-curves across it otherwise.
+int ownSteps(const geo::Surface& surface, int dir, double u0, double u1, double v0, double v1,
+             const FacetResolution& resolution) {
+    const double sweep = dir == 0 ? u1 - u0 : v1 - v0;
+    // The most cos(v) is over [v0, v1]: 1 where a whole turn's multiple is within it.
+    const auto widestCos = [v0, v1] {
+        const double k = std::ceil(v0 / math::kTwoPi);
+        if (k * math::kTwoPi <= v1) return 1.0;
+        return std::max(std::cos(v0), std::cos(v1));
+    };
+    switch (surface.kind()) {
+        case geo::SurfaceKind::Cylinder:
+            if (const auto* s = dynamic_cast<const geo::Cylinder*>(&surface)) {
+                return dir == 0 ? resolution.stepsFor(s->radius(), sweep) : 1;
+            }
+            break;
+        case geo::SurfaceKind::Cone:
+            if (const auto* s = dynamic_cast<const geo::Cone*>(&surface)) {
+                if (dir == 1) return 1;
+                const auto radius = [s](double v) {
+                    return std::abs(s->radius() + s->axialScale() * v * std::tan(s->halfAngle()));
+                };
+                return resolution.stepsFor(std::max(radius(v0), radius(v1)), sweep);
+            }
+            break;
+        case geo::SurfaceKind::Sphere:
+            if (const auto* s = dynamic_cast<const geo::Sphere*>(&surface)) {
+                return resolution.stepsFor(dir == 0 ? s->radius() * widestCos() : s->radius(),
+                                           sweep);
+            }
+            break;
+        case geo::SurfaceKind::Torus:
+            if (const auto* s = dynamic_cast<const geo::Torus*>(&surface)) {
+                return resolution.stepsFor(
+                    dir == 0 ? s->majorRadius() + s->minorRadius() * widestCos() : s->minorRadius(),
+                    sweep);
+            }
+            break;
+        default:
+            break;
+    }
+    constexpr int kAcross = 5;
+    int most = 1;
+    for (int i = 0; i < kAcross; ++i) {
+        const double f = static_cast<double>(i) / (kAcross - 1);
+        const double other = dir == 0 ? v0 + (v1 - v0) * f : u0 + (u1 - u0) * f;
+        const auto at = [&surface, dir, other](double t) {
+            return dir == 0 ? surface.evaluate(t, other) : surface.evaluate(other, t);
+        };
+        most = std::max(most, dir == 0 ? stepsAlong(at, u0, u1, resolution)
+                                       : stepsAlong(at, v0, v1, resolution));
+    }
+    return most;
+}
+
+/// The sides of a face's rectangle in (u, v), counter-clockwise from its corner (u0, v0).
+enum Side : std::size_t { kBottom = 0, kRight = 1, kTop = 2, kLeft = 3 };
+
+/// A curved face as a rectangle of its surface's (u, v): on each side the half-edges along it, or
+/// none where the surface is one point all along it (a pole, an apex), which the loop runs along
+/// from one edge to the next.
+struct ExactRectangle {
+    double u0 = 0.0, u1 = 0.0, v0 = 0.0, v1 = 0.0;
+    std::array<std::vector<const HalfEdge*>, 4> sides;
+    std::array<bool, 4> pole{};
+    std::array<Vec3, 4> polePoint;  ///< a pole's side: the vertex the loop runs along it at
+    /// Each half-edge's start and end in (u, v), as its loop is unwrapped.
+    std::unordered_map<const HalfEdge*, std::pair<math::Vec2, math::Vec2>> ends;
+};
+
+/// The count FacetResolution::minorSegments gives a face's v (0 where it gives none): a sphere's
+/// from pole to pole, minorSegments over the half turn in proportion to its span (at least 2
+/// where it runs from pole to pole), a torus's round its tube, minorSegments a whole turn in
+/// proportion (at least 3 for a whole turn), as master's makeSphere and makeTorus cut them.
+int minorSteps(const geo::Surface& surface, const ExactRectangle& r,
+               const FacetResolution& resolution) {
+    if (resolution.minorSegments <= 0) return 0;
+    const double span = r.v1 - r.v0;
+    const auto inProportion = [&resolution, span](double whole, int least) {
+        const double steps = span / whole * static_cast<double>(resolution.minorSegments);
+        return std::clamp(static_cast<int>(std::ceil(steps - 1e-9)), least, kMostSteps);
+    };
+    switch (surface.kind()) {
+        case geo::SurfaceKind::Sphere:
+            return inProportion(math::kPi, r.pole[kBottom] && r.pole[kTop] ? 2 : 1);
+        case geo::SurfaceKind::Torus:
+            return inProportion(math::kTwoPi,
+                                span + kOnSide * math::kTwoPi >= topo::vPeriod(surface) ? 3 : 1);
+        default:
+            return 0;
+    }
+}
+
+/// @p face's outer loop as a rectangle of its exact surface's (u, v), unwrapped as the exact
+/// validator unwraps it (topo::unwrapLoop, with the face's sense); nullopt, with @p why, where it
+/// has holes, a half-edge has no pcurve, or its outline is no such rectangle.
+std::optional<ExactRectangle> rectangleOf(const Face& face, const math::ModelTolerance& tolerance,
+                                          std::size_t limit, std::string& why) {
+    const geo::Surface& s = *face.exactSurface;
+    if (!face.innerLoops.empty()) {
+        why = "it has holes, which the bridge cannot cut on a curved surface yet";
+        return std::nullopt;
+    }
+    std::vector<const HalfEdge*> ring;
+    if (face.outerLoop == nullptr || !topo::loopHalfEdges(face, *face.outerLoop, limit, ring) ||
+        ring.empty()) {
+        why = "its loop does not close";
+        return std::nullopt;
+    }
+    std::vector<double> allowances;
+    allowances.reserve(ring.size());
+    for (const HalfEdge* h : ring) {
+        if (!h->pcurve || h->edge == nullptr || h->next == nullptr || h->origin == nullptr) {
+            why = "a half-edge of it has no pcurve";
+            return std::nullopt;
+        }
+        allowances.push_back(topo::joinAllowance(*h, tolerance));
+    }
+    topo::LoopPolygon poly;
+    if (!topo::unwrapLoop(ring, topo::kLoopSamples, s, topo::uPeriod(s), topo::vPeriod(s),
+                          allowances, poly, topo::loopSense(face, true)) ||
+        poly.empty()) {
+        why = "its loop winds round its surface";
+        return std::nullopt;
+    }
+    ExactRectangle r;
+    r.u0 = r.v0 = std::numeric_limits<double>::infinity();
+    r.u1 = r.v1 = -std::numeric_limits<double>::infinity();
+    for (const auto& seg : poly) {
+        for (const math::Vec2& p : {seg.a, seg.b}) {
+            r.u0 = std::min(r.u0, p.x);
+            r.u1 = std::max(r.u1, p.x);
+            r.v0 = std::min(r.v0, p.y);
+            r.v1 = std::max(r.v1, p.y);
+        }
+    }
+    const double gu = kOnSide * std::max({1.0, std::abs(r.u0), std::abs(r.u1)});
+    const double gv = kOnSide * std::max({1.0, std::abs(r.v0), std::abs(r.v1)});
+    const std::string notRectangle = "its outline is not a rectangle of its surface's (u, v)";
+    if (!(r.u1 - r.u0 > gu) || !(r.v1 - r.v0 > gv)) {
+        why = notRectangle;
+        return std::nullopt;
+    }
+    // The side all of a run of points lies on, or -1.
+    const auto sideOf = [&r, gu, gv](const std::vector<math::Vec2>& points) {
+        const auto all = [&points](const std::function<bool(const math::Vec2&)>& on) {
+            return std::all_of(points.begin(), points.end(), on);
+        };
+        if (all([&](const math::Vec2& p) { return std::abs(p.y - r.v0) <= gv; })) return 0;
+        if (all([&](const math::Vec2& p) { return std::abs(p.x - r.u1) <= gu; })) return 1;
+        if (all([&](const math::Vec2& p) { return std::abs(p.y - r.v1) <= gv; })) return 2;
+        if (all([&](const math::Vec2& p) { return std::abs(p.x - r.u0) <= gu; })) return 3;
+        return -1;
+    };
+    const std::size_t per = static_cast<std::size_t>(topo::kLoopSamples - 1);
+    std::array<bool, 4> covered{};
+    for (std::size_t k = 0; k < ring.size(); ++k) {
+        std::vector<math::Vec2> points;
+        points.reserve(per + 1);
+        for (std::size_t i = 0; i < per; ++i) points.push_back(poly[k * per + i].a);
+        points.push_back(poly[k * per + per - 1].b);
+        const int side = sideOf(points);
+        if (side < 0) {
+            why = notRectangle;
+            return std::nullopt;
+        }
+        r.sides[static_cast<std::size_t>(side)].push_back(ring[k]);
+        covered[static_cast<std::size_t>(side)] = true;
+        r.ends[ring[k]] = {points.front(), points.back()};
+        // The way on to the next half-edge: none, or along a pole or an apex.
+        const math::Vec2 end = points.back();
+        const math::Vec2 next = poly[((k + 1) % ring.size()) * per].a;
+        if (std::abs(end.x - next.x) <= gu && std::abs(end.y - next.y) <= gv) continue;
+        const int along = sideOf({end, next});
+        if (along < 0 || !topo::runsAlongPoint(s, end, next, allowances[k])) {
+            why = notRectangle;
+            return std::nullopt;
+        }
+        r.pole[static_cast<std::size_t>(along)] = true;
+        r.polePoint[static_cast<std::size_t>(along)] = ring[(k + 1) % ring.size()]->origin->point;
+    }
+    for (std::size_t side = 0; side < 4; ++side) {
+        if (covered[side] == r.pole[side]) {
+            why = notRectangle;
+            return std::nullopt;
+        }
+    }
+    return r;
+}
+
+/// A point of a side of a face's rectangle, and where it is in (u, v).
+struct SidePoint {
+    Vec3 point;
+    math::Vec2 uv;
+};
+
+}  // namespace
+
 bool describedByCurves(const topo::Solid& solid) {
     return std::any_of(solid.edges().begin(), solid.edges().end(),
                        [](const Edge& e) { return e.curve && e.curve->degree() > 1; });
@@ -1574,6 +1932,23 @@ bool describedByCurves(const topo::Solid& solid) {
 
 FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
     FacetedSolid result;
+    // A face with no carrier is cut below as flat, its outline: where it is not, there is
+    // nothing to cut it on, and its corners (two, on an exact cylinder's side) are no outline of
+    // it. Its exact surface is facetExact's to cut.
+    double flatness = -1.0;  // the model's resolution, once a face needs it
+    for (const auto& face : exact.faces()) {
+        if (!face.alive || face.surface != nullptr) continue;
+        if (face.exactSurface) {
+            if (face.exactSurface->kind() == geo::SurfaceKind::Plane) continue;
+            result.error = "face " + face.topoId.tag() + " has no NURBS carrier to facet on";
+            return result;
+        }
+        if (flatness < 0.0) flatness = topo::exactTolerance(exact).linear;
+        if (!flatOutline(face, flatness)) {
+            result.error = "face " + face.topoId.tag() + " has no surface to facet";
+            return result;
+        }
+    }
     maxAngle = std::clamp(maxAngle, 1e-3, math::kPi / 2);
     double size = 0.0;
     for (const auto& v : exact.vertices()) {
@@ -1752,6 +2127,589 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
         if (b < a) std::swap(a, b);
         const auto it = chordCurves.find({a, b});
         if (it != chordCurves.end()) e.analyticCurve = it->second;
+    }
+    result.solid = std::move(solid);
+    return result;
+}
+
+int FacetResolution::stepsFor(double radius, double sweep) const {
+    const int perTurn = chordTolerance > 0.0
+                            ? PrimitiveFactory::segmentsForTolerance(radius, chordTolerance)
+                            : segmentsPerTurn;
+    const double steps = sweep / math::kTwoPi * static_cast<double>(std::max(perTurn, 3));
+    return std::max(1, static_cast<int>(std::ceil(steps - 1e-9)));
+}
+
+namespace {
+
+/// Whether every live face of @p solid lies on a plane (its exact surface) and every live edge
+/// runs straight (no exact curve, or a line): a polyhedron, its own bridge copy.
+bool flatAndStraight(const topo::Solid& solid) {
+    for (const auto& face : solid.faces()) {
+        if (!face.alive) continue;
+        if (!face.exactSurface || face.exactSurface->kind() != geo::SurfaceKind::Plane ||
+            face.outerLoop == nullptr) {
+            return false;
+        }
+    }
+    for (const auto& edge : solid.edges()) {
+        if (!edge.alive) continue;
+        if (edge.halfEdge == nullptr || edge.halfEdge->twin == nullptr) return false;
+        if (edge.exactCurve && edge.exactCurve->kind() != geo::CurveKind::Line) return false;
+    }
+    return true;
+}
+
+/// The bridge copy of @p exact, a polyhedron (flatAndStraight): each face one facet, each edge
+/// one chord, as facetExact's sewing of their outlines makes them (SolidSewer::sew: the faces in
+/// order, each loop from its wire's start, a vertex and an edge made where first met, an edge's
+/// first half-edge its own, its name its exact edge's, a face's carrier the sewer's planar
+/// patch, a shell for each set of faces joined across their edges), from its own half-edges:
+/// nothing is welded or found again, which on a prism of 50,000 sides took most of its time.
+std::unique_ptr<topo::Solid> flatCopy(const topo::Solid& exact) {
+    // What each of the exact solid's vertices, half-edges and faces became, by its id (each
+    // unique in its solid, as Solid allocates them): null where ids repeat, for the sewer to
+    // make it instead.
+    std::size_t ids = 0;
+    for (const auto& v : exact.vertices()) ids = std::max<std::size_t>(ids, v.id);
+    for (const auto& f : exact.faces()) ids = std::max<std::size_t>(ids, f.id);
+    for (const auto& e : exact.edges()) {
+        if (!e.alive) continue;
+        ids = std::max<std::size_t>({ids, e.halfEdge->id, e.halfEdge->twin->id});
+    }
+    ++ids;
+    const auto known = [ids](const auto* entity) { return entity->id < ids; };
+    std::vector<topo::Vertex*> vertexOf(ids, nullptr);
+    std::vector<HalfEdge*> halfEdgeOf(ids, nullptr);
+    std::vector<std::size_t> faceOf(ids, 0);
+
+    auto solid = std::make_unique<topo::Solid>();
+    std::vector<std::pair<const Face*, Face*>> faces;
+    faces.reserve(exact.faces().size());
+    std::vector<Vec3> outline;
+    const auto loopsOf = [](const Face& face) {
+        std::vector<const Wire*> loops{face.outerLoop};
+        loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+        return loops;
+    };
+    for (const auto& face : exact.faces()) {
+        if (!face.alive) continue;
+        Face* f = solid->allocFace();
+        f->topoId = face.topoId;
+        faceOf[face.id] = faces.size();
+        faces.emplace_back(&face, f);
+        outline.clear();
+        bool outer = true;
+        for (const Wire* loop : loopsOf(face)) {
+            Wire* wire = solid->allocWire();
+            if (outer) {
+                f->outerLoop = wire;
+            } else {
+                f->innerLoops.push_back(wire);
+            }
+            // Made in two steps, as the sewer makes them: every half-edge, then their links.
+            const HalfEdge* start = loop->halfEdge;
+            std::size_t n = 0;
+            for (const HalfEdge* h = start; n == 0 || h != start; h = h->next) {
+                if (!known(h) || !known(h->origin) || halfEdgeOf[h->id] != nullptr) return nullptr;
+                halfEdgeOf[h->id] = solid->allocHalfEdge();
+                ++n;
+            }
+            const HalfEdge* h = start;
+            for (std::size_t i = 0; i < n; ++i, h = h->next) {
+                HalfEdge* he = halfEdgeOf[h->id];
+                topo::Vertex*& v = vertexOf[h->origin->id];
+                if (v == nullptr) {
+                    v = solid->allocVertex();
+                    v->point = h->origin->point;
+                }
+                he->origin = v;
+                he->face = f;
+                he->next = halfEdgeOf[h->next->id];
+                he->next->prev = he;
+                if (v->halfEdge == nullptr) v->halfEdge = he;
+                if (outer) outline.push_back(v->point);
+            }
+            wire->halfEdge = halfEdgeOf[start->id];
+            outer = false;
+        }
+        f->surface = SolidSewer::planarPatch(outline);
+    }
+    // Edges where first met, going round the faces in order; each pairs its half-edges.
+    int index = 0;
+    for (const auto& pair : faces) {
+        for (const Wire* loop : loopsOf(*pair.first)) {
+            const HalfEdge* start = loop->halfEdge;
+            const HalfEdge* h = start;
+            do {
+                HalfEdge* he = halfEdgeOf[h->id];
+                if (he->edge == nullptr) {
+                    HalfEdge* twin = known(h->twin) ? halfEdgeOf[h->twin->id] : nullptr;
+                    if (twin == nullptr) return nullptr;
+                    topo::Edge* e = solid->allocEdge();
+                    e->halfEdge = he;
+                    e->topoId = h->edge->topoId.isValid()
+                                    ? h->edge->topoId
+                                    : pair.second->topoId.child("edge", index);
+                    ++index;
+                    e->curve = std::make_shared<geo::NurbsCurve>(
+                        std::vector<Vec3>{he->origin->point, he->next->origin->point},
+                        std::vector<double>{1.0, 1.0}, std::vector<double>{0.0, 0.0, 1.0, 1.0}, 1);
+                    he->edge = e;
+                    he->twin = twin;
+                    twin->twin = he;
+                    twin->edge = e;
+                }
+                h = h->next;
+            } while (h != start);
+        }
+    }
+    // A shell for each set of faces joined across their edges, in the order of their first face.
+    std::vector<topo::Shell*> shellOf(faces.size(), nullptr);
+    std::vector<std::size_t> stack;
+    for (std::size_t seed = 0; seed < faces.size(); ++seed) {
+        if (shellOf[seed] != nullptr) continue;
+        topo::Shell* shell = solid->allocShell();
+        shell->solid = solid.get();
+        shellOf[seed] = shell;
+        stack.assign(1, seed);
+        while (!stack.empty()) {
+            const std::size_t cur = stack.back();
+            stack.pop_back();
+            for (const Wire* loop : loopsOf(*faces[cur].first)) {
+                const HalfEdge* start = loop->halfEdge;
+                const HalfEdge* h = start;
+                do {
+                    const std::size_t next = faceOf[h->twin->face->id];
+                    if (shellOf[next] == nullptr) {
+                        shellOf[next] = shell;
+                        stack.push_back(next);
+                    }
+                    h = h->next;
+                } while (h != start);
+            }
+        }
+    }
+    for (std::size_t i = 0; i < faces.size(); ++i) {
+        shellOf[i]->faces.push_back(faces[i].second);
+        faces[i].second->shell = shellOf[i];
+    }
+    return solid;
+}
+
+}  // namespace
+
+FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolution) {
+    FacetedSolid result;
+    if (flatAndStraight(exact)) {
+        // A polyhedron is its own bridge: its faces one facet each, its edges one chord.
+        if (auto solid = flatCopy(exact)) {
+            if (!solid->checkManifold()) {
+                result.error = "the facets did not join into a closed solid";
+                return result;
+            }
+            result.solid = std::move(solid);
+            result.copied = true;
+            return result;
+        }
+    }
+    const math::ModelTolerance tolerance = topo::exactTolerance(exact);
+    const double size = topo::exactExtent(exact);
+    const std::size_t limit = 2 * exact.edges().size() + 1;
+    const auto refuse = [](const Face& face, const std::string& why) {
+        FacetedSolid refused;
+        refused.error = "face " + face.topoId.tag() + " " + why;
+        return refused;
+    };
+
+    // Each face as it is cut: flat (one facet, its holes), or a curved face's rectangle.
+    struct Plan {
+        const Face* face = nullptr;
+        std::optional<ExactRectangle> rectangle;  ///< a curved face's
+        std::array<int, 2> steps{};               ///< its columns (along u) and rows (along v)
+        std::array<int, 2> own{};  ///< where both sides across are poles: its surface's own
+        /// Where FacetResolution::minorSegments sets it (a sphere's v, a torus's): its count.
+        std::array<int, 2> fixed{};
+    };
+    std::vector<Plan> plans;
+    for (const auto& face : exact.faces()) {
+        if (!face.alive) continue;
+        if (face.outerLoop == nullptr || loopOf(face.outerLoop).empty()) {
+            return refuse(face, "has no boundary");
+        }
+        Plan plan;
+        plan.face = &face;
+        if (face.exactSurface) {
+            if (face.exactSurface->kind() != geo::SurfaceKind::Plane) {
+                std::string why;
+                auto rectangle = rectangleOf(face, tolerance, limit, why);
+                if (!rectangle) return refuse(face, "cannot be cut into facets: " + why);
+                plan.rectangle = std::move(rectangle);
+            }
+        } else if (face.surface) {
+            if (!isFlat(*face.surface)) return refuse(face, "has no exact surface to facet");
+        } else if (!flatOutline(face, tolerance.linear)) {
+            return refuse(face, "has no surface to facet");
+        }
+        plans.push_back(std::move(plan));
+    }
+
+    // How many chords each edge is cut into: by its own curve, and then as many as the curved
+    // faces it is a side of need (each pair of opposite sides alike).
+    std::unordered_map<const Edge*, int> steps;
+    for (const auto& e : exact.edges()) {
+        if (!e.alive || e.halfEdge == nullptr || e.halfEdge->origin == nullptr) continue;
+        int n = edgeSteps(e, resolution);
+        const bool curved = e.exactCurve && e.exactCurve->kind() != geo::CurveKind::Line;
+        const HalfEdge* twin = e.halfEdge->twin;
+        // A closed curve is no chord: three or more.
+        if (curved && twin != nullptr && twin->origin == e.halfEdge->origin) n = std::max(n, 3);
+        steps[&e] = n;
+    }
+    // A loop with two corners or fewer (a lens: two arcs between the same two corners) is no
+    // polygon if its curves are a chord each, the same chord: two chords or more.
+    for (const Plan& plan : plans) {
+        std::vector<const Wire*> loops{plan.face->outerLoop};
+        loops.insert(loops.end(), plan.face->innerLoops.begin(), plan.face->innerLoops.end());
+        for (const Wire* wire : loops) {
+            const auto loop = loopOf(wire);
+            std::set<const topo::Vertex*> corners;
+            for (const HalfEdge* he : loop) corners.insert(he->origin);
+            if (corners.size() > 2) continue;
+            for (const HalfEdge* he : loop) {
+                const Edge& e = *he->edge;
+                const auto found = steps.find(&e);
+                if (found != steps.end() && e.exactCurve &&
+                    e.exactCurve->kind() != geo::CurveKind::Line) {
+                    found->second = std::max(found->second, 2);
+                }
+            }
+        }
+    }
+    for (Plan& plan : plans) {
+        const auto& rectangle = plan.rectangle;
+        if (!rectangle) continue;
+        const ExactRectangle& r = *rectangle;
+        const geo::Surface& s = *plan.face->exactSurface;
+        if (r.pole[kBottom] && r.pole[kTop]) {
+            plan.own[0] = ownSteps(s, 0, r.u0, r.u1, r.v0, r.v1, resolution);
+        }
+        if (r.pole[kLeft] && r.pole[kRight]) {
+            plan.own[1] = ownSteps(s, 1, r.u0, r.u1, r.v0, r.v1, resolution);
+        }
+        plan.fixed[1] = minorSteps(s, r, resolution);
+        // The edges along it cut so, whatever their own curve would give.
+        for (const Side side : {kLeft, kRight}) {
+            if (plan.fixed[1] == 0 || r.pole[side] || r.sides[side].size() != 1) continue;
+            steps[r.sides[side].front()->edge] = plan.fixed[1];
+        }
+    }
+    const auto chordsOn = [&steps](const std::vector<const HalfEdge*>& side) {
+        int total = 0;
+        for (const HalfEdge* h : side) {
+            const auto found = steps.find(h->edge);
+            total += found == steps.end() ? 1 : found->second;
+        }
+        return total;
+    };
+    // Raised until nothing changes; a side of several edges is not cut again, and where it then
+    // disagrees with the side across, the face cannot be cut.
+    for (std::size_t pass = 0; pass <= exact.edges().size(); ++pass) {
+        bool changed = false;
+        for (Plan& plan : plans) {
+            const auto& rectangle = plan.rectangle;
+            if (!rectangle) continue;
+            const ExactRectangle& r = *rectangle;
+            for (int dir = 0; dir < 2; ++dir) {
+                const std::array<Side, 2> across = dir == 0 ? std::array<Side, 2>{kBottom, kTop}
+                                                            : std::array<Side, 2>{kLeft, kRight};
+                int n = plan.own[static_cast<std::size_t>(dir)];
+                for (const Side side : across) {
+                    if (!r.pole[side]) n = std::max(n, chordsOn(r.sides[side]));
+                }
+                n = std::min(n, kMostSteps);
+                // A count minorSegments sets is not raised: an edge another face cuts finer
+                // leaves the sides unlike, and the face is refused below.
+                if (plan.fixed[static_cast<std::size_t>(dir)] > 0) {
+                    n = plan.fixed[static_cast<std::size_t>(dir)];
+                }
+                plan.steps[static_cast<std::size_t>(dir)] = n;
+                for (const Side side : across) {
+                    if (r.pole[side] || r.sides[side].size() != 1) continue;
+                    int& count = steps[r.sides[side].front()->edge];
+                    if (count < n) {
+                        count = n;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if (!changed) break;
+    }
+    for (const Plan& plan : plans) {
+        const auto& rectangle = plan.rectangle;
+        if (!rectangle) continue;
+        const ExactRectangle& r = *rectangle;
+        for (const Side side : {kBottom, kRight, kTop, kLeft}) {
+            const int dir = side == kBottom || side == kTop ? 0 : 1;
+            if (!r.pole[side] &&
+                chordsOn(r.sides[side]) != plan.steps[static_cast<std::size_t>(dir)]) {
+                return refuse(*plan.face,
+                              "cannot be cut into facets: its opposite sides are cut into "
+                              "different numbers of chords");
+            }
+        }
+    }
+
+    // Each edge's points once, so the faces either side share them, from its half-edge's origin
+    // to its end, at equal steps of its exact curve's parameter; each chord's edge, by its ends.
+    struct ChordOf {
+        const Edge* edge = nullptr;
+        int k = 0;
+        int of = 0;
+    };
+    std::unordered_map<const Edge*, std::vector<Vec3>> samples;
+    std::map<std::pair<Key, Key>, ChordOf> chordOf;
+    for (const auto& [edge, n] : steps) {
+        const HalfEdge* he = edge->halfEdge;
+        const topo::Vertex* end = he->twin != nullptr   ? he->twin->origin
+                                  : he->next != nullptr ? he->next->origin
+                                                        : nullptr;
+        if (end == nullptr) continue;
+        std::vector<Vec3> points{he->origin->point};
+        for (int k = 1; k < n && edge->exactCurve; ++k) {
+            const double t = edge->curveStart + (edge->curveEnd - edge->curveStart) *
+                                                    static_cast<double>(k) / static_cast<double>(n);
+            points.push_back(edge->exactCurve->evaluate(t));
+        }
+        points.push_back(end->point);
+        for (std::size_t k = 0; k + 1 < points.size(); ++k) {
+            auto a = keyOf(points[k]);
+            auto b = keyOf(points[k + 1]);
+            if (b < a) std::swap(a, b);
+            chordOf[{a, b}] = {edge, static_cast<int>(k), static_cast<int>(points.size()) - 1};
+        }
+        samples.emplace(edge, std::move(points));
+    }
+    const auto along = [&samples](const HalfEdge* he) {
+        const auto found = samples.find(he->edge);
+        if (found == samples.end()) {
+            return std::vector<Vec3>{he->origin->point, he->next->origin->point};
+        }
+        std::vector<Vec3> s = found->second;
+        if (he != he->edge->halfEdge) std::reverse(s.begin(), s.end());
+        return s;
+    };
+    const auto polygon = [&along](const Wire* wire) {
+        std::vector<Vec3> points;
+        for (const HalfEdge* he : loopOf(wire)) {
+            const auto s = along(he);
+            points.insert(points.end(), s.begin(), s.end() - 1);
+        }
+        return points;
+    };
+
+    std::vector<SolidSewer::InputFace> faces;
+    for (const Plan& plan : plans) {
+        const Face& face = *plan.face;
+        const auto& rectangle = plan.rectangle;
+        if (!rectangle) {
+            SolidSewer::InputFace f;
+            f.points = polygon(face.outerLoop);
+            for (const Wire* w : face.innerLoops) f.holes.push_back(polygon(w));
+            f.topoId = face.topoId;
+            faces.push_back(std::move(f));
+            continue;
+        }
+        const ExactRectangle& r = *rectangle;
+        const geo::Surface& s = *face.exactSurface;
+        const auto nu = static_cast<std::size_t>(plan.steps[0]);
+        const auto nv = static_cast<std::size_t>(plan.steps[1]);
+        // A side's points in order along it, each where it is in (u, v): its half-edges' points,
+        // each found on the surface (its coordinate along the side; the other is the side's own),
+        // a period round to lie between its half-edge's ends.
+        const auto pointsOn = [&](Side side) {
+            const int running = side == kBottom || side == kTop ? 0 : 1;
+            const double period = running == 0 ? topo::uPeriod(s) : topo::vPeriod(s);
+            const double line = side == kBottom ? r.v0
+                                : side == kTop  ? r.v1
+                                : side == kLeft ? r.u0
+                                                : r.u1;
+            std::vector<SidePoint> out;
+            for (const HalfEdge* h : r.sides[side]) {
+                const auto points = along(h);
+                const auto& ends = r.ends.at(h);
+                const math::Vec2 start = ends.first;
+                const math::Vec2 finish = ends.second;
+                const std::size_t n = points.size() - 1;
+                for (std::size_t k = 0; k <= n; ++k) {
+                    math::Vec2 uv = k == 0 ? start : finish;
+                    if (k != 0 && k != n) {
+                        const double f = static_cast<double>(k) / static_cast<double>(n);
+                        const math::Vec2 between = start + (finish - start) * f;
+                        const math::Vec2 found = s.invert(points[k]);
+                        double c = running == 0 ? found.x : found.y;
+                        const double want = running == 0 ? between.x : between.y;
+                        if (period > 0.0) c += period * std::round((want - c) / period);
+                        uv = running == 0 ? math::Vec2(c, line) : math::Vec2(line, c);
+                    }
+                    out.push_back({points[k], uv});
+                }
+            }
+            const auto coordinate = [running](const SidePoint& p) {
+                return running == 0 ? p.uv.x : p.uv.y;
+            };
+            std::stable_sort(out.begin(), out.end(),
+                             [&coordinate](const SidePoint& a, const SidePoint& b) {
+                                 return coordinate(a) < coordinate(b);
+                             });
+            // Where one half-edge ends the next begins (their shared vertex): that point once.
+            out.erase(std::unique(out.begin(), out.end(),
+                                  [](const SidePoint& a, const SidePoint& b) {
+                                      return (a.point - b.point).length() <= 0.0;
+                                  }),
+                      out.end());
+            return out;
+        };
+        std::array<std::vector<SidePoint>, 4> sides;
+        for (const Side side : {kBottom, kRight, kTop, kLeft}) {
+            if (r.pole[side]) continue;
+            sides[side] = pointsOn(side);
+            const std::size_t want = side == kBottom || side == kTop ? nu : nv;
+            if (sides[side].size() != want + 1) {
+                return refuse(face,
+                              "cannot be cut into facets: a side of it does not run "
+                              "corner to corner");
+            }
+        }
+        // A pole's side: its one point, spread over its coordinate in (u, v).
+        const auto poleSide = [&r](Side side, std::size_t n) {
+            const bool alongU = side == kBottom || side == kTop;
+            const Vec3 point = r.polePoint[side];
+            std::vector<SidePoint> out;
+            for (std::size_t i = 0; i <= n; ++i) {
+                const double f = static_cast<double>(i) / static_cast<double>(n);
+                out.push_back(
+                    {point,
+                     alongU ? math::Vec2(r.u0 + (r.u1 - r.u0) * f, side == kBottom ? r.v0 : r.v1)
+                            : math::Vec2(side == kLeft ? r.u0 : r.u1, r.v0 + (r.v1 - r.v0) * f)});
+            }
+            return out;
+        };
+        for (const Side side : {kBottom, kRight, kTop, kLeft}) {
+            if (r.pole[side]) {
+                sides[side] = poleSide(side, side == kBottom || side == kTop ? nu : nv);
+            }
+        }
+        const auto& B = sides[kBottom];
+        const auto& T = sides[kTop];
+        const auto& L = sides[kLeft];
+        const auto& R = sides[kRight];
+        // A Coons patch in (u, v) from its sides, each point inside on the surface: uniform in
+        // (u, v) where its sides are.
+        std::vector<std::vector<Vec3>> grid(nu + 1, std::vector<Vec3>(nv + 1));
+        for (std::size_t i = 0; i <= nu; ++i) {
+            for (std::size_t j = 0; j <= nv; ++j) {
+                if (j == 0) {
+                    grid[i][j] = B[i].point;
+                } else if (j == nv) {
+                    grid[i][j] = T[i].point;
+                } else if (i == 0) {
+                    grid[i][j] = L[j].point;
+                } else if (i == nu) {
+                    grid[i][j] = R[j].point;
+                } else {
+                    const double a = static_cast<double>(i) / static_cast<double>(nu);
+                    const double b = static_cast<double>(j) / static_cast<double>(nv);
+                    const math::Vec2 uv =
+                        B[i].uv * (1 - b) + T[i].uv * b + L[j].uv * (1 - a) + R[j].uv * a -
+                        (B[0].uv * ((1 - a) * (1 - b)) + B[nu].uv * (a * (1 - b)) +
+                         T[0].uv * ((1 - a) * b) + T[nu].uv * (a * b));
+                    grid[i][j] = s.evaluate(uv.x, uv.y);
+                }
+            }
+        }
+        std::shared_ptr<geo::NurbsSurface> ideal;
+        try {
+            ideal = s.toNurbs(r.u0, r.u1, r.v0, r.v1);
+        } catch (const std::exception& e) {
+            return refuse(face, std::string("has no NURBS form over its rectangle: ") + e.what());
+        }
+        // Row by row from (u0, v0), counter-clockwise in (u, v): about du x dv, outward unless
+        // the face is reversed.
+        std::vector<std::vector<Vec3>> facets;
+        for (std::size_t j = 0; j < nv; ++j) {
+            for (std::size_t i = 0; i < nu; ++i) {
+                std::vector<Vec3> quad;
+                for (const Vec3& p :
+                     {grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]}) {
+                    if (quad.empty() || (p - quad.back()).length() > 0.0) quad.push_back(p);
+                }
+                while (quad.size() > 1 && (quad.front() - quad.back()).length() <= 0.0) {
+                    quad.pop_back();
+                }
+                if (quad.size() < 3) continue;
+                if (quad.size() == 4) {
+                    const Vec3 n = (quad[1] - quad[0]).cross(quad[2] - quad[0]);
+                    const double off =
+                        n.length() > 0.0 ? std::abs((quad[3] - quad[0]).dot(n)) / n.length() : 0.0;
+                    if (off > 1e-9 * size) {
+                        facets.push_back({quad[0], quad[1], quad[2]});
+                        facets.push_back({quad[0], quad[2], quad[3]});
+                        continue;
+                    }
+                }
+                facets.push_back(std::move(quad));
+            }
+        }
+        for (std::size_t k = 0; k < facets.size(); ++k) {
+            SolidSewer::InputFace f;
+            f.points = std::move(facets[k]);
+            if (face.reversed) std::reverse(f.points.begin(), f.points.end());
+            f.topoId =
+                facets.size() == 1
+                    ? face.topoId
+                    : topo::TopologyID::fromTag(face.topoId.tag() + "/facet:" + std::to_string(k));
+            f.analyticSurface = ideal;
+            faces.push_back(std::move(f));
+        }
+    }
+
+    auto solid = SolidSewer::sew(faces);
+    if (solid == nullptr || !solid->checkManifold()) {
+        result.error = "the facets did not join into a closed solid";
+        return result;
+    }
+    // Each chord named for its edge, and recording its curve, one NURBS for all of them.
+    std::unordered_map<const Edge*, std::shared_ptr<geo::NurbsCurve>> ideals;
+    for (auto& e : solid->edges()) {
+        if (e.halfEdge == nullptr || e.halfEdge->next == nullptr) continue;
+        auto a = keyOf(e.halfEdge->origin->point);
+        auto b = keyOf(e.halfEdge->next->origin->point);
+        if (b < a) std::swap(a, b);
+        const auto found = chordOf.find({a, b});
+        if (found == chordOf.end()) continue;
+        const ChordOf& chord = found->second;
+        const Edge& source = *chord.edge;
+        if (source.topoId.isValid()) {
+            e.topoId = chord.of == 1
+                           ? source.topoId
+                           : topo::TopologyID::fromTag(source.topoId.tag() +
+                                                       "/chord:" + std::to_string(chord.k));
+        }
+        if (!source.exactCurve || source.exactCurve->kind() == geo::CurveKind::Line) continue;
+        auto& ideal = ideals[&source];
+        if (!ideal) {
+            try {
+                ideal = source.exactCurve->toNurbs(std::min(source.curveStart, source.curveEnd),
+                                                   std::max(source.curveStart, source.curveEnd));
+            } catch (const std::exception& error) {
+                result.error = "edge " + source.topoId.tag() +
+                               " has no NURBS form over its range: " + error.what();
+                return result;
+            }
+        }
+        e.analyticCurve = ideal;
     }
     result.solid = std::move(solid);
     return result;

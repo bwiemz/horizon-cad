@@ -4328,18 +4328,20 @@ std::vector<topo::HalfEdge*> ringOf(const topo::Wire& wire, std::size_t limit) {
 constexpr const char* kWindsRound = "loop closes only after winding round the surface";
 
 /// The signed area in (u, v) of the loop @p ring of a face on @p s, unwrapped as the exact
-/// validator unwraps it; nullopt where it cannot be (a loop that winds round the surface). An
+/// validator unwraps it (with @p sense, its runs round a pole laid as that sense says, where the
+/// loop leaves them free); nullopt where it cannot be (a loop that winds round the surface). An
 /// area within rounding of none (the box round the loop's samples times 1e-12) is 0: it says
 /// nothing of which way the loop runs.
 std::optional<double> loopArea(const std::vector<topo::HalfEdge*>& ring, const geo::Surface& s,
-                               const math::ModelTolerance& tolerance) {
+                               const math::ModelTolerance& tolerance,
+                               topo::LoopSense sense = topo::LoopSense::Either) {
     const std::vector<const topo::HalfEdge*> walk(ring.begin(), ring.end());
     std::vector<double> allowances;
     allowances.reserve(walk.size());
     for (const topo::HalfEdge* h : walk) allowances.push_back(topo::joinAllowance(*h, tolerance));
     topo::LoopPolygon poly;
     if (walk.empty() || !topo::unwrapLoop(walk, topo::kLoopSamples, s, topo::uPeriod(s),
-                                          topo::vPeriod(s), allowances, poly)) {
+                                          topo::vPeriod(s), allowances, poly, sense)) {
         return std::nullopt;
     }
     math::Vec2 lo = poly.front().a;
@@ -4425,8 +4427,10 @@ bool loopsDetermineRegion(const geo::Surface& s, double near) {
 /// skin round a flat), which holds a pole or wraps the surface and this stage cannot represent,
 /// or its file's same_sense is wrong: which, it cannot tell, so it says both. A loop whose area
 /// says nothing (a seam joined only at poles, laid out next) leaves the face as its file says.
-/// (A loop that runs along a pole without a seam does not fix its region here: which way round
-/// the pole it runs is the next pcurve's window's, not the file's; stage 3's pole topology.)
+/// A loop that runs round a pole between two pcurves without a seam (a lune between two
+/// meridians) does not fix its region: which way round the pole it runs is the file's sense's,
+/// not the window its next pcurve is written in, so its area is taken again with its runs laid
+/// as that sense says (topo::unwrapLoop) before the face is refused.
 ///
 /// An outer loop with no seam that closes only after winding round the surface (a band) says so
 /// in the validator's words, kWindsRound, and leaves the face as it was: finishExact gives it its
@@ -4453,6 +4457,10 @@ std::string faceSense(topo::Face& face, const math::ModelTolerance& tolerance, s
         return {};
     }
     if (loopsSayReversed == face.reversed) return {};
+    const auto laid =
+        loopArea(ring, *face.exactSurface, tolerance,
+                 face.reversed ? topo::LoopSense::Clockwise : topo::LoopSense::CounterClockwise);
+    if (laid && std::isfinite(*laid) && *laid != 0.0 && (*laid < 0.0) == face.reversed) return {};
     return "its loops run against its same_sense: either the face is the surface outside its "
            "loop (it holds a pole or wraps the surface), which this stage cannot represent, or "
            "the file's same_sense is wrong";
@@ -4556,15 +4564,14 @@ std::string threeFigures(double x) {
 /// leaves the solid out as soon as that face's pcurves are built.
 ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     ExactRead read;
-    const double extent = topo::exactExtent(solid);
-    const math::ModelTolerance resolution = math::ModelTolerance::forExtent(extent);
+    const topo::ToleranceGrowth growth(topo::exactExtent(solid));
+    const math::ModelTolerance& resolution = growth.resolution;
     read.resolution = resolution.linear;
-    const bool sized = 1e-3 * extent > resolution.linear;
-    const double limit = sized ? 1e-3 * extent : resolution.linear;
+    const double limit = growth.limit;
     const std::string limitSays = "beyond the limit of " + threeFigures(limit) +
-                                  (sized ? " (a thousandth of the solid's size)"
-                                         : " (the model resolution: the solid's size could not "
-                                           "be measured)");
+                                  (growth.sized ? " (a thousandth of the solid's size)"
+                                                : " (the model resolution: the solid's size could "
+                                                  "not be measured)");
     const double base = resolution.linear;
     const auto stop = [&] {
         if (cancelled == nullptr || !cancelled->load(std::memory_order_relaxed)) return false;
@@ -4575,13 +4582,9 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     // <from>, beyond the limit of …".
     const auto grow = [&](double& tolerance, double by, const char* what, const char* from,
                           const topo::Face* f, const topo::Edge* e) {
-        if (!(by > resolution.linear)) return;
-        if (by <= limit) {
-            tolerance = std::max(tolerance, by);
-        } else if (read.problem.empty()) {
-            read.problem = std::string(what) + " " + threeFigures(by) + " " + from + ", " +
-                           limitSays + whereIn(f, e);
-        }
+        if (growth.grow(tolerance, by) || !read.problem.empty()) return;
+        read.problem = std::string(what) + " " + threeFigures(by) + " " + from + ", " + limitSays +
+                       whereIn(f, e);
     };
 
     // Each edge's curve ends at its vertices, as near as the file has them.
@@ -4615,6 +4618,10 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
         for (topo::Wire* wire : loops) {
             const std::vector<topo::HalfEdge*> ring =
                 wire != nullptr ? ringOf(*wire, limitHalfEdges) : std::vector<topo::HalfEdge*>{};
+            // The end of the pcurve before each in the loop, at the vertex they share: where
+            // the next one's first sample is placed from (geo::pcurveOn's startNear).
+            math::Vec2 endBefore;
+            const math::Vec2* startNear = nullptr;
             for (topo::HalfEdge* h : ring) {
                 if (stop()) return read;
                 topo::Edge& e = *h->edge;
@@ -4636,8 +4643,8 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
                     // gap measured, which may peak between the samples that measured it, and the
                     // resolution) in the same call, and the edge's tolerance covers what is
                     // measured.
-                    geo::Pcurve pc =
-                        geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1, base, limit);
+                    geo::Pcurve pc = geo::pcurveOn(*f.exactSurface, *e.exactCurve, t0, t1, base,
+                                                   limit, startNear);
                     if (!pc.problem.empty() || pc.curve == nullptr) {
                         read.problem = std::isfinite(pc.standOff) && pc.standOff > limit
                                            ? "its curve stands " + threeFigures(pc.standOff) +
@@ -4660,6 +4667,8 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
                      (f.exactSurface->evaluate(b.x, b.y) - h->next->origin->point).length(),
                      "its pcurve ends", "from its vertex", &f, &e);
                 if (!read.problem.empty()) return read;
+                endBefore = b;
+                startNear = &endBefore;
             }
         }
         // The face's sense, and its seams laid out, as soon as its pcurves exist: a face that
@@ -4679,16 +4688,38 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
         }
     }
 
+    // A rim read the wrong way round on both its faces (a part file saved by master holds them,
+    // its writer unable to tell which way a closed edge's curve ran) turned, before any band is
+    // seamed: a band beside it winds round it the same way as its other loop until it is. A face
+    // turned that is not a band takes its sense from its loops again.
+    if (!bands.empty()) {
+        for (topo::Face* f : model::turnBackwardRims(solid, resolution)) {
+            if (stop()) return read;
+            if (std::find(bands.begin(), bands.end(), f) != bands.end()) continue;
+            if (std::string why = faceSense(*f, resolution, limitHalfEdges, limit); !why.empty()) {
+                read.problem = why + whereIn(f, nullptr);
+                return read;
+            }
+        }
+    }
+
     // Each band given its seam, now that every face's pcurves exist (its seam splits edges that
     // faces built after it share), then its sense and its seams' layout, as every other face had.
     // The tolerances its seam and splits are given, measured as grow measures, are held to the
     // limit as every other is: the seam's, how far its line passes from the vertices it joins; a
     // split's vertex's, how far its edge's pcurves have it.
-    for (topo::Face* f : bands) {
+    // A band whose loops wind round both ways is cut in two (model::insertSeams): its other piece
+    // is taken on as a band, held to the limit and given its sense and layout as the band is.
+    for (std::size_t i = 0; i < bands.size(); ++i) {
+        topo::Face* f = bands[i];
         if (stop()) return read;
+        const std::size_t before = solid.faces().size();
         if (std::string why = model::insertSeams(solid, *f, resolution); !why.empty()) {
             read.problem = why + whereIn(f, f->outerLoop->halfEdge->edge);
             return read;
+        }
+        for (std::size_t k = before; k < solid.faces().size(); ++k) {
+            bands.push_back(&solid.faces()[k]);
         }
         std::vector<topo::Wire*> loops{f->outerLoop};
         loops.insert(loops.end(), f->innerLoops.begin(), f->innerLoops.end());
@@ -4733,7 +4764,8 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     // period, or split by a band's seam, and the validator's measure of the same gap can come out
     // a last bit larger (where sin, cos and atan2 round otherwise, as macOS's do). Only where every
     // issue is such a shortfall does each tolerance grow to the validator's own measure, held to
-    // the limit as every other gap is, and the solid is validated again; otherwise the first issue
+    // the limit as every other gap is, and the solid is validated again (the checks those grown
+    // tolerances enter: every other found nothing, and reads as it did); otherwise the first issue
     // that is not one is reported as ever, and nothing is taken up, so that no shortfall's growth
     // covers a pcurve that strays beside it.
     if (!issues.empty()) {
@@ -4750,7 +4782,8 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
         }
         if (!read.problem.empty()) return read;
         if (stop()) return read;
-        issues = topo::validateExact(solid, resolution);
+        std::vector<topo::ExactIssue> again = topo::validateTakenUp(solid, resolution, takeUp);
+        issues = std::move(again);  // takeUp's issues are these, until now
     }
     if (!issues.empty()) {
         read.problem = issues.front().detail + whereIn(issues.front().face, issues.front().edge);

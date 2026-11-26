@@ -1123,3 +1123,242 @@ TEST(Pcurve, AParameterLineIsMeasuredAtItsSamplesToo) {
         EXPECT_GE(pc.deviation, truth * 0.999) << limit;
     }
 }
+
+namespace {
+
+/// Ruling 23's rim: a band (a cylinder of radius 1 about z) whose top rim, a circle of radius 1 at
+/// z = 2, is tilted 0.0008 off the cylinder's parallels, its axis leaning 0.27 rad round z, with
+/// its vertex 6.06 rad round it, as test_StepExact's band writes it.
+CircleCurve tiltedRim() {
+    const double tilt = 8e-4;
+    const double lean = 0.27;
+    const math::Vec3 axis{std::sin(tilt) * std::cos(lean), std::sin(tilt) * std::sin(lean),
+                          std::cos(tilt)};
+    math::Vec3 x = math::Vec3{1, 0, 0} - axis * axis.x;
+    x = x * (1.0 / x.length());
+    return CircleCurve(Frame::fromAxis({0, 0, 2}, axis, x), 1.0);
+}
+
+}  // namespace
+
+// The tilted rim's pcurve is the parallel through its vertex, a closed form, which stands up to
+// 0.0015 off it, within the limit (a thousandth of the band's size). Its gap peaks between the
+// points it is measured at: read at those alone (49 of them, as before) it was 0.0015042933,
+// 3.7e-7 short of the peak, which the validator then found between its own points. The peak is
+// found: the stand-off, and the deviation the reader grows the rim's tolerance to, are the peak's
+// (to 1%, and in fact to rounding), not the samples'.
+TEST(Pcurve, APeakBetweenSamplesIsFound) {
+    const CircleCurve rim = tiltedRim();
+    const Cylinder side(Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1, 0, 0}), 1.0);
+    const double at = 6.06;  // the rim's vertex; the band's half-edge runs against the rim
+    const double tol = 3.4645e-7;
+    const Pcurve pc = pcurveOn(side, rim, at + kTwoPi, at, tol, 1e4 * tol);
+    ASSERT_TRUE(pc.problem.empty()) << pc.problem;
+    ASSERT_NE(as<Line2D>(pc), nullptr) << "the parallel, its closed form";
+
+    // The true peak: the pcurve's image measured to the circle at 100,000 points.
+    double truth = 0.0;
+    constexpr int kN = 100000;
+    for (int k = 0; k <= kN; ++k) {
+        const math::Vec2 uv = pc.curve->evaluate(pc.start + (pc.end - pc.start) * k / kN);
+        const math::Vec3 p = side.evaluate(uv.x, uv.y);
+        truth = std::max(truth, (rim.evaluate(rim.closestParameter(p)) - p).length());
+    }
+    constexpr double kAtSamples = 0.0015042933256460393;  // the old reading
+    EXPECT_GT(truth - kAtSamples, 3.69e-7);
+    EXPECT_NEAR(pc.standOff, truth, 0.01 * truth);
+    EXPECT_GE(pc.standOff, truth - 1e-14) << "never below the peak";
+    EXPECT_GE(pc.standOff - kAtSamples, 3.69e-7);
+    EXPECT_EQ(pc.deviation, pc.standOff);
+}
+
+namespace {
+
+/// A curve on the cylinder of radius 5 about z (u = 1.5 t, v = 4 t over t in [0, 1]) that stands
+/// off it by a smooth bump, 1e-4 high, peaking at t = 9.5 / 32: half way between two of the 33
+/// points a pcurve starts from, which read it 9% low.
+class BumpOffCylinder : public Curve3 {
+public:
+    static constexpr double kHeight = 1e-4;
+    static constexpr double kAt = 9.5 / 32.0;
+    static constexpr double kWidth = 0.05;
+    CurveKind kind() const override { return CurveKind::Nurbs; }
+    math::Vec3 evaluate(double t) const override { return derivatives(t).point; }
+    CurveDerivatives derivatives(double t) const override {
+        const double s = (t - kAt) / kWidth;
+        const double g = kHeight * std::exp(-s * s);
+        const double dg = -2.0 * s / kWidth * g;
+        const double ddg = (4.0 * s * s - 2.0) / (kWidth * kWidth) * g;
+        const double r = 5.0 + g;
+        const double u = 1.5 * t;
+        const double c = std::cos(u);
+        const double sn = std::sin(u);
+        return {
+            {r * c, r * sn, 4.0 * t},
+            {dg * c - 1.5 * r * sn, dg * sn + 1.5 * r * c, 4.0},
+            {ddg * c - 3.0 * dg * sn - 2.25 * r * c, ddg * sn + 3.0 * dg * c - 2.25 * r * sn, 0.0}};
+    }
+    Interval range() const override { return {0.0, 1.0}; }
+    bool periodic() const override { return false; }
+    double closestParameter(const math::Vec3&) const override { return 0.0; }
+    std::unique_ptr<Curve3> transformed(const math::Mat4&) const override { return nullptr; }
+};
+
+}  // namespace
+
+// On the general path the curve's stand-off is found at its peak between the samples too
+// (Ruling 11): what pcurveOn says the curve stands off by is the bump's height, not the 9% less
+// its samples read, and no more than the deviation. A limit between the two leaves it out, saying
+// how far it stands.
+TEST(Pcurve, TheGeneralPathsStandOffIsFoundAtItsPeak) {
+    const Cylinder cyl(Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1, 0, 0}), 5.0);
+    const BumpOffCylinder c;
+    const double tol = 1e-6;
+    const double truth = BumpOffCylinder::kHeight;
+    const Pcurve pc = pcurveOn(cyl, c, 0.0, 1.0, tol, 1e-2);
+    ASSERT_TRUE(pc.problem.empty()) << pc.problem;
+    ASSERT_NE(pc.curve, nullptr);
+    EXPECT_EQ(as<Line2D>(pc), nullptr) << "no closed form: the general path";
+    EXPECT_NEAR(pc.standOff, truth, 0.01 * truth);
+    EXPECT_GE(pc.standOff, truth * (1.0 - 1e-9)) << "never below the peak";
+    EXPECT_LE(pc.standOff, pc.deviation);
+
+    const Pcurve past = pcurveOn(cyl, c, 0.0, 1.0, tol, 0.95 * truth);
+    EXPECT_FALSE(past.problem.empty());
+    EXPECT_GE(past.standOff, truth * (1.0 - 1e-9));
+    EXPECT_NE(past.problem.find("stands"), std::string::npos) << past.problem;
+}
+
+namespace {
+
+/// 10 - (x - at)^2 at each of @p xs, and a count of the points peakOfGap asks for between them.
+struct Parabola {
+    double at = 0.0;
+    int asked = 0;
+    double operator()(double x) {
+        ++asked;
+        return 10.0 - (x - at) * (x - at);
+    }
+    std::vector<double> sampled(const std::vector<double>& xs) const {
+        std::vector<double> gaps;
+        for (const double x : xs) gaps.push_back(10.0 - (x - at) * (x - at));
+        return gaps;
+    }
+};
+
+constexpr double kGapRounding = 4.0 * std::numeric_limits<double>::epsilon() * 10.0;
+
+double peakOf(const std::vector<double>& xs, const std::vector<double>& gaps, Parabola& p,
+              double within) {
+    return peakOfGap(
+        xs, gaps, [&p](double x) { return p(x); }, kGapRounding, within);
+}
+
+}  // namespace
+
+// A peak in an end interval, 0.48 of the way from the end sample: the end sample rises only 0.04
+// above the one beside it, though the peak is 0.23 above it. Its height is taken over the two
+// samples on its inner side, so the peak is searched for even where it must pass 9.9 to count,
+// and found to rounding. So at either end.
+TEST(PeakOfGap, APeakInAnEndIntervalIsFound) {
+    const std::vector<double> xs = {0, 1, 2, 3, 4};
+    for (const double at : {0.48, 3.52}) {
+        SCOPED_TRACE(at);
+        Parabola p{at};
+        EXPECT_NEAR(peakOf(xs, p.sampled(xs), p, 9.9), 10.0, 1e-13);
+        EXPECT_GT(p.asked, 0);
+    }
+}
+
+// Two equal samples either side of a peak are each a rise; samples taken the other way round
+// find the same peak.
+TEST(PeakOfGap, APlateauAndADescendingOrderFindThePeak) {
+    const std::vector<double> xs = {0, 1, 2, 3, 4};
+    Parabola plateau{1.5};
+    const std::vector<double> flat = plateau.sampled(xs);
+    ASSERT_EQ(flat[1], flat[2]);
+    EXPECT_NEAR(peakOf(xs, flat, plateau, 0.0), 10.0, 1e-13);
+
+    const std::vector<double> down = {4, 3, 2, 1, 0};
+    Parabola back{2.3};
+    EXPECT_NEAR(peakOf(down, back.sampled(down), back, 0.0), 10.0, 1e-13);
+}
+
+// A gap that is not a number is passed over: a peak away from it is still found, and the sample
+// beside it is not searched about; what is found is a number.
+TEST(PeakOfGap, AGapThatIsNotANumberIsPassedOver) {
+    const std::vector<double> xs = {0, 1, 2, 3, 4, 5, 6};
+    Parabola p{1.3};
+    std::vector<double> gaps = p.sampled(xs);
+    gaps[4] = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_NEAR(peakOf(xs, gaps, p, 0.0), 10.0, 1e-13);
+
+    Parabola beside{1.3};
+    std::vector<double> hidden = beside.sampled(xs);
+    hidden[2] = std::numeric_limits<double>::quiet_NaN();
+    const double found = peakOf(xs, hidden, beside, 0.0);
+    EXPECT_TRUE(std::isfinite(found));
+    EXPECT_LE(found, 10.0);
+}
+
+// A peak that cannot pass what it is measured against is not searched for: no point between the
+// samples is asked for, and the largest sample is what is found. Below its reach, it is.
+TEST(PeakOfGap, APeakThatCannotPassWithinIsNotSearchedFor) {
+    const std::vector<double> xs = {0, 1, 2, 3, 4};
+    Parabola p{2.3};
+    const std::vector<double> gaps = p.sampled(xs);
+    const double sampled = *std::max_element(gaps.begin(), gaps.end());
+    EXPECT_EQ(peakOf(xs, gaps, p, 20.0), sampled);
+    EXPECT_EQ(p.asked, 0);
+    EXPECT_NEAR(peakOf(xs, gaps, p, 9.95), 10.0, 1e-13);
+    EXPECT_GT(p.asked, 0);
+}
+
+// A pcurve's first sample placed from near its start (the end of the pcurve before it in a loop,
+// at the vertex they share) is the point the search of the whole surface finds: a rim of a closed
+// B-spline cylinder from part of the way round to past its seam, its start given a hair off, or a
+// period off either way, is the same parameter line, starting in the surface's own range at the
+// search's (u, v), as near as Newton's method settles, and measured alike. Given from the far side
+// of the cylinder, where Newton's method lands a diameter off the point, or as no number, the
+// search is made: the pcurve is the one without it, to the last bit.
+TEST(Pcurve, AFirstSamplePlacedFromNearItsStartIsTheSearchesPoint) {
+    const double tol = 1e-7;
+    const NurbsSurface cyl = NurbsSurface::makeCylinder({1, -2, 0}, {0, 0, 1}, 1.5, 2.0);
+    ASSERT_TRUE(cyl.periodicU());
+    const double period = cyl.uMax() - cyl.uMin();
+    const CircleCurve rim(Frame::fromAxis({1, -2, 1.2}, {0, 0, 1}), 1.5);
+    const double t0 = 1.0;
+    const double t1 = 1.0 + 0.9 * kTwoPi;
+    const Pcurve searched = pcurveOn(cyl, rim, t0, t1, tol);
+    ASSERT_NE(as<Line2D>(searched), nullptr) << searched.problem;
+    const math::Vec2 start = searched.curve->evaluate(searched.start);
+    for (const math::Vec2& near : {start + math::Vec2(1e-4, -1e-4), start + math::Vec2(period, 0.0),
+                                   start + math::Vec2(-period, 1e-3)}) {
+        SCOPED_TRACE(near.x);
+        const Pcurve placed = pcurveOn(cyl, rim, t0, t1, tol, 0.0, &near);
+        ASSERT_NE(as<Line2D>(placed), nullptr) << placed.problem;
+        expectFollows(cyl, rim, t0, t1, placed, 2e-9);
+        const math::Vec2 a = placed.curve->evaluate(placed.start);
+        EXPECT_GE(a.x, cyl.uMin());
+        EXPECT_LT(a.x, cyl.uMax());
+        EXPECT_NEAR(a.x, start.x, 1e-12);
+        EXPECT_NEAR(a.y, start.y, 1e-12);
+        EXPECT_NEAR(placed.deviation, searched.deviation, 1e-12);
+    }
+    const auto sameBits = [](double x, double y) {
+        return x == y && std::signbit(x) == std::signbit(y);
+    };
+    for (const math::Vec2& far : {start + math::Vec2(0.5 * period, 0.0),
+                                  math::Vec2(std::numeric_limits<double>::quiet_NaN(), start.y)}) {
+        const Pcurve placed = pcurveOn(cyl, rim, t0, t1, tol, 0.0, &far);
+        ASSERT_NE(as<Line2D>(placed), nullptr) << placed.problem;
+        for (const auto& ends :
+             {std::pair{placed.start, searched.start}, std::pair{placed.end, searched.end}}) {
+            const math::Vec2 p = placed.curve->evaluate(ends.first);
+            const math::Vec2 q = searched.curve->evaluate(ends.second);
+            EXPECT_TRUE(sameBits(p.x, q.x) && sameBits(p.y, q.y))
+                << p.x << " " << p.y << " vs " << q.x << " " << q.y;
+        }
+        EXPECT_TRUE(sameBits(placed.deviation, searched.deviation));
+    }
+}

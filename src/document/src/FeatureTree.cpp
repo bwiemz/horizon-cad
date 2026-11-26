@@ -17,6 +17,7 @@
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/geometry/Frame.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
@@ -26,6 +27,7 @@
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
 #include "horizon/modeling/EdgeProjection.h"
+#include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FacePlane.h"
 #include "horizon/modeling/Faceting.h"
@@ -198,6 +200,13 @@ bool ExtrudeFeature::setVector(const std::string& name, const math::Vec3& value)
     return true;
 }
 
+model::FacetResolution ExtrudeFeature::facetResolution() const {
+    model::FacetResolution resolution;
+    resolution.segmentsPerTurn = m_segments;
+    resolution.chordTolerance = m_chordTolerance;
+    return resolution;
+}
+
 bool ExtrudeFeature::hasCurvedProfile() const {
     if (!m_sketch) return false;
     for (const auto& ent : m_sketch->entities()) {
@@ -226,16 +235,40 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::execute(std::unique_ptr<topo::Solid
 }
 
 std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& context,
-                                                       std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                       std::unique_ptr<topo::Solid> inputSolid,
                                                        std::string* reason) const {
+    return executeWithExact(context, std::move(inputSolid), reason).faceted;
+}
+
+FeatureOutput ExtrudeFeature::executeWithExact(const BuildContext& context,
+                                               std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                               std::string* reason) const {
     // The extrusion alone; the tree combines it with the part according to
     // operation() (see applyFeature), as for every body-creating feature.
+    const auto fail = [reason](std::string why) {
+        if (reason) *reason = std::move(why);
+        return FeatureOutput{};
+    };
     const draft::SketchPlane& plane = m_sketch->plane();
     // Placed on a face that has turned, the sketch takes its direction along.
     const math::Vec3 direction = m_sketch->placement().transformDirection(m_direction);
     const auto extrude = [&](const draft::SketchPlane& from, double distance) {
-        return model::Extrude::execute(m_sketch->entities(), from, direction, distance, m_featureID,
-                                       m_segments, m_chordTolerance, reason, naming());
+        FeatureOutput out;
+        if (naming() != model::NamingScheme::Stable) {
+            out.faceted = model::Extrude::execute(m_sketch->entities(), from, direction, distance,
+                                                  m_featureID, m_segments, m_chordTolerance, reason,
+                                                  naming());
+            return out;
+        }
+        // Built exactly (stage 3); the faceted extrusion every operation not yet converted reads
+        // is its bridge copy, master's facets named for the exact faces they lie on and numbered
+        // as master's (Ruling 21).
+        auto built =
+            model::Extrude::exactAndBridge(m_sketch->entities(), from, direction, distance,
+                                           m_featureID, m_segments, m_chordTolerance, reason);
+        out.faceted = std::move(built.faceted);
+        out.exact = std::move(built.exact);
+        return out;
     };
     // Along the direction, a plane the sketch's, moved @p by.
     const auto moved = [&plane](const math::Vec3& by) {
@@ -250,7 +283,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
         case Extent::ThroughAll:
         case Extent::ThroughAllBoth: {
             if (!context.part || context.part->vertices().empty()) {
-                return failWith(reason, "there is no part before it to go through");
+                return fail("there is no part before it to go through");
             }
             // How far the part reaches along the direction, from the
             // sketch, each way, and a little past it at each end: how far
@@ -260,7 +293,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
             const math::Vec3 n = plane.normal();
             const double rise = unit.dot(n);  // height gained per length travelled
             if (std::abs(rise) < 1e-9) {
-                return failWith(reason, "the direction lies in the sketch plane");
+                return fail("the direction lies in the sketch plane");
             }
             double lo = std::numeric_limits<double>::infinity();
             double hi = -lo;
@@ -272,7 +305,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
             const double margin = 0.01 * (hi - lo) + 1e-6;
             if (m_extent == Extent::ThroughAll) {
                 if (hi <= 1e-9) {
-                    return failWith(reason, "the part is not in front of the sketch that way");
+                    return fail("the part is not in front of the sketch that way");
                 }
                 return extrude(plane, (hi + margin) / direction.length());
             }
@@ -283,25 +316,25 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
         case Extent::UpToFace: {
             // Phase 157: as far as a flat face of the part, parallel to the
             // sketch, where the part now puts it.
-            if (m_upToFace.empty()) return failWith(reason, "no face is chosen to go up to");
+            if (m_upToFace.empty()) return fail("no face is chosen to go up to");
             const std::string face = "the face it goes up to (" + m_upToFace + ")";
             if (!context.part) {
-                return failWith(reason, face + " is not there: there is no part before it");
+                return fail(face + " is not there: there is no part before it");
             }
             std::string why;
             const auto to = model::planeOfFace(*context.part, m_upToFace, &why);
-            if (!to) return failWith(reason, face + " " + why);
+            if (!to) return fail(face + " " + why);
             if (to->normal.cross(plane.normal()).length() > 1e-9) {
-                return failWith(reason, face +
-                                            " is at a slant to the sketch: it goes up to a face "
-                                            "parallel to the sketch");
+                return fail(face +
+                            " is at a slant to the sketch: it goes up to a face "
+                            "parallel to the sketch");
             }
             // Parallel, so every point of the profile is as far from it.
             const double reach =
                 (to->origin - plane.origin()).dot(to->normal) / unit.dot(to->normal);
             const double size = std::max(1.0, (to->origin - plane.origin()).length());
             if (!(reach > 1e-9 * size)) {
-                return failWith(reason, face + " is not in front of the sketch that way");
+                return fail(face + " is not in front of the sketch that way");
             }
             return extrude(plane, reach / direction.length());
         }
@@ -373,6 +406,13 @@ int RevolveFeature::segments() const {
         if (radius > 0.0) return model::Revolve::segmentsForTolerance(radius, m_chordTolerance);
     }
     return m_segments;
+}
+
+model::FacetResolution RevolveFeature::facetResolution() const {
+    model::FacetResolution resolution;
+    resolution.segmentsPerTurn = segments();
+    resolution.chordTolerance = m_chordTolerance;
+    return resolution;
 }
 
 std::string RevolveFeature::featureID() const {
@@ -1056,6 +1096,40 @@ std::unique_ptr<topo::Solid> PatternFeature::execute(std::unique_ptr<topo::Solid
 
 math::IdCounter<int> PrimitiveFeature::s_nextID{1};
 
+namespace {
+
+/// Why master's factory made no primitive, as master said it.
+constexpr const char* kNoPrimitive =
+    "these dimensions do not make a solid: they must be positive (a cone may have one zero "
+    "radius, a torus's tube must be thinner than its ring)";
+
+/// The exact box master's factory made of @p width x @p height x @p depth from @p base, a size
+/// of which may be negative: the box on the other side of the base along that axis (Ruling 19).
+/// It is the exact box of the sizes' extents from its least corner, each face named for where
+/// master's is: `box/left` at x = 0 and `box/right` at x = width, whichever side that is (and so
+/// `front` and `back` along y, `bottom` and `top` along z). Null where a size is 0 or not finite.
+std::unique_ptr<topo::Solid> exactBox(const geo::Frame& base, double width, double height,
+                                      double depth) {
+    geo::Frame least = base;
+    least.origin = base.origin + base.x * std::min(width, 0.0) + base.y * std::min(height, 0.0) +
+                   base.z * std::min(depth, 0.0);
+    auto box = model::exact::makeBox(least, std::abs(width), std::abs(height), std::abs(depth));
+    if (!box) return nullptr;
+    const auto swapNames = [&box](const char* a, const char* b) {
+        for (auto& face : box->faces()) {
+            const std::string tag = face.topoId.tag();
+            if (tag == a) face.topoId = topo::TopologyID::fromTag(b);
+            if (tag == b) face.topoId = topo::TopologyID::fromTag(a);
+        }
+    };
+    if (width < 0.0) swapNames("box/left", "box/right");
+    if (height < 0.0) swapNames("box/front", "box/back");
+    if (depth < 0.0) swapNames("box/bottom", "box/top");
+    return box;
+}
+
+}  // namespace
+
 std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeBox(double width, double height,
                                                             double depth) {
     std::unique_ptr<PrimitiveFeature> f(new PrimitiveFeature());
@@ -1146,9 +1220,10 @@ std::map<std::string, double> PrimitiveFeature::parameters() const {
             params = {{"majorRadius", m_p0}, {"minorRadius", m_p1}};
             break;
     }
-    // A box is exact; the curved kinds are tessellated at construction, so the
-    // facet count is a real parameter of the shape rather than a display
-    // setting.  Only they report it.
+    // A box has no curved face; the curved kinds are cut into facets (their
+    // faceted copy, stage 3; their shape under the older schemes), so the
+    // facet count is a real parameter rather than a display setting. Only
+    // they report it.
     if (isFaceted()) {
         params["segments"] = static_cast<double>(segments());
         params["chordTolerance"] = m_chordTolerance;
@@ -1205,8 +1280,27 @@ int PrimitiveFeature::segments() const {
     return model::PrimitiveFactory::segmentsForTolerance(radius, m_chordTolerance);
 }
 
-std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
-                                                       std::string* reason) const {
+model::FacetResolution PrimitiveFeature::facetResolution() const {
+    model::FacetResolution resolution;
+    resolution.segmentsPerTurn = segments();  // a chord tolerance's count already
+    if (m_kind == Kind::Sphere) resolution.minorSegments = std::max(2, segments() / 2);
+    if (m_kind == Kind::Torus) resolution.minorSegments = std::max(3, segments() / 2);
+    return resolution;
+}
+
+math::Mat4 PrimitiveFeature::placement() const {
+    const math::Vec3 z(0.0, 0.0, 1.0);
+    const math::Vec3 to = m_axisDirection.normalized();
+    const math::Vec3 turnAxis = z.cross(to);
+    const double angle = std::atan2(turnAxis.length(), z.dot(to));
+    const math::Quaternion turn =
+        turnAxis.length() > 1e-12
+            ? math::Quaternion::fromAxisAngle(turnAxis.normalized(), angle)
+            : math::Quaternion::fromAxisAngle(math::Vec3(1.0, 0.0, 0.0), angle);
+    return math::Mat4::translation(m_basePoint) * math::Mat4::rotation(turn);
+}
+
+std::unique_ptr<topo::Solid> PrimitiveFeature::facetedAsMaster(std::string* reason) const {
     const int n = segments();
     std::unique_ptr<topo::Solid> solid;
     switch (m_kind) {
@@ -1226,11 +1320,7 @@ std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Sol
             solid = model::PrimitiveFactory::makeTorus(m_p0, m_p1, n);
             break;
     }
-    if (!solid) {
-        return failWith(reason,
-                        "these dimensions do not make a solid: they must be positive (a cone may "
-                        "have one zero radius, a torus's tube must be thinner than its ring)");
-    }
+    if (!solid) return failWith(reason, kNoPrimitive);
     if (naming() == model::NamingScheme::Stable) {
         // This feature's names, not the kind's: every box's top was
         // `box/top`, so a second box's was the first's too. Edges after the
@@ -1240,18 +1330,103 @@ std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Sol
         model::nameEdgesLogically(*solid);
     }
     if (!isPlaced()) return solid;
-    // Stood where it goes: its z axis turned onto the axis direction (the
-    // shortest turn, half round for -Z), then moved to the base point.
-    const math::Vec3 z(0.0, 0.0, 1.0);
-    const math::Vec3 to = m_axisDirection.normalized();
-    const math::Vec3 turnAxis = z.cross(to);
-    const double angle = std::atan2(turnAxis.length(), z.dot(to));
-    const math::Quaternion turn =
-        turnAxis.length() > 1e-12
-            ? math::Quaternion::fromAxisAngle(turnAxis.normalized(), angle)
-            : math::Quaternion::fromAxisAngle(math::Vec3(1.0, 0.0, 0.0), angle);
-    return model::Pattern::transformed(
-        *solid, math::Mat4::translation(m_basePoint) * math::Mat4::rotation(turn));
+    return model::Pattern::transformed(*solid, placement());
+}
+
+std::unique_ptr<topo::Solid> PrimitiveFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
+                                                       std::string* reason) const {
+    return executeWithExact(BuildContext{}, std::move(inputSolid), reason).faceted;
+}
+
+FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/,
+                                                 std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                 std::string* reason) const {
+    FeatureOutput out;
+    if (naming() != model::NamingScheme::Stable) {
+        out.faceted = facetedAsMaster(reason);
+        return out;
+    }
+    // A torus whose tube reaches its axis is refused as master refused it (Ruling 2): the exact
+    // primitive's apple is for revolves.
+    if (m_kind == Kind::Torus && m_p1 >= m_p0) {
+        if (reason) *reason = kNoPrimitive;
+        return out;
+    }
+    // Built in the frame master's placement moves its primitive to: the seam along that frame's
+    // x, where master's ring starts, so the bridge's vertices are master's.
+    const geo::Frame frame = isPlaced() ? geo::Frame{}.transformed(placement()) : geo::Frame{};
+    std::unique_ptr<topo::Solid> exact;
+    std::string why =
+        "these dimensions do not make a solid: they must be positive (a cone may have one zero "
+        "radius)";
+    try {
+        switch (m_kind) {
+            case Kind::Box:
+                exact = exactBox(frame, m_p0, m_p1, m_p2);
+                break;
+            case Kind::Cylinder:
+                exact = model::exact::makeCylinder(frame, m_p0, m_p1);
+                break;
+            case Kind::Sphere:
+                exact = model::exact::makeSphere(frame, m_p0);
+                break;
+            case Kind::Cone:
+                exact = model::exact::makeCone(frame, m_p0, m_p1, m_p2);
+                break;
+            case Kind::Torus:
+                exact = model::exact::makeTorus(frame, m_p0, m_p1);
+                break;
+        }
+    } catch (const std::exception& e) {
+        why = e.what();
+    }
+    if (!exact) {
+        if (reason) *reason = "could not be built exactly: " + why;
+        return out;
+    }
+    // This feature's names (`<featureID>/side`), its edges after the faces they part.
+    model::scopeToFeature(*exact, featureID());
+    model::nameEdgesLogically(*exact);
+    auto bridge = model::facetExact(*exact, facetResolution());
+    if (!bridge.solid) {
+        if (reason) *reason = "its exact form could not be cut into facets: " + bridge.error;
+        return out;
+    }
+    if (!bridge.copied) model::nameBridgeEdges(*bridge.solid, *exact);
+    // Numbered as master's faceted primitive numbered the same places (Ruling 21): a box names
+    // nothing by number.
+    std::vector<model::SolidSewer::InputFace> soup;
+    const char* curvedSide = "side";
+    const int n = segments();
+    switch (m_kind) {
+        case Kind::Box:
+            break;
+        case Kind::Cylinder:
+            soup = model::PrimitiveFactory::cylinderFaces(m_p0, m_p1, n);
+            curvedSide = "cylinder/side";
+            break;
+        case Kind::Sphere:
+            soup = model::PrimitiveFactory::sphereFaces(m_p0, n);
+            curvedSide = "sphere/band";
+            break;
+        case Kind::Cone:
+            soup = model::PrimitiveFactory::coneFaces(m_p0, m_p1, m_p2, n);
+            curvedSide = "cone/side";
+            break;
+        case Kind::Torus:
+            soup = model::PrimitiveFactory::torusFaces(m_p0, m_p1, n);
+            curvedSide = "torus/patch";
+            break;
+    }
+    if (!soup.empty()) {
+        model::nameAsMasters(
+            *bridge.solid, *exact,
+            model::mastersFacets(soup, curvedSide, featureID(),
+                                 isPlaced() ? placement() : math::Mat4::identity()));
+    }
+    out.faceted = std::move(bridge.solid);
+    out.exact = std::move(exact);
+    return out;
 }
 
 bool PrimitiveFeature::isPlaced() const {
@@ -1404,6 +1579,16 @@ std::unique_ptr<topo::Solid> ImportedBodyFeature::execute(
     return body;
 }
 
+FeatureOutput ImportedBodyFeature::executeWithExact(const BuildContext& context,
+                                                    std::unique_ptr<topo::Solid> inputSolid,
+                                                    std::string* reason) const {
+    FeatureOutput out;
+    out.faceted = executeIn(context, std::move(inputSolid), reason);
+    // A copy of a body as read may be large: made only for a build that keeps it.
+    if (out.faceted && context.keepExact) out.exact = exactBody();
+    return out;
+}
+
 // ---------------------------------------------------------------------------
 // FeatureTree
 // ---------------------------------------------------------------------------
@@ -1528,13 +1713,19 @@ std::unique_ptr<topo::Solid> checked(std::unique_ptr<topo::Solid> solid, std::st
 /// Run a feature, turning an exception from the kernel (the NURBS constructors
 /// throw on invalid input, for one) into a failure with its reason, instead of
 /// letting it unwind into the caller — ultimately the Qt event loop, which
-/// cannot carry an exception and would terminate the application.
+/// cannot carry an exception and would terminate the application. The exact
+/// body it built, where it built one (Feature::executeWithExact), goes to
+/// @p exact when given, with a faceted body that passes.
 std::unique_ptr<topo::Solid> executeContained(const Feature& feat,
                                               std::unique_ptr<topo::Solid> input,
                                               std::string* reason = nullptr,
-                                              const BuildContext& context = {}) {
+                                              const BuildContext& context = {},
+                                              std::unique_ptr<topo::Solid>* exact = nullptr) {
     try {
-        return checked(feat.executeIn(context, std::move(input), reason), reason);
+        FeatureOutput out = feat.executeWithExact(context, std::move(input), reason);
+        auto faceted = checked(std::move(out.faceted), reason);
+        if (faceted && exact != nullptr) *exact = std::move(out.exact);
+        return faceted;
     } catch (const std::exception& e) {
         if (reason) *reason = e.what();
     } catch (...) {
@@ -1773,22 +1964,32 @@ bool prepareSketches(const Feature& feature, const topo::Solid* part, Placed& pl
 /// result) is kernel code too, and an exception from it would unwind through
 /// every build: out of a worker, or out of a trial build that has put the
 /// feature into the tree and not yet taken it out.
+///
+/// The exact body a creating feature built (Feature::executeWithExact) goes
+/// to @p exactTool when given, once the feature has applied: what the build's
+/// ExactFollower joins to the part's exact solid. @p keepExact says whether
+/// the build keeps it (BuildContext::keepExact).
 std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_ptr<topo::Solid> part,
                                           std::string* reason,
-                                          const std::vector<const Feature*>& before,
-                                          Placed& placed) {
+                                          const std::vector<const Feature*>& before, Placed& placed,
+                                          std::unique_ptr<topo::Solid>* exactTool = nullptr,
+                                          bool keepExact = false) {
     try {
         if (!prepareSketches(feature, part.get(), placed, reason)) return nullptr;
         BuildContext context;
         context.before = before;
+        context.keepExact = exactTool != nullptr && keepExact;
         if (!feature.createsNewBody()) {
             return executeContained(feature, std::move(part), reason, context);
         }
         context.part = part.get();  // what a through-all extrusion goes through
-        auto tool = executeContained(feature, nullptr, reason, context);
+        std::unique_ptr<topo::Solid> exact;
+        auto tool = executeContained(feature, nullptr, reason, context, &exact);
         if (!tool) return nullptr;
-        return combine(feature.operation(), std::move(part), std::move(tool), reason,
-                       feature.naming());
+        auto combined = combine(feature.operation(), std::move(part), std::move(tool), reason,
+                                feature.naming());
+        if (combined && exactTool != nullptr) *exactTool = std::move(exact);
+        return combined;
     } catch (const std::exception& e) {
         if (reason) *reason = e.what();
     } catch (...) {
@@ -2378,7 +2579,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
     if (control) control->total = limit;
 
     std::unique_ptr<topo::Solid> solid;
-    ExactFollower exact;
+    ExactFollower exact(options.exactCounterpart);
     std::vector<const Feature*> before;
     Placed placed;
     // Where each sketch was placed, and the edges projected into it as they
@@ -2427,9 +2628,13 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
         const Feature& feature = *m_features[static_cast<size_t>(i)];
         std::string reason = feature.expressionError();  // Phase 155
         const bool first = solid == nullptr;
-        auto next = reason.empty()
-                        ? applyFeature(feature, std::move(solid), &reason, before, placed)
-                        : nullptr;
+        // Its exact body kept only where it joins an exact part as a body of it (Ruling 20).
+        const bool keep = exact.accepting() && feature.createsNewBody() &&
+                          (first || feature.operation() == BodyOperation::NewBody);
+        std::unique_ptr<topo::Solid> exactTool;
+        auto next = reason.empty() ? applyFeature(feature, std::move(solid), &reason, before,
+                                                  placed, &exactTool, keep)
+                                   : nullptr;
         if (!next) {
             result.failedFeatureIndex = i;
             result.failureMessage = reason.empty()
@@ -2449,7 +2654,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
             return result;
         }
         solid = std::move(next);
-        exact.follow(feature, first);
+        exact.follow(feature, first, std::move(exactTool));
         before.push_back(&feature);
         result.lastSuccessfulFeature = i;
     }

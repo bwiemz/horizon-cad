@@ -9,6 +9,8 @@
 
 namespace hz::geo {
 
+class NurbsSurface;
+
 /// The kind of a Surface, for code that must treat the analytic ones specially.
 enum class SurfaceKind { Plane, Cylinder, Cone, Sphere, Torus, Nurbs };
 
@@ -56,6 +58,18 @@ public:
     /// result->evaluate(u, v) == m.transformPoint(evaluate(u, v)). A reflecting
     /// @p m flips the direction of du x dv.
     virtual std::unique_ptr<Surface> transformed(const math::Mat4& m) const = 0;
+
+    /// This surface over the parameter box [u0, u1] x [v0, v1] as a rational NURBS, exactly: its
+    /// points are this surface's over the box, its domain is the box, its corners are this
+    /// surface's corners of the box, and its du x dv faces as this surface's does, so a face
+    /// keeps its sense on it. Between its corners its parameters may differ from this surface's
+    /// (a circle's rational arcs run at their own pace, meeting the angle at their knots), so a
+    /// pcurve on this surface is not one on it. Unlike transformed(), the result moves exactly
+    /// under any affine matrix (NurbsSurface::transformed).
+    /// @throws std::invalid_argument for a box that is empty or not finite, or that runs more
+    ///         than one period round a periodic direction.
+    virtual std::shared_ptr<NurbsSurface> toNurbs(double u0, double u1, double v0,
+                                                  double v1) const = 0;
 };
 
 }  // namespace hz::geo

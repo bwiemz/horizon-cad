@@ -556,6 +556,12 @@ a user can see. Each is several PRs.
    without facets. *Seen:* exact volumes, a cylinder of three faces, smooth
    silhouettes in drawings at any zoom. (A part with a Boolean is still
    faceted after it until stage 5.)
+   - *Regression list (in progress):*
+     - *A horn torus, and a spindle near one:* its cusp pole is refused by the
+       read point at once, with why; cusp meshing is carried to a later stage
+       (Ruling 9). A pole whose surface opens from it at under 30 degrees and
+       wider further out (an apple's, R/r above about 0.866) is the cusp; a
+       cone's apex and a lemon's tip still mesh.
 4. **Exact intersection.** The intersection library, analytic pairs first,
    then NURBS marching with tangencies and overlaps; property tests and
    fuzzing. Library only.

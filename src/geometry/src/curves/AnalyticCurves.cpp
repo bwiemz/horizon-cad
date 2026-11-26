@@ -7,6 +7,8 @@
 #include <vector>
 
 #include "../AngleWrap.h"
+#include "../RationalArc.h"
+#include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/math/Constants.h"
 
 namespace hz::geo {
@@ -15,6 +17,21 @@ namespace {
 using detail::wrapAngle;
 using math::kTwoPi;
 constexpr double kInf = std::numeric_limits<double>::infinity();
+
+/// The arc of origin + a cos t x + b sin t y from @p t0 to @p t1 (an ellipse's, or a circle's
+/// where a = b) as a NURBS: the unit arc's control points, its weights and knots, mapped by the
+/// frame's affine map, which a NURBS follows exactly.
+std::shared_ptr<NurbsCurve> ellipticArc(const Frame& f, double a, double b, double t0, double t1,
+                                        const char* what) {
+    t1 = detail::checkedRangeEnd(t0, t1, kTwoPi, what);
+    detail::UnitArc arc = detail::unitArc(t0, t1, t0, t1);
+    std::vector<math::Vec3> points;
+    points.reserve(arc.points.size());
+    for (const math::Vec2& p : arc.points)
+        points.push_back(f.origin + f.x * (a * p.x) + f.y * (b * p.y));
+    return std::make_shared<NurbsCurve>(std::move(points), std::move(arc.weights),
+                                        std::move(arc.knots), 2);
+}
 }  // namespace
 
 // ---- Line ----
@@ -54,6 +71,14 @@ double LineCurve::closestParameter(const math::Vec3& point) const {
 std::unique_ptr<Curve3> LineCurve::transformed(const math::Mat4& m) const {
     const math::Vec3 d = m.transformDirection(direction_);
     return std::make_unique<LineCurve>(m.transformPoint(origin_), d, scale_ * d.length());
+}
+
+std::shared_ptr<NurbsCurve> LineCurve::toNurbs(double t0, double t1) const {
+    t1 = detail::checkedRangeEnd(t0, t1, 0.0, "LineCurve::toNurbs");
+    // Degree 1 between its ends: the line's own parameter.
+    return std::make_shared<NurbsCurve>(std::vector<math::Vec3>{evaluate(t0), evaluate(t1)},
+                                        std::vector<double>{1.0, 1.0},
+                                        std::vector<double>{t0, t0, t1, t1}, 1);
 }
 
 // ---- Circle ----
@@ -96,6 +121,10 @@ double CircleCurve::closestParameter(const math::Vec3& point) const {
 
 std::unique_ptr<Curve3> CircleCurve::transformed(const math::Mat4& m) const {
     return std::make_unique<CircleCurve>(frame_.transformed(m), radius_ * Frame::scaleOf(m));
+}
+
+std::shared_ptr<NurbsCurve> CircleCurve::toNurbs(double t0, double t1) const {
+    return ellipticArc(frame_, radius_, radius_, t0, t1, "CircleCurve::toNurbs");
 }
 
 // ---- Ellipse ----
@@ -217,6 +246,11 @@ double EllipseCurve::closestParameter(const math::Vec3& point) const {
 std::unique_ptr<Curve3> EllipseCurve::transformed(const math::Mat4& m) const {
     const double k = Frame::scaleOf(m);
     return std::make_unique<EllipseCurve>(frame_.transformed(m), major_ * k, minor_ * k);
+}
+
+std::shared_ptr<NurbsCurve> EllipseCurve::toNurbs(double t0, double t1) const {
+    // An ellipse is the circle's affine image, its eccentric angle the circle's angle.
+    return ellipticArc(frame_, major_, minor_, t0, t1, "EllipseCurve::toNurbs");
 }
 
 }  // namespace hz::geo

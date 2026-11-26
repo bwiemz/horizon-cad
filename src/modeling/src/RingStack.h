@@ -17,6 +17,7 @@
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/FacetResolution.h"
 #include "horizon/modeling/SolidSewer.h"
 #include "horizon/topology/Solid.h"
 
@@ -53,16 +54,9 @@ std::shared_ptr<geo::NurbsSurface> makeBilinearPatch(const math::Vec3& p00, cons
 std::shared_ptr<geo::NurbsSurface> makeCapSurface(const std::vector<math::Vec3>& ring,
                                                   const math::Vec3& normal);
 
-/// How finely the arcs and circles of a profile are faceted.
-struct ProfileResolution {
-    int segmentsPerTurn = 32;  ///< chords per full turn of any arc
-    /// When positive, each arc's count is instead derived from its own radius
-    /// so that no chord sags more than this.
-    double chordTolerance = 0.0;
-
-    /// Chords across an arc of @p radius sweeping @p sweep radians (>= 1).
-    int stepsFor(double radius, double sweep) const;
-};
+/// How finely the arcs and circles of a profile are faceted: the one rule the
+/// bridge from exact faces cuts by too (FacetResolution).
+using ProfileResolution = FacetResolution;
 
 /// A circle some of a sampled profile's chords approximate.
 struct ProfileArc {

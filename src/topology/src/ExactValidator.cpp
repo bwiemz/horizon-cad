@@ -6,10 +6,12 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "ExactLoopGeometry.h"
+#include "horizon/geometry/Pcurve.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/Curve3.h"
@@ -58,13 +60,22 @@ const geo::NurbsCurve* straightSegment(const geo::Curve3& c) {
     return n;
 }
 
+/// The parameters @p h's pcurve is sampled at: its two ends and 15 between.
+std::vector<double> sampleParameters(const HalfEdge& h) {
+    std::vector<double> at;
+    at.reserve(kSamples);
+    for (int i = 0; i < kSamples; ++i) at.push_back(loopSampleParameter(h, i, kSamples));
+    return at;
+}
+
 /// Whether checkPcurve's search, on an edge that is a straight segment, would find @p h's
-/// pcurve on the curve and running with it: each sample's projection onto the segment is
-/// within the tolerance by a margin far above rounding (the search's own point is the same
-/// one, to rounding, so its distance is too), and the projections advance by the order test
-/// with half its slack (rounding cannot move a step across the other half). It only ever
-/// accepts: anything else is left to the search, so what is reported, and how far a pcurve
-/// strays, are the search's, as ever.
+/// pcurve on the curve and running with it: each sample's projection onto the segment, and the
+/// peaks between them (geo::peakOfGap, the search's own way of finding them), are within the
+/// tolerance by a margin far above rounding (the search's own point is the same one, to
+/// rounding, so its distance is too), and the projections advance by the order test with half
+/// its slack (rounding cannot move a step across the other half). It only ever accepts: anything
+/// else is left to the search, so what is reported, and how far a pcurve strays, are the
+/// search's, as ever.
 bool passesOnASegment(const Edge& e, const HalfEdge& h, const math::ModelTolerance& tol) {
     const geo::NurbsCurve* seg = straightSegment(*e.exactCurve);
     if (seg == nullptr) return false;
@@ -75,18 +86,46 @@ bool passesOnASegment(const Edge& e, const HalfEdge& h, const math::ModelToleran
     const double t0 = seg->tMin();
     const double span = seg->tMax() - t0;
     const double reach = p0.length() + seg->controlPoints()[1].length();
-    std::vector<double> params;
-    params.reserve(kSamples);
-    for (int i = 0; i < kSamples; ++i) {
-        const Vec2 uv = sample(h, i);
+    // A point of the pcurve's distance from the segment, the parameter it projects to, and how
+    // far from the origin it lies.
+    const auto project = [&](double at, double& t, double& far) {
+        const Vec2 uv = h.pcurve->evaluate(at);
         const Vec3 p = s.evaluate(uv.x, uv.y);
-        const double along = std::clamp((p - p0).dot(d) / len2, 0.0, 1.0);
-        const double t = t0 + along * span;
-        const double dist = (e.exactCurve->evaluate(t) - p).length();
-        const double margin = 1e-12 * (reach + p.length());
+        t = t0 + std::clamp((p - p0).dot(d) / len2, 0.0, 1.0) * span;
+        far = p.length();
+        return (e.exactCurve->evaluate(t) - p).length();
+    };
+    const std::vector<double> at = sampleParameters(h);
+    std::vector<double> params;
+    std::vector<double> gaps;
+    params.reserve(kSamples);
+    gaps.reserve(kSamples);
+    double most = 0.0;  // the largest margin
+    double sampled = 0.0;
+    for (const double a : at) {
+        double t = 0.0;
+        double far = 0.0;
+        const double dist = project(a, t, far);
+        const double margin = 1e-12 * (reach + far);
         if (!std::isfinite(dist) || !tol.within(dist + margin, e.tolerance)) return false;
+        most = std::max(most, margin);
+        sampled = std::max(sampled, dist);
         params.push_back(t);
+        gaps.push_back(dist);
     }
+    // The peaks between, pinned far within the margin (a thousandth of it, some units in the last
+    // place of the points), where one could pass what is allowed: one found above the samples is
+    // within by the largest margin.
+    const double allowed = tol.effective(e.tolerance) - most;
+    const double peak = geo::peakOfGap(
+        at, gaps,
+        [&project](double a) {
+            double t = 0.0;
+            double far = 0.0;
+            return project(a, t, far);
+        },
+        1e-3 * most, allowed);
+    if (peak > sampled && !(peak <= allowed)) return false;
     const bool forward = &h == e.halfEdge;
     params.front() = forward ? e.curveStart : e.curveEnd;
     params.back() = forward ? e.curveEnd : e.curveStart;
@@ -104,27 +143,33 @@ bool passesOnASegment(const Edge& e, const HalfEdge& h, const math::ModelToleran
     return std::fabs(sum - std::fabs(e.curveEnd - e.curveStart)) <= 0.5 * slackSum;
 }
 
-/// What checkPcurve measures on @p h's pcurve (pcurveGaps), and, where it searched the curve for
-/// each sample's nearest point (not on a segment the fast path accepts), the parameters found
-/// in @p params, in sample order.
-PcurveGaps measurePcurve(const Edge& e, const HalfEdge& h, const math::ModelTolerance& tol,
-                         std::vector<double>& params) {
+/// How far @p h's pcurve's ends, on its face's surface, lie from its vertices (pcurveGaps' start
+/// and end; strays is left 0).
+PcurveGaps pcurveEnds(const HalfEdge& h) {
     const geo::Surface& s = *h.face->exactSurface;
     PcurveGaps gaps;
     const Vec2 a = sample(h, 0);
     const Vec2 b = sample(h, kSamples - 1);
     gaps.start = (s.evaluate(a.x, a.y) - h.origin->point).length();
     gaps.end = (s.evaluate(b.x, b.y) - h.next->origin->point).length();
+    return gaps;
+}
+
+/// What checkPcurve measures on @p h's pcurve (pcurveGaps), and, where it searched the curve for
+/// each sample's nearest point (not on a segment the fast path accepts), the parameters found
+/// in @p params, in sample order. How far the pcurve strays is geo::pcurveGap's measure, the one
+/// pcurveOn measures a closed form by: at the samples, and at the peaks between them that could
+/// pass the edge's tolerance (one that cannot changes no verdict).
+PcurveGaps measurePcurve(const Edge& e, const HalfEdge& h, const math::ModelTolerance& tol,
+                         std::vector<double>& params) {
+    const geo::Surface& s = *h.face->exactSurface;
+    PcurveGaps gaps = pcurveEnds(h);
     params.clear();
     if (!e.exactCurve || passesOnASegment(e, h, tol)) return gaps;
-    for (int i = 0; i < kSamples; ++i) {
-        const Vec2 uv = sample(h, i);
-        const Vec3 p = s.evaluate(uv.x, uv.y);
-        // The pcurve and the curve need not share parameters: measure to the nearest point.
-        const double t = e.exactCurve->closestParameter(p);
-        params.push_back(t);
-        gaps.strays = std::max(gaps.strays, (e.exactCurve->evaluate(t) - p).length());
-    }
+    geo::PcurveGap measured = geo::pcurveGap(s, *h.pcurve, sampleParameters(h), *e.exactCurve,
+                                             tol.effective(e.tolerance));
+    params = std::move(measured.params);
+    gaps.strays = measured.strays;
     return gaps;
 }
 
@@ -244,7 +289,9 @@ struct Checker {
         issues.push_back({kind, f, e, std::move(detail), h});
     }
 
-    void checkEdge(const Edge& e) {
+    /// Every check of @p e; or, not @p whole, only those its vertices' tolerances enter (its
+    /// curve's ends and its pcurves' ends at them), the rest reading its own tolerance alone.
+    void checkEdge(const Edge& e, bool whole = true) {
         if (!e.exactCurve) {
             report(ExactIssueKind::MissingGeometry, nullptr, &e, "edge has no exact curve");
         } else {
@@ -261,7 +308,7 @@ struct Checker {
                 }
             }
         }
-        checkEdgeRange(e);
+        if (whole) checkEdgeRange(e);
         for (const HalfEdge* h : {e.halfEdge, e.halfEdge->twin}) {
             if (!h->face || !h->alive) continue;
             if (!h->pcurve) {
@@ -269,7 +316,7 @@ struct Checker {
                 continue;
             }
             // A face without a surface is reported once, by checkFace.
-            if (h->face->exactSurface) checkPcurve(e, *h);
+            if (h->face->exactSurface) checkPcurve(e, *h, whole);
         }
     }
 
@@ -310,9 +357,11 @@ struct Checker {
                over(hi.y - lo.y, periodV, d.dv.length());
     }
 
-    void checkPcurve(const Edge& e, const HalfEdge& h) {
+    /// @p h's pcurve's ends at its vertices, and, @p whole, how far it strays from its edge's
+    /// curve and whether it runs with it (which read the edge's own tolerance alone).
+    void checkPcurve(const Edge& e, const HalfEdge& h, bool whole) {
         std::vector<double> params;
-        const PcurveGaps gaps = measurePcurve(e, h, tol, params);
+        const PcurveGaps gaps = whole ? measurePcurve(e, h, tol, params) : pcurveEnds(h);
         if (!tol.within(gaps.start, std::max(e.tolerance, h.origin->tolerance)) ||
             !tol.within(gaps.end, std::max(e.tolerance, h.next->origin->tolerance))) {
             report(ExactIssueKind::PcurveOffVertex, h.face, &e,
@@ -398,7 +447,10 @@ struct Checker {
     /// True when two (u, v) points are the same point of the surface within @p allowance
     /// (a distance): each parameter difference, taken modulo the period on a periodic axis,
     /// times the surface's derivative magnitude along it. Where that derivative vanishes (a
-    /// pole) every value of the parameter is the same point.
+    /// pole) every value of the parameter is the same point. Where the surface comes to a point
+    /// between them (a pole or an apex, a pcurve ending on it or a hair off it, where the
+    /// derivative at one end alone would part them), the run from one to the other is measured
+    /// along the way, as unwrapLoop measures it (runsAlongPoint).
     static bool sameUv(const geo::Surface& s, const Vec2& a, const Vec2& b, double allowance) {
         const auto d = s.derivatives(a.x, a.y);
         const auto close = [&](double x, double y, double speed, bool periodic, geo::Interval r) {
@@ -410,8 +462,11 @@ struct Checker {
             }
             return speed <= 0.0 || diff * speed <= allowance;
         };
-        return close(a.x, b.x, d.du.length(), s.periodicU(), s.uRange()) &&
-               close(a.y, b.y, d.dv.length(), s.periodicV(), s.vRange());
+        if (close(a.x, b.x, d.du.length(), s.periodicU(), s.uRange()) &&
+            close(a.y, b.y, d.dv.length(), s.periodicV(), s.vRange())) {
+            return true;
+        }
+        return runsAlongPoint(s, a, b, allowance);
     }
 
     LoopInfo checkLoop(const Face& f, const Wire* w, bool outer) {
@@ -446,7 +501,8 @@ struct Checker {
         // The loop as chords of its pcurves' own (u, v) values, unwrapped so that it is
         // continuous: a periodic surface's seam must not collapse the rectangle, and a loop
         // written inside [0, 2 pi) must not break where it crosses the seam.
-        if (!unwrapLoop(ring, kSamples, s, uPeriod(s), vPeriod(s), allowances, info.poly)) {
+        if (!unwrapLoop(ring, kSamples, s, uPeriod(s), vPeriod(s), allowances, info.poly,
+                        loopSense(f, outer))) {
             report(ExactIssueKind::LoopNotClosed, &f, w->halfEdge->edge,
                    "loop closes only after winding round the surface");
             return info;
@@ -481,7 +537,11 @@ struct Checker {
         // the rest.
         const auto ref =
             std::find_if(loops.begin(), loops.end(), [](const LoopInfo& l) { return l.usable; });
-        if (ref == loops.end()) return;
+        // A loop alone has no other to cross or contain: no pair below, nothing to index.
+        if (std::count_if(loops.begin(), loops.end(), [](const LoopInfo& l) { return l.usable; }) <
+            2) {
+            return;
+        }
         for (auto j = loops.begin(); j != loops.end(); ++j) {
             if (!j->usable || j == ref) continue;
             alignLoop(j->poly, ref->poly, uPeriod(surface), vPeriod(surface));
@@ -609,6 +669,49 @@ RoundingTakeUp roundingShortfalls(const Solid& solid, const std::vector<ExactIss
         // An issue of these kinds whose measures are within (a pcurve running against its curve).
         if (!explained) return refuse(issue);
     }
+    return out;
+}
+
+std::vector<ExactIssue> validateTakenUp(const Solid& solid, const math::ModelTolerance& tolerance,
+                                        const RoundingTakeUp& takeUp) {
+    // What the take-up grew, by the tolerance each shortfall names: its issue's edge's, or a
+    // vertex's at one of the edge's ends. One that names neither, or a take-up that took up
+    // nothing for an issue beyond rounding, is validated whole, as validateExact validates it.
+    if (takeUp.beyond != nullptr) return validateExact(solid, tolerance);
+    std::unordered_set<const Edge*> grownEdges;
+    std::unordered_set<const Vertex*> grownVertices;
+    for (const RoundingShortfall& s : takeUp.shortfalls) {
+        const HalfEdge* h = s.issue != nullptr ? s.issue->halfEdge : nullptr;
+        if (h == nullptr || h->edge == nullptr) return validateExact(solid, tolerance);
+        if (s.tolerance == &h->edge->tolerance) {
+            grownEdges.insert(h->edge);
+        } else if (s.tolerance == &h->origin->tolerance) {
+            grownVertices.insert(h->origin);
+        } else if (s.tolerance == &h->next->origin->tolerance) {
+            grownVertices.insert(h->next->origin);
+        } else {
+            return validateExact(solid, tolerance);
+        }
+    }
+    // validateExact's own order (its edges, then its faces), each check made that a grown
+    // tolerance enters: a grown edge's every check, an edge at a grown vertex its ends there, and
+    // the faces either bounds, whose loops' joins read both.
+    Checker c{solid, tolerance, {}};
+    std::unordered_set<const Face*> faces;
+    for (const Edge& e : solid.edges()) {
+        if (!e.alive || !e.halfEdge || !e.halfEdge->twin) continue;
+        const bool grown = grownEdges.count(&e) != 0;
+        if (!grown && grownVertices.count(e.halfEdge->origin) == 0 &&
+            grownVertices.count(e.halfEdge->twin->origin) == 0) {
+            continue;
+        }
+        c.checkEdge(e, grown);
+        for (const HalfEdge* h : {e.halfEdge, e.halfEdge->twin}) faces.insert(h->face);
+    }
+    for (const Face& f : solid.faces()) {
+        if (f.alive && faces.count(&f) != 0) c.checkFace(f);
+    }
+    std::vector<ExactIssue> out = std::move(c.issues);
     return out;
 }
 

@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "StepTestText.h"
+#include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Circle2D.h"
@@ -19,6 +21,7 @@
 #include "horizon/math/ModelTolerance.h"
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/TrimmedFaceMesher.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/LoopUnwrap.h"
 
@@ -496,12 +499,13 @@ TEST(ExactValidator, AnAnnulusWhoseInnerCircleReallyCrossesTheOuterIsLoopsCross)
 
 namespace {
 
-/// A lune of the unit-scaled sphere of radius r (u in [0, pi]) whose two meridians meet at the
-/// poles; each meridian's pcurve stops @p shortBy (a distance on the sphere) before a pole,
-/// while the vertices sit exactly at the poles.
+/// A lune of the unit-scaled sphere of radius r (u in [0, pi], or with @p up and @p down the
+/// lune up the meridian at @p up and down the one at @p down, each pcurve written at that u)
+/// whose two meridians meet at the poles; each meridian's pcurve stops @p shortBy (a distance on
+/// the sphere) before a pole, while the vertices sit exactly at the poles.
 struct SphereLune {
     topo::Solid solid;
-    SphereLune(double r, double shortBy) {
+    SphereLune(double r, double shortBy, double up = math::kPi, double down = 0.0) {
         const geo::Frame frame = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
         topo::Face* f = solid.allocFace();
         f->exactSurface = std::make_shared<geo::Sphere>(frame, r);
@@ -516,7 +520,7 @@ struct SphereLune {
         // Counter-clockwise in (u, v): up the meridian u = pi, along the north pole, down u = 0.
         topo::HalfEdge* he[2] = {solid.allocHalfEdge(), solid.allocHalfEdge()};
         for (int i = 0; i < 2; ++i) {
-            const double u = i == 0 ? math::kPi : 0.0;
+            const double u = i == 0 ? up : down;
             const double sign = i == 0 ? 1.0 : -1.0;
             topo::HalfEdge* tw = solid.allocHalfEdge();
             topo::Edge* e = solid.allocEdge();
@@ -555,12 +559,46 @@ TEST(ExactValidator, ASphereLuneWhoseMeridiansMeetAtThePolesIsClean) {
     EXPECT_TRUE(topo::validateExact(lune.solid, kTol).empty());
 }
 
+// Each pcurve may stop as far short of its pole as its vertex's tolerance. The join from one
+// meridian's end to the next one's start at the pole runs along the pole: measured by the
+// derivative at the end off the pole alone (a parallel's radius times the turn between the two
+// longitudes, here a half turn), 0.9 of the tolerance short read as 2.8 tolerances, past the
+// join's allowance of 2, and the join was refused; it is measured along the way. A lune of three
+// quarters of a turn so short of its pole had its pole run taken for a wrap round the seam, a
+// whole period off, and ran against its sense.
 TEST(ExactValidator, ALuneWhosePcurvesStopShortOfThePolesWithinToleranceIsClean) {
     for (const double r : {1.0, 1000.0}) {
         const auto tol = math::ModelTolerance::forExtent(2.0 * r);
-        SphereLune lune(r, 0.3 * tol.linear);
-        EXPECT_TRUE(topo::validateExact(lune.solid, tol).empty()) << r;
+        for (const double shortBy : {0.3, 0.9}) {
+            for (const double up : {math::kPi, 1.5 * math::kPi}) {
+                SphereLune lune(r, shortBy * tol.linear, up);
+                const auto issues = topo::validateExact(lune.solid, tol);
+                EXPECT_TRUE(issues.empty()) << r << " " << shortBy << " " << up << ": "
+                                            << (issues.empty() ? "" : issues.front().detail);
+            }
+        }
     }
+}
+
+// A lune does not fix which way round the poles its loop runs: its two meridians bound two lunes,
+// and its face's sense picks one. Written within [0, 2 pi) with the sphere's seam inside it (up
+// the meridian at pi / 2, down the one at 3 pi / 2), it is the lune through u = 0, and is clean;
+// so is the lune the other way round, the same loop on the face reversed. Its pole runs are laid
+// round the poles as the sense says; a loop with one pole run (an apex cone's side, its rim fixing
+// its region) still runs against a flipped face.
+TEST(ExactValidator, ALuneIsCleanWhicheverWayRoundItsSpheresSeamLies) {
+    for (const bool reversed : {false, true}) {
+        SphereLune lune(1.0, 0.0, 0.5 * math::kPi, 1.5 * math::kPi);
+        lune.solid.faces()[0].reversed = reversed;
+        const auto issues = topo::validateExact(lune.solid, kTol);
+        EXPECT_TRUE(issues.empty())
+            << reversed << ": " << (issues.empty() ? "" : issues.front().detail);
+    }
+    auto cone = model::exact::makeCone(geo::Frame{}, 2.0, 0.0, 4.0);
+    for (auto& f : cone->faces()) {
+        if (f.topoId.tag() == "cone/side") f.reversed = !f.reversed;
+    }
+    expectKinds(*cone, ExactIssueKind::LoopWrongOrientation);
 }
 
 TEST(ExactValidator, TwoCrossingHolesAreFoundBesideABrokenOuterLoop) {
@@ -996,6 +1034,83 @@ TEST(ExactValidator, RoundingShortfallsAloneAreEachTakenUpWhereTheyAreBound) {
     EXPECT_LE(alone.rim->tolerance - rimBefore, 1e-12);
 }
 
+namespace {
+
+/// Whether @p a and @p b are the same issues, in the same order.
+void expectSameIssues(const std::vector<topo::ExactIssue>& a,
+                      const std::vector<topo::ExactIssue>& b) {
+    ASSERT_EQ(a.size(), b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        EXPECT_EQ(a[i].kind, b[i].kind) << i;
+        EXPECT_EQ(a[i].face, b[i].face) << i;
+        EXPECT_EQ(a[i].edge, b[i].edge) << i;
+        EXPECT_EQ(a[i].halfEdge, b[i].halfEdge) << i;
+        EXPECT_EQ(a[i].detail, b[i].detail) << i;
+    }
+}
+
+}  // namespace
+
+// The second validation of a take-up (Ruling 66) makes again only the checks the grown tolerances
+// enter, and finds what validateExact finds. Before they grow, it finds every issue the take-up
+// was of, in validateExact's order; once they have, nothing. What it does not look at again: the
+// course of an edge whose own tolerance did not grow, though it meets a vertex that did (the
+// seam, at the rim's vertex: its ends there are checked again, not how far it strays), and every
+// edge and face away from them (the top rim, on its cap). Spoiled after the take-up, each is
+// what the whole validation finds, and the second does not.
+TEST(ExactValidator, ValidatingATakeUpAgainChecksWhatItGrew) {
+    RimOffItsVertex alone(1e-3, 1e-3 - 1e-9 - 1e-14);
+    ASSERT_NE(alone.rim, nullptr);
+    const auto issues = topo::validateExact(*alone.cyl, kTol);
+    ASSERT_FALSE(issues.empty());
+    const topo::RoundingTakeUp takeUp = topo::roundingShortfalls(*alone.cyl, issues, kTol);
+    ASSERT_EQ(takeUp.beyond, nullptr) << (takeUp.beyond ? takeUp.beyond->detail : "");
+    bool vertexGrows = false;
+    for (const topo::RoundingShortfall& s : takeUp.shortfalls) {
+        vertexGrows = vertexGrows || s.tolerance == &alone.vertex->tolerance;
+    }
+    EXPECT_TRUE(vertexGrows) << "the rim's vertex is among what grows";
+    expectSameIssues(topo::validateTakenUp(*alone.cyl, kTol, takeUp), issues);
+
+    for (const topo::RoundingShortfall& s : takeUp.shortfalls) {
+        *s.tolerance = std::max(*s.tolerance, s.measured);
+    }
+    EXPECT_TRUE(topo::validateTakenUp(*alone.cyl, kTol, takeUp).empty());
+    EXPECT_TRUE(topo::validateExact(*alone.cyl, kTol).empty());
+
+    // The seam, its line bowed 5e-3 out at its middle between the same ends; the top rim's
+    // circle moved 1e-3 out.
+    topo::Edge* seam = nullptr;
+    topo::Edge* top = nullptr;
+    for (auto& e : alone.cyl->edges()) {
+        if (e.halfEdge->twin->face == e.halfEdge->face) seam = &e;
+        if (&e != alone.rim && dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get())) top = &e;
+    }
+    ASSERT_NE(seam, nullptr);
+    ASSERT_NE(top, nullptr);
+    ASSERT_TRUE(seam->halfEdge->origin == alone.vertex ||
+                seam->halfEdge->twin->origin == alone.vertex)
+        << "the seam meets the rim's vertex";
+    const Vec3 a = seam->exactCurve->evaluate(seam->curveStart);
+    const Vec3 b = seam->exactCurve->evaluate(seam->curveEnd);
+    const Vec3 middle = (a + b) * 0.5;
+    const Vec3 out = Vec3(middle.x - 3.0, middle.y + 2.0, 0.0).normalized();
+    seam->exactCurve = std::make_shared<geo::NurbsCurve>(
+        std::vector<Vec3>{a, middle + out * 1e-2, b}, std::vector<double>{1, 1, 1},
+        std::vector<double>{0, 0, 0, 1, 1, 1}, 2);
+    seam->curveStart = 0.0;
+    seam->curveEnd = 1.0;
+    const auto* circle = static_cast<const geo::CircleCurve*>(top->exactCurve.get());
+    top->exactCurve = std::make_shared<geo::CircleCurve>(circle->frame(), circle->radius() + 1e-3);
+
+    std::set<const topo::Edge*> strays;
+    for (const auto& i : topo::validateExact(*alone.cyl, kTol)) {
+        if (i.kind == ExactIssueKind::PcurveOffCurve) strays.insert(i.edge);
+    }
+    EXPECT_EQ(strays, (std::set<const topo::Edge*>{seam, top})) << "what the whole one finds";
+    EXPECT_TRUE(topo::validateTakenUp(*alone.cyl, kTol, takeUp).empty());
+}
+
 // The rounding allowed is that of the magnitudes a measure is computed from: the same rim on a
 // cylinder placed a million along its own axis is allowed a million times the rounding.
 TEST(ExactValidator, RoundingIsOfTheMagnitudesAMeasureIsComputedFrom) {
@@ -1099,4 +1214,113 @@ TEST(ExactValidator, HolesWhoseBoxesOverlapKeepTheirVerdicts) {
     const auto beyond = topo::validateExact(outside.solid, kTol);
     ASSERT_EQ(beyond.size(), 1u);
     EXPECT_EQ(beyond[0].kind, ExactIssueKind::HoleOutsideOuterLoop);
+}
+
+namespace {
+
+/// What the validator read a pcurve's gap as before its peaks were searched for: the farthest of
+/// its 17 samples, on the surface, from the nearest point of its edge's curve.
+double atItsSamplesAlone(const topo::HalfEdge& h) {
+    const geo::Surface& s = *h.face->exactSurface;
+    const geo::Curve3& c = *h.edge->exactCurve;
+    double most = 0.0;
+    for (int i = 0; i < topo::kLoopSamples; ++i) {
+        const math::Vec2 uv =
+            h.pcurve->evaluate(topo::loopSampleParameter(h, i, topo::kLoopSamples));
+        const Vec3 p = s.evaluate(uv.x, uv.y);
+        most = std::max(most, (c.evaluate(c.closestParameter(p)) - p).length());
+    }
+    return most;
+}
+
+/// The farthest of 20,000 points of @p h's pcurve, on the surface, from its edge's curve.
+double densely(const topo::HalfEdge& h) {
+    const geo::Surface& s = *h.face->exactSurface;
+    const geo::Curve3& c = *h.edge->exactCurve;
+    double most = 0.0;
+    constexpr int kN = 20000;
+    for (int k = 0; k <= kN; ++k) {
+        const double t = h.pcurveStart + (h.pcurveEnd - h.pcurveStart) * k / kN;
+        const math::Vec2 uv = h.pcurve->evaluate(t);
+        const Vec3 p = s.evaluate(uv.x, uv.y);
+        most = std::max(most, (c.evaluate(c.closestParameter(p)) - p).length());
+    }
+    return most;
+}
+
+/// These files name no length unit, as hand-written ones often do: read in millimetres.
+io::StepReadOptions inMillimetres() {
+    io::StepReadOptions options;
+    options.unknownLengthUnit = math::LengthUnit::Millimetre;
+    return options;
+}
+
+}  // namespace
+
+// A gap that peaks between the validator's samples is measured at its peak, not at the samples
+// (stage 2's lesson: the reader grows a tolerance to what one measure finds, and the validator
+// checks it with the same). The cylinder's top rim is moved to the circle through its vertex whose
+// centre is 1e-3 off the axis, towards 1 rad round it: the rim stands off the side's parallel and
+// the cap's circle by a gap peaking half a turn from there, between the 17 samples of either
+// pcurve, which read it 1.6e-5 short. With the rim's tolerance what the samples read, it strays;
+// with it the peak, it is clean, and a last bit below that, it strays.
+//
+// Ruling 23's tilted band rim too: read, its rim is exact to the peak of its gap; with its pieces'
+// tolerance what pcurveOn read at its samples before (0.0015042933), the piece holding the peak
+// strays 3.7e-7 past it.
+TEST(ExactValidator, APeakBetweenSamplesStrays) {
+    auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    topo::Edge* rim = nullptr;
+    for (auto& e : cyl->edges()) {
+        const auto* c = dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get());
+        if (c == nullptr || std::abs(c->frame().origin.z - 2.0) > 1e-12) continue;
+        geo::Frame f = c->frame();
+        const Vec3 vertex = e.halfEdge->origin->point;
+        f.origin = f.origin + Vec3{std::cos(1.0), std::sin(1.0), 0.0} * 1e-3;
+        f.x = (vertex - f.origin) * (1.0 / (vertex - f.origin).length());
+        f.y = f.z.cross(f.x);
+        ASSERT_EQ(e.curveStart, 0.0);
+        e.exactCurve = std::make_shared<geo::CircleCurve>(f, (vertex - f.origin).length());
+        rim = &e;
+    }
+    ASSERT_NE(rim, nullptr);
+    const double sampled =
+        std::max(atItsSamplesAlone(*rim->halfEdge), atItsSamplesAlone(*rim->halfEdge->twin));
+    const double peak = std::max(densely(*rim->halfEdge), densely(*rim->halfEdge->twin));
+    ASSERT_GT(peak - sampled, 1.5e-5) << "the peak lies between the samples";
+
+    rim->tolerance = sampled;
+    const auto issues = topo::validateExact(*cyl, kTol);
+    ASSERT_FALSE(issues.empty()) << "a tolerance of what the samples read";
+    for (const auto& i : issues) {
+        EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve) << i.detail;
+        EXPECT_EQ(i.edge, rim);
+    }
+    const double measured = mostMeasured(*rim);
+    EXPECT_NEAR(measured, peak, 0.01 * peak);
+    EXPECT_GE(measured, peak - 1e-15) << "never below the peak";
+    expectStraysOnlyPast(*cyl, *rim, measured);
+
+    const auto band = io::StepFormat::fromString(
+        hz::step_text::bandWithATiltedRim(8e-4, 0.27, 6.06), nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(band.size(), 1u) << io::StepFormat::lastError();
+    const math::ModelTolerance resolution = topo::exactTolerance(*band[0]);
+    EXPECT_TRUE(topo::validateExact(*band[0], resolution).empty());
+    constexpr double kAtSamples = 0.0015042933256460393;
+    std::vector<topo::Edge*> pieces;
+    for (auto& e : band[0]->edges()) {
+        if (e.alive && e.tolerance > 1e-3) pieces.push_back(&e);
+    }
+    ASSERT_FALSE(pieces.empty());
+    for (topo::Edge* e : pieces) {
+        EXPECT_GE(e->tolerance - kAtSamples, 3.69e-7) << "grown to the peak";
+        e->tolerance = kAtSamples;
+    }
+    const auto strays = topo::validateExact(*band[0], resolution);
+    ASSERT_FALSE(strays.empty());
+    for (const auto& i : strays) {
+        EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve) << i.detail;
+        ASSERT_NE(i.halfEdge, nullptr);
+        EXPECT_GE(topo::pcurveGaps(*i.halfEdge, resolution).strays - kAtSamples, 3.69e-7);
+    }
 }

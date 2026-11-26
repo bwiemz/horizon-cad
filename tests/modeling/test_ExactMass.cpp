@@ -8,12 +8,15 @@
 
 #include <atomic>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "ExactMass.h"
+#include "PoleSolids.h"
 #include "StepTestText.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
@@ -62,54 +65,6 @@ std::unique_ptr<topo::Solid> readOne(const std::string& text) {
 
 void expectRelative(double actual, double expected, double relative, const std::string& what) {
     EXPECT_NEAR(actual, expected, relative * std::abs(expected)) << what;
-}
-
-/// A frustum from radius 1 at z = 0 to radius 2 at z = 2, written as externalStyleCylinder()
-/// writes its cylinder: a CONICAL_SURFACE side between two rims and a seam, two PLANE caps.
-std::string frustum() {
-    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
-#2 = DIRECTION('',(0.,0.,1.));
-#3 = DIRECTION('',(0.,1.,0.));
-#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
-#5 = CIRCLE('',#4,1.);
-#6 = CARTESIAN_POINT('',(1.,0.,0.));
-#7 = VERTEX_POINT('',#6);
-#8 = CARTESIAN_POINT('',(0.,0.,2.));
-#9 = DIRECTION('',(1.,0.,0.));
-#10 = AXIS2_PLACEMENT_3D('',#8,#2,#9);
-#11 = CIRCLE('',#10,2.);
-#12 = CARTESIAN_POINT('',(2.,0.,2.));
-#13 = VERTEX_POINT('',#12);
-#14 = EDGE_CURVE('',#7,#7,#5,.T.);
-#15 = EDGE_CURVE('',#13,#13,#11,.T.);
-#50 = DIRECTION('',(0.44721359549995793,0.,0.89442719099991586));
-#16 = LINE('',#6,VECTOR('',#50,1.));
-#17 = SURFACE_CURVE('',#16,(),.CURVE_3D.);
-#18 = EDGE_CURVE('',#7,#13,#17,.T.);
-#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);
-#20 = CONICAL_SURFACE('',#19,1.,0.46364760900080612);
-#21 = ORIENTED_EDGE('',*,*,#14,.T.);
-#22 = ORIENTED_EDGE('',*,*,#18,.T.);
-#23 = ORIENTED_EDGE('',*,*,#15,.F.);
-#24 = ORIENTED_EDGE('',*,*,#18,.F.);
-#25 = EDGE_LOOP('',(#21,#22,#23,#24));
-#26 = FACE_OUTER_BOUND('',#25,.T.);
-#27 = ADVANCED_FACE('',(#26),#20,.T.);
-#28 = AXIS2_PLACEMENT_3D('',#8,#2,$);
-#29 = PLANE('',#28);
-#30 = ORIENTED_EDGE('',*,*,#15,.T.);
-#31 = EDGE_LOOP('',(#30));
-#32 = FACE_OUTER_BOUND('',#31,.T.);
-#33 = ADVANCED_FACE('',(#32),#29,.T.);
-#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);
-#35 = PLANE('',#34);
-#36 = ORIENTED_EDGE('',*,*,#14,.F.);
-#37 = EDGE_LOOP('',(#36));
-#38 = FACE_OUTER_BOUND('',#37,.T.);
-#39 = ADVANCED_FACE('',(#38),#35,.F.);
-#40 = CLOSED_SHELL('',(#27,#33,#39));
-#41 = MANIFOLD_SOLID_BREP('frustum',#40);
-)");
 }
 
 /// The live face of @p solid tagged @p tag; null when there is none.
@@ -220,7 +175,7 @@ TEST(ExactMass, ImportedSphereTorusAndFrustumAreExact) {
          4.0 * kPi * 1.5 * 1.5},
         {"the torus", hz::step_text::torus(), 2.0 * kPi * kPi * 4.0 * 1.0 * 1.0,
          4.0 * kPi * kPi * 4.0 * 1.0},
-        {"the frustum", frustum(), kPi * 2.0 / 3.0 * (4.0 + 2.0 + 1.0),
+        {"the frustum", hz::step_text::frustum(), kPi * 2.0 / 3.0 * (4.0 + 2.0 + 1.0),
          kPi * 3.0 * std::sqrt(5.0) + kPi * 4.0 + kPi},
     };
     for (const Case& c : cases) {
@@ -245,6 +200,52 @@ TEST(ExactMass, AConeToItsApexIsExact) {
     expectRelative(props.volume, kPi * 4.0 * 3.0 / 3.0, 1e-9, "its volume");
     expectRelative(props.surfaceArea, kPi * 4.0 + kPi * 2.0 * std::sqrt(13.0), 1e-9, "its area");
     EXPECT_NEAR((props.centerOfMass - Vec3{0, 0, 0.75}).length(), 0.0, 1e-9);
+}
+
+// Faces that meet at a pole between two meridians and nothing else: a sphere's sector (a quarter
+// and three quarters of a turn), the same with its sphere's seam inside the lune and its pcurves
+// either side of it (once "its outer loop runs against its sense"), a ball cut in two along two
+// meridians, and a cone's sector to its apex. Volume, area and centre within 1e-9 of the closed
+// forms: a ball's wedge of angle a has its centre on its bisector 3 pi r sin(a / 2) / (8 a) from
+// the axis; a cone's, r sin(a / 2) / a from it and three quarters of the way up from its apex.
+TEST(ExactMass, FacesMeetingAtPolesBetweenMeridiansAreExact) {
+    const geo::Frame frame =
+        geo::Frame::fromAxis({3, -2, 7}, Vec3{1, 2, 2} * (1.0 / 3.0), {0, 0, 1});
+    const double r = 3.0;
+    for (const double angle : {0.5 * kPi, 1.5 * kPi}) {
+        SCOPED_TRACE(angle);
+        const Vec3 bisector = frame.x * std::cos(angle / 2.0) + frame.y * std::sin(angle / 2.0);
+        const Vec3 centre =
+            frame.origin + bisector * (3.0 * kPi * r * std::sin(angle / 2.0) / (8.0 * angle));
+        for (const auto& lune : {hz::model::exact::makeSphereSector(frame, r, angle),
+                                 hz::pole_solids::luneAcrossTheSeam(frame, r, angle)}) {
+            ASSERT_NE(lune, nullptr);
+            const MassProperties props = MassPropertiesCalculator::compute(*lune);
+            ASSERT_TRUE(props.valid) << props.problem;
+            expectRelative(props.volume, 2.0 / 3.0 * angle * r * r * r, 1e-9, "its volume");
+            expectRelative(props.surfaceArea, 2.0 * angle * r * r + kPi * r * r, 1e-9, "its area");
+            EXPECT_NEAR((props.centerOfMass - centre).length(), 0.0, 1e-9 * r);
+        }
+        const auto ball = hz::pole_solids::ballSplitByMeridians(frame, r, angle);
+        const MassProperties whole = MassPropertiesCalculator::compute(*ball);
+        ASSERT_TRUE(whole.valid) << whole.problem;
+        expectRelative(whole.volume, 4.0 / 3.0 * kPi * r * r * r, 1e-9, "the ball's volume");
+        expectRelative(whole.surfaceArea, 4.0 * kPi * r * r, 1e-9, "the ball's area");
+        EXPECT_NEAR((whole.centerOfMass - frame.origin).length(), 0.0, 1e-9 * r);
+
+        const double h = 4.0;
+        const double cr = 2.0;
+        const auto sector = hz::pole_solids::coneSector(frame, cr, h, angle);
+        const MassProperties cone = MassPropertiesCalculator::compute(*sector);
+        ASSERT_TRUE(cone.valid) << cone.problem;
+        expectRelative(cone.volume, angle * cr * cr * h / 6.0, 1e-9, "the cone sector's volume");
+        const double slant = std::hypot(cr, h);
+        expectRelative(cone.surfaceArea, angle * cr * slant / 2.0 + angle * cr * cr / 2.0 + cr * h,
+                       1e-9, "the cone sector's area");
+        const Vec3 coneCentre =
+            frame.origin + frame.z * (0.75 * h) + bisector * (cr * std::sin(angle / 2.0) / angle);
+        EXPECT_NEAR((cone.centerOfMass - coneCentre).length(), 0.0, 1e-9 * h);
+    }
 }
 
 // A mirror image turns every face round (Pattern::transformed reverses its loops and its faces'
@@ -398,9 +399,12 @@ std::unique_ptr<topo::Solid> blockWithAKnottedTop(int spansU, int spansV) {
 
 }  // namespace
 
-// A B-spline face with more knots than one integral may cross, or so many that its integral
-// would cost more evaluations than a face's budget, says so: within the budget it is integrated,
-// past it it is not guessed.
+// A B-spline face with more knots than one integral may cross, or whose integral would cost more
+// evaluations than a face's budget, says so: within the budget it is integrated, past it it is not
+// guessed. The budget is four million evaluations of its surface for a face of up to 64 knot spans,
+// and proportionally more beyond (a dense face's every integral crosses its knots: one of 12000 by
+// 20 spans, past four million once, settles now); a boundary that wiggles faster than any
+// subdivision can follow spends whatever it is given.
 TEST(ExactMass, AFaceBeyondItsBudgetGivesWhy) {
     const auto fine = blockWithAKnottedTop(100, 10);
     ASSERT_NE(fine, nullptr);
@@ -415,12 +419,25 @@ TEST(ExactMass, AFaceBeyondItsBudgetGivesWhy) {
     EXPECT_NE(tooMany.problem.find("box/top"), std::string::npos) << tooMany.problem;
     EXPECT_NE(tooMany.problem.find("16384 of its knots"), std::string::npos) << tooMany.problem;
 
-    const auto costly = blockWithAKnottedTop(12000, 20);
-    ASSERT_NE(costly, nullptr);
-    const MassProperties tooDear = MassPropertiesCalculator::compute(*costly);
-    EXPECT_FALSE(tooDear.valid);
-    EXPECT_NE(tooDear.problem.find("box/top"), std::string::npos) << tooDear.problem;
-    EXPECT_NE(tooDear.problem.find("4000000 evaluations"), std::string::npos) << tooDear.problem;
+    struct Case {
+        int spans;
+        const char* budget;
+    };
+    for (const Case c : {Case{64, "4000000 evaluations"}, Case{100, "6250000 evaluations"}}) {
+        SCOPED_TRACE(c.spans);
+        auto costly = blockWithAKnottedTop(c.spans, 1);
+        ASSERT_NE(costly, nullptr);
+        topo::HalfEdge* h = faceTagged(*costly, "box/top")->outerLoop->halfEdge;
+        const Vec2 a = h->pcurve->evaluate(h->pcurveStart);
+        const Vec2 b = h->pcurve->evaluate(h->pcurveEnd);
+        h->pcurve = std::make_shared<Wiggle>(a, b);
+        h->pcurveStart = 0.0;
+        h->pcurveEnd = 1.0;
+        const MassProperties tooDear = MassPropertiesCalculator::compute(*costly);
+        EXPECT_FALSE(tooDear.valid);
+        EXPECT_NE(tooDear.problem.find("box/top"), std::string::npos) << tooDear.problem;
+        EXPECT_NE(tooDear.problem.find(c.budget), std::string::npos) << tooDear.problem;
+    }
 }
 
 // A solid with some faces exact and others plain loops: the plain ones are summed by the polygon
@@ -808,4 +825,100 @@ TEST(ExactMass, TheCoarseShellVolumeIsWithinItsEstimate) {
         EXPECT_LT(coarse[0].error, 0.05 * std::fabs(exact[0].volume));
         EXPECT_GT(coarse[0].volume, 4.0 * coarse[0].error) << "its sign beyond doubt";
     }
+}
+
+namespace {
+
+/// makeBlock's block with its top face (z = 4, u along x from 0 to 2, v along y from 0 to 3, as
+/// its plane is parametrised) on a flat rational bicubic B-spline of @p spans by @p spans knot
+/// spans: a Bezier patch of those parameters, weighted 1.5 on its second row and third column (so
+/// rational, and still flat, its rows and columns straight), its knots inserted. The same face, its
+/// pcurves unchanged.
+std::unique_ptr<topo::Solid> blockWithADenseTop(int spans) {
+    auto block = hz::model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
+    topo::Face* top = faceTagged(*block, "box/top");
+    if (top == nullptr) return nullptr;
+    std::vector<std::vector<Vec3>> points;
+    std::vector<std::vector<double>> weights;
+    for (int i = 0; i <= 3; ++i) {
+        points.emplace_back();
+        weights.emplace_back();
+        for (int j = 0; j <= 3; ++j) {
+            points.back().push_back({2.0 * i / 3.0, static_cast<double>(j), 4.0});
+            weights.back().push_back((i == 1 ? 1.5 : 1.0) * (j == 2 ? 1.5 : 1.0));
+        }
+    }
+    geo::NurbsSurface patch(points, weights, {0, 0, 0, 0, 2, 2, 2, 2}, {0, 0, 0, 0, 3, 3, 3, 3}, 3,
+                            3);
+    for (int k = 1; k < spans; ++k) patch = patch.insertKnotU(2.0 * k / spans);
+    for (int k = 1; k < spans; ++k) patch = patch.insertKnotV(3.0 * k / spans);
+    top->exactSurface = std::make_shared<geo::NurbsSurface>(std::move(patch));
+    return block;
+}
+
+}  // namespace
+
+// A dense B-spline face, 150 by 150 knot spans of a rational bicubic, is given the budget its
+// spans need: four million surface evaluations for 64 spans and proportionally beyond, so its
+// integral, which needs more than the four million every face once had, settles, and the block
+// measures exactly.
+TEST(ExactMass, ADenseSplineFaceSettles) {
+    const auto dense = blockWithADenseTop(150);
+    ASSERT_NE(dense, nullptr);
+    const IdealMassProperties ideal = MassPropertiesCalculator::computeIdeal(*dense);
+    ASSERT_TRUE(ideal.properties.valid) << ideal.properties.problem;
+    EXPECT_EQ(ideal.properties.problem.find("did not settle"), std::string::npos);
+    expectRelative(ideal.properties.volume, 24.0, 1e-12, "its volume");
+    expectRelative(ideal.properties.surfaceArea, 52.0, 1e-12, "its area");
+    EXPECT_TRUE(ideal.withinTolerance) << ideal.estimatedError;
+}
+
+// A thin part whose estimate cannot reach the tolerance asked for, even with every face taken to
+// Gauss–Kronrod's floor, says where its estimate stops, rather than reading as within the request:
+// a coin a thousandth as thick as it is wide, at the default tolerance, and one ten times thicker
+// at a hundredth of it. Where the request is reached, nothing is said.
+TEST(ExactMass, AThinPartSaysWhereItsEstimateStops) {
+    const auto says = [](const IdealMassProperties& ideal) {
+        const std::string head = "its error estimate stops at ";
+        ASSERT_EQ(ideal.note.rfind(head, 0), 0u) << ideal.note;
+        const double stops = std::stod(ideal.note.substr(head.size()));
+        EXPECT_NEAR(stops, ideal.estimatedError, 1e-3 * ideal.estimatedError) << ideal.note;
+    };
+    const auto coin =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {1, 1, 0}), 10.0, 1e-3);
+    ASSERT_NE(coin, nullptr);
+    const IdealMassProperties thin = MassPropertiesCalculator::computeIdeal(*coin);
+    ASSERT_TRUE(thin.properties.valid) << thin.properties.problem;
+    expectRelative(thin.properties.volume, kPi * 100.0 * 1e-3, 1e-9, "its volume");
+    EXPECT_FALSE(thin.withinTolerance);
+    EXPECT_GT(thin.estimatedError, 1e-10);
+    says(thin);
+
+    const auto thicker =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {1, 1, 0}), 10.0, 1e-2);
+    ASSERT_NE(thicker, nullptr);
+    const IdealMassProperties within = MassPropertiesCalculator::computeIdeal(*thicker);
+    EXPECT_TRUE(within.withinTolerance) << within.estimatedError;
+    EXPECT_EQ(within.note, "");
+    const IdealMassProperties finer =
+        MassPropertiesCalculator::computeIdeal(*thicker, nullptr, 1e-12);
+    EXPECT_FALSE(finer.withinTolerance) << finer.estimatedError;
+    says(finer);
+}
+
+// A face's budget of evaluations is in proportion to its knot spans, under a ceiling: four million
+// for up to 64 spans, six and a quarter million for 100, and never more than a hundred million,
+// which bounds the work one untrusted face can ask for however many spans its file gives it (a
+// face of 150 by 150 spans would be given 1.4 billion in proportion; it needs far fewer, and
+// settles beneath the ceiling, as ADenseSplineFaceSettles shows).
+TEST(ExactMass, AFacesBudgetIsCappedHoweverDenseItIs) {
+    using hz::model::detail::faceEvaluationBudget;
+    EXPECT_EQ(faceEvaluationBudget(1.0), 4'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(64.0), 4'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(100.0), 6'250'000u);
+    EXPECT_EQ(faceEvaluationBudget(1600.0), 100'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(150.0 * 150.0), 100'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(16384.0 * 16384.0), 100'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(std::numeric_limits<double>::infinity()), 100'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(std::numeric_limits<double>::quiet_NaN()), 4'000'000u);
 }

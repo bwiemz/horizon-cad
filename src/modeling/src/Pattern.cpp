@@ -2,13 +2,26 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
+#include <limits>
+#include <optional>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "ExactMass.h"
+#include "horizon/geometry/Pcurve.h"
+#include "horizon/geometry/curves/Arc2D.h"
+#include "horizon/geometry/curves/Circle2D.h"
+#include "horizon/geometry/curves/Line2D.h"
+#include "horizon/geometry/curves/Nurbs2D.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Mat4.h"
@@ -17,6 +30,8 @@
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Faceting.h"
 #include "horizon/topology/ExactTolerance.h"
+#include "horizon/topology/ExactValidator.h"
+#include "horizon/topology/LoopUnwrap.h"
 #include "horizon/topology/Queries.h"
 
 namespace hz::model {
@@ -103,6 +118,358 @@ int windingOf(const Solid& solid) {
     return sixVolume > 0.0 ? 1 : sixVolume < 0.0 ? -1 : 0;
 }
 
+/// The most @p xform's upper-left 3x3 block M stretches a length: its largest singular value,
+/// the square root of MtM's largest eigenvalue (the closed form for a symmetric 3x3 matrix).
+double largestStretch(const Mat4& xform) {
+    double a[3][3];
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            a[i][j] = 0.0;
+            for (int k = 0; k < 3; ++k) a[i][j] += xform.m[k][i] * xform.m[k][j];
+        }
+    }
+    const double off = a[0][1] * a[0][1] + a[0][2] * a[0][2] + a[1][2] * a[1][2];
+    double largest = std::max({a[0][0], a[1][1], a[2][2]});
+    if (off > 0.0) {
+        const double q = (a[0][0] + a[1][1] + a[2][2]) / 3.0;
+        const double p = std::sqrt(((a[0][0] - q) * (a[0][0] - q) + (a[1][1] - q) * (a[1][1] - q) +
+                                    (a[2][2] - q) * (a[2][2] - q) + 2.0 * off) /
+                                   6.0);
+        double b[3][3];
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) b[i][j] = (a[i][j] - (i == j ? q : 0.0)) / p;
+        }
+        const double det = b[0][0] * (b[1][1] * b[2][2] - b[1][2] * b[2][1]) -
+                           b[0][1] * (b[1][0] * b[2][2] - b[1][2] * b[2][0]) +
+                           b[0][2] * (b[1][0] * b[2][1] - b[1][1] * b[2][0]);
+        largest = q + 2.0 * p * std::cos(std::acos(std::clamp(det / 2.0, -1.0, 1.0)) / 3.0);
+    }
+    return std::sqrt(std::max(largest, 0.0));
+}
+
+/// A length for a problem, to three figures.
+std::string threeFigures(double x) {
+    std::ostringstream out;
+    out << std::setprecision(3) << x;
+    return out.str();
+}
+
+/// @p c moved by @p shift in (u, v): a seam's other side, or a pcurve laid a period on. Null for
+/// a kind of pcurve it does not know.
+std::shared_ptr<const geo::Curve2D> shiftedPcurve(const geo::Curve2D& c, const math::Vec2& shift) {
+    if (const auto* line = dynamic_cast<const geo::Line2D*>(&c)) {
+        return std::make_shared<geo::Line2D>(line->start() + shift, line->end() + shift);
+    }
+    if (const auto* arc = dynamic_cast<const geo::Arc2D*>(&c)) {
+        return std::make_shared<geo::Arc2D>(arc->center() + shift, arc->radius(), arc->startAngle(),
+                                            arc->endAngle());
+    }
+    if (const auto* circle = dynamic_cast<const geo::Circle2D*>(&c)) {
+        return std::make_shared<geo::Circle2D>(circle->center() + shift, circle->radius());
+    }
+    if (const auto* spline = dynamic_cast<const geo::Nurbs2D*>(&c)) {
+        const geo::NurbsCurve& n = spline->curve();
+        std::vector<math::Vec2> points;
+        points.reserve(n.controlPoints().size());
+        for (const Vec3& q : n.controlPoints()) points.push_back(math::Vec2(q.x, q.y) + shift);
+        return std::make_shared<geo::Nurbs2D>(std::move(points), n.weights(), n.knots(),
+                                              n.degree());
+    }
+    return nullptr;
+}
+
+/// The span a face's NURBS covers along one direction, from [@p lo, @p hi], the extent of the
+/// face's pcurves there (unwrapped): a whole period where they span one, so the NURBS closes
+/// where the typed surface does; otherwise a margin beside them each way (a pcurve may bulge
+/// between the samples that measured it), at most to a whole period, held to the surface's own
+/// @p range and, where @p stop is set (a cone's apex), not past it on the side the face lies.
+std::pair<double, double> spanOf(double lo, double hi, double period, geo::Interval range,
+                                 std::optional<double> stop) {
+    const double width = hi - lo;
+    if (period > 0.0) {
+        if (width >= period * (1.0 - 1e-9)) return {lo, lo + period};
+        const double margin = std::min(0.05 * width, 0.5 * (period - width));
+        return {lo - margin, hi + margin};
+    }
+    const double margin = 0.1 * width;
+    double from = std::max(lo - margin, range.min);
+    double to = std::min(hi + margin, range.max);
+    if (stop) {
+        const double near = 1e-9 * width;
+        if (*stop <= lo + near) from = std::max(from, *stop);
+        if (*stop >= hi - near) to = std::min(to, *stop);
+    }
+    return {from, to};
+}
+
+/// Carries a solid's exact geometry through a matrix that is not a similarity, for
+/// Pattern::transformed. A NURBS surface or curve is moved as it is: a NURBS follows any affine
+/// matrix exactly and keeps its parameters, so its pcurves still hold. A typed one becomes the
+/// NURBS it is over its face's box or its edge's range (Surface::toNurbs, Curve3::toNurbs), and
+/// that is moved. Each pcurve on a face whose surface was so made is refitted with geo::pcurveOn
+/// as the STEP reader fits one, and laid in the period of the one it replaces; each tolerance is
+/// scaled by the most the matrix stretches a length, then grows to cover what is measured as the
+/// reader's do (topo::ToleranceGrowth); and the copy is validated. The first thing that cannot
+/// be done is the problem, and the copy then keeps no exact geometry. For a copy into a solid of
+/// its own (finish() validates the whole of it).
+class NonSimilarCarry {
+public:
+    NonSimilarCarry(const Solid& src, const Mat4& xform)
+        : xform_(xform),
+          srcTolerance_(topo::exactTolerance(src)),
+          loopLimit_(2 * src.edges().size() + 1),
+          stretch_(largestStretch(xform)) {
+        const double det = xform.determinant3();
+        if (!(std::abs(det) > 1e-12 * stretch_ * stretch_ * stretch_) || !std::isfinite(det)) {
+            fail("the matrix flattens the solid (its determinant is " + threeFigures(det) + ")");
+        }
+    }
+
+    /// Why the copy cannot keep its exact geometry; empty while it can.
+    const std::string& problem() const { return problem_; }
+
+    /// The most the matrix stretches a length: what each tolerance is scaled by.
+    double stretch() const { return stretch_; }
+
+    /// @p e's exact curve moved; null (and the problem said) where it cannot be.
+    std::shared_ptr<const geo::Curve3> curve(const Edge& e) {
+        if (!problem_.empty()) return nullptr;
+        const geo::Curve3& c = *e.exactCurve;
+        try {
+            if (c.kind() == geo::CurveKind::Nurbs) return c.transformed(xform_);
+            const auto nurbs =
+                c.toNurbs(std::min(e.curveStart, e.curveEnd), std::max(e.curveStart, e.curveEnd));
+            if (nurbs == nullptr) {
+                fail("an edge's curve has no NURBS form");
+                return nullptr;
+            }
+            return nurbs->transformed(xform_);
+        } catch (const std::invalid_argument& ex) {
+            fail(std::string("an edge's curve could not be made a NURBS: ") + ex.what());
+            return nullptr;
+        }
+    }
+
+    /// @p f's exact surface moved; null (and the problem said) where it cannot be.
+    std::shared_ptr<const geo::Surface> surface(const Face& f) {
+        if (!problem_.empty()) return nullptr;
+        const geo::Surface& s = *f.exactSurface;
+        try {
+            if (s.kind() == geo::SurfaceKind::Nurbs) return s.transformed(xform_);
+            const auto box = boxOf(f);
+            if (!box) return nullptr;
+            std::shared_ptr<const geo::Surface> moved =
+                s.toNurbs(box->u0, box->u1, box->v0, box->v1)->transformed(xform_);
+            converted_.insert(&f);
+            return moved;
+        } catch (const std::invalid_argument& ex) {
+            fail(std::string("a face's surface could not be made a NURBS: ") + ex.what());
+            return nullptr;
+        }
+    }
+
+    /// Once @p dst holds the whole copy, its exact fields set by curve() and surface(): refits
+    /// the pcurves on each face whose surface was made a NURBS (@p halfEdges pairs each source
+    /// half-edge with its copy, @p faces each source face with its), grows the tolerances, and
+    /// validates the copy.
+    void finish(Solid& dst, const std::vector<std::pair<const HalfEdge*, HalfEdge*>>& halfEdges,
+                const std::unordered_map<const void*, Face*>& faces) {
+        if (!problem_.empty()) return;
+        const topo::ToleranceGrowth growth(topo::exactExtent(dst));
+        const std::string limitSays = ", beyond the limit of " + threeFigures(growth.limit);
+        const auto grow = [&](double& tolerance, double gap, const char* what) {
+            if (!growth.grow(tolerance, gap)) fail(what + threeFigures(gap) + limitSays);
+        };
+        // Each edge's curve ends at its vertices.
+        for (Edge& e : dst.edges()) {
+            if (!e.alive || !e.exactCurve || e.halfEdge == nullptr || e.halfEdge->twin == nullptr) {
+                continue;
+            }
+            Vertex* ends[2] = {e.halfEdge->origin, e.halfEdge->twin->origin};
+            const double at[2] = {e.curveStart, e.curveEnd};
+            for (int k = 0; k < 2; ++k) {
+                const double gap = (e.exactCurve->evaluate(at[k]) - ends[k]->point).length();
+                grow(e.tolerance, gap, "an edge's curve ends ");
+                grow(ends[k]->tolerance, gap, "an edge's curve ends ");
+            }
+        }
+        std::unordered_set<const Face*> refit;
+        for (const Face* f : converted_) {
+            const auto it = faces.find(f);
+            if (it != faces.end()) refit.insert(it->second);
+        }
+        std::unordered_set<const HalfEdge*> fitted;
+        for (const auto& pair : halfEdges) {
+            if (!problem_.empty()) return;
+            HalfEdge& h = *pair.second;
+            if (refit.count(h.face) == 0) continue;
+            Edge& e = *h.edge;
+            if (!e.exactCurve) {
+                fail("an edge of a face has no exact curve");
+                return;
+            }
+            if (h.twin != nullptr && h.twin->face == h.face && fitted.count(h.twin) > 0) {
+                // A seam's other side: the same course, the other way.
+                h.pcurve = h.twin->pcurve;
+                h.pcurveStart = h.twin->pcurveEnd;
+                h.pcurveEnd = h.twin->pcurveStart;
+            } else {
+                const bool forward = &h == e.halfEdge;
+                const double t0 = forward ? e.curveStart : e.curveEnd;
+                const double t1 = forward ? e.curveEnd : e.curveStart;
+                geo::Pcurve pc = geo::pcurveOn(*h.face->exactSurface, *e.exactCurve, t0, t1,
+                                               growth.resolution.linear, growth.limit);
+                if (!pc.problem.empty() || pc.curve == nullptr) {
+                    fail("a pcurve could not be refitted to the moved surface: " + pc.problem);
+                    return;
+                }
+                h.pcurve = std::move(pc.curve);
+                h.pcurveStart = pc.start;
+                h.pcurveEnd = pc.end;
+                grow(e.tolerance, pc.deviation, "a refitted pcurve strays ");
+            }
+            fitted.insert(&h);
+            if (!layInPeriod(*pair.first, h)) return;
+            const geo::Surface& s = *h.face->exactSurface;
+            const math::Vec2 a = h.pcurve->evaluate(h.pcurveStart);
+            const math::Vec2 b = h.pcurve->evaluate(h.pcurveEnd);
+            grow(e.tolerance, (s.evaluate(a.x, a.y) - h.origin->point).length(),
+                 "a refitted pcurve ends ");
+            grow(e.tolerance, (s.evaluate(b.x, b.y) - h.next->origin->point).length(),
+                 "a refitted pcurve ends ");
+        }
+        if (!problem_.empty()) return;
+        // As the reader does (Rulings 64 and 66): where every issue is a shortfall by rounding
+        // alone, each tolerance grows to the validator's own measure and the copy is validated
+        // again (the checks those tolerances enter); otherwise the first issue is the problem.
+        auto issues = topo::validateExact(dst, growth.resolution);
+        if (!issues.empty()) {
+            const topo::RoundingTakeUp takeUp =
+                topo::roundingShortfalls(dst, issues, growth.resolution);
+            if (takeUp.beyond != nullptr) {
+                fail(takeUp.beyond->detail);
+                return;
+            }
+            for (const topo::RoundingShortfall& s : takeUp.shortfalls) {
+                grow(*s.tolerance, s.measured, "a refitted pcurve strays ");
+            }
+            if (!problem_.empty()) return;
+            std::vector<topo::ExactIssue> again =
+                topo::validateTakenUp(dst, growth.resolution, takeUp);
+            issues = std::move(again);  // takeUp's issues are these, until now
+        }
+        if (!issues.empty()) fail(issues.front().detail);
+    }
+
+private:
+    struct Box {
+        double u0, u1, v0, v1;
+    };
+
+    void fail(std::string why) {
+        if (problem_.empty()) problem_ = std::move(why);
+    }
+
+    /// The box in (u, v) that @p f's NURBS spans: its loops unwrapped as the validator unwraps
+    /// them (each into the outer loop's window), their extent grown by spanOf. Records each
+    /// half-edge's shift in that window, for layInPeriod.
+    std::optional<Box> boxOf(const Face& f) {
+        const geo::Surface& s = *f.exactSurface;
+        const double pu = topo::uPeriod(s);
+        const double pv = topo::vPeriod(s);
+        std::vector<const Wire*> loops{f.outerLoop};
+        loops.insert(loops.end(), f.innerLoops.begin(), f.innerLoops.end());
+        constexpr double kInf = std::numeric_limits<double>::infinity();
+        math::Vec2 lo(kInf, kInf);
+        math::Vec2 hi(-kInf, -kInf);
+        topo::LoopPolygon reference;
+        std::vector<const HalfEdge*> ring;
+        const std::size_t perEdge = topo::kLoopSamples - 1;
+        for (const Wire* w : loops) {
+            if (w == nullptr || !topo::loopHalfEdges(f, *w, loopLimit_, ring)) {
+                fail("a loop of a face does not close");
+                return std::nullopt;
+            }
+            std::vector<double> allowances;
+            for (const HalfEdge* h : ring) {
+                if (!h->pcurve || h->edge == nullptr || h->next == nullptr) {
+                    fail("a half-edge of a face has no pcurve");
+                    return std::nullopt;
+                }
+                allowances.push_back(topo::joinAllowance(*h, srcTolerance_));
+            }
+            topo::LoopPolygon poly;
+            if (!topo::unwrapLoop(ring, topo::kLoopSamples, s, pu, pv, allowances, poly,
+                                  topo::loopSense(f, w == f.outerLoop))) {
+                fail("a loop of a face closes only after winding round its surface");
+                return std::nullopt;
+            }
+            if (reference.empty()) {
+                reference = poly;
+            } else {
+                topo::alignLoop(poly, reference, pu, pv);
+            }
+            for (std::size_t k = 0; k < ring.size(); ++k) {
+                unwrapShift_[ring[k]] = poly[k * perEdge].shift;
+            }
+            for (const topo::LoopSegment& seg : poly) {
+                for (int i = 0; i <= 4; ++i) {
+                    const math::Vec2 q =
+                        seg.curve->evaluate(seg.t0 + (seg.t1 - seg.t0) * i / 4) + seg.shift;
+                    lo = {std::min(lo.x, q.x), std::min(lo.y, q.y)};
+                    hi = {std::max(hi.x, q.x), std::max(hi.y, q.y)};
+                }
+            }
+        }
+        // A cone's NURBS stops at its apex, where the face reaches it: past it, the patch would
+        // fold through onto the other nappe.
+        std::optional<double> apex;
+        if (const auto* cone = dynamic_cast<const geo::Cone*>(&s)) {
+            const double slope = cone->axialScale() * std::tan(cone->halfAngle());
+            if (slope != 0.0) apex = -cone->radius() / slope;
+        }
+        const auto u = spanOf(lo.x, hi.x, pu, s.uRange(), std::nullopt);
+        const auto v = spanOf(lo.y, hi.y, pv, s.vRange(), apex);
+        return Box{u.first, u.second, v.first, v.second};
+    }
+
+    /// Lays @p h's refitted pcurve in the period of @p was, the source half-edge it replaces: on
+    /// a NURBS that closes, pcurveOn starts each in the domain, and a seam's two sides, or a
+    /// loop through a pole, need the periods the original loop had. The NURBS spans the face's
+    /// box with its knots where the typed surface's parameters are, so the two are a whole
+    /// number of periods apart, to well within half of one.
+    bool layInPeriod(const HalfEdge& was, HalfEdge& h) {
+        const geo::Surface& s = *h.face->exactSurface;
+        const double pu = topo::uPeriod(s);
+        const double pv = topo::vPeriod(s);
+        if (pu == 0.0 && pv == 0.0) return true;
+        const auto mid = [](const HalfEdge& x) {
+            return x.pcurve->evaluate(0.5 * (x.pcurveStart + x.pcurveEnd));
+        };
+        const auto shift = unwrapShift_.find(&was);
+        const math::Vec2 gap =
+            mid(was) + (shift == unwrapShift_.end() ? math::Vec2() : shift->second) - mid(h);
+        const math::Vec2 move(pu > 0.0 ? std::round(gap.x / pu) * pu : 0.0,
+                              pv > 0.0 ? std::round(gap.y / pv) * pv : 0.0);
+        if (move.x == 0.0 && move.y == 0.0) return true;
+        auto moved = shiftedPcurve(*h.pcurve, move);
+        if (moved == nullptr) {
+            fail("a refitted pcurve could not be laid a period on");
+            return false;
+        }
+        h.pcurve = std::move(moved);
+        return true;
+    }
+
+    const Mat4& xform_;
+    math::ModelTolerance srcTolerance_;
+    std::size_t loopLimit_;  ///< the most half-edges a loop of the source can have
+    double stretch_;
+    std::string problem_;
+    std::unordered_set<const Face*> converted_;                    ///< source faces made NURBS
+    std::unordered_map<const HalfEdge*, math::Vec2> unwrapShift_;  ///< source half-edges' shifts
+};
+
 // Deep-clone src — or, given `only`, just those of its shells — into dst with
 // a transform, as a new set of shells. A transform that mirrors (its
 // determinant negative, Phase 162) would turn every loop inside out: each is
@@ -118,8 +485,14 @@ int windingOf(const Solid& solid) {
 // faces out as they say (Face::reversed), and is copied as it is: its corners,
 // joined by straight lines, need not wind as its faces do (a C-shaped clip's
 // enclose a negative volume), and turned round for them it was inside out.
+//
+// Exact geometry rides along through a similarity, moved as it is (Ruling 9). Through any other
+// matrix it rides along only where @p nonSimilarProblem is given (transformed()): as the NURBS
+// it is, by NonSimilarCarry, which says there why it cannot; otherwise the copy's exact fields
+// are left empty.
 void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceIndex,
-               const std::vector<const Shell*>* only = nullptr, bool outward = false) {
+               const std::vector<const Shell*>* only = nullptr, bool outward = false,
+               std::string* nonSimilarProblem = nullptr) {
     const bool mirrors = xform.determinant3() < 0.0;
     // A mirrored copy keeps src's winding (see above), so src says it.
     const bool flip = mirrors != (outward && !topo::hasExactFaces(src) && windingOf(src) < 0);
@@ -127,10 +500,15 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         auto moved = transformSurface(surface, xform);
         return flip ? std::make_shared<geo::NurbsSurface>(moved->reversedU()) : moved;
     };
-    // Exact geometry rides along only through a similarity (Ruling 9); any other matrix leaves
-    // the copy's exact fields empty. A shared exact surface or curve is moved once.
+    // A shared exact surface or curve is moved once through a similarity.
     const double scale = similarityScale(xform);
-    const bool carryExact = scale > 0.0;
+    const bool similar = scale > 0.0;
+    std::optional<NonSimilarCarry> carry;
+    if (!similar && nonSimilarProblem != nullptr && topo::hasExactFaces(src)) {
+        carry.emplace(src, xform);
+    }
+    const bool carryExact = similar || (carry && carry->problem().empty());
+    const double toleranceScale = similar ? scale : carry ? carry->stretch() : 0.0;
     std::unordered_map<const geo::Surface*, std::shared_ptr<const geo::Surface>> exactSurfaces;
     std::unordered_map<const geo::Curve3*, std::shared_ptr<const geo::Curve3>> exactCurves;
     std::unordered_map<const void*, Vertex*> vmap;
@@ -202,7 +580,7 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         Vertex* nv = dst.allocVertex();
         nv->point = xform.transformPoint(v.point);
         nv->topoId = instanceId(v.topoId, instanceIndex);
-        if (carryExact) nv->tolerance = v.tolerance * scale;
+        if (carryExact) nv->tolerance = v.tolerance * toleranceScale;
         vmap[&v] = nv;
     }
 
@@ -214,13 +592,17 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         if (e.curve) ne->curve = transformCurve(*e.curve, xform);
         if (e.analyticCurve) ne->analyticCurve = idealCurve(e.analyticCurve);
         if (carryExact && e.exactCurve) {
-            auto& moved = exactCurves[e.exactCurve.get()];
-            if (!moved) moved = e.exactCurve->transformed(xform);
-            ne->exactCurve = moved;
+            if (similar) {
+                auto& moved = exactCurves[e.exactCurve.get()];
+                if (!moved) moved = e.exactCurve->transformed(xform);
+                ne->exactCurve = moved;
+            } else {
+                ne->exactCurve = carry->curve(e);
+            }
             ne->curveStart = e.curveStart;
             ne->curveEnd = e.curveEnd;
         }
-        if (carryExact) ne->tolerance = e.tolerance * scale;
+        if (carryExact) ne->tolerance = e.tolerance * toleranceScale;
         emap[&e] = ne;
     }
 
@@ -241,9 +623,13 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         // cylinder, so the ideal is carried and moved with the facets.
         if (f->analyticSurface) nf->analyticSurface = idealSurface(f->analyticSurface);
         if (carryExact && f->exactSurface) {
-            auto& moved = exactSurfaces[f->exactSurface.get()];
-            if (!moved) moved = f->exactSurface->transformed(xform);
-            nf->exactSurface = moved;
+            if (similar) {
+                auto& moved = exactSurfaces[f->exactSurface.get()];
+                if (!moved) moved = f->exactSurface->transformed(xform);
+                nf->exactSurface = moved;
+            } else {
+                nf->exactSurface = carry->surface(*f);
+            }
             // The loops are reversed with `flip`, so their sense in (u, v) flips with it.
             nf->reversed = f->reversed != flip;
         }
@@ -252,6 +638,7 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
 
     for (const Wire* w : wires) wmap[w] = dst.allocWire();
     for (const HalfEdge* h : halfEdges) hmap[h] = dst.allocHalfEdge();
+    std::vector<std::pair<const HalfEdge*, HalfEdge*>> carried;  // for NonSimilarCarry::finish
 
     // Remap all cross-references. (Within one shell of a closed solid every
     // reference stays inside the shell; one that does not is left null.)
@@ -280,6 +667,7 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
             nh->pcurveStart = flip ? h->pcurveEnd : h->pcurveStart;
             nh->pcurveEnd = flip ? h->pcurveStart : h->pcurveEnd;
         }
+        if (carry) carried.emplace_back(h, nh);
     }
     for (const auto& e : src.edges()) {
         Edge* ne = mapped(emap, &e);
@@ -307,6 +695,32 @@ void cloneInto(Solid& dst, const Solid& src, const Mat4& xform, int instanceInde
         if (!ns) continue;
         ns->faces.clear();
         for (const Face* fp : shell.faces) ns->faces.push_back(mapped(fmap, fp));
+    }
+
+    if (!carry) return;
+    if (carry->problem().empty()) carry->finish(dst, carried, fmap);
+    *nonSimilarProblem = carry->problem();
+    if (nonSimilarProblem->empty()) return;
+    // What could not be carried is not carried at all.
+    for (const auto& v : src.vertices()) {
+        if (Vertex* nv = mapped(vmap, &v)) nv->tolerance = 0.0;
+    }
+    for (const auto& e : src.edges()) {
+        Edge* ne = mapped(emap, &e);
+        if (ne == nullptr) continue;
+        ne->exactCurve = nullptr;
+        ne->curveStart = 0.0;
+        ne->curveEnd = 0.0;
+        ne->tolerance = 0.0;
+    }
+    for (const Face* f : faces) {
+        fmap[f]->exactSurface = nullptr;
+        fmap[f]->reversed = false;
+    }
+    for (const HalfEdge* h : halfEdges) {
+        hmap[h]->pcurve = nullptr;
+        hmap[h]->pcurveStart = 0.0;
+        hmap[h]->pcurveEnd = 0.0;
     }
 }
 
@@ -536,6 +950,97 @@ std::unique_ptr<topo::Solid> Pattern::collect(const topo::Solid& a, const topo::
     return out;
 }
 
+namespace {
+
+/// Whether @p shell is a part built exactly: its faces carry exact surfaces and none a NURBS
+/// carrier. Its corners do not span its curved faces (a cylinder's two, one on each rim, enclose
+/// nothing), nor is it described by curves for facetCurved to cut.
+bool exactWithoutCarriers(const Shell& shell) {
+    bool exact = false;
+    for (const Face* f : shell.faces) {
+        if (f == nullptr || !f->alive) continue;
+        if (f->surface) return false;
+        exact = exact || f->exactSurface != nullptr;
+    }
+    return exact;
+}
+
+/// Whether every face of @p shell carries an exact surface, a NURBS carrier or not: an import's
+/// body as read, or a part built exactly.
+bool exactThroughout(const Shell& shell) {
+    bool any = false;
+    for (const Face* f : shell.faces) {
+        if (f == nullptr || !f->alive) continue;
+        if (!f->exactSurface) return false;
+        any = true;
+    }
+    return any;
+}
+
+/// The box round @p shell's exact geometry: its corners, points along its edges' exact curves
+/// (topo::kLoopSamples on each), and over each curved face its surface at a grid of as many
+/// points each way across the rectangle its outer loop spans in (u, v), unwrapped as the exact
+/// validator unwraps it.
+BoundingBox exactShellBox(const Shell& shell, const math::ModelTolerance& tolerance,
+                          std::size_t limit) {
+    constexpr int kSamples = topo::kLoopSamples;
+    BoundingBox box;
+    for (const Face* f : shell.faces) {
+        if (f == nullptr || !f->alive) continue;
+        std::vector<const Wire*> loops{f->outerLoop};
+        loops.insert(loops.end(), f->innerLoops.begin(), f->innerLoops.end());
+        for (const Wire* w : loops) {
+            std::vector<const HalfEdge*> ring;
+            if (w == nullptr || !topo::loopHalfEdges(*f, *w, limit, ring)) continue;
+            for (const HalfEdge* h : ring) {
+                box.expand(h->origin->point);
+                const Edge* e = h->edge;
+                if (e == nullptr || !e->exactCurve) continue;
+                for (int i = 0; i < kSamples; ++i) {
+                    const double t = e->curveStart + (e->curveEnd - e->curveStart) *
+                                                         static_cast<double>(i) / (kSamples - 1);
+                    box.expand(e->exactCurve->evaluate(t));
+                }
+            }
+        }
+        const auto& surface = f->exactSurface;
+        if (!surface || surface->kind() == geo::SurfaceKind::Plane || f->outerLoop == nullptr) {
+            continue;
+        }
+        std::vector<const HalfEdge*> ring;
+        if (!topo::loopHalfEdges(*f, *f->outerLoop, limit, ring)) continue;
+        std::vector<double> allowances;
+        bool pcurves = true;
+        for (const HalfEdge* h : ring) {
+            pcurves = pcurves && h->pcurve != nullptr && h->edge != nullptr;
+            if (pcurves) allowances.push_back(topo::joinAllowance(*h, tolerance));
+        }
+        topo::LoopPolygon poly;
+        if (!pcurves ||
+            !topo::unwrapLoop(ring, kSamples, *surface, topo::uPeriod(*surface),
+                              topo::vPeriod(*surface), allowances, poly,
+                              topo::loopSense(*f, true)) ||
+            poly.empty()) {
+            continue;
+        }
+        math::Vec2 lo = poly.front().a;
+        math::Vec2 hi = lo;
+        for (const auto& seg : poly) {
+            lo = {std::min(lo.x, seg.a.x), std::min(lo.y, seg.a.y)};
+            hi = {std::max(hi.x, seg.a.x), std::max(hi.y, seg.a.y)};
+        }
+        for (int i = 0; i < kSamples; ++i) {
+            for (int j = 0; j < kSamples; ++j) {
+                box.expand(surface->evaluate(lo.x + (hi.x - lo.x) * i / (kSamples - 1),
+                                             lo.y + (hi.y - lo.y) * j / (kSamples - 1)));
+            }
+        }
+    }
+    return box;
+}
+
+}  // namespace
+
 std::vector<std::vector<const topo::Shell*>> Pattern::bodyShells(const topo::Solid& solid) {
     // A shell is either the outside of a body or a cavity inside one: an
     // enclosed void comes out of a Boolean as a second shell of the same
@@ -561,7 +1066,38 @@ std::vector<std::vector<const topo::Shell*>> Pattern::bodyShells(const topo::Sol
     // Measured on its facets when it is described by curves, whose corners
     // do not span its faces (measureShells).
     std::vector<Part> parts;
-    const auto measures = measureShells(solid);
+    auto measures = measureShells(solid);
+    // A shell of a part built exactly by its exact faces: its signed volume integrated on them
+    // (coarse: its sign is what tells a body from a cavity), its box round its exact geometry.
+    // Where they cannot be integrated, it is measured by its corners, as well as can be. Where
+    // any shell has no carriers, facetCurved may refuse the whole solid (a curved face with none
+    // it cannot cut), leaving every shell measured by its corners: so each shell whose faces are
+    // all exact is measured on them, an import's beside a part built exactly (a void's one face,
+    // whose corners span nothing, among them).
+    bool withoutCarriers = false;
+    for (const auto& shell : solid.shells()) {
+        withoutCarriers = withoutCarriers || exactWithoutCarriers(shell);
+    }
+    std::vector<bool> exact;
+    exact.reserve(solid.shells().size());
+    for (const auto& shell : solid.shells()) {
+        exact.push_back(withoutCarriers && exactThroughout(shell));
+    }
+    if (std::find(exact.begin(), exact.end(), true) != exact.end()) {
+        const auto measured = detail::measureShellVolumes(solid, true, nullptr, exact);
+        if (measured.problem.empty() && measured.volumes.size() == measures.size()) {
+            const math::ModelTolerance tolerance = topo::exactTolerance(solid);
+            const std::size_t limit = 2 * solid.edges().size() + 1;
+            std::size_t at = 0;
+            for (const auto& shell : solid.shells()) {
+                if (exact[at]) {
+                    measures[at].volume = measured.volumes[at];
+                    measures[at].box = exactShellBox(shell, tolerance, limit);
+                }
+                ++at;
+            }
+        }
+    }
     std::size_t index = 0;
     for (const auto& shell : solid.shells()) {
         const ShellMeasure& measure = measures[index++];
@@ -622,8 +1158,16 @@ void Pattern::append(topo::Solid& into, const topo::Solid& source, const Mat4& x
 }
 
 std::unique_ptr<topo::Solid> Pattern::transformed(const topo::Solid& source, const Mat4& xform) {
+    // Ruling 4: why a copy has no exact geometry is not asked here, as master never said.
+    return transformed(source, xform, nullptr);
+}
+
+std::unique_ptr<topo::Solid> Pattern::transformed(const topo::Solid& source, const Mat4& xform,
+                                                  std::string* problem) {
     auto out = std::make_unique<Solid>();
-    cloneInto(*out, source, xform, 0);
+    std::string why;
+    cloneInto(*out, source, xform, 0, nullptr, false, &why);
+    if (problem != nullptr) *problem = std::move(why);
     return out;
 }
 

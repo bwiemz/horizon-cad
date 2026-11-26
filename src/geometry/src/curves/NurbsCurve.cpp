@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "../NurbsKnots.h"
+#include "../RationalArc.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Tolerance.h"
 
@@ -653,26 +654,64 @@ std::unique_ptr<Curve3> NurbsCurve::transformed(const math::Mat4& m) const {
     return std::make_unique<NurbsCurve>(std::move(pts), m_weights, m_knots, m_degree);
 }
 
+std::shared_ptr<NurbsCurve> NurbsCurve::toNurbs(double t0, double t1) const {
+    detail::checkedRangeEnd(t0, t1, 0.0, "NurbsCurve::toNurbs");
+    return std::make_shared<NurbsCurve>(segment(t0, t1));
+}
+
 // ---------------------------------------------------------------------------
 // closestPoint — Newton iteration on f(t) = (C(t) - P) · C'(t)
 // ---------------------------------------------------------------------------
 
+namespace {
+
+/// How many even steps closestPoint's first look along the curve takes (21 points).
+constexpr int kClosestSamples = 20;
+
+}  // namespace
+
+std::array<math::Vec3, NurbsCurve::kClosestScan> NurbsCurve::closestScan() const {
+    const double tLo = tMin();
+    const double tHi = tMax();
+    std::array<math::Vec3, kClosestScan> scan{};
+    for (int i = 0; i <= kClosestSamples; ++i) {
+        const double t = tLo + (tHi - tLo) * static_cast<double>(i) / kClosestSamples;
+        scan[static_cast<size_t>(i)] = evaluate(t);
+    }
+    return scan;
+}
+
 double NurbsCurve::closestPoint(const math::Vec3& point, double tol) const {
+    return closestPoint(point, closestScan(), tol);
+}
+
+std::vector<double> NurbsCurve::closestPoints(const std::vector<math::Vec3>& points,
+                                              double tol) const {
+    const auto scan = closestScan();
+    std::vector<double> out;
+    out.reserve(points.size());
+    for (const math::Vec3& p : points) out.push_back(closestPoint(p, scan, tol));
+    return out;
+}
+
+double NurbsCurve::closestPoint(const math::Vec3& point,
+                                const std::array<math::Vec3, kClosestScan>& scan,
+                                double tol) const {
     const double tLo = tMin();
     const double tHi = tMax();
 
-    // Initial guesses: sample at 21 uniform points, and keep the two closest.
-    // Refining only the closest failed at a closed curve's seam: a point just
+    // Initial guesses: sample at 21 uniform points (@p scan holds the curve's), and keep the two
+    // closest. Refining only the closest failed at a closed curve's seam: a point just
     // before it is as close to the sample at the start as to the one at the
     // end, the start was taken, and Newton's step from there went out of the
     // domain and was held at the start.
-    constexpr int kNumSamples = 20;
+    static_assert(kClosestScan == kClosestSamples + 1);
     double bestT[2] = {tLo, tLo};
     double bestDistSq[2] = {std::numeric_limits<double>::infinity(),
                             std::numeric_limits<double>::infinity()};
-    for (int i = 0; i <= kNumSamples; ++i) {
-        const double t = tLo + (tHi - tLo) * static_cast<double>(i) / kNumSamples;
-        const double distSq = (evaluate(t) - point).lengthSquared();
+    for (int i = 0; i <= kClosestSamples; ++i) {
+        const double t = tLo + (tHi - tLo) * static_cast<double>(i) / kClosestSamples;
+        const double distSq = (scan[static_cast<size_t>(i)] - point).lengthSquared();
         if (distSq < bestDistSq[0]) {
             bestDistSq[1] = bestDistSq[0];
             bestT[1] = bestT[0];
@@ -684,12 +723,15 @@ double NurbsCurve::closestPoint(const math::Vec3& point, double tol) const {
         }
     }
 
-    // Newton iteration on f(t) = (C(t) - P) . C'(t).
+    // Newton iteration on f(t) = (C(t) - P) . C'(t). derivatives() gives the point and both
+    // derivatives as evaluate(), derivative(t, 1) and derivative(t, 2) do, to the last bit, from
+    // one evaluation of the basis.
     const auto refine = [&](double t) {
         for (int iter = 0; iter < 50; ++iter) {
-            const math::Vec3 c = evaluate(t);
-            const math::Vec3 dC = derivative(t, 1);
-            const math::Vec3 d2C = derivative(t, 2);
+            const CurveDerivatives d = derivatives(t);
+            const math::Vec3& c = d.point;
+            const math::Vec3& dC = d.d1;
+            const math::Vec3& d2C = d.d2;
             const math::Vec3 diff = c - point;
 
             const double f = diff.dot(dC);

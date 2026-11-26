@@ -1,6 +1,7 @@
 add_executable(hz_modeling_tests
     test_PrimitiveFactory.cpp
     test_ExactPrimitives.cpp
+    test_ExactExtrude.cpp
     test_ExactValidator.cpp
     test_SeamInsertion.cpp
     test_TrimmedFaceMesher.cpp
@@ -33,6 +34,8 @@ add_executable(hz_modeling_tests
     test_MassProperties.cpp
     test_IdealMassProperties.cpp
     test_ExactMass.cpp
+    test_ExactTransform.cpp
+    test_FacetExact.cpp
     test_Measure.cpp
     test_DrawingProjection.cpp
     test_SectionView.cpp

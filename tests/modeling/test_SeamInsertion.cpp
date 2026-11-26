@@ -279,8 +279,12 @@ double exactVolume(const topo::Solid& solid) {
 }
 constexpr double kExactVolumeError = 1e-9;
 
-/// Every edge's carrier ends at its vertices and lies along its exact curve.
-void expectCarriersOnTheirCurves(const topo::Solid& solid) {
+/// Every edge's carrier ends at its vertices and lies along its exact curve. With
+/// @p withinTolerance, its ends lie within the edge's tolerance of its vertices instead: a seam
+/// joining pcurves fitted to their curves passes as near its vertices as they do, and its
+/// tolerance covers that.
+void expectCarriersOnTheirCurves(const topo::Solid& solid, bool withinTolerance = false) {
+    const auto tolerance = topo::exactTolerance(solid);
     for (const auto& e : solid.edges()) {
         if (!e.curve) continue;
         const Vec3 a = e.halfEdge->origin->point;
@@ -289,7 +293,12 @@ void expectCarriersOnTheirCurves(const topo::Solid& solid) {
         const Vec3 c1 = e.curve->evaluate(e.curve->tMax());
         const double ends = std::min(std::max((c0 - a).length(), (c1 - b).length()),
                                      std::max((c0 - b).length(), (c1 - a).length()));
-        EXPECT_LT(ends, 1e-9) << e.topoId.tag();
+        const double near =
+            withinTolerance
+                ? tolerance.effective(std::max({e.tolerance, e.halfEdge->origin->tolerance,
+                                                e.halfEdge->twin->origin->tolerance}))
+                : 1e-9;
+        EXPECT_LT(ends, near) << e.topoId.tag();
         for (int k = 1; k < 8; ++k) {
             const double t = e.curveStart + (e.curveEnd - e.curveStart) * k / 8.0;
             const Vec3 p = e.exactCurve->evaluate(t);
@@ -415,6 +424,169 @@ TEST(SeamInsertion, LoopsWindingTheSameWayAreSeamed) {
             e.exactCurve->derivatives(e.curveStart).d1 * (e.curveEnd >= e.curveStart ? 1.0 : -1.0);
         EXPECT_GT(along.dot(e.curve->derivative(e.curve->tMin(), 1)), 0.0) << e.topoId.tag();
     }
+}
+
+namespace {
+
+/// A cylinder of radius 1 from z = 0 to 2 and, on it, a cone from radius 1 at z = 2 to 2 at
+/// z = 3, as master's writer wrote the corpus's Solid Edge bore and its countersink (faces #1084
+/// and #1210 of its old part body): each side a closed B-spline band between its rims, a flat at
+/// each end. The rim the two bands share is used against its circle by the cylinder and with it
+/// by the cone, as the solid runs it. With @p readBackwards each band uses it the other way, as a
+/// part file holds such a rim where its carrier ran against it: master's writer told which way a
+/// curve runs by the vertex it starts at, and a closed rim's two ends are one vertex.
+std::unique_ptr<topo::Solid> boreAndCountersink(bool readBackwards) {
+    Builder b;
+    topo::Edge* bottom = b.rim(frameAt({0, 0, 0}, kZ), 1.0, 0.0, true);
+    topo::Edge* middle = b.rim(frameAt({0, 0, 2}, kZ), 1.0, 0.0, true);
+    topo::Edge* top = b.rim(frameAt({0, 0, 3}, kZ), 2.0, 0.0, true);
+    b.face(std::make_shared<geo::NurbsSurface>(
+               geo::NurbsSurface::makeCylinder({0, 0, 0}, kZ, 1.0, 2.0)),
+           false, {{{bottom, true}}, {{middle, readBackwards}}}, "bore/side");
+    b.face(std::make_shared<geo::NurbsSurface>(
+               geo::NurbsSurface::makeCone({0, 0, 1}, kZ, kPi / 4.0, 2.0)),
+           false, {{{middle, !readBackwards}}, {{top, false}}}, "bore/countersink");
+    b.face(plane({0, 0, 0}, kZ), std::nullopt, {{{bottom, false}}}, "bore/bottom");
+    b.face(plane({0, 0, 3}, kZ), std::nullopt, {{{top, true}}}, "bore/top");
+    return b.take();
+}
+
+/// The closed rim of @p solid at height @p z.
+const topo::Edge* rimAt(const topo::Solid& solid, double z) {
+    for (const auto& e : solid.edges()) {
+        const topo::HalfEdge* h = e.halfEdge;
+        if (h->origin == h->twin->origin && std::fabs(h->origin->point.z - z) < 1e-12) return &e;
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+// The probe's cause for the corpus's Onshape and Solid Edge old part bodies ("its two loops wind
+// round it the same way"): master's writer gave a closed rim's EDGE_CURVE same_sense .T. whichever
+// way its carrier ran, and where the carrier ran against the rim (the source files' EDGE_CURVEs
+// #101 and #314 have same_sense .F.), the rim reads back the wrong way round on both its faces.
+// Between two bands, each band's two loops then wind round it the same way. That rim is turned on
+// both, before any seam is laid (one turn; turning the other two rims would do too), and each
+// band is then seamed. The solid is the one written right, to its volume.
+TEST(SeamInsertion, ARimBothItsBandsRunTheWrongWayRoundIsTurned) {
+    const auto solid = boreAndCountersink(true);
+    ASSERT_NE(solid, nullptr);
+    EXPECT_NE(firstIssue(*solid), "") << "neither band is exact so";
+    const topo::Face* side = faceNamed(*solid, "bore/side");
+    const topo::Face* countersink = faceNamed(*solid, "bore/countersink");
+    ASSERT_NE(side, nullptr);
+    ASSERT_NE(countersink, nullptr);
+    EXPECT_EQ(hz::model::insertSeams(*solid, topo::exactTolerance(*solid)),
+              "no seam can be laid on it: its two loops wind round it the same way")
+        << "until its rim is turned";
+    std::vector<std::string> turned;
+    for (const topo::Face* f : hz::model::turnBackwardRims(*solid, topo::exactTolerance(*solid))) {
+        turned.push_back(f->topoId.tag());
+    }
+    std::sort(turned.begin(), turned.end());
+    EXPECT_EQ(turned, (std::vector<std::string>{"test/bore/countersink", "test/bore/side"}));
+    const topo::Edge* middle = rimAt(*solid, 2.0);
+    ASSERT_NE(middle, nullptr);
+    EXPECT_EQ(middle->halfEdge->face, countersink) << "the cone runs it with its circle again";
+    EXPECT_EQ(middle->halfEdge->twin->face, side);
+    EXPECT_EQ(hz::model::insertSeams(*solid, topo::exactTolerance(*solid)), "");
+    EXPECT_EQ(seamsOf(*side).size(), 1u);
+    EXPECT_EQ(seamsOf(*countersink).size(), 1u);
+    EXPECT_EQ(solid->vertexCount(), 3u) << "nothing split";
+    EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+    EXPECT_EQ(firstIssue(*solid), "");
+    EXPECT_EQ(meshProblem(*solid), "");
+    expectCarriersOnTheirCurves(*solid);
+    const double volume = 2.0 * kPi + 7.0 * kPi / 3.0;
+    EXPECT_NEAR(exactVolume(*solid), volume, volume * kExactVolumeError);
+
+    // Written right, nothing is turned, and it comes out the same.
+    const auto right = boreAndCountersink(false);
+    ASSERT_NE(right, nullptr);
+    EXPECT_TRUE(hz::model::turnBackwardRims(*right, topo::exactTolerance(*right)).empty());
+    EXPECT_EQ(hz::model::insertSeams(*right, topo::exactTolerance(*right)), "");
+    const topo::Edge* rightMiddle = rimAt(*right, 2.0);
+    ASSERT_NE(rightMiddle, nullptr);
+    EXPECT_EQ(rightMiddle->halfEdge->face, faceNamed(*right, "bore/countersink"));
+    EXPECT_EQ(firstIssue(*right), "");
+    EXPECT_NEAR(exactVolume(*right), volume, volume * kExactVolumeError);
+}
+
+namespace {
+
+/// A washer: radius 3 outside, a bore of radius 1 through it, from z = 0 to 2. Its flats' outer
+/// rims, and its outer band's, are each two half circles (no rim alone), and its bore is a band
+/// between two rims, each a hole in a flat. With @p readBackwards both the bore's rims read the
+/// wrong way round, as the corpus's Solid Edge bore (its rims' EDGE_CURVEs #288 and #289,
+/// same_sense .F.) reads in its old part body: the bore's two loops still wind opposite ways, and
+/// each flat's hole runs the way its outer rim does.
+std::unique_ptr<topo::Solid> washer(bool readBackwards) {
+    Builder b;
+    const auto halves = [&](double z) {
+        const geo::Frame f = frameAt({0, 0, z}, kZ);
+        const auto circle = std::make_shared<geo::CircleCurve>(f, 3.0);
+        topo::Vertex* east = b.vertex(circle->evaluate(0.0));
+        topo::Vertex* west = b.vertex(circle->evaluate(kPi));
+        return std::make_pair(
+            b.edge(east, west, circle, 0.0, kPi, arcCarrier(f, 3.0, 0.0, kPi)),
+            b.edge(west, east, circle, kPi, kTwoPi, arcCarrier(f, 3.0, kPi, kTwoPi)));
+    };
+    const auto lower = halves(0.0);
+    const auto upper = halves(2.0);
+    topo::Edge* boreLow = b.rim(frameAt({0, 0, 0}, kZ), 1.0, 0.0, true);
+    topo::Edge* boreHigh = b.rim(frameAt({0, 0, 2}, kZ), 1.0, 0.0, true);
+    b.face(std::make_shared<geo::Cylinder>(frameAt({0, 0, 0}, kZ), 3.0), false,
+           {{{lower.first, true}, {lower.second, true}},
+            {{upper.second, false}, {upper.first, false}}},
+           "washer/outside");
+    b.face(std::make_shared<geo::Cylinder>(frameAt({0, 0, 0}, kZ), 1.0), true,
+           {{{boreLow, readBackwards}}, {{boreHigh, !readBackwards}}}, "washer/bore");
+    b.face(plane({0, 0, 0}, kZ), std::nullopt,
+           {{{lower.second, false}, {lower.first, false}}, {{boreLow, !readBackwards}}},
+           "washer/bottom");
+    b.face(plane({0, 0, 2}, kZ), std::nullopt,
+           {{{upper.first, true}, {upper.second, true}}, {{boreHigh, readBackwards}}},
+           "washer/top");
+    return b.take();
+}
+
+}  // namespace
+
+// The probe's second finding in the Solid Edge old part body: a band both of whose rims read the
+// wrong way round. Its loops still wind opposite ways, so it shows nothing; the faces beyond its
+// rims do (there, its chamfers; here, its flats, whose holes run the way their outer rims do).
+// A loop that is not a rim alone is as written, so the flats' outer rims decide: both bore rims
+// are turned, before any seam is laid, and the washer is the one written right.
+TEST(SeamInsertion, ABandBothOfWhoseRimsReadTheWrongWayRoundIsTurnedByTheFacesBeyond) {
+    const auto solid = washer(true);
+    ASSERT_NE(solid, nullptr);
+    EXPECT_NE(firstIssue(*solid), "") << "its flats' holes run the wrong way round";
+    const auto turned = hz::model::turnBackwardRims(*solid, topo::exactTolerance(*solid));
+    std::vector<std::string> names;
+    for (const topo::Face* f : turned) names.push_back(f->topoId.tag());
+    std::sort(names.begin(), names.end());
+    EXPECT_EQ(names, (std::vector<std::string>{"test/washer/bore", "test/washer/bottom",
+                                               "test/washer/top"}));
+    const topo::Edge* low = rimAt(*solid, 0.0);
+    const topo::Edge* high = rimAt(*solid, 2.0);
+    ASSERT_NE(low, nullptr);
+    ASSERT_NE(high, nullptr);
+    EXPECT_EQ(low->halfEdge->face, faceNamed(*solid, "washer/bottom")) << "as written right";
+    EXPECT_EQ(high->halfEdge->face, faceNamed(*solid, "washer/bore"));
+    EXPECT_EQ(hz::model::insertSeams(*solid, topo::exactTolerance(*solid)), "");
+    EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+    EXPECT_EQ(firstIssue(*solid), "");
+    EXPECT_EQ(meshProblem(*solid), "");
+    const double volume = kPi * (9.0 - 1.0) * 2.0;
+    EXPECT_NEAR(exactVolume(*solid), volume, volume * kExactVolumeError);
+
+    const auto right = washer(false);
+    ASSERT_NE(right, nullptr);
+    EXPECT_TRUE(hz::model::turnBackwardRims(*right, topo::exactTolerance(*right)).empty());
+    EXPECT_EQ(hz::model::insertSeams(*right, topo::exactTolerance(*right)), "");
+    EXPECT_EQ(firstIssue(*right), "");
+    EXPECT_NEAR(exactVolume(*right), volume, volume * kExactVolumeError);
 }
 
 namespace {
@@ -686,24 +858,72 @@ std::unique_ptr<topo::Solid> helicalTorusBands() {
 
 }  // namespace
 
-// Ruling 29: a loop that winds round both ways (a helical band on a torus) needs a seam each way,
-// which this stage does not lay. It is refused before any seam is laid, with why, and nothing is
-// split.
-TEST(SeamInsertion, ALoopWindingRoundBothWaysIsRefused) {
+// Ruling 29's class, as stage 3 rules it: a band whose loops wind round it both ways (a helical
+// band on a torus) gets both seams. A seam along u alone leaves its region over more than a
+// period in v, which no face's may be (the validator's one-period window, a guard on imported
+// data): its two loops each run a whole period both ways, one beside the other. So it is seamed
+// along u and then cut in two across, along the parallel that halves its span in v (seam:1), as
+// topo::euler::makeEdgeFace splits a face. Each piece spans less than a period each way. The two
+// bands are the whole torus of radii 4 and 1: 2 pi^2 R r^2 = 8 pi^2 inside, 4 pi^2 R r = 16 pi^2
+// round it, each band half of that.
+TEST(SeamInsertion, ATorusBandWindingBothWaysGetsTwoSeams) {
     const auto solid = helicalTorusBands();
     ASSERT_NE(solid, nullptr);
-    topo::Face* side = nullptr;
-    for (auto& f : solid->faces()) {
-        if (f.topoId.tag() == "test/helix/one") side = &f;
+    EXPECT_NE(firstIssue(*solid), "") << "no band is exact without its seams";
+    EXPECT_EQ(hz::model::insertSeams(*solid, topo::exactTolerance(*solid)), "");
+
+    std::vector<std::string> faces;
+    for (const auto& f : solid->faces()) {
+        if (f.alive) faces.push_back(f.topoId.tag());
+        EXPECT_TRUE(seamsOf(f).empty()) << f.topoId.tag() << ": its seams lie between its pieces";
     }
-    ASSERT_NE(side, nullptr);
-    const std::string why = hz::model::insertSeams(*solid, *side, topo::exactTolerance(*solid));
-    EXPECT_EQ(why,
-              "its loop winds round the surface both ways, which no seam this stage lays "
-              "can open");
-    EXPECT_EQ(solid->vertexCount(), 2u);
-    EXPECT_EQ(solid->edgeCount(), 2u);
-    EXPECT_TRUE(seamsOf(*side).empty());
+    std::sort(faces.begin(), faces.end());
+    EXPECT_EQ(faces,
+              (std::vector<std::string>{"test/helix/one/piece:0", "test/helix/one/piece:1",
+                                        "test/helix/two/piece:0", "test/helix/two/piece:1"}));
+    for (const std::string band : {"one", "two"}) {
+        for (const int k : {0, 1}) {
+            const std::string name = "test/helix/" + band + "/seam:" + std::to_string(k);
+            const topo::Edge* seam = nullptr;
+            for (const auto& e : solid->edges()) {
+                if (e.topoId.tag() == name) seam = &e;
+            }
+            ASSERT_NE(seam, nullptr) << name;
+            EXPECT_EQ(seam->exactCurve->kind(), geo::CurveKind::Circle) << name;
+            const std::string a = seam->halfEdge->face->topoId.tag();
+            const std::string b = seam->halfEdge->twin->face->topoId.tag();
+            EXPECT_NE(a, b) << name;
+            EXPECT_EQ(a.rfind("test/helix/" + band + "/piece:", 0), 0u) << name << " on " << a;
+            EXPECT_EQ(b.rfind("test/helix/" + band + "/piece:", 0), 0u) << name << " on " << b;
+        }
+    }
+    EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+    EXPECT_EQ(firstIssue(*solid), "");
+    EXPECT_EQ(meshProblem(*solid), "");
+    expectCarriersOnTheirCurves(*solid, true);
+
+    const auto props = hz::model::MassPropertiesCalculator::compute(*solid);
+    ASSERT_TRUE(props.valid) << props.problem;
+    const double volume = 2.0 * kPi * kPi * 4.0 * 1.0;
+    const double area = 4.0 * kPi * kPi * 4.0 * 1.0;
+    EXPECT_NEAR(props.volume, volume, volume * kExactVolumeError);
+    EXPECT_NEAR(props.surfaceArea, area, area * kExactVolumeError);
+    EXPECT_NEAR(props.centerOfMass.length(), 0.0, 1e-9);
+
+    // Each band is half the torus: its pieces' triangles, at a chord of 1e-3.
+    std::string problem;
+    const auto mesh = hz::model::BoundaryMesh::extractFacePolygons(*solid, 1e-3, &problem);
+    ASSERT_EQ(problem, "");
+    double one = 0.0;
+    double two = 0.0;
+    for (const auto& t : mesh) {
+        if (t.points.size() != 3) continue;
+        const double a =
+            (t.points[1] - t.points[0]).cross(t.points[2] - t.points[0]).length() / 2.0;
+        (t.topoId.tag().rfind("test/helix/one/", 0) == 0 ? one : two) += a;
+    }
+    EXPECT_NEAR(one, area / 2.0, area * 1e-3);
+    EXPECT_NEAR(two, area / 2.0, area * 1e-3);
 }
 
 // The parts of a rim a seam's line splits are pieces of it, `<rim>/piece:0` and `/piece:1`: a
@@ -730,7 +950,8 @@ TEST(SeamInsertion, ASplitRimsPartsAreItsPieces) {
 
 // A face no seam can join says why, and is left as it was: a sphere's cap bounded by its rim
 // alone (one loop round it, and no pole to run a seam to), and a band whose two loops run round
-// the same way in (u, v), which no seam closes.
+// the same way in (u, v), which no seam closes, where turnBackwardRims cannot tell which of its
+// rims reads the wrong way round.
 TEST(SeamInsertion, AFaceNoSeamCanJoinSaysWhy) {
     Builder cap;
     topo::Edge* rim = cap.rim(frameAt({0, 0, 1}, kZ), std::sqrt(3.0), 0.0, true);
@@ -752,7 +973,35 @@ TEST(SeamInsertion, AFaceNoSeamCanJoinSaysWhy) {
     same.face(plane({0, 0, 2}, kZ), std::nullopt, {{{top, false}}}, "same/top");
     const auto band = same.take();
     ASSERT_NE(band, nullptr);
+    EXPECT_TRUE(hz::model::turnBackwardRims(*band, topo::exactTolerance(*band)).empty())
+        << "either rim could be the one read the wrong way round: the flats beyond them, each "
+           "a rim alone, say nothing";
     const std::string sameWay = hz::model::insertSeams(*band, topo::exactTolerance(*band));
     EXPECT_NE(sameWay.find("the same way"), std::string::npos) << sameWay;
     EXPECT_EQ(band->edgeCount(), 2u);
+
+    // Three bands stacked, each written right using its lower rim with its circle and its upper
+    // against it, but for the rims at z = 1 and z = 3, each read the wrong way round on both its
+    // faces. Each band's two loops wind the same way. Turning the rims at z = 0 and 2 would
+    // answer as well as turning those at 1 and 3, so none is turned, and each band is refused.
+    Builder stack;
+    std::vector<topo::Edge*> rims;
+    for (int k = 0; k < 4; ++k) {
+        rims.push_back(stack.rim(frameAt({0, 0, k * 1.0}, kZ), 1.0, 0.0, true));
+    }
+    const auto cylinder = std::make_shared<geo::Cylinder>(frameAt({0, 0, 0}, kZ), 1.0);
+    stack.face(cylinder, false, {{{rims[0], true}}, {{rims[1], true}}}, "stack/lower");
+    stack.face(cylinder, false, {{{rims[1], false}}, {{rims[2], false}}}, "stack/middle");
+    stack.face(cylinder, false, {{{rims[2], true}}, {{rims[3], true}}}, "stack/upper");
+    stack.face(plane({0, 0, 0}, kZ), std::nullopt, {{{rims[0], false}}}, "stack/bottom");
+    stack.face(plane({0, 0, 3}, kZ), std::nullopt, {{{rims[3], false}}}, "stack/top");
+    const auto stacked = stack.take();
+    ASSERT_NE(stacked, nullptr);
+    EXPECT_TRUE(hz::model::turnBackwardRims(*stacked, topo::exactTolerance(*stacked)).empty());
+    const std::string either = hz::model::insertSeams(*stacked, topo::exactTolerance(*stacked));
+    EXPECT_NE(either.find("the same way"), std::string::npos) << either;
+    EXPECT_EQ(stacked->edgeCount(), 4u);
+    const topo::Edge* second = rimAt(*stacked, 1.0);
+    ASSERT_NE(second, nullptr);
+    EXPECT_EQ(second->halfEdge->face, faceNamed(*stacked, "stack/lower")) << "nothing turned";
 }

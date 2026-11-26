@@ -12,7 +12,7 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/BinaryFormat.h"
 #include "horizon/fileio/NativeFormat.h"
-#include "horizon/modeling/SolidTessellator.h"
+#include "horizon/geometry/MeshData.h"
 
 using namespace hz::doc;
 using hz::io::BinaryFormat;
@@ -76,11 +76,16 @@ TEST(BinaryFormatTest, PartRoundTripPreservesFeatureTree) {
     EXPECT_EQ(loaded.solid()->faceCount(), original.solid()->faceCount());
 }
 
+// The mesh saved is the part as it is shown (Document::exactOrFacetedMesh): since stage 3 the
+// extruded box is exact, and that is its exact counterpart's mesh, each face's corners shared,
+// not its faceted copy tessellated.
 TEST(BinaryFormatTest, LightweightMeshLoadMatchesTessellation) {
     Document doc;
     buildBoxPart(doc);
     ASSERT_NE(doc.solid(), nullptr);
-    const auto direct = hz::model::SolidTessellator::tessellate(*doc.solid());
+    ASSERT_NE(doc.exactSolid(), nullptr) << doc.exactNote();
+    ASSERT_NE(doc.exactOrFacetedMesh(), nullptr);
+    const hz::geo::MeshData& direct = *doc.exactOrFacetedMesh();
 
     TempFile file(tempPath("hz_test_binary_mesh.hzpart"));
     ASSERT_TRUE(BinaryFormat::save(file.path, doc));

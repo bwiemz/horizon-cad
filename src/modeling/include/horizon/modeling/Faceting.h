@@ -6,6 +6,7 @@
 
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Constants.h"
+#include "horizon/modeling/FacetResolution.h"
 
 namespace hz::topo {
 class Solid;
@@ -20,6 +21,9 @@ struct FacetedSolid {
     /// each is one facet, its outline, and only its ideal is the surface.
     std::vector<std::string> outlined;
     std::string error;  ///< why there is no solid
+    /// facetExact's: the exact solid was a polyhedron, its own topology copied, each edge one
+    /// chord named as its exact edge: nameBridgeEdges has nothing to name.
+    bool copied = false;
 };
 
 /// @p exact, whose faces lie on curved surfaces and whose edges run along
@@ -42,7 +46,64 @@ struct FacetedSolid {
 ///   the surface turns by @p maxAngle.
 /// - One that cannot be (a pole on a trimmed outline, a hole across a seam)
 ///   is one facet, its outline, and is listed.
+///
+/// A face with no NURBS carrier is faceted as flat, its outline: where it is
+/// not (its exact surface is curved, or with no surface its outline leaves
+/// any plane) there is no solid, and the error names it: `face <tag> has no
+/// surface to facet`, or for an exact surface `face <tag> has no NURBS
+/// carrier to facet on` (facetExact facets it).
 FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle = math::kTwoPi / 32.0);
+
+/// The bridge (stage 3): @p exact, whose faces carry exact geometry
+/// (topo::Face::exactSurface, pcurves, topo::Edge::exactCurve) and no NURBS
+/// carrier, as planar facets at a feature's own @p resolution, so that a
+/// part built exactly has the faces, edges and vertices master's faceted
+/// construction gave it. Every face is cut from its exact fields; a NURBS
+/// carrier (topo::Face::surface) is not read, and an import's faceted copy
+/// stays facetCurved's.
+///
+/// - Each edge is cut into chords along its exact curve: a circle or an arc
+///   into `stepsFor(radius, sweep)` at equal angles, a line into one, an
+///   ellipse or a NURBS curve at equal steps of its parameter into as many
+///   as keep each within 2π/segmentsPerTurn of turning and, with a chord
+///   tolerance, sagging no more than it. A curve in a loop of two corners or
+///   fewer is two chords or more, and a closed one three or more. An edge
+///   with no exact curve is one chord, straight.
+/// - A plane is one face, with its holes; so is a face with no exact surface
+///   whose carrier is flat, or with neither whose outline lies in a plane.
+///   Its loops run as the face's do: round its outward normal.
+/// - A curved face is a grid uniform in its own (u, v), over the rectangle
+///   its outer loop bounds there (a side of it may be a pole or an apex). Its
+///   columns are the most chords of the edges along u, its rows of those
+///   along v, and the edges of a side alone on it are cut to match (so a
+///   periodic face's columns are the largest count of its edges); a
+///   direction with no edges along it (a sphere's u) is cut as its widest
+///   iso-curve is. Where FacetResolution::minorSegments is set, a sphere's
+///   rows and a torus's count round its tube are as many as it says, the
+///   edges along them cut alike (as master's primitives are), and are not
+///   raised: an edge another face cuts finer leaves the face refused. Its facets are
+///   `<face>/facet:<k>`, row by row from its first corner; a face of one facet keeps its tag. Each
+///   records the face's surface as NURBS over that rectangle (topo::Face::analyticSurface), one
+///   shared by all of them.
+/// - Each chord of an edge is `<edge>/chord:<k>`, counted along the edge from
+///   its half-edge's origin; an edge of one chord keeps its tag; an edge with
+///   no name names no chord. A chord of a curve records it as NURBS over the
+///   edge's range (topo::Edge::analyticCurve), one shared by all its chords;
+///   a line is its own chord, and records nothing. The edges inside a face
+///   are named as SolidSewer names them: a caller that names edges its own
+///   way (model::nameEdgesLogically) does so after, as for facetCurved.
+///
+/// A polyhedron (every face on a plane, every edge a line) is its own bridge: its topology is
+/// copied as the sewing of its faces' outlines would make it (the same faces, loops, vertices,
+/// edges and shells, in the same order, each face's carrier the sewer's planar patch), without
+/// welding or pairing anything again, and the result says so (`copied`).
+///
+/// No solid, and the error says why, where a face has no boundary, a curved
+/// face has no exact surface (`face <tag> has no surface to facet`, as for
+/// facetCurved, or `face <tag> has no exact surface to facet` where it has a
+/// carrier), a curved face is not such a rectangle or has holes, its
+/// opposite sides cannot be cut alike, or the facets do not close.
+FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolution);
 
 /// Whether @p solid is described by curves, as a STEP file describes one: an
 /// edge runs along a curve (of degree above 1) between its vertices. Its

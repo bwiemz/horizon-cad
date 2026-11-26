@@ -1,7 +1,8 @@
 #pragma once
 
 // STEP text for the reader's tests, written by hand as other systems write their solids.
-// Shared by test_StepFormat, test_StepCurved, test_StepExact and test_ExactMass.
+// Shared by test_StepFormat, test_StepCurved, test_StepExact, test_ExactMass, test_ExactTransform
+// and test_ExactValidator.
 
 #include <cmath>
 #include <iomanip>
@@ -116,6 +117,54 @@ inline std::string cone(const std::string& semiAngle = "0.5880026035475675",
                     units);
 }
 
+/// A frustum from radius 1 at z = 0 to radius 2 at z = 2, written as externalStyleCylinder()
+/// writes its cylinder: a CONICAL_SURFACE side between two rims and a seam, two PLANE caps.
+inline std::string frustum() {
+    return stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(0.,1.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CIRCLE('',#4,1.);
+#6 = CARTESIAN_POINT('',(1.,0.,0.));
+#7 = VERTEX_POINT('',#6);
+#8 = CARTESIAN_POINT('',(0.,0.,2.));
+#9 = DIRECTION('',(1.,0.,0.));
+#10 = AXIS2_PLACEMENT_3D('',#8,#2,#9);
+#11 = CIRCLE('',#10,2.);
+#12 = CARTESIAN_POINT('',(2.,0.,2.));
+#13 = VERTEX_POINT('',#12);
+#14 = EDGE_CURVE('',#7,#7,#5,.T.);
+#15 = EDGE_CURVE('',#13,#13,#11,.T.);
+#50 = DIRECTION('',(0.44721359549995793,0.,0.89442719099991586));
+#16 = LINE('',#6,VECTOR('',#50,1.));
+#17 = SURFACE_CURVE('',#16,(),.CURVE_3D.);
+#18 = EDGE_CURVE('',#7,#13,#17,.T.);
+#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);
+#20 = CONICAL_SURFACE('',#19,1.,0.46364760900080612);
+#21 = ORIENTED_EDGE('',*,*,#14,.T.);
+#22 = ORIENTED_EDGE('',*,*,#18,.T.);
+#23 = ORIENTED_EDGE('',*,*,#15,.F.);
+#24 = ORIENTED_EDGE('',*,*,#18,.F.);
+#25 = EDGE_LOOP('',(#21,#22,#23,#24));
+#26 = FACE_OUTER_BOUND('',#25,.T.);
+#27 = ADVANCED_FACE('',(#26),#20,.T.);
+#28 = AXIS2_PLACEMENT_3D('',#8,#2,$);
+#29 = PLANE('',#28);
+#30 = ORIENTED_EDGE('',*,*,#15,.T.);
+#31 = EDGE_LOOP('',(#30));
+#32 = FACE_OUTER_BOUND('',#31,.T.);
+#33 = ADVANCED_FACE('',(#32),#29,.T.);
+#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);
+#35 = PLANE('',#34);
+#36 = ORIENTED_EDGE('',*,*,#14,.F.);
+#37 = EDGE_LOOP('',(#36));
+#38 = FACE_OUTER_BOUND('',#37,.T.);
+#39 = ADVANCED_FACE('',(#38),#35,.F.);
+#40 = CLOSED_SHELL('',(#27,#33,#39));
+#41 = MANIFOLD_SOLID_BREP('frustum',#40);
+)");
+}
+
 /// A sphere of radius 1.5: one face, its boundary a seam from pole to pole
 /// and back.
 inline std::string sphere() {
@@ -139,6 +188,60 @@ inline std::string sphere() {
 #18 = ADVANCED_FACE('',(#17),#5,.T.);
 #19 = CLOSED_SHELL('',(#18));
 #20 = MANIFOLD_SOLID_BREP('sphere',#19);
+)");
+}
+
+/// A lune of a ball of radius 3 about the origin, a quarter turn from the half-plane y = 0
+/// (x > 0) round to x = 0 (y > 0), with its two half-disc caps, as a partial revolve of a
+/// semicircle makes it: its sphere bounded by the two meridians, each from pole to pole, with no
+/// seam. Its sphere is placed with its seam at 45 degrees, inside the lune, as another system may
+/// place it: read into [0, 2 pi), its meridians' pcurves lie either side of the seam, and only
+/// the face's sense says which way round the poles its loop runs.
+inline std::string lune() {
+    return stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = CARTESIAN_POINT('',(0.,0.,-3.));
+#3 = VERTEX_POINT('',#2);
+#4 = CARTESIAN_POINT('',(0.,0.,3.));
+#5 = VERTEX_POINT('',#4);
+#6 = DIRECTION('',(0.,-1.,0.));
+#7 = DIRECTION('',(0.,0.,-1.));
+#8 = AXIS2_PLACEMENT_3D('',#1,#6,#7);
+#9 = CIRCLE('',#8,3.);
+#10 = EDGE_CURVE('',#3,#5,#9,.T.);
+#11 = DIRECTION('',(1.,0.,0.));
+#12 = AXIS2_PLACEMENT_3D('',#1,#11,#7);
+#13 = CIRCLE('',#12,3.);
+#14 = EDGE_CURVE('',#3,#5,#13,.T.);
+#15 = DIRECTION('',(0.,0.,1.));
+#16 = VECTOR('',#15,1.);
+#17 = LINE('',#2,#16);
+#18 = EDGE_CURVE('',#3,#5,#17,.T.);
+#19 = ORIENTED_EDGE('',*,*,#14,.T.);
+#20 = ORIENTED_EDGE('',*,*,#10,.F.);
+#21 = EDGE_LOOP('',(#19,#20));
+#22 = FACE_OUTER_BOUND('',#21,.T.);
+#23 = DIRECTION('',(0.7071067811865476,0.7071067811865475,0.));
+#24 = AXIS2_PLACEMENT_3D('',#1,#15,#23);
+#25 = SPHERICAL_SURFACE('',#24,3.);
+#26 = ADVANCED_FACE('',(#22),#25,.T.);
+#27 = ORIENTED_EDGE('',*,*,#10,.T.);
+#28 = ORIENTED_EDGE('',*,*,#18,.F.);
+#29 = EDGE_LOOP('',(#27,#28));
+#30 = FACE_OUTER_BOUND('',#29,.T.);
+#31 = AXIS2_PLACEMENT_3D('',#1,#6,#11);
+#32 = PLANE('',#31);
+#33 = ADVANCED_FACE('',(#30),#32,.T.);
+#34 = ORIENTED_EDGE('',*,*,#14,.F.);
+#35 = ORIENTED_EDGE('',*,*,#18,.T.);
+#36 = EDGE_LOOP('',(#34,#35));
+#37 = FACE_OUTER_BOUND('',#36,.T.);
+#38 = DIRECTION('',(-1.,0.,0.));
+#39 = DIRECTION('',(0.,1.,0.));
+#40 = AXIS2_PLACEMENT_3D('',#1,#38,#39);
+#41 = PLANE('',#40);
+#42 = ADVANCED_FACE('',(#37),#41,.T.);
+#43 = CLOSED_SHELL('',(#26,#33,#42));
+#44 = MANIFOLD_SOLID_BREP('lune',#43);
 )");
 }
 
@@ -394,6 +497,45 @@ inline std::string real(double v) {
     std::string s = out.str();
     if (s.find_first_of(".eE") == std::string::npos) s += ".";
     return s;
+}
+
+/// A band (a cylinder of radius 1 and height 2 whose side is bounded by its two rims alone) whose
+/// top rim, a circle of radius 1, is tilted @p tilt off the cylinder's parallels, its axis leaning
+/// towards the angle @p lean about z, and its cap's plane with it. The rim's vertex is at @p at on
+/// its circle, the bottom rim's at angle 0, so the band's seam splits the top rim.
+inline std::string bandWithATiltedRim(double tilt, double lean, double at) {
+    const math::Vec3 axis{std::sin(tilt) * std::cos(lean), std::sin(tilt) * std::sin(lean),
+                          std::cos(tilt)};
+    math::Vec3 x = math::Vec3{1, 0, 0} - axis * axis.x;
+    x = x * (1.0 / x.length());
+    const math::Vec3 vertex = math::Vec3{0, 0, 2} + x * std::cos(at) + axis.cross(x) * std::sin(at);
+    const auto triple = [](const math::Vec3& v) {
+        return "(" + real(v.x) + "," + real(v.y) + "," + real(v.z) + ")";
+    };
+    return "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\nDATA;\n"
+           "#1 = CARTESIAN_POINT('',(0.,0.,0.));\n#2 = DIRECTION('',(0.,0.,1.));\n"
+           "#3 = DIRECTION('',(0.,1.,0.));\n#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);\n"
+           "#5 = CIRCLE('',#4,1.);\n#6 = CARTESIAN_POINT('',(1.,0.,0.));\n"
+           "#7 = VERTEX_POINT('',#6);\n#8 = CARTESIAN_POINT('',(0.,0.,2.));\n"
+           "#9 = DIRECTION('',(1.,0.,0.));\n#50 = DIRECTION(''," +
+           triple(axis) + ");\n#51 = DIRECTION(''," + triple(x) +
+           ");\n#10 = AXIS2_PLACEMENT_3D('',#8,#50,#51);\n#11 = CIRCLE('',#10,1.);\n"
+           "#12 = CARTESIAN_POINT(''," +
+           triple(vertex) +
+           ");\n#13 = VERTEX_POINT('',#12);\n#14 = EDGE_CURVE('',#7,#7,#5,.T.);\n"
+           "#15 = EDGE_CURVE('',#13,#13,#11,.T.);\n#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);\n"
+           "#20 = CYLINDRICAL_SURFACE('',#19,1.);\n#21 = ORIENTED_EDGE('',*,*,#14,.T.);\n"
+           "#22 = EDGE_LOOP('',(#21));\n#23 = FACE_OUTER_BOUND('',#22,.T.);\n"
+           "#24 = ORIENTED_EDGE('',*,*,#15,.F.);\n#25 = EDGE_LOOP('',(#24));\n"
+           "#26 = FACE_BOUND('',#25,.T.);\n#27 = ADVANCED_FACE('',(#23,#26),#20,.T.);\n"
+           "#28 = AXIS2_PLACEMENT_3D('',#8,#50,$);\n#29 = PLANE('',#28);\n"
+           "#30 = ORIENTED_EDGE('',*,*,#15,.T.);\n#31 = EDGE_LOOP('',(#30));\n"
+           "#32 = FACE_OUTER_BOUND('',#31,.T.);\n#33 = ADVANCED_FACE('',(#32),#29,.T.);\n"
+           "#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);\n#35 = PLANE('',#34);\n"
+           "#36 = ORIENTED_EDGE('',*,*,#14,.F.);\n#37 = EDGE_LOOP('',(#36));\n"
+           "#38 = FACE_OUTER_BOUND('',#37,.T.);\n#39 = ADVANCED_FACE('',(#38),#35,.F.);\n"
+           "#40 = CLOSED_SHELL('',(#27,#33,#39));\n#41 = MANIFOLD_SOLID_BREP('band',#40);\n"
+           "ENDSEC;\nEND-ISO-10303-21;\n";
 }
 
 /// A cap of a sphere of radius 10 about the origin as OpenCASCADE writes one: the sphere's face

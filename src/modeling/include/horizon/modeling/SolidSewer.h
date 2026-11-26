@@ -57,6 +57,10 @@ public:
         std::shared_ptr<geo::NurbsSurface> analyticSurface;
     };
 
+    /// The planar patch sew() gives a face of @p loop with no surface of its own: the rectangle
+    /// round it in its plane (Newell's normal). Null for a loop that spans no plane.
+    static std::shared_ptr<geo::NurbsSurface> planarPatch(const std::vector<math::Vec3>& loop);
+
     /// Sew the faces into a Solid.  Returns nullptr when no non-degenerate
     /// face survives.  @p weldTol is the vertex coincidence distance.
     static std::unique_ptr<topo::Solid> sew(const std::vector<InputFace>& faces,

@@ -6,6 +6,7 @@ add_library(hz_modeling STATIC
     src/MeshEdgeSampler.cpp
     src/ProfileValidator.cpp
     src/Extrude.cpp
+    src/ExactProfile.cpp
     src/Revolve.cpp
     src/SolidTessellator.cpp
     src/ExactPredicates.cpp

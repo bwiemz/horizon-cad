@@ -19,6 +19,7 @@ public:
     bool periodic() const override;
     double closestParameter(const math::Vec3& point) const override;
     std::unique_ptr<Curve3> transformed(const math::Mat4& m) const override;
+    std::shared_ptr<NurbsCurve> toNurbs(double t0, double t1) const override;
 
     const math::Vec3& origin() const { return origin_; }
     const math::Vec3& direction() const { return direction_; }
@@ -42,6 +43,7 @@ public:
     bool periodic() const override;
     double closestParameter(const math::Vec3& point) const override;
     std::unique_ptr<Curve3> transformed(const math::Mat4& m) const override;
+    std::shared_ptr<NurbsCurve> toNurbs(double t0, double t1) const override;
 
     const Frame& frame() const { return frame_; }
     double radius() const { return radius_; }
@@ -66,6 +68,7 @@ public:
     /// arbitrary feet, and gets 0.
     double closestParameter(const math::Vec3& point) const override;
     std::unique_ptr<Curve3> transformed(const math::Mat4& m) const override;
+    std::shared_ptr<NurbsCurve> toNurbs(double t0, double t1) const override;
 
     const Frame& frame() const { return frame_; }
     double majorRadius() const { return major_; }

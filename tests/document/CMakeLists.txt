@@ -18,6 +18,8 @@ add_executable(hz_document_tests
     test_ModelCommands.cpp
     test_EntityCommands.cpp
     test_ExactCounterpart.cpp
+    test_ExactConstruction.cpp
+    test_BridgeNumbering.cpp
 )
 
 target_link_libraries(hz_document_tests

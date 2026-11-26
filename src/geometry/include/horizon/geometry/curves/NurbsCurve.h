@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <limits>
 #include <vector>
 
@@ -51,6 +52,9 @@ public:
     /// The control points moved by @p m (a NURBS is affine invariant); weights and knots
     /// are unchanged, so parameters are kept.
     std::unique_ptr<Curve3> transformed(const math::Mat4& m) const override;
+    /// segment(t0, t1): the part of this curve over the range, keeping its parameters; a range
+    /// past the domain is held to it.
+    std::shared_ptr<NurbsCurve> toNurbs(double t0, double t1) const override;
 
     // -- Derivatives & Tessellation (Task 2) ---------------------------------
 
@@ -79,8 +83,24 @@ public:
     // -- Closest-Point & Arc-Length (Task 4) ----------------------------------
 
     /// Find the parameter of the closest point on the curve to @p point.
-    /// Uses Newton iteration on f(t) = (C(t) - P) . C'(t) = 0.
+    /// Uses Newton iteration on f(t) = (C(t) - P) . C'(t) = 0, from the two nearest of the
+    /// curve's points at 21 even parameters (closestScan).
     double closestPoint(const math::Vec3& point, double tol = 1e-8) const;
+
+    /// closestPoint for each of @p points, to the last bit: its look along the curve at 21 even
+    /// parameters made once for them all.
+    std::vector<double> closestPoints(const std::vector<math::Vec3>& points,
+                                      double tol = 1e-8) const;
+
+    /// How many points closestPoint's first look along the curve takes.
+    static constexpr int kClosestScan = 21;
+
+    /// The curve's points at closestPoint's 21 even parameters, from tMin() to tMax().
+    std::array<math::Vec3, kClosestScan> closestScan() const;
+
+    /// closestPoint from @p scan, closestScan()'s of this curve.
+    double closestPoint(const math::Vec3& point, const std::array<math::Vec3, kClosestScan>& scan,
+                        double tol = 1e-8) const;
 
     /// Compute arc length between two parameter values using Simpson's rule.
     double arcLength(double tStart, double tEnd, int segments = 64) const;

@@ -48,6 +48,14 @@ public:
         return word(bits);
     }
     Hash& point(const math::Vec3& p) { return real(p.x).real(p.y).real(p.z); }
+    Hash& text(const std::string& s) {
+        word(s.size());
+        for (const char c : s) {
+            m_hash ^= static_cast<unsigned char>(c);
+            m_hash *= 1099511628211ULL;
+        }
+        return *this;
+    }
     Hash& frame(const geo::Frame& f) { return point(f.origin).point(f.x).point(f.y).point(f.z); }
     Hash& reals(const std::vector<double>& values) {
         word(values.size());
@@ -185,14 +193,17 @@ std::uint64_t fingerprint(const topo::Solid& body) {
     return hash.value();
 }
 
-/// What a counterpart of @p imports is made from (ExactCounterpart::madeFrom).
-std::string madeFrom(const std::vector<const ImportedBodyFeature*>& imports) {
+/// What a counterpart of the exact part @p part is made from (ExactCounterpart::madeFrom): its
+/// fingerprint, and its names: each face's in order (fingerprint's order), and its edges' as a set
+/// (a read stores them in another order). Two features alike but for their names (their IDs, or
+/// how they name edges) differ in it.
+std::string madeFrom(const topo::Solid& part) {
+    Hash faces;
+    for (const auto& f : part.faces()) faces.text(f.topoId.tag());
+    std::uint64_t edges = 0;
+    for (const auto& e : part.edges()) edges += Hash().text(e.topoId.tag()).value();
     std::ostringstream out;
-    for (const ImportedBodyFeature* imported : imports) {
-        out << imported->featureID() << ' ' << static_cast<int>(imported->naming()) << ' '
-            << std::hex << (imported->solid() ? fingerprint(*imported->solid()) : 0U) << std::dec
-            << '\n';
-    }
+    out << std::hex << fingerprint(part) << ' ' << faces.value() << ' ' << edges;
     return out.str();
 }
 
@@ -363,39 +374,68 @@ std::shared_ptr<const ExactCounterpart> unmade(const char* why) noexcept {
 
 }  // namespace
 
-void ExactFollower::follow(const Feature& feature, bool first) noexcept {
+void ExactFollower::follow(const Feature& feature, bool first,
+                           std::unique_ptr<topo::Solid> exactTool) noexcept {
     try {
         const auto* imported = dynamic_cast<const ImportedBodyFeature*>(&feature);
-        if (imported == nullptr || (!first && feature.operation() != BodyOperation::NewBody)) {
-            // The part is no longer only bodies as read: none, by design.
+        const bool newBody = first || feature.operation() == BodyOperation::NewBody;
+        if (!newBody || (exactTool == nullptr && imported == nullptr)) {
+            // The part is no longer bodies built exactly: none, by design.
             m_open = false;
-            m_imports.clear();
+            m_part.reset();
             m_note.clear();
+            m_noteKept = false;
+            m_would = false;
             return;
         }
-        if (m_open) m_imports.push_back(imported);
+        if (!m_open || !m_note.empty()) return;
+        if (!m_keep) {
+            // A body it would have had (an import's is not copied to tell whether it is exact,
+            // as a build keeping none never shows a note).
+            m_would = true;
+            return;
+        }
+        if (exactTool == nullptr) {
+            // An import whose body has no exact form: the part has none, and says why. Made
+            // from what it says, it is kept for reuse as one made from a body.
+            m_part.reset();
+            m_noteKept = true;
+            m_note = "shown from facets: " +
+                     (imported->note().empty()
+                          ? "imported body \"" + imported->source() + "\" has no exact form"
+                          : imported->note());
+            return;
+        }
+        if (!m_part) {
+            m_part = std::move(exactTool);
+        } else {
+            model::Pattern::append(*m_part, *exactTool, math::Mat4::identity());
+        }
     } catch (...) {
         m_open = false;
-        m_imports.clear();
+        m_part.reset();
+        m_noteKept = false;
         m_note = "shown from facets: its exact form could not be gathered";
     }
 }
 
 std::shared_ptr<const ExactCounterpart> ExactFollower::make(
     const topo::Solid& faceted, const std::shared_ptr<const ExactCounterpart>& previous,
-    BuildControl* control, bool& cancelled) const noexcept {
+    BuildControl* control, bool& cancelled) noexcept {
     cancelled = false;
     try {
-        if (m_imports.empty() && m_note.empty()) return nullptr;
+        if (!m_part && m_note.empty()) return nullptr;
         auto made = std::make_shared<ExactCounterpart>();
-        made->madeFrom = madeFrom(m_imports);
         if (!m_note.empty()) {
             made->note = m_note;
-            return made;
+            if (m_noteKept) made->madeFrom = "note: " + m_note;
+        } else {
+            made->madeFrom = madeFrom(*m_part);
         }
         if (previous && !previous->madeFrom.empty() && previous->madeFrom == made->madeFrom) {
             return previous;
         }
+        if (!m_note.empty()) return made;
 
         // Gathered, meshed, measured and held to its facets: a step of its own, done however it
         // ends.
@@ -415,27 +455,8 @@ std::shared_ptr<const ExactCounterpart> ExactFollower::make(
             cancelled = true;
             return nullptr;
         }
-        // Gathered: each import's exact body, as the part gathers their facets.
-        std::unique_ptr<topo::Solid> gathered;
-        for (const ImportedBodyFeature* imported : m_imports) {
-            auto body = imported->exactBody();
-            if (!body) {
-                made->note = "shown from facets: " +
-                             (imported->note().empty()
-                                  ? "imported body \"" + imported->source() + "\" has no exact form"
-                                  : imported->note());
-                return made;
-            }
-            if (!gathered) {
-                gathered = std::move(body);
-            } else {
-                model::Pattern::append(*gathered, *body, math::Mat4::identity());
-            }
-        }
-        if (stopped()) {
-            cancelled = true;
-            return nullptr;
-        }
+        // Gathered as the part gathers their facets (follow()).
+        std::unique_ptr<topo::Solid> gathered = std::move(m_part);
         std::string problem;
         auto mesh = model::SolidTessellator::tessellate(
             *gathered, model::SolidTessellator::displayTolerance(*gathered), &problem,

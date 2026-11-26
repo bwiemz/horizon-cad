@@ -392,10 +392,13 @@ void PartCommands::onExtrudeSketch() {
     const math::Vec3 direction = drawn.normal() * (way->currentIndex() == 1 ? -1.0 : 1.0);
 
     // Validate the profile BEFORE mutating the document: a failed extrude
-    // must not leave a wrapper sketch or a dead feature behind.
+    // must not leave a wrapper sketch or a dead feature behind. Built as the
+    // feature will be (Stable naming: exactly, and its bridge copy), so a
+    // profile only the exact construction refuses is refused here too.
     std::string why;
     auto probe = model::Extrude::execute(sketch->entities(), drawn, direction, distance, "probe",
-                                         model::Extrude::kDefaultSegments, 0.0, &why);
+                                         model::Extrude::kDefaultSegments, 0.0, &why,
+                                         model::NamingScheme::Stable);
     if (!probe) {
         m_host.showStatus(tr("Extrude failed: %1").arg(QString::fromStdString(why)));
         return;

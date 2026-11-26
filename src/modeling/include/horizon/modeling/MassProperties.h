@@ -85,6 +85,12 @@ struct IdealMassProperties {
     /// integrated in, and never under 2: each piece is measured by two rules (7-point Gauss,
     /// 15-point Kronrod), whose difference is the estimate.
     int refinement = 1;
+    /// Where the estimate stops short of the tolerance asked for and nothing finer can bring it
+    /// nearer, what it says so: for a solid with exact faces whose estimate, every face taken to
+    /// Gauss–Kronrod's floor, is still above the tolerance (a thin wall, or a tolerance finer than
+    /// the integration can tell), "its error estimate stops at <e>", e its estimatedError. Empty
+    /// otherwise.
+    std::string note;
 };
 
 /// One shell's signed volume, and the estimate of its error (shellVolumes).

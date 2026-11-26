@@ -199,14 +199,6 @@ void orientOutward(std::vector<SolidSewer::InputFace>& faces) {
     }
 }
 
-int ProfileResolution::stepsFor(double radius, double sweep) const {
-    const int perTurn = chordTolerance > 0.0
-                            ? PrimitiveFactory::segmentsForTolerance(radius, chordTolerance)
-                            : segmentsPerTurn;
-    const double steps = sweep / math::kTwoPi * static_cast<double>(std::max(perTurn, 3));
-    return std::max(1, static_cast<int>(std::ceil(steps - 1e-9)));
-}
-
 SampledProfile sampleProfile(const std::vector<std::shared_ptr<draft::DraftEntity>>& orderedEdges,
                              double tolerance, const ProfileResolution& resolution) {
     SampledProfile out;

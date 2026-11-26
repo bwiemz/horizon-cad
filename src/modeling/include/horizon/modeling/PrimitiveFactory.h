@@ -1,7 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
+#include "horizon/modeling/SolidSewer.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::model {
@@ -86,6 +88,21 @@ public:
     static std::unique_ptr<topo::Solid> makeTorus(double majorRadius, double minorRadius,
                                                   int segments = kDefaultSegments,
                                                   int tubeSegments = 0);
+
+    /// The polygons makeCylinder, makeSphere, makeCone and makeTorus sew, in the order they sew
+    /// them, outward, each named as it is before its facets are named logically (`cylinder/top`,
+    /// `cylinder/side<i>`, `sphere/band<j>_<i>`, `torus/patch<i>_<j>`): what master's faceted
+    /// primitives, and so their names, are made from (stage 3, Ruling 21: a primitive built
+    /// exactly names its bridge copy as these named the same places; model::nameAsMasters).
+    /// Empty where the make function gives nullptr.
+    static std::vector<SolidSewer::InputFace> cylinderFaces(double radius, double height,
+                                                            int segments);
+    static std::vector<SolidSewer::InputFace> sphereFaces(double radius, int segments,
+                                                          int stacks = 0);
+    static std::vector<SolidSewer::InputFace> coneFaces(double bottomRadius, double topRadius,
+                                                        double height, int segments);
+    static std::vector<SolidSewer::InputFace> torusFaces(double majorRadius, double minorRadius,
+                                                         int segments, int tubeSegments = 0);
 };
 
 }  // namespace hz::model

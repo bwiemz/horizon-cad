@@ -35,19 +35,23 @@ struct ExactIssue {
 /// Every way @p solid's exact geometry disagrees with its topology; empty when it agrees.
 /// The solid must be combinatorially valid (`Solid::isValid`): twins, next pointers and origins
 /// are followed without null checks. Each pcurve is sampled at 17 parameters (its two ends and
-/// 15 between). Closeness tests use @p tolerance together with the edge's and vertices' own
-/// tolerances. Pass topo::exactTolerance(solid) (horizon/topology/ExactTolerance.h): the validator
-/// then lays the loops out in parameter space exactly as the mesher does. That is not a promise
-/// that the mesher succeeds: it has a triangle cap and a refinement limit, and loops touching at
-/// one point pass here but are reported by the mesher.
+/// 15 between), and how far it strays from its edge's curve is measured there and at the peaks
+/// between them (geo::pcurveGap, the measure pcurveOn takes of a closed form). Closeness tests use
+/// @p tolerance together with the edge's and vertices' own tolerances. Pass
+/// topo::exactTolerance(solid) (horizon/topology/ExactTolerance.h): the validator then lays the
+/// loops out in parameter space exactly as the mesher does. That is not a promise that the mesher
+/// succeeds: it has a triangle cap and a refinement limit, and loops touching at one point pass
+/// here but are reported by the mesher.
 std::vector<ExactIssue> validateExact(const Solid& solid, const math::ModelTolerance& tolerance);
 
 /// The distances validateExact measures on a half-edge's pcurve and compares with its edge's
 /// tolerance.
 struct PcurveGaps {
-    double start = 0.0;   ///< the pcurve's start, on its face's surface, from its origin vertex
-    double end = 0.0;     ///< its end from its next half-edge's origin vertex
-    double strays = 0.0;  ///< the farthest of its samples, on the surface, from the edge's curve
+    double start = 0.0;  ///< the pcurve's start, on its face's surface, from its origin vertex
+    double end = 0.0;    ///< its end from its next half-edge's origin vertex
+    /// The farthest of its samples, on the surface, from the edge's curve, and of the peaks between
+    /// them that could pass the edge's tolerance (geo::pcurveGap).
+    double strays = 0.0;
 };
 
 /// What validateExact measures on @p h's pcurve with @p tolerance, by the same code on the same
@@ -99,5 +103,19 @@ double pcurveRounding(const Solid& solid, const HalfEdge& h);
 /// combinatorially valid.
 RoundingTakeUp roundingShortfalls(const Solid& solid, const std::vector<ExactIssue>& issues,
                                   const math::ModelTolerance& tolerance);
+
+/// validateExact of @p solid again, once the tolerances @p takeUp names have grown (Ruling 66's
+/// second validation): what validateExact finds, in its order, by making again only the checks
+/// those tolerances enter. A grown edge's tolerance enters every check of the edge (its curve's
+/// ends and range, its pcurves' ends, how far they stray and whether they run with it); a grown
+/// vertex's, the checks of each edge's ends at it (its curve's end there, its pcurves' ends); and
+/// either, the joins of each loop through them, whose faces are checked again whole. Every other
+/// check reads what it read when validateExact found @p takeUp's issues, and found nothing there.
+/// @p takeUp must be roundingShortfalls' of that validation's issues, all of them shortfalls
+/// (beyond null), and @p solid changed since only by those tolerances growing; a take-up with
+/// an issue beyond rounding, or a shortfall naming a tolerance not of its issue's edge or that
+/// edge's ends, is validated whole.
+std::vector<ExactIssue> validateTakenUp(const Solid& solid, const math::ModelTolerance& tolerance,
+                                        const RoundingTakeUp& takeUp);
 
 }  // namespace hz::topo

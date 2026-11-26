@@ -73,9 +73,20 @@ constexpr int kInversionSteps = 12;
 /// The budget of one face. A face from a file is untrusted, so every refinement is bounded: the
 /// stretches of boundary measured (a pcurve's knot spans and halvings), the surface evaluations
 /// made, and how often one stretch may be halved. Past any of them the face says its integral
-/// did not settle; nothing is guessed.
+/// did not settle; nothing is guessed. The evaluations are kMaxEvaluations for a face of up to
+/// kBudgetSpans knot spans (an analytic face has one), and proportionally more beyond: each of a
+/// B-spline face's inner integrals crosses its knots, and its boundary is cut at them, so its
+/// integral costs in proportion to its spans (a rational bicubic face of 150 by 150 more than
+/// four million), up to kMostEvaluations (faceEvaluationBudget).
 constexpr std::size_t kMaxStretches = std::size_t{1} << 14;
 constexpr std::size_t kMaxEvaluations = 4'000'000;
+constexpr double kBudgetSpans = 64.0;
+/// The most evaluations of its surface any one face may make, however many knot spans it has: a
+/// face from a file is untrusted, and its spans are the file's to choose, so this bounds the work
+/// one malformed or hostile B-spline face can ask for (about a minute at a debug build's rate),
+/// whatever its budget in proportion to its spans would be. Faces of up to 1600 spans get their
+/// full proportion beneath it.
+constexpr std::size_t kMostEvaluations = 100'000'000;
 constexpr int kMaxHalvings = 48;
 
 /// An unwrapped loop lies within one period of its surface; a parameter this many periods from
@@ -463,6 +474,7 @@ private:
                     std::clamp((5 * degree + 1) / 2 + 1 + (rational ? 4 : 0), 3, kMaxGaussPoints);
                 rule_.breaks = breaksOf(!alongV_);
                 otherBreaks_ = breaksOf(alongV_);
+                budget_ = budgetFor(rule_.breaks, otherBreaks_);
                 break;
             }
         }
@@ -524,8 +536,8 @@ private:
                 allowances.push_back(topo::joinAllowance(*h, tolerance_));
             }
             topo::LoopPolygon poly;
-            if (!topo::unwrapLoop(ring, topo::kLoopSamples, s, periodU, periodV, allowances,
-                                  poly)) {
+            if (!topo::unwrapLoop(ring, topo::kLoopSamples, s, periodU, periodV, allowances, poly,
+                                  topo::loopSense(face_, outer))) {
                 problem = "a loop of it closes only after winding round its surface";
                 return false;
             }
@@ -914,7 +926,7 @@ private:
         bool ok = true;
         const auto add = [&](double a, double b, int points) {
             if (!ok) return;
-            if (surface_.evaluations >= kMaxEvaluations) {
+            if (surface_.evaluations >= budget_) {
                 why_ = overBudget();
                 ok = false;
                 return;
@@ -1100,8 +1112,17 @@ private:
                num(uv.y) + ")";
     }
 
-    static std::string overBudget() {
-        return "its integral did not settle within " + std::to_string(kMaxEvaluations) +
+    /// The evaluations a B-spline face of the knots @p inner and @p outer may make
+    /// (faceEvaluationBudget of its spans).
+    static std::size_t budgetFor(const Breaks& inner, const Breaks& outer) {
+        const auto spans = [](const Breaks& b) {
+            return b.knots.size() > 1 ? static_cast<double>(b.knots.size() - 1) : 1.0;
+        };
+        return faceEvaluationBudget(spans(inner) * spans(outer));
+    }
+
+    std::string overBudget() const {
+        return "its integral did not settle within " + std::to_string(budget_) +
                " evaluations of its surface";
     }
 
@@ -1226,7 +1247,8 @@ private:
     std::vector<Pending> pending_;
     std::vector<Span> spans_;
     std::vector<double> breaks_;
-    std::string why_;  ///< why measure() or inner() failed
+    std::string why_;                       ///< why measure() or inner() failed
+    std::size_t budget_ = kMaxEvaluations;  ///< the evaluations of its surface it may make
 };
 
 /// The centre of the box round the solid's live vertices: the point moments are taken from.
@@ -1417,21 +1439,37 @@ ExactMeasure measure(const topo::Solid& solid, const Material* material,
     if (!pass.problem.empty()) return notValid(density, pass.problem);
     // A face's estimate is relative to its own size; summed over faces far larger than the
     // volume they bound (a thin wall) it may still exceed the target. Taken again as much
-    // tighter as that needs, to the floor: the second pass's estimate is what is said. A tighter
-    // pass that does not settle (a budget spent) leaves the first, valid, its estimate as it
-    // was: asking for more never makes a measured solid unmeasured.
+    // tighter as that needs, to the floor (and, still short of the target above it, once more
+    // at the floor): the last pass's estimate is what is said. A tighter pass that does not
+    // settle (a budget spent) leaves the one before it, valid, its estimate as it was: asking for
+    // more never makes a measured solid unmeasured. Where the estimate is still above the target
+    // with every face at the floor, the result says where it stops, rather than leaving it to
+    // read as near the request.
+    bool atFloor = false;  // the pass whose estimate is said took every face to the floor
+    bool kept = false;     // the last tighter pass settled, and is the one said
+    const auto tighten = [&](double accuracy) {
+        Pass tighter = integrateFaces(solid, origin, size, tolerance, accuracy, cancelled);
+        if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) return false;
+        kept = tighter.problem.empty();
+        if (kept) {
+            pass = std::move(tighter);
+            atFloor = !(accuracy > kFinestAccuracy);
+        }
+        return true;
+    };
     const double quadrature = relative(pass, pass.volumeError, pass.areaError);
     if (quadrature > 0.5 * target && std::isfinite(quadrature)) {
         const double accuracy =
             std::max(kFinestAccuracy, kRelativeAccuracy * 0.25 * target / quadrature);
         if (accuracy < kRelativeAccuracy) {
-            Pass tighter = integrateFaces(solid, origin, size, tolerance, accuracy, cancelled);
-            if (cancelled != nullptr && cancelled->load(std::memory_order_relaxed)) {
+            if (!tighten(accuracy)) return notValid(density, "stopped");
+            if (kept && !atFloor && relative(pass, pass.volumeError, pass.areaError) > target &&
+                !tighten(kFinestAccuracy)) {
                 return notValid(density, "stopped");
             }
-            if (tighter.problem.empty()) pass = std::move(tighter);
         }
     }
+    const bool stopsShort = atFloor && relative(pass, pass.volumeError, pass.areaError) > target;
 
     ExactMeasure out;
     out.plainFaces.assign(pass.plain.begin(), pass.plain.end());
@@ -1448,10 +1486,19 @@ ExactMeasure measure(const topo::Solid& solid, const Material* material,
     }
     out.estimatedError =
         relative(pass, pass.volumeError + pass.volumeBoundary, pass.areaError + pass.areaBoundary);
+    if (stopsShort) out.note = "its error estimate stops at " + num(out.estimatedError);
     return out;
 }
 
 }  // namespace
+
+std::size_t faceEvaluationBudget(double spans) {
+    const double share = spans / kBudgetSpans;
+    if (!(share > 1.0)) return kMaxEvaluations;  // a NaN too
+    const double budget = static_cast<double>(kMaxEvaluations) * share;
+    if (!(budget < static_cast<double>(kMostEvaluations))) return kMostEvaluations;
+    return static_cast<std::size_t>(budget);
+}
 
 ShellVolumes measureShellVolumes(const topo::Solid& solid, bool coarse,
                                  const std::atomic<bool>* cancelled,

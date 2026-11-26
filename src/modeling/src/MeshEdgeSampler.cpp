@@ -1,6 +1,7 @@
 #include "MeshEdgeSampler.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -155,6 +156,50 @@ std::vector<double> pcurveParameters(const HalfEdge& h, const geo::Surface& s,
 
 }  // namespace
 
+bool comesToACusp(const geo::Surface& s, const Vec3& pole, const Vec2& end, const Vec2& start,
+                  const Vec2& before, const Vec2& after, const Vec2& extent) {
+    // The run along the pole is along the parameter that moves more, by the face's extent; the
+    // face lies off the pole's line along the other, on the side the loop's neighbours lie.
+    const Vec2 run = start - end;
+    const bool alongU = std::fabs(run.x) * extent.y >= std::fabs(run.y) * extent.x;
+    const double line = alongU ? 0.5 * (end.y + start.y) : 0.5 * (end.x + start.x);
+    const double inBefore = (alongU ? before.y : before.x) - line;
+    const double inAfter = (alongU ? after.y : after.x) - line;
+    if (!(inBefore * inAfter > 0.0)) return false;
+    const double inward = (inBefore > 0.0 ? 1.0 : -1.0) * (alongU ? extent.y : extent.x);
+    // The opening angle at a distance @p in along the face: the circle through the surface's
+    // points at three longitudes across the run, its radius against its centre's distance from
+    // the pole; negative where the three give no circle.
+    const auto opening = [&](double in) {
+        std::array<Vec3, 3> q{};
+        for (std::size_t i = 0; i < 3; ++i) {
+            const double f = 0.1 + 0.4 * static_cast<double>(i);  // 0.1, 0.5, 0.9 of the run
+            const Vec2 at =
+                alongU ? Vec2(end.x + run.x * f, line + in) : Vec2(line + in, end.y + run.y * f);
+            q[i] = s.evaluate(at.x, at.y);
+        }
+        const Vec3 a = q[0] - q[2];
+        const Vec3 b = q[1] - q[2];
+        const Vec3 n = a.cross(b);
+        const double n2 = n.lengthSquared();
+        if (!(n2 > 0.0) || !std::isfinite(n2)) return -1.0;
+        const Vec3 centre =
+            q[2] + (b * a.lengthSquared() - a * b.lengthSquared()).cross(n) / (2.0 * n2);
+        const double radius = (q[0] - centre).length();
+        const double height = (centre - pole).length();
+        const double angle = std::atan2(radius, height);
+        return std::isfinite(angle) ? angle : -1.0;
+    };
+    const double near = opening(1e-3 * inward);
+    const double further = opening(1e-2 * inward);
+    if (near < 0.0 || further < 0.0) return false;
+    // Opening wider further in: the surface turns away from its axis at the pole (a cone's
+    // apex opens at one angle, a lemon's tip closes in). The guard is far above the angles'
+    // rounding and far below any turn a surface makes.
+    constexpr double kTurns = 1e-6;
+    return near < kCuspAngle && further > near + kTurns;
+}
+
 Join joinOf(const geo::Surface& s, const Spacing& sp, const Vec2& end, const Vec2& start,
             const Vec3& vertex, double allowance, double near) {
     const Vec2 d = start - end;
@@ -230,11 +275,11 @@ void EdgeSampler::planFace(const Face& f) {
     }
     topo::LoopPolygon poly;
     if (!topo::unwrapLoop(ring, topo::kLoopSamples, s, topo::uPeriod(s), topo::vPeriod(s),
-                          allowances, poly) ||
+                          allowances, poly, topo::loopSense(f, true)) ||
         poly.empty()) {
         return;
     }
-    Plan p{poly.front().a, poly.front().a, {}, {}};
+    Plan p{poly.front().a, poly.front().a, {}, {}, {}};
     for (const auto& seg : poly) {
         p.lo = {std::min(p.lo.x, seg.a.x), std::min(p.lo.y, seg.a.y)};
         p.hi = {std::max(p.hi.x, seg.a.x), std::max(p.hi.y, seg.a.y)};
@@ -274,9 +319,17 @@ void EdgeSampler::planFace(const Face& f) {
         const topo::Vertex* at = ring[k1]->origin;
         if (at == nullptr) continue;
         const double near = std::max(allowances[k], opt_.chordTolerance);
-        if (joinOf(s, p.spacing, poly[k * kPer + kPer - 1].b, poly[k1 * kPer].a, at->point,
-                   allowances[k], near) == Join::Pole) {
+        const topo::LoopSegment& arriving = poly[k * kPer + kPer - 1];
+        const topo::LoopSegment& leaving = poly[k1 * kPer];
+        if (joinOf(s, p.spacing, arriving.b, leaving.a, at->point, allowances[k], near) ==
+            Join::Pole) {
             p.poles.push_back({at->point, near});
+            // Ruling 9: a cusp is refused before any triangle is made, not refined toward until
+            // the model's resolution (some 12 s, a horn torus's apple at the read point).
+            if (p.refusal.empty() && comesToACusp(s, at->point, arriving.b, leaving.a, arriving.a,
+                                                  leaving.b, p.hi - p.lo)) {
+                p.refusal = kCuspRefusal;
+            }
         }
     }
     plans_[&f] = p;
