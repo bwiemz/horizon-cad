@@ -615,3 +615,69 @@ TEST(Migration, ACoarseFeatureIsSaidToBeRoundNow) {
         "feature 9 (Base Flange): its bends were drawn with 2 chords each before; round now"};
     EXPECT_EQ(opened.report.approximated, expected) << joined(opened.report.approximated);
 }
+
+// Task 12: a migrated part is marked so (Document::migrated), and its first exact build that fails
+// (a fillet on an edge its migration kept as it was, which the exact build does not have) is left
+// out of it, "after the exact rebuild: <why>", once: a cancelled build is no first build, and a
+// later one says nothing more. A copy of it, as a rebuild on a worker makes one (format 32), is not
+// migrated, so its build applied to the part is the part's; a part of format 32 that fails is not
+// read in part.
+TEST(Migration, AMigratedPartsFirstBuildThatFailsIsLeftOutOnce) {
+    Document doc;
+    doc.setType(DocumentType::Part);
+    auto sketch = square(10.0);
+    doc.addSketch(sketch);
+    auto extrude = std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 5.0);
+    const std::string gone = extrude->featureID() + "/edge:cap_top|side:e0";
+    doc.featureTree().addFeature(std::move(extrude));
+    doc.featureTree().addFeature(
+        std::make_unique<FilletFeature>(std::vector<TopologyID>{TopologyID::fromTag(gone)}, 1.0));
+
+    Opened opened = openText(asFormat(doc, 31));
+    Document& part = *opened.doc;
+    EXPECT_TRUE(opened.report.empty()) << joined(opened.report.skipped);
+    EXPECT_TRUE(part.migrated());
+    EXPECT_TRUE(part.firstBuildPending());
+    EXPECT_FALSE(part.readInPart()) << "nothing left out until it is built";
+
+    Document copy;
+    std::string error;
+    ASSERT_TRUE(
+        NativeFormat::documentFromJson(NativeFormat::documentToJson(part, false), copy, &error))
+        << error;
+    EXPECT_FALSE(copy.migrated()) << "a copy is of format 32";
+    EXPECT_FALSE(copy.firstBuildPending());
+
+    BuildResult cancelled;
+    cancelled.cancelled = true;
+    part.applyBuild(std::move(cancelled));
+    EXPECT_TRUE(part.firstBuildPending()) << "a cancelled build is none";
+
+    EXPECT_FALSE(part.applyBuild(copy.buildWithDiagnostics()));
+    EXPECT_FALSE(part.firstBuildPending());
+    ASSERT_EQ(part.failedFeatureIndex(), 1) << part.lastBuildMessage();
+    const std::string failure = "after the exact rebuild: " + part.lastBuildMessage();
+    EXPECT_EQ(part.leftOut(), std::vector<std::string>{failure});
+    EXPECT_NE(failure.find(gone), std::string::npos) << failure;
+    EXPECT_TRUE(part.readInPart());
+
+    part.featureTree().markChanged();
+    EXPECT_FALSE(part.rebuildModel());
+    EXPECT_EQ(part.leftOut(), std::vector<std::string>{failure}) << "said once";
+
+    // Of format 32: its build fails as any does, and nothing is left out.
+    Opened current = openText(asFormat(doc, 32));
+    EXPECT_FALSE(current.doc->migrated());
+    EXPECT_FALSE(current.doc->rebuildModel());
+    EXPECT_FALSE(current.doc->readInPart());
+
+    // A part read whole, and built whole, says nothing.
+    Document plain;
+    plain.setType(DocumentType::Part);
+    auto block = square(4.0);
+    plain.addSketch(block);
+    plain.featureTree().addFeature(std::make_unique<ExtrudeFeature>(block, Vec3(0, 0, 1), 2.0));
+    Opened builds = openText(asFormat(plain, 31));
+    EXPECT_TRUE(builds.doc->rebuildModel()) << builds.doc->lastBuildMessage();
+    EXPECT_FALSE(builds.doc->readInPart());
+}

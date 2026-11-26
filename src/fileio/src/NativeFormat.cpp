@@ -2113,6 +2113,8 @@ static bool loadDocumentRoot(const json& root, int fileVersion, doc::Document& d
             report->converted.insert(report->converted.end(), migrated.converted.begin(),
                                      migrated.converted.end());
         }
+    } else {
+        doc.setMigrated(false);  // read in place of one that was
     }
 
     return true;

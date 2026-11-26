@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QPointer>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -296,6 +297,13 @@ private:
     /// ("'tagMSG': an undefined class", from its conversion to anything).
     nlohmann::json assistantSelection() const;
 
+    /// What a document's file lacks, kept to be said (showHeldReports): the file's name, and the
+    /// report.
+    struct HeldReport {
+        QString file;
+        io::ImportReport report;
+    };
+
     /// One open document tab. Part/drawing tabs hold `document`; assembly
     /// tabs additionally hold `assembly` (with `document` acting as a blank
     /// backing document so the shared viewport always has one).
@@ -323,6 +331,10 @@ private:
         /// Its model is out of date: a rebuild for it was dropped while
         /// another tab was shown.
         bool modelStale = false;
+        /// What is still to be said of what its document lacks: what reading a migrated part
+        /// left out, held while its first build runs, and what a build left out of it
+        /// (Document::migrated), said in one report once that build is applied.
+        std::optional<HeldReport> heldReport{};
     };
 
     void createMenus();
@@ -375,9 +387,22 @@ private:
     void onOpenFinished();
     /// Show @p document, just opened from @p fileName: in the tab already
     /// showing it if there is one, else a new tab; what could not be read of
-    /// it; and in the recent files.
+    /// it; and in the recent files. Of a migrated part whose first build
+    /// runs on a worker (Document::firstBuildPending), what could not be read
+    /// is said once that build is applied, with what it left out.
     void showOpened(std::shared_ptr<doc::Document> document, const QString& fileName,
                     const QString& fallbackTitle, io::ImportReport report);
+    /// A build of @p document was applied, its leftOut @p before items long before it: what the
+    /// build added (a migrated part's first exact build that failed, Document::applyBuild) is
+    /// held in its tab's report (DocTab::heldReport), its tab said to be incomplete, and the
+    /// report said soon after (showHeldReports). A document no tab shows keeps it: a tab that
+    /// opens it says it.
+    void noteBuildLeftOut(const doc::Document& document, std::size_t before);
+    /// Say the first tab's held report whose document's first build is not still to come (one
+    /// still runs, or waits for the one running): one box, and the rest after it.
+    void showHeldReports();
+    /// Whether any tab holds a report still to be said.
+    bool reportsHeld() const;
     /// The Mass Properties box's text, given the measure (null: none yet, or
     /// none, for the reason given).
     using MassText = std::function<QString(const model::IdealMassProperties*, const QString&)>;

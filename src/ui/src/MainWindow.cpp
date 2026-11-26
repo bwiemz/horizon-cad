@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <iterator>
@@ -48,6 +49,7 @@
 #include <numbers>
 #include <optional>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "horizon/Revision.h"
@@ -1594,7 +1596,9 @@ void MainWindow::rebuildScene() {
         // GUI thread, would only fail again. Nor one a worker is building.
         const bool building = m_rebuildJob != nullptr && m_rebuildDocument == m_document;
         if (!m_document->solid() && m_document->needsBuild() && !building) {
+            const std::size_t before = m_document->leftOut().size();
             m_document->rebuildModel();
+            noteBuildLeftOut(*m_document, before);
         }
         if (m_document->solid()) {
             DocTab* tab = activeTab();
@@ -2336,10 +2340,79 @@ void MainWindow::showOpened(std::shared_ptr<doc::Document> document, const QStri
         }
     }
     const bool readInPart = document->readInPart();
+    // A migrated part's first build, its first exact one, starts as its tab is added, and may
+    // leave out more (Document::applyBuild): what its reading left out is said with that, once
+    // the build is applied.
+    const bool awaitsBuild = document->firstBuildPending();
+    const std::shared_ptr<doc::Document> opened = document;
     addDocumentTab(std::move(document), nullptr,
                    tabTitleForPath(fileName.toStdString(), fallbackTitle));
-    showImportReport(QFileInfo(fileName).fileName(), report, readInPart);
+    DocTab* tab = nullptr;
+    for (DocTab& t : m_tabs) {
+        if (t.document == opened) tab = &t;
+    }
+    if (!awaitsBuild || tab == nullptr) {
+        showImportReport(QFileInfo(fileName).fileName(), report, readInPart);
+        RecentFiles::add(fileName);
+        return;
+    }
+    HeldReport said{QFileInfo(fileName).fileName(), std::move(report)};
+    // What a build applied as the tab was added (here, not on a worker) left out, after it.
+    std::optional<HeldReport>& held = tab->heldReport;
+    if (held) {
+        const std::vector<std::string>& built = held->report.skipped;
+        said.report.skipped.insert(said.report.skipped.end(), built.begin(), built.end());
+    }
+    held = std::move(said);
     RecentFiles::add(fileName);
+    showHeldReports();
+}
+
+void MainWindow::noteBuildLeftOut(const doc::Document& document, std::size_t before) {
+    const std::vector<std::string>& leftOut = document.leftOut();
+    if (leftOut.size() <= before) return;
+    for (DocTab& tab : m_tabs) {
+        if (tab.document.get() != &document || tab.assembly) continue;
+        const std::string& path = document.filePath();
+        std::optional<HeldReport>& held = tab.heldReport;
+        HeldReport said =
+            held ? std::move(*held)
+                 : HeldReport{path.empty() ? tab.title
+                                           : QFileInfo(QString::fromStdString(path)).fileName(),
+                              {}};
+        said.report.skipped.insert(said.report.skipped.end(),
+                                   leftOut.begin() + static_cast<std::ptrdiff_t>(before),
+                                   leftOut.end());
+        held = std::move(said);
+        refreshModifiedIndicators();  // " (incomplete)"
+        // Not here: a build is applied inside other work (a rebuild shown, a save).
+        QMetaObject::invokeMethod(this, &MainWindow::showHeldReports, Qt::QueuedConnection);
+        return;
+    }
+}
+
+bool MainWindow::reportsHeld() const {
+    return std::any_of(m_tabs.begin(), m_tabs.end(),
+                       [](const DocTab& tab) { return tab.heldReport.has_value(); });
+}
+
+void MainWindow::showHeldReports() {
+    for (DocTab& tab : m_tabs) {
+        std::optional<HeldReport>& held = tab.heldReport;
+        if (!held) continue;
+        // Its first build still to come while a build runs (its own, or one it waits for):
+        // said once that is applied (onRebuildFinished).
+        if (tab.document->firstBuildPending() && m_rebuildJob != nullptr) continue;
+        HeldReport said = std::move(*held);
+        held.reset();
+        const bool readInPart = tab.document->readInPart();
+        showImportReport(said.file, said.report, readInPart);
+        // The box's own event loop may have changed the tabs: the rest are said after it.
+        if (reportsHeld()) {
+            QMetaObject::invokeMethod(this, &MainWindow::showHeldReports, Qt::QueuedConnection);
+        }
+        return;
+    }
 }
 
 MainWindow::FileOpen MainWindow::readFile(const std::string& path, bool drawing,
@@ -2580,6 +2653,14 @@ bool MainWindow::saveActiveDocument() {
         return false;
     }
 
+    // A migrated part's first exact build, while it runs on a worker, is made here first: what it
+    // fails on is left out of the part (Document::applyBuild) before where it is written is
+    // decided, so that the file it was read from is not written over unasked (owner A2).
+    if (m_document->firstBuildPending()) {
+        const std::size_t before = m_document->leftOut().size();
+        m_document->rebuildModel();
+        noteBuildLeftOut(*m_document, before);
+    }
     // Nor over a DWG file, which Horizon CAD reads but does not write.
     const auto readFromDwg = [this] {
         return DwgImport::isDwg(QString::fromStdString(m_document->filePath()));
@@ -2613,7 +2694,11 @@ bool MainWindow::saveActiveDocument() {
         // Make sure parts carry a fresh tessellation cache for lightweight
         // assembly loading. A solid may be there and still be out of date:
         // while a rebuild runs on a worker, it is the part before the edit.
-        if (m_document->needsBuild()) m_document->rebuildModel();
+        if (m_document->needsBuild()) {
+            const std::size_t before = m_document->leftOut().size();
+            m_document->rebuildModel();
+            noteBuildLeftOut(*m_document, before);
+        }
         ok = io::NativeFormat::save(path, *m_document, &error);
     }
     if (ok) {
@@ -2968,6 +3053,7 @@ bool MainWindow::replaceTabDocument(const std::shared_ptr<doc::Document>& old, F
     tab.meshBuild = 0;
     tab.lastBuildMs = kBuildTimeUnknown;
     tab.modelStale = fresh->needsBuild();
+    tab.heldReport.reset();  // the old document's; this one's reading is said below
 
     if (&tab == activeTab()) activateTabDocument();
     refreshModifiedIndicators();
@@ -4374,11 +4460,13 @@ void MainWindow::rebuildFeatureTree() {
     }
     QElapsedTimer clock;
     clock.start();
+    const std::size_t before = m_document->leftOut().size();
     m_document->rebuildModel();
     if (tab) {
         tab->lastBuildMs = clock.elapsed();
         tab->modelStale = false;
     }
+    noteBuildLeftOut(*m_document, before);
     showBuildResult();
 }
 
@@ -4514,7 +4602,9 @@ void MainWindow::onRebuildFinished() {
         const bool cancelled = result.cancelled;
         const bool active = document == m_document;
         if (!cancelled && RebuildJob::stampOf(*document) == job->stamp()) {
+            const std::size_t before = document->leftOut().size();
             document->applyBuild(std::move(result));
+            noteBuildLeftOut(*document, before);
             tab->lastBuildMs = m_rebuildClock.elapsed();
             tab->modelStale = false;
             if (active && !again) {
@@ -4538,6 +4628,10 @@ void MainWindow::onRebuildFinished() {
         }
     }
     if (again) startRebuild();  // the active document, as it is now
+    // A report held for a first build (showHeldReports) is said once none is to come.
+    if (reportsHeld()) {
+        QMetaObject::invokeMethod(this, &MainWindow::showHeldReports, Qt::QueuedConnection);
+    }
 }
 
 }  // namespace hz::ui

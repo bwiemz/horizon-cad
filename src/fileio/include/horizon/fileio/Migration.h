@@ -16,6 +16,9 @@ inline constexpr int kLastFacetedFormat = 31;
 /// build (stage 3 of the exact kernel; spec: Migration), and say what changed. A file of format
 /// 32 or newer is as this build wrote it: nothing is done, and nothing said.
 ///
+/// - @p doc is marked migrated (Document::migrated): its first build, its first exact one, says
+///   what it fails on in what it left out, "after the exact rebuild: <why>" (a reference kept
+///   here that the exact build does not find). Read its features first.
 /// - Each feature named the old ways (Positional, FromGeometry) is named Stable, as every
 ///   feature since Phase 139 is.
 /// - Each face or edge kept by name (Feature::storedReferences(), the face a sketch is on, an

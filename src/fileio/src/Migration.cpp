@@ -301,6 +301,8 @@ std::string notCarried(const std::string& owner, const std::string& name, const 
 ImportReport migrateToExact(doc::Document& doc, int fileVersion) {
     ImportReport report;
     if (fileVersion > kLastFacetedFormat) return report;
+    // Its first build is its first exact one: what that fails on is said too (Document::migrated).
+    doc.setMigrated(true);
     doc::FeatureTree& tree = doc.featureTree();
     const std::size_t count = tree.featureCount();
     Judge judge(tree);  // of the names as they were made, before any feature is named Stable

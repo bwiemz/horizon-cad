@@ -293,6 +293,25 @@ public:
     void setLeftOut(std::vector<std::string> items) { m_leftOut = std::move(items); }
     bool readInPart() const { return !m_leftOut.empty(); }
 
+    // --- Migrated (stage 3) ---
+
+    /// Read from a part of format 31 or older, built from facets, and migrated to format 32's
+    /// exact build as it was read (io::migrateToExact). Its first build applied is its first
+    /// exact one: one that fails (a feature on a reference its migration kept, which the exact
+    /// build does not have) is left out of it (leftOut), "after the exact rebuild: <why>", once,
+    /// and it is read in part. Not saved, nor copied with it: a copy, of format 32, is not
+    /// migrated.
+    bool migrated() const { return m_migrated; }
+    /// Mark it migrated once its features are read: its next build applied is its first exact
+    /// one, when it has features to build.
+    void setMigrated(bool migrated) {
+        m_migrated = migrated;
+        m_firstBuildPending = migrated && m_featureTree.featureCount() > 0;
+    }
+    /// Migrated, and its first exact build not yet applied: what that build fails on is still to
+    /// be said.
+    bool firstBuildPending() const { return m_firstBuildPending; }
+
     // --- Unit (Phase 154) ---
 
     /// The unit its lengths are shown and typed in, saved with it. The model
@@ -311,6 +330,8 @@ private:
     std::function<void()> m_onChange;
     std::string m_filePath;
     std::vector<std::string> m_leftOut;
+    bool m_migrated = false;
+    bool m_firstBuildPending = false;  ///< its first exact build not yet applied
     std::vector<std::shared_ptr<Sketch>> m_sketches;
     std::shared_ptr<Sketch> m_editedSketch;
     FeatureTree m_featureTree;
