@@ -822,3 +822,45 @@ TEST(FacetExact, AFaceWithNoFiniteParameterRangeIsRefused) {
     EXPECT_EQ(imported.solid, nullptr);
     EXPECT_EQ(imported.error, "face " + side + "'s surface has no finite parameter range");
 }
+
+// Ruling 32: a face cut from pole to pole (a STEP ball's skin, a void in a block, one face
+// bounded by its seam there and back) takes its columns from its own turning. Under a tolerance
+// they went up to the most a curve is (4096), here 497 round a ball of radius 1 at 2e-5; finer,
+// columns times rows passed the cap's square and the face could not be cut at all, nor a drawing
+// of it opened. They stop at the cap, 400, and the face is cut there, valid and watertight with
+// its seam.
+TEST(FacetExact, AFaceFromPoleToPoleIsCutAtItsGridsCapUnderAFineTolerance) {
+    const auto block = readOne(hz::step_text::blockWithABall());
+    ASSERT_NE(block, nullptr);
+    // The ball's radius is 1: a turn asks for pi / acos(1 - 2e-5) = 497 chords.
+    const auto started = std::chrono::steady_clock::now();
+    const auto fine = facetExact(*block, FacetResolution{32, 2e-5});
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    ASSERT_NE(fine.solid, nullptr) << fine.error;
+    EXPECT_TRUE(fine.solid->isValid()) << fine.solid->validationReport();
+    EXPECT_TRUE(fine.outlined.empty());
+    // Round the ball's ring nearest its equator (z = 2): its columns, the cap's.
+    double nearest = 1.0;
+    for (const auto& v : fine.solid->vertices()) {
+        if (std::hypot(v.point.x - 2.0, v.point.y - 2.0) > 0.5) {
+            nearest = std::min(nearest, std::abs(v.point.z - 2.0));
+        }
+    }
+    std::size_t onTheRing = 0;
+    for (const auto& v : fine.solid->vertices()) {
+        if (std::hypot(v.point.x - 2.0, v.point.y - 2.0) > 0.5 &&
+            std::abs(std::abs(v.point.z - 2.0) - nearest) < 1e-9 && v.point.z >= 2.0 - 1e-9) {
+            ++onTheRing;
+        }
+    }
+    EXPECT_EQ(onTheRing, 400u);
+    std::printf("[   INFO   ] cut in %.3f s, %zu facets\n", seconds, fine.solid->faceCount());
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 2.0);
+#else
+    EXPECT_LT(seconds, 20.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
+#endif
+#endif
+}

@@ -141,11 +141,12 @@ constexpr double kMostAlong = 65536.0;
 
 /// The fewest pieces, @p least or more, that a curve from @p t0 to @p t1 (@p at its points) is cut
 /// into at equal steps of its parameter with no piece's chord sagging more than @p tolerance off
-/// it, each measured at points between its ends; at most kMostSteps. @p least itself where the
-/// tolerance is not positive, or its pieces keep within it.
+/// it, each measured at points between its ends; at most @p most, searched no further (Ruling 32:
+/// an untrusted file's many edges each ask for no search past the cap). @p least itself where the
+/// tolerance is not positive, @p least is @p most or more, or its pieces keep within it.
 int piecesWithin(const std::function<Vec3(double)>& at, double t0, double t1, int least,
-                 double tolerance) {
-    if (!(tolerance > 0.0) || least >= kMostSteps) return least;
+                 double tolerance, int most = kMostSteps) {
+    if (!(tolerance > 0.0) || least >= most) return least;
     // Whether cut into @p n, some chord sags more than the tolerance (each measured at points
     // between its ends).
     const auto sags = [&](int n) {
@@ -170,9 +171,9 @@ int piecesWithin(const std::function<Vec3(double)>& at, double t0, double t1, in
     int enough = least;   // the least known not to, once found
     do {
         sagging = enough;
-        enough = std::min(kMostSteps, 2 * enough);
-    } while (enough < kMostSteps && sags(enough));
-    if (enough == kMostSteps && sags(enough)) return kMostSteps;
+        enough = std::min(most, 2 * enough);
+    } while (enough < most && sags(enough));
+    if (enough == most && sags(enough)) return most;
     while (enough - sagging > 1) {
         const int middle = sagging + (enough - sagging) / 2;
         if (sags(middle)) {
@@ -230,8 +231,7 @@ std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle, int least = 1,
         };
         // No more than the grid's cap for the tolerance's sake (Ruling 32): an untrusted curve,
         // or a tolerance however fine, asks for no more of its faces' outlines than that.
-        n = std::max(
-            n, std::min(piecesWithin(along, 0.0, 1.0, n, tolerance), static_cast<int>(kGridCap)));
+        n = std::max(n, piecesWithin(along, 0.0, 1.0, n, tolerance, static_cast<int>(kGridCap)));
     }
     std::vector<Vec3> out{p};
     size_t at = 1;
@@ -548,7 +548,7 @@ std::optional<Rectangle> faceInUV(const std::vector<std::vector<Vec3>>& edges, S
 /// the surface to (turningOf), or than rounding: a span shorter than that, a
 /// straight seam's few last bits of u, is one piece. With a positive
 /// @p tolerance, as many more as keep each piece's chord of it sagging no more
-/// than that.
+/// than that, up to the grid's cap (kGridCap, Ruling 32).
 size_t piecesAcross(const SurfaceMap& map, UV from, UV to, int dir, double maxAngle,
                     double tolerance) {
     constexpr int kDense = 256;
@@ -567,7 +567,10 @@ size_t piecesAcross(const SurfaceMap& map, UV from, UV to, int dir, double maxAn
     }
     const double turn = turningOf(dense, std::max(16.0 * map.precision(), roundingChord(dense)));
     const int pieces = std::max(1, static_cast<int>(std::ceil(turn / maxAngle - 1e-9)));
-    return static_cast<size_t>(piecesWithin(along, 0.0, 1.0, pieces, tolerance));
+    // For the tolerance's sake no more than the grid's cap (Ruling 32): a pole-to-pole face's
+    // columns and a band's seam ask for no more than its rows do.
+    return static_cast<size_t>(
+        piecesWithin(along, 0.0, 1.0, pieces, tolerance, static_cast<int>(kGridCap)));
 }
 
 std::optional<std::vector<std::vector<Vec3>>> gridFacets(const Rectangle& r, SurfaceMap& map,
@@ -1454,7 +1457,10 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
             (map.at({mid.first, mid.second + dv}) - map.at({mid.first, mid.second - dv})).length() /
             (2.0 * dv);
     }
-    if (!(su > 0.0) || !(sv > 0.0)) return std::nullopt;
+    // Finite too: a range of a few last bits gives no scale (Ruling 32).
+    if (!(su > 0.0) || !(sv > 0.0) || !std::isfinite(su) || !std::isfinite(sv)) {
+        return std::nullopt;
+    }
 
     std::vector<RegionVertex> vertices;
     const auto add = [&](const std::vector<LoopPoint>& loop) {
