@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -16,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "ExactCounterpart.h"
 #include "StepTestText.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
@@ -30,16 +32,19 @@
 #include "horizon/geometry/MeshData.h"
 #include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Units.h"
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 
 using hz::doc::BodyOperation;
 using hz::doc::Document;
@@ -250,6 +255,69 @@ private:
     mutable int m_copies = 0;
 };
 
+/// An import whose exact form holds more than its facets: a unit block beside its body, from
+/// (5, 0, 0) to (6, 1, 1), that its faceted copy leaves out. Its exact form faces out, meshes and
+/// measures, and is more than its facets by the block.
+class Overgrown : public ImportedBodyFeature {
+public:
+    explicit Overgrown(std::unique_ptr<hz::topo::Solid> body)
+        : ImportedBodyFeature(std::shared_ptr<const hz::topo::Solid>(std::move(body)),
+                              "part.step") {}
+
+    hz::doc::FeatureOutput executeWithExact(const hz::doc::BuildContext& context,
+                                            std::unique_ptr<hz::topo::Solid> input,
+                                            std::string* reason) const override {
+        hz::doc::FeatureOutput out =
+            ImportedBodyFeature::executeWithExact(context, std::move(input), reason);
+        if (out.exact) {
+            const auto block = hz::model::exact::makeBlock(Vec3(5, 0, 0), Vec3(6, 1, 1));
+            hz::model::Pattern::append(*out.exact, *block, hz::math::Mat4::identity());
+        }
+        return out;
+    }
+};
+
+/// An import whose faceted copy is named after another feature ("elsewhere/face:<k>"), not after
+/// its exact faces: no facet of the part names a face of its exact form.
+class Misnamed : public ImportedBodyFeature {
+public:
+    explicit Misnamed(std::unique_ptr<hz::topo::Solid> body)
+        : ImportedBodyFeature(std::shared_ptr<const hz::topo::Solid>(std::move(body)),
+                              "part.step") {}
+
+    std::unique_ptr<hz::topo::Solid> execute(std::unique_ptr<hz::topo::Solid> input,
+                                             std::string* reason) const override {
+        auto faceted = ImportedBodyFeature::execute(std::move(input), reason);
+        int index = 0;
+        if (faceted) {
+            for (auto& face : faceted->faces()) {
+                face.topoId =
+                    hz::topo::TopologyID::make("elsewhere", "face:" + std::to_string(index++));
+            }
+        }
+        return faceted;
+    }
+};
+
+/// The counterpart @p part's last build made, as its document keeps it.
+const hz::doc::ExactCounterpart& counterpartOf(const Document& part) {
+    EXPECT_NE(part.exactCounterpart(), nullptr);
+    static const hz::doc::ExactCounterpart kNone;
+    return part.exactCounterpart() ? *part.exactCounterpart() : kNone;
+}
+
+/// @p part made of an imported cylinder (radius 1, height 2, at the origin) and a primitive
+/// cylinder as a new body beside it (radius 1, height 2, standing at (5, 0, 0)), which
+/// @p primitive is set to.
+void importBesidePrimitive(Document& part, hz::doc::PrimitiveFeature*& primitive) {
+    importInto(part, read(hz::step_text::externalStyleCylinder()));
+    auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(1.0, 2.0);
+    cylinder->setOperation(BodyOperation::NewBody);
+    EXPECT_TRUE(cylinder->setVector("basePoint", Vec3(5, 0, 0)));
+    primitive = cylinder.get();
+    part.featureTree().addFeature(std::move(cylinder));
+}
+
 }  // namespace
 
 // An imported cylinder's part has its exact counterpart: three whole faces on their surfaces,
@@ -425,11 +493,13 @@ TEST(ExactCounterpart, OneThatCannotBeMeshedIsDroppedWithANote) {
 
 // Ruling 46. A face turned inside out by its flag alone is refused before it is compared: its
 // loop runs against its sense, and its exact mass says so. A body turned inside out whole holds
-// together, validates clean and meshes, but measures wrong. A cylinder so turned, imported before
-// a larger clip: the facets are gathered facing out, as their corners wind, and the exact form as
-// its faces face, enclosing the clip less the cylinder; the two disagree, and the counterpart is
-// dropped with both figures. (Re-baselined for M6: the clip was the body turned, which left the
-// part's exact form facing inward, now said as such; the figures are the same.)
+// together, validates clean and meshes, but measures wrong: each body is held to its facets on its
+// own (Task 8), and such a body is said to face inward (EachBodyIsHeldToItsFacetsOnItsOwn). What
+// disagrees with its facets is an exact form that measures otherwise and faces out: an import
+// whose exact form holds a unit block its facets leave out. The counterpart is dropped with both
+// figures. (Re-baselined for Task 8: the cylinder turned inside out, imported before a larger
+// clip, disagreed as the part's sum, the clip less the cylinder; held to its facets alone, it is
+// said to face inward, and the disagreement is this import's.)
 TEST(ExactCounterpart, AnExactFormThatDisagreesWithItsFacetsIsDropped) {
     auto flipped = read(hz::step_text::externalStyleCylinder());
     ASSERT_NE(flipped, nullptr);
@@ -445,31 +515,88 @@ TEST(ExactCounterpart, AnExactFormThatDisagreesWithItsFacetsIsDropped) {
     EXPECT_EQ(one.exactNote().rfind("shown from facets: ", 0), 0u) << one.exactNote();
     EXPECT_NE(one.exactNote().find("runs against its sense"), std::string::npos) << one.exactNote();
 
-    auto cylinder = read(hz::step_text::externalStyleCylinder());
-    ASSERT_NE(cylinder, nullptr);
-    std::set<hz::topo::Face*> faces;
-    for (auto& face : cylinder->faces()) faces.insert(&face);
-    turnInsideOut(*cylinder, faces);
-    ASSERT_TRUE(hz::topo::validateExact(*cylinder, hz::topo::exactTolerance(*cylinder)).empty());
-
     Document part;
-    importInto(part, std::move(cylinder));
+    part.setType(DocumentType::Part);
     part.featureTree().addFeature(
-        imported(read(hz::step_text::cClip(Vec3(10, 0, 0))), "clip.step"));
+        std::make_unique<Overgrown>(read(hz::step_text::externalStyleCylinder())));
     ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
     EXPECT_EQ(part.exactSolid(), nullptr);
     EXPECT_FALSE(part.exactMesh());
     const std::string said = "exact form disagrees with its facets: ";
     ASSERT_EQ(part.exactNote().rfind(said, 0), 0u) << part.exactNote();
-    // "<exact> vs <faceted>": the clip less the cylinder, against both in facets.
+    // "<exact> vs <faceted>": the cylinder and the block, against the cylinder in facets.
     const std::string figures = part.exactNote().substr(said.size());
     const auto vs = figures.find(" vs ");
     ASSERT_NE(vs, std::string::npos) << figures;
-    EXPECT_NEAR(std::stod(figures.substr(0, vs)), 0.5 * kPi, 1e-6);
+    EXPECT_NEAR(std::stod(figures.substr(0, vs)), 2.0 * kPi + 1.0, 1e-6);
     ASSERT_NE(part.solid(), nullptr);
     const double faceted = volumeOf(*part.solid());
     EXPECT_NEAR(std::stod(figures.substr(vs + 4)), faceted, 1e-6 * faceted);
-    EXPECT_NEAR(faceted, 4.5 * kPi, 4.5 * kPi * 1e-2);
+    EXPECT_NEAR(faceted, 2.0 * kPi, 2.0 * kPi * 1e-2);
+}
+
+// Task 8: each body is held to its facets on its own, and says why it cannot be shown exactly in
+// a note of its own, kept with its mesh for the builds after. A cylinder turned inside out whole,
+// imported before a clip: the cylinder is said to face inward, enclosing its own volume negative,
+// and the clip, which faces out and measures as its facets, is meshed. The part is shown from
+// facets, as long as any body is. A primitive added beside them is meshed alone: the cylinder's
+// note is kept with it. Two bodies turned inside out each say so, their notes one after the other.
+TEST(ExactCounterpart, EachBodyIsHeldToItsFacetsOnItsOwn) {
+    const auto insideOut = [](std::unique_ptr<hz::topo::Solid> body) {
+        std::set<hz::topo::Face*> faces;
+        for (auto& face : body->faces()) faces.insert(&face);
+        turnInsideOut(*body, faces);
+        EXPECT_TRUE(hz::topo::validateExact(*body, hz::topo::exactTolerance(*body)).empty());
+        return body;
+    };
+    const std::string inward = "shown from facets: the exact form faces inward (it encloses ";
+
+    Document part;
+    importInto(part, insideOut(read(hz::step_text::externalStyleCylinder())));
+    part.featureTree().addFeature(
+        imported(read(hz::step_text::cClip(Vec3(10, 0, 0))), "clip.step"));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    EXPECT_FALSE(part.exactMesh());
+    {
+        const hz::doc::ExactCounterpart& made = counterpartOf(part);
+        ASSERT_EQ(made.bodies.size(), 2u);
+        EXPECT_EQ(made.bodiesMeshed, 2u);
+        EXPECT_EQ(made.bodies[0].mesh, nullptr);
+        ASSERT_EQ(made.bodies[0].note.rfind(inward, 0), 0u) << made.bodies[0].note;
+        EXPECT_NEAR(std::stod(made.bodies[0].note.substr(inward.size())), -2.0 * kPi, 1e-6);
+        EXPECT_NE(made.bodies[1].mesh, nullptr) << made.bodies[1].note;
+        EXPECT_TRUE(made.bodies[1].note.empty()) << made.bodies[1].note;
+        EXPECT_EQ(part.exactNote(), made.bodies[0].note);
+    }
+    const std::string cylinderSays = part.exactNote();
+
+    auto beside = hz::doc::PrimitiveFeature::makeBox(1.0, 1.0, 1.0);
+    beside->setOperation(BodyOperation::NewBody);
+    ASSERT_TRUE(beside->setVector("basePoint", Vec3(20, 0, 0)));
+    part.featureTree().addFeature(std::move(beside));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    {
+        const hz::doc::ExactCounterpart& made = counterpartOf(part);
+        ASSERT_EQ(made.bodies.size(), 3u);
+        EXPECT_EQ(made.bodiesMeshed, 1u) << "the box alone";
+        EXPECT_EQ(made.bodies[0].note, cylinderSays) << "kept with the cylinder";
+        EXPECT_TRUE(made.bodies[2].note.empty()) << made.bodies[2].note;
+        EXPECT_EQ(part.exactNote(), cylinderSays);
+    }
+
+    Document both;
+    importInto(both, insideOut(read(hz::step_text::externalStyleCylinder())));
+    both.featureTree().addFeature(
+        imported(insideOut(read(hz::step_text::cClip(Vec3(10, 0, 0)))), "clip.step"));
+    ASSERT_TRUE(both.rebuildModel()) << both.lastBuildMessage();
+    EXPECT_EQ(both.exactSolid(), nullptr);
+    const hz::doc::ExactCounterpart& made = counterpartOf(both);
+    ASSERT_EQ(made.bodies.size(), 2u);
+    ASSERT_EQ(made.bodies[1].note.rfind(inward, 0), 0u) << made.bodies[1].note;
+    EXPECT_NEAR(std::stod(made.bodies[1].note.substr(inward.size())), -2.5 * kPi, 1e-6);
+    EXPECT_EQ(both.exactNote(), made.bodies[0].note + "; " + made.bodies[1].note);
 }
 
 // M6: a lone body turned inside out whole (each loop run the other way and each face's sense
@@ -890,4 +1017,151 @@ TEST(ExactCounterpart, AnImportsBodyIsCopiedOnlyWhenTheBuildKeepsIt) {
     ASSERT_TRUE(joined.rebuildModel()) << joined.lastBuildMessage();
     EXPECT_EQ(joined.exactSolid(), nullptr);
     EXPECT_EQ(join->copies(), 0) << "joined by a Boolean";
+}
+
+// Task 8: a body is held to its own facets, found in the part's faceted copy by their names, each
+// named after its exact face (model::logicalFace), and so after its feature. An import whose
+// faceted copy is named after another feature has none there: it is not checked, and says so; and
+// the facet that names no body's face is said after it.
+TEST(ExactCounterpart, ABodysFacetsAreFoundByTheirNames) {
+    Document part;
+    part.setType(DocumentType::Part);
+    part.featureTree().addFeature(
+        std::make_unique<Misnamed>(read(hz::step_text::externalStyleCylinder())));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    EXPECT_FALSE(part.exactMesh());
+    const hz::doc::ExactCounterpart& made = counterpartOf(part);
+    ASSERT_EQ(made.bodies.size(), 1u);
+    const std::string none = "exact form not checked: no facet of the part names a face of it";
+    EXPECT_EQ(made.bodies[0].note, none);
+    const std::string unnamed = none + "; exact form not checked: its facet elsewhere/face:";
+    ASSERT_EQ(part.exactNote().rfind(unnamed, 0), 0u) << part.exactNote();
+    EXPECT_NE(part.exactNote().find(" names no face of it"), std::string::npos) << part.exactNote();
+}
+
+// Review Focus 5 (Task 8): the counterpart keeps each body's mesh, so editing one body meshes it
+// alone, however large the others (an import may be). An import and a primitive, each a new body:
+// the first build meshes both. The primitive's radius changed, the rebuild, given the counterpart
+// before it (as every rebuild of a document is, and a worker's is given its document's), meshes
+// the primitive alone and keeps the import's mesh, the very one. The part's mesh is the bodies'
+// meshes one after the other: their vertices, their triangles (their corners and faces counted on
+// from the bodies before), their faces' names as they are, distinct, and their edges.
+TEST(ExactCounterpart, EditingOneBodyMeshesOnlyIt) {
+    Document part;
+    hz::doc::PrimitiveFeature* primitive = nullptr;
+    importBesidePrimitive(part, primitive);
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    const auto first = part.exactCounterpart();
+    ASSERT_NE(first, nullptr);
+    ASSERT_EQ(first->bodies.size(), 2u);
+    EXPECT_EQ(first->bodiesMeshed, 2u);
+    expectMeshed(part, 2.0 * kPi + 2.0 * kPi);
+
+    ASSERT_TRUE(primitive->setParameter("radius", 1.5));
+    part.featureTree().markChanged();
+    hz::doc::BuildOptions given;
+    given.previous = first;
+    ASSERT_TRUE(part.applyBuild(part.buildWithDiagnostics(nullptr, given)))
+        << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    const hz::doc::ExactCounterpart& edited = counterpartOf(part);
+    ASSERT_EQ(edited.bodies.size(), 2u);
+    EXPECT_EQ(edited.bodiesMeshed, 1u);
+    EXPECT_EQ(edited.bodies[0].mesh, first->bodies[0].mesh) << "the import's, as it was";
+    EXPECT_EQ(edited.bodies[0].fingerprint, first->bodies[0].fingerprint);
+    ASSERT_NE(edited.bodies[1].mesh, nullptr) << edited.bodies[1].note;
+    EXPECT_NE(edited.bodies[1].mesh, first->bodies[1].mesh);
+    EXPECT_NE(edited.bodies[1].fingerprint, first->bodies[1].fingerprint);
+    expectMeshed(part, 2.0 * kPi + 2.25 * 2.0 * kPi);
+
+    const hz::geo::MeshData& mesh = *part.exactMesh();
+    const hz::geo::MeshData& ofImport = *edited.bodies[0].mesh;
+    const hz::geo::MeshData& ofCylinder = *edited.bodies[1].mesh;
+    std::vector<float> positions = ofImport.positions;
+    positions.insert(positions.end(), ofCylinder.positions.begin(), ofCylinder.positions.end());
+    EXPECT_EQ(mesh.positions, positions);
+    std::vector<float> normals = ofImport.normals;
+    normals.insert(normals.end(), ofCylinder.normals.begin(), ofCylinder.normals.end());
+    EXPECT_EQ(mesh.normals, normals);
+    std::vector<std::uint32_t> indices = ofImport.indices;
+    for (const std::uint32_t i : ofCylinder.indices) {
+        indices.push_back(i + static_cast<std::uint32_t>(ofImport.positions.size() / 3));
+    }
+    EXPECT_EQ(mesh.indices, indices);
+    std::vector<std::uint32_t> triangleFaces = ofImport.triangleFaces;
+    for (const std::uint32_t f : ofCylinder.triangleFaces) {
+        triangleFaces.push_back(f + static_cast<std::uint32_t>(ofImport.faceTags.size()));
+    }
+    EXPECT_EQ(mesh.triangleFaces, triangleFaces);
+    std::vector<std::string> tags = ofImport.faceTags;
+    tags.insert(tags.end(), ofCylinder.faceTags.begin(), ofCylinder.faceTags.end());
+    EXPECT_EQ(mesh.faceTags, tags);
+    EXPECT_EQ(std::set<std::string>(tags.begin(), tags.end()).size(), tags.size())
+        << "a pick names one face";
+    EXPECT_EQ(mesh.edges.size(), ofImport.edges.size() + ofCylinder.edges.size());
+}
+
+// Task 8: a rebuild with nothing changed meshes no body: its counterpart is made of the last one's
+// part, mesh and bodies, the same objects.
+TEST(ExactCounterpart, AnUnchangedRebuildMeshesNothing) {
+    Document part;
+    hz::doc::PrimitiveFeature* primitive = nullptr;
+    importBesidePrimitive(part, primitive);
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    const auto first = part.exactCounterpart();
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->bodiesMeshed, 2u);
+
+    part.featureTree().markChanged();
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    const hz::doc::ExactCounterpart& again = counterpartOf(part);
+    EXPECT_EQ(again.bodiesMeshed, 0u);
+    EXPECT_EQ(again.solid, first->solid);
+    EXPECT_EQ(again.mesh, first->mesh);
+    ASSERT_EQ(again.bodies.size(), 2u);
+    EXPECT_EQ(again.bodies[0].mesh, first->bodies[0].mesh);
+    EXPECT_EQ(again.bodies[1].mesh, first->bodies[1].mesh);
+    EXPECT_EQ(again.madeFrom, first->madeFrom);
+}
+
+// The controller's ruling (Task 8): each body is meshed at the part's display tolerance, not its
+// own, so a body that grows the part past about 667 across (where 1.5e-4 of its size passes 0.1)
+// changes every body's tolerance, and every body is meshed again, as it must be: the import too,
+// though it is as it was. Its mesh is the one the part's new tolerance gives it.
+TEST(ExactCounterpart, AToleranceChangeRemeshesEveryBody) {
+    Document part;
+    hz::doc::PrimitiveFeature* primitive = nullptr;
+    importBesidePrimitive(part, primitive);
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    EXPECT_EQ(hz::model::SolidTessellator::displayTolerance(*part.exactSolid()), 0.1);
+    const auto first = part.exactCounterpart();
+    ASSERT_NE(first, nullptr);
+    ASSERT_EQ(first->bodies.size(), 2u);
+
+    ASSERT_TRUE(primitive->setVector("basePoint", Vec3(1000, 0, 0)));
+    part.featureTree().markChanged();
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    const double tolerance = hz::model::SolidTessellator::displayTolerance(*part.exactSolid());
+    const double across = std::sqrt(1002.0 * 1002.0 + 2.0 * 2.0 + 2.0 * 2.0);
+    EXPECT_NEAR(tolerance, 1.5e-4 * across, 1e-12 * across);
+    const hz::doc::ExactCounterpart& grown = counterpartOf(part);
+    ASSERT_EQ(grown.bodies.size(), 2u);
+    EXPECT_EQ(grown.bodiesMeshed, 2u) << "the import meshed again at the part's new tolerance";
+    EXPECT_NE(grown.bodies[0].mesh, first->bodies[0].mesh);
+    EXPECT_NE(grown.bodies[0].fingerprint, first->bodies[0].fingerprint);
+    const auto* cylinder = dynamic_cast<const ImportedBodyFeature*>(part.featureTree().feature(0));
+    ASSERT_NE(cylinder, nullptr);
+    const auto body = cylinder->exactBody();
+    ASSERT_NE(body, nullptr);
+    ASSERT_NE(grown.bodies[0].mesh, nullptr) << grown.bodies[0].note;
+    EXPECT_EQ(grown.bodies[0].mesh->indices,
+              hz::model::SolidTessellator::tessellate(*body, tolerance).indices);
+    EXPECT_EQ(grown.bodies[0].mesh->positions,
+              hz::model::SolidTessellator::tessellate(*body, tolerance).positions);
+    expectMeshed(part, 4.0 * kPi);
 }

@@ -109,18 +109,24 @@ hz::doc::BuildResult ranOnItsWorker(hz::ui::RebuildJob& job) {
 // either thread is the other's: a worker's build after the window's reuses the window's, and the
 // window's after a worker's reuses the worker's. Neither meshes the bodies again. (A copy that
 // read its bodies again from their STEP held this cylinder a last bit otherwise, and each switch
-// between the threads meshed it again.)
+// between the threads meshed it again.) Reused, the counterpart is the one made before it, its
+// part and its mesh the very ones. (Re-baselined for Task 8: a counterpart reused whole says it
+// meshed no body, ExactCounterpart::bodiesMeshed 0, so it is a new object sharing the one made
+// before it, its part, its mesh and its bodies, where it was that object itself.)
 TEST(RebuildJobTest, AWorkerAndTheWindowReuseEachOthersExactCounterpart) {
     {
         SCOPED_TRACE("the window's build first");
         const auto part = partOf(importedCylinderInInches(), "cylinder.step");
         ASSERT_TRUE(part->rebuildModel()) << part->lastBuildMessage();
         ASSERT_NE(part->exactSolid(), nullptr) << part->exactNote();
-        const auto made = part->exactCounterpart();
+        const hz::topo::Solid* const shown = part->exactSolid();
+        const auto mesh = part->exactMesh();
         hz::ui::RebuildJob job(*part);
-        const hz::doc::BuildResult result = ranOnItsWorker(job);
+        hz::doc::BuildResult result = ranOnItsWorker(job);
         EXPECT_EQ(result.failedFeatureIndex, -1) << result.failureMessage;
-        EXPECT_EQ(result.exact, made) << "the window's counterpart, reused";
+        ASSERT_TRUE(part->applyBuild(std::move(result))) << part->lastBuildMessage();
+        EXPECT_EQ(part->exactSolid(), shown) << "the window's counterpart, reused";
+        EXPECT_EQ(part->exactMesh(), mesh);
     }
     {
         SCOPED_TRACE("a worker's build first");
@@ -128,11 +134,11 @@ TEST(RebuildJobTest, AWorkerAndTheWindowReuseEachOthersExactCounterpart) {
         hz::ui::RebuildJob job(*part);
         ASSERT_TRUE(part->applyBuild(ranOnItsWorker(job))) << part->lastBuildMessage();
         ASSERT_NE(part->exactSolid(), nullptr) << part->exactNote();
-        const auto made = part->exactCounterpart();
         const hz::topo::Solid* const shown = part->exactSolid();
+        const auto mesh = part->exactMesh();
         ASSERT_TRUE(part->rebuildModel()) << part->lastBuildMessage();
-        EXPECT_EQ(part->exactCounterpart(), made) << "the worker's counterpart, reused";
-        EXPECT_EQ(part->exactSolid(), shown);
+        EXPECT_EQ(part->exactSolid(), shown) << "the worker's counterpart, reused";
+        EXPECT_EQ(part->exactMesh(), mesh);
     }
 }
 
