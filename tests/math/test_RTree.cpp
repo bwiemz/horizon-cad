@@ -437,3 +437,71 @@ TEST(RTreeTest, EveryQueryAgreesWithASweepWhateverTheEntriesShape) {
         }
     }
 }
+
+// A tree packed at once (RTree::load) answers every query as one built by inserting the same
+// entries one at a time, whatever their shape: points, as a profile's ends are, boxes spread in
+// x and y, and boxes all in one plane. It is a tree like any other after: inserts and removals
+// keep answering as a sweep does. An empty load is an empty tree; a load replaces what was there.
+TEST(RTreeTest, ATreePackedAtOnceAnswersAsOneBuiltEntryByEntry) {
+    for (const int shape : {0, 1, 2}) {
+        SCOPED_TRACE(shape);
+        std::vector<BoundingBox> boxes;
+        for (uint64_t i = 0; i < 3000; ++i) {
+            const double a = static_cast<double>((i * 2654435761u) % 1000) / 10.0;
+            const double b = static_cast<double>((i * 40503u) % 1000) / 10.0;
+            const Vec3 corner = shape == 2 ? Vec3(0.0, a, b) : Vec3(a, b, 0.0);
+            const Vec3 size = shape == 0 ? Vec3() : Vec3(0.5, 0.25, 0.0);
+            boxes.emplace_back(corner, corner + size);
+        }
+        RTree<uint64_t> packed;
+        packed.insert(99999, BoundingBox(Vec3(-5, -5, -5), Vec3(-4, -4, -4)));  // replaced
+        std::vector<std::pair<uint64_t, BoundingBox>> entries;
+        for (uint64_t i = 0; i < boxes.size(); ++i) entries.emplace_back(i, boxes[i]);
+        packed.load(entries);
+        RTree<uint64_t> inserted;
+        for (uint64_t i = 0; i < boxes.size(); ++i) inserted.insert(i, boxes[i]);
+        EXPECT_EQ(packed.size(), boxes.size());
+
+        const auto sweep = [&boxes](const BoundingBox& query) {
+            std::vector<uint64_t> hits;
+            for (uint64_t i = 0; i < boxes.size(); ++i) {
+                if (boxes[i].intersects(query)) hits.push_back(i);
+            }
+            return hits;
+        };
+        for (int q = 0; q < 300; ++q) {
+            const double x = static_cast<double>((q * 40503u) % 1000) / 10.0 - 5.0;
+            const double y = static_cast<double>((q * 2246822519u) % 1000) / 10.0 - 5.0;
+            const Vec3 corner = shape == 2 ? Vec3(-1.0, x, y) : Vec3(x, y, -1.0);
+            const BoundingBox query(corner, corner + Vec3(3.0, 3.0, 3.0));
+            EXPECT_EQ(sorted(packed.query(query)), sorted(inserted.query(query))) << q;
+            EXPECT_EQ(sorted(packed.query(query)), sweep(query)) << q;
+        }
+
+        // Still a tree: add some, take some away.
+        for (uint64_t i = 0; i < 500; ++i) {
+            const double a = static_cast<double>((i * 2246822519u) % 1000) / 10.0;
+            const Vec3 corner = shape == 2 ? Vec3(0.0, a, a) : Vec3(a, a, 0.0);
+            boxes.emplace_back(corner, corner + Vec3(0.1, 0.1, 0.0));
+            packed.insert(boxes.size() - 1, boxes.back());
+        }
+        for (uint64_t i = 0; i < boxes.size(); i += 3) {
+            EXPECT_TRUE(packed.remove(i, boxes[i]));
+            boxes[i] = BoundingBox(Vec3(1e9, 1e9, 1e9), Vec3(1e9, 1e9, 1e9));  // gone
+        }
+        for (int q = 0; q < 100; ++q) {
+            const double x = static_cast<double>((q * 2654435761u) % 1000) / 10.0;
+            const Vec3 corner = shape == 2 ? Vec3(-1.0, x, x) : Vec3(x, x, -1.0);
+            const BoundingBox query(corner, corner + Vec3(4.0, 4.0, 4.0));
+            EXPECT_EQ(sorted(packed.query(query)), sweep(query)) << q;
+        }
+    }
+
+    RTree<uint64_t> none;
+    none.insert(1, BoundingBox(Vec3(0, 0, 0), Vec3(1, 1, 1)));
+    none.load({});
+    EXPECT_TRUE(none.empty());
+    EXPECT_TRUE(none.query(BoundingBox(Vec3(-1, -1, -1), Vec3(2, 2, 2))).empty());
+    none.insert(2, BoundingBox(Vec3(0, 0, 0), Vec3(1, 1, 1)));
+    EXPECT_EQ(none.query(BoundingBox(Vec3(-1, -1, -1), Vec3(2, 2, 2))).size(), 1u);
+}

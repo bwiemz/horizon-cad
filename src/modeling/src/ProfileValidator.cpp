@@ -209,10 +209,15 @@ static math::BoundingBox segmentReach(const Vec2& a, const Vec2& b, double toler
 /// near its length, where every pair was tried, and a profile of 20,000
 /// points took seconds to validate.
 static math::RTree<size_t> segmentIndex(const std::vector<Vec2>& loop, double tolerance) {
-    math::RTree<size_t> index;
+    std::vector<std::pair<size_t, math::BoundingBox>> segments;
+    segments.reserve(loop.size());
     for (size_t i = 0; i < loop.size(); ++i) {
-        index.insert(i, segmentReach(loop[i], loop[(i + 1) % loop.size()], tolerance));
+        segments.emplace_back(i, segmentReach(loop[i], loop[(i + 1) % loop.size()], tolerance));
     }
+    // Packed at once: inserted one by one, a profile of 50,000 points took most of the time
+    // its extrusion took (RTree::load).
+    math::RTree<size_t> index;
+    index.load(std::move(segments));
     return index;
 }
 
@@ -438,14 +443,18 @@ ProfileRegions ProfileValidator::regions(
     std::vector<bool> used(all.size(), false);
     // Each curve by its two ends, for the chaining below to find the curve
     // that goes on from a point without trying every curve.
-    math::RTree<size_t> ends;
+    std::vector<std::pair<size_t, math::BoundingBox>> endBoxes;
+    endBoxes.reserve(2 * all.size());
     for (size_t k = 0; k < all.size(); ++k) {
         const EndpointPair ep = getEndpoints(all[k]);
         if (!ep.valid) continue;
         for (const Vec2& p : {ep.start, ep.end}) {
-            ends.insert(k, math::BoundingBox(math::Vec3(p.x, p.y, 0.0), math::Vec3(p.x, p.y, 0.0)));
+            endBoxes.emplace_back(
+                k, math::BoundingBox(math::Vec3(p.x, p.y, 0.0), math::Vec3(p.x, p.y, 0.0)));
         }
     }
+    math::RTree<size_t> ends;
+    ends.load(std::move(endBoxes));
     for (size_t i = 0; i < all.size(); ++i) {
         if (used[i]) continue;
         const auto* circle = dynamic_cast<const draft::DraftCircle*>(all[i].get());
