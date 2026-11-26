@@ -19,9 +19,15 @@ namespace hz::model {
 /// shaded by its surface's normals.
 class SolidTessellator {
 public:
-    /// The chord tolerance a part is drawn at: the viewport's for curved faces, in model units.
-    /// The part's exact counterpart (doc::BuildResult::exact) is meshed at it once.
+    /// The least chord tolerance a part is drawn at, in model units: a part's own is
+    /// displayTolerance(), which is this for a part up to about 667 across.
     static constexpr double kDisplayTolerance = 0.1;
+    /// A large part is drawn to this much of its size (topo::exactExtent, its diagonal), not to
+    /// kDisplayTolerance: the owner's choice. The mesh is cached in the part file and loaded for
+    /// every part of an assembly, and at 0.1 a part metres across was hundreds of thousands of
+    /// triangles, whatever the angle (the Moon buggy, 4.49 m across: 329k, its wheels' spheres
+    /// and tori alone 302k; 49k at 1.5e-4 of its diagonal).
+    static constexpr double kDisplayRelativeTolerance = 1.5e-4;
     /// The angle an exact face's mesh is drawn at (MeshOptions::maxAngle, between neighbouring
     /// triangles' normals), in radians: the owner's choice, coarser than the read point's 0.35.
     /// The mesh is cached in the part file and loaded for every part of an assembly, so it is
@@ -41,9 +47,17 @@ public:
     /// face's seam (an edge with the face on both sides) is not shown; its other edges are,
     /// along their exact curves. @p cancelled is looked at between exact faces: once it is set,
     /// none is meshed, and the first's reason is "cancelled".
-    static geo::MeshData tessellate(const topo::Solid& solid, double tolerance = kDisplayTolerance,
+    static geo::MeshData tessellate(const topo::Solid& solid, double tolerance,
                                     std::string* problem = nullptr,
                                     const std::atomic<bool>* cancelled = nullptr);
+
+    /// As above, at displayTolerance(@p solid): the part as it is drawn.
+    static geo::MeshData tessellate(const topo::Solid& solid);
+
+    /// The chord tolerance @p solid is drawn at: kDisplayRelativeTolerance of its size
+    /// (topo::exactExtent, the diagonal of the box round its vertices and exact edges, the size
+    /// its model tolerance comes from), or kDisplayTolerance where that is larger.
+    static double displayTolerance(const topo::Solid& solid);
 };
 
 }  // namespace hz::model

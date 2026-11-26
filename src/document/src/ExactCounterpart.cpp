@@ -438,7 +438,7 @@ std::shared_ptr<const ExactCounterpart> ExactFollower::make(
         }
         std::string problem;
         auto mesh = model::SolidTessellator::tessellate(
-            *gathered, model::SolidTessellator::kDisplayTolerance, &problem,
+            *gathered, model::SolidTessellator::displayTolerance(*gathered), &problem,
             control != nullptr ? &control->cancel : nullptr);
         if (stopped()) {
             cancelled = true;

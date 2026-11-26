@@ -22,6 +22,7 @@
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidTessellator.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
@@ -408,4 +409,27 @@ TEST(SolidTessellatorTest, AnExactPartsMeshIsWatertight) {
         }
         EXPECT_EQ(open, 0u) << "sides not met once the other way round, of " << sides.size();
     }
+}
+
+// The owner's display tolerance: a part is drawn to 0.1 up to about 667 across, and beyond that to
+// 1.5e-4 of its size (its diagonal, topo::exactExtent). A cylinder of radius 200 and height 200,
+// 600 across, is drawn to 0.1; one of radius 1000 and height 2000, 2000 sqrt 3 across, to 0.52,
+// with fewer triangles than 0.1 would give it.
+TEST(SolidTessellatorTest, ALargePartIsDrawnToItsSizeASmallOneToATenth) {
+    const auto small = exactCylinder(200.0, 200.0);
+    const auto large = exactCylinder(1000.0, 2000.0);
+    ASSERT_NE(small, nullptr);
+    ASSERT_NE(large, nullptr);
+    EXPECT_NEAR(hz::topo::exactExtent(*small), 600.0, 1e-9 * 600.0);
+    const double across = 2000.0 * std::sqrt(3.0);
+    EXPECT_NEAR(hz::topo::exactExtent(*large), across, 1e-9 * across);
+    EXPECT_EQ(SolidTessellator::displayTolerance(*small), 0.1);
+    EXPECT_NEAR(SolidTessellator::displayTolerance(*large), 1.5e-4 * across, 1e-12 * across);
+
+    // Drawn so: the display's mesh is the mesh at that tolerance.
+    EXPECT_EQ(SolidTessellator::tessellate(*small).indices,
+              SolidTessellator::tessellate(*small, 0.1).indices);
+    const auto drawn = SolidTessellator::tessellate(*large);
+    EXPECT_EQ(drawn.indices, SolidTessellator::tessellate(*large, 1.5e-4 * across).indices);
+    EXPECT_LT(drawn.indices.size(), SolidTessellator::tessellate(*large, 0.1).indices.size());
 }

@@ -26,10 +26,12 @@
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/Frame.h"
 #include "horizon/geometry/MeshData.h"
 #include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Units.h"
+#include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -155,7 +157,8 @@ void expectMeshed(const Document& part, double volume) {
         vol6 += a.dot(b.cross(c));
         area += 0.5 * (b - a).cross(c - a).length();
     }
-    EXPECT_NEAR(vol6 / 6.0, volume, area * hz::model::SolidTessellator::kDisplayTolerance);
+    EXPECT_NEAR(vol6 / 6.0, volume,
+                area * hz::model::SolidTessellator::displayTolerance(*part.exactSolid()));
 }
 
 /// @p faces of @p solid, a closed shell of it, turned inside out as an exact solid can be and still
@@ -784,4 +787,36 @@ TEST(ExactCounterpart, APartOpenInATabIsBuiltWithIt) {
 
     std::filesystem::remove(shownPath);
     std::filesystem::remove(placedPath);
+}
+
+// The owner's display tolerance: the counterpart is meshed for the display, and so for its part
+// file's cache, to 0.1 up to about 667 across, and beyond that to 1.5e-4 of its size (its
+// diagonal, topo::exactExtent). A cylinder of radius 200 and height 200, written as STEP and
+// imported, is 600 across; one of radius 1000 and height 2000 is 2000 sqrt 3 across, meshed to
+// 0.52.
+TEST(ExactCounterpart, ALargePartIsMeshedToItsSizeASmallOneToATenth) {
+    struct Case {
+        double radius;
+        double height;
+        double across;
+        double tolerance;
+    };
+    const double across = 2000.0 * std::sqrt(3.0);
+    for (const Case& c :
+         {Case{200.0, 200.0, 600.0, 0.1}, Case{1000.0, 2000.0, across, 1.5e-4 * across}}) {
+        SCOPED_TRACE(c.radius);
+        const auto cylinder = hz::model::exact::makeCylinder(
+            hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), c.radius, c.height);
+        ASSERT_NE(cylinder, nullptr);
+        Document part;
+        importInto(part, read(hz::io::StepFormat::toString({cylinder.get()})));
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+        EXPECT_NEAR(hz::topo::exactExtent(*part.exactSolid()), c.across, 1e-9 * c.across);
+        ASSERT_NE(part.exactMesh(), nullptr);
+        EXPECT_EQ(part.exactMesh()->indices,
+                  hz::model::SolidTessellator::tessellate(*part.exactSolid(), c.tolerance).indices);
+        ASSERT_NE(part.exactOrFacetedMesh(), nullptr);
+        EXPECT_EQ(part.exactOrFacetedMesh()->indices, part.exactMesh()->indices);
+    }
 }

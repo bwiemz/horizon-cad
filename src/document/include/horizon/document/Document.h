@@ -172,8 +172,8 @@ public:
     /// its imported bodies as read, exact, beside solid(), their faceted copy,
     /// while only imports have made the part. Null when it has none.
     const topo::Solid* exactSolid() const;
-    /// Its mesh, made once by its build at
-    /// model::SolidTessellator::kDisplayTolerance, as the display draws it:
+    /// Its mesh, made once by its build at its display tolerance
+    /// (model::SolidTessellator::displayTolerance), as the display draws it:
     /// what the display draws, and anything else that shows the part, without
     /// meshing it again. Null with exactSolid().
     std::shared_ptr<const geo::MeshData> exactMesh() const;
@@ -185,8 +185,9 @@ public:
         return exactSolid() != nullptr ? exactSolid() : solid();
     }
     /// The mesh the part is shown with: its exact counterpart's (exactMesh()),
-    /// made by its build; else solid() tessellated now at
-    /// model::SolidTessellator::kDisplayTolerance. Null without a solid.
+    /// made by its build; else solid() tessellated now at its display
+    /// tolerance (model::SolidTessellator::displayTolerance). Null without a
+    /// solid.
     std::shared_ptr<const geo::MeshData> exactOrFacetedMesh() const;
     /// Why the part has no exact counterpart where its imports would give it
     /// one (ExactCounterpart::note); empty otherwise.

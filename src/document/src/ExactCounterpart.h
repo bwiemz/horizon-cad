@@ -20,8 +20,9 @@ struct ExactCounterpart {
     /// The imported bodies as read, exact, gathered as the part gathers their facets
     /// (ImportedBodyFeature::exactBody); null when they could not be had, as `note` says.
     std::shared_ptr<const topo::Solid> solid;
-    /// Its mesh, through the read point at model::SolidTessellator::kDisplayTolerance, as the
-    /// display draws it (model::SolidTessellator::tessellate): each face's triangles, wound
+    /// Its mesh, through the read point at its display tolerance
+    /// (model::SolidTessellator::displayTolerance), as the display draws it
+    /// (model::SolidTessellator::tessellate): each face's triangles, wound
     /// outward, their corners shared and shaded by the surface's normals; one faceTags entry a
     /// face, by its name; its edges but its seams, along their curves. Set with `solid`, null
     /// with it.

@@ -15,6 +15,7 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/modeling/BoundaryMesh.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/HalfEdge.h"
 
 namespace hz::model {
@@ -257,6 +258,14 @@ void appendEdges(const topo::Solid& solid, double tolerance, geo::MeshData& out)
 }
 
 }  // namespace
+
+double SolidTessellator::displayTolerance(const topo::Solid& solid) {
+    return std::max(kDisplayTolerance, kDisplayRelativeTolerance * topo::exactExtent(solid));
+}
+
+geo::MeshData SolidTessellator::tessellate(const topo::Solid& solid) {
+    return tessellate(solid, displayTolerance(solid));
+}
 
 geo::MeshData SolidTessellator::tessellate(const topo::Solid& solid, double tolerance,
                                            std::string* problem,

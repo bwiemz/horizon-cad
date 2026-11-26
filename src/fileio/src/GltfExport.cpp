@@ -227,7 +227,7 @@ bool GltfExport::saveSolid(const std::string& path, const topo::Solid& solid,
     Item item;
     std::string problem;
     item.mesh = model::SolidTessellator::tessellate(
-        solid, model::SolidTessellator::kDisplayTolerance, &problem);
+        solid, model::SolidTessellator::displayTolerance(solid), &problem);
     if (!problem.empty()) {
         if (error) *error = "a face of the part could not be meshed: " + problem;
         return false;

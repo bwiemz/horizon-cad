@@ -36,7 +36,9 @@ public:
     /// Write items to a .glb file. False on I/O failure or empty geometry.
     static bool save(const std::string& path, const std::vector<Item>& items);
 
-    /// Convenience: tessellate @p solid and export it with @p material.
+    /// Convenience: tessellate @p solid as the display draws it (at
+    /// model::SolidTessellator::displayTolerance) and export it with
+    /// @p material.
     /// False, with why in @p error when given, where a face of it cannot be
     /// meshed (model::SolidTessellator::tessellate), it has no triangles, or
     /// the file cannot be written.

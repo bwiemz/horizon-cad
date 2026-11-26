@@ -146,8 +146,7 @@ std::shared_ptr<const geo::MeshData> Document::exactMesh() const {
 std::shared_ptr<const geo::MeshData> Document::exactOrFacetedMesh() const {
     if (auto mesh = exactMesh()) return mesh;
     if (m_solid == nullptr) return nullptr;
-    return std::make_shared<const geo::MeshData>(
-        model::SolidTessellator::tessellate(*m_solid, model::SolidTessellator::kDisplayTolerance));
+    return std::make_shared<const geo::MeshData>(model::SolidTessellator::tessellate(*m_solid));
 }
 
 const std::string& Document::exactNote() const {
