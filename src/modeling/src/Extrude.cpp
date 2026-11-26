@@ -967,15 +967,22 @@ ExactAndBridge buildExactAndBridge(const ProfileRegions& found, const draft::Ske
     resolution.segmentsPerTurn = segments;
     resolution.chordTolerance = chordTolerance;
     MastersConstruction masters;
+    MastersSolid own;
     if (found.isSingleLoop()) {
         masters = [&] {
             return mastersPrism(found.regions.front().outer, plane, offset, featureID, segments,
                                 chordTolerance);
         };
+        // The faceted body is master's own prism, as its Stable path built and named it, named
+        // as the bridge names the same places (Ruling 44).
+        own = [&](std::string& why) {
+            return extrudeLoop(found.regions.front().outer, plane, direction, distance, featureID,
+                               segments, chordTolerance, &why, NamingScheme::Stable);
+        };
     }
     return buildWithBridge(
         [&](std::string& why) { return extrudeExactly(found, plane, offset, featureID, why); },
-        resolution, masters, reason);
+        resolution, masters, reason, own);
 }
 
 }  // namespace
@@ -995,6 +1002,27 @@ Extrude::ExactAndBridge Extrude::exactAndBridge(
     }
     return buildExactAndBridge(found, plane, direction, distance, featureID, segments,
                                chordTolerance, reason);
+}
+
+std::unique_ptr<topo::Solid> Extrude::mastersSolid(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+    const draft::SketchPlane& plane, const Vec3& direction, double distance,
+    const std::string& featureID, int segments, double chordTolerance, std::string* reason) {
+    const ProfileRegions found = ProfileValidator::regions(profile);
+    if (auto refused = refusal(found, plane, direction, distance)) {
+        if (reason) *reason = std::move(*refused);
+        return nullptr;
+    }
+    if (segments < 3) {
+        if (reason) *reason = "arcs need at least 3 segments per turn";
+        return nullptr;
+    }
+    if (!found.isSingleLoop()) {
+        if (reason) *reason = "master built a profile of several loops with Booleans";
+        return nullptr;
+    }
+    return extrudeLoop(found.regions.front().outer, plane, direction, distance, featureID, segments,
+                       chordTolerance, reason, NamingScheme::Stable);
 }
 
 std::unique_ptr<topo::Solid> Extrude::exact(

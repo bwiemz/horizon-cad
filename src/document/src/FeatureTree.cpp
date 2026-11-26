@@ -1494,7 +1494,10 @@ FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/
         return model::mastersFacets(soup, curvedSide, featureID(),
                                     isPlaced() ? placement() : math::Mat4::identity());
     };
-    auto built = model::buildWithBridge(build, facetResolution(), masters, reason);
+    // The faceted body is master's own primitive, as its Stable path built, named and placed it,
+    // named as the bridge names the same places (Ruling 44).
+    const auto own = [this](std::string& why) { return facetedAsMaster(&why); };
+    auto built = model::buildWithBridge(build, facetResolution(), masters, reason, own);
     out.faceted = std::move(built.faceted);
     out.exact = std::move(built.exact);
     return out;

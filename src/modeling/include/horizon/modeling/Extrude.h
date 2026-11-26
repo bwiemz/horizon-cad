@@ -91,6 +91,16 @@ public:
         const draft::SketchPlane& plane, const math::Vec3& direction, double distance,
         const std::string& featureID, std::string* reason = nullptr);
 
+    /// Master's own faceted extrusion of a profile of one loop, its prism as its Stable path built
+    /// and named it (Ruling 44: the faceted body of a converted feature whose master construction
+    /// was one construction). Null, with @p reason, where master refuses it, or for a profile of
+    /// several loops, which master built with Booleans.
+    static std::unique_ptr<topo::Solid> mastersSolid(
+        const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+        const draft::SketchPlane& plane, const math::Vec3& direction, double distance,
+        const std::string& featureID, int segments = kDefaultSegments, double chordTolerance = 0.0,
+        std::string* reason = nullptr);
+
     /// exact()'s solid and its bridge copy, what Extrude::execute gives under Stable naming.
     using ExactAndBridge = model::ExactAndBridge;
 

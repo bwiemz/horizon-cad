@@ -767,19 +767,21 @@ TEST(ExactRevolve, TheBridgeIsMastersFacets) {
     }
 }
 
-// Two differ from master on purpose. Through part of a turn a flat face is one plane, a sector of
-// a disc or a ring, and its bridge is one face, as every plane's is: master cut it into a quad for
-// each step (the rectangle's quarter turn was 26 faces, 44 edges and 20 vertices, the washer's
-// 34, 68 and 36). The vertices are master's.
-TEST(ExactRevolve, APartialTurnsFlatFaceIsOneFacet) {
+// Through part of a turn a flat face is one plane, a sector of a disc or a ring, and its faceted
+// copy is master's own revolve (Ruling 44): a quad for each step, as master cut it, so that what a
+// Boolean after it numbers is master's (re-baselined: Ruling 25 made it one face, 12 faces, 30
+// edges and 20 vertices for the rectangle's quarter turn, 20, 54 and 36 for the washer's). Master's
+// counts: 26, 44 and 20; 34, 68 and 36. The vertices are master's, every face lies on the exact
+// face its logical name names, and every exact face and edge is a facet's or a chord's logical one.
+TEST(ExactRevolve, APartialTurnsFlatFaceIsMastersFacets) {
     struct Case {
         const char* what;
         Profile profile;
-        std::size_t faces, edges, vertices;
+        std::size_t faces, edges, vertices, flatSeams;
     };
-    // Two sectors, eight facets of the wall and the caps; the washer's two walls.
-    const std::vector<Case> cases = {{"a rectangle", rectangle(), 12, 30, 20},
-                                     {"a washer", washer(), 20, 54, 36}};
+    // At 32 a turn a quarter turn is 8 steps: each flat face 8 quads, 7 seams between them.
+    const std::vector<Case> cases = {{"a rectangle", rectangle(), 26, 44, 20, 14},
+                                     {"a washer", washer(), 34, 68, 36, 14}};
     for (const Case& c : cases) {
         SCOPED_TRACE(c.what);
         const auto exact = revolved(c.profile, kPi / 2.0);
@@ -792,6 +794,25 @@ TEST(ExactRevolve, APartialTurnsFlatFaceIsOneFacet) {
         expectMastersVertices(*bridge, c.profile, kPi / 2.0);
         expectOnTheExactFaces(*bridge, *exact, 1e-9 * sizeOf(*bridge));
         expectNamedAsItsFacets(*exact, *bridge);
+        // Master's seams between a flat face's quads: lines inside one plane's facets.
+        std::set<std::string> planes;
+        for (const auto& face : exact->faces()) {
+            if (face.alive && face.exactSurface != nullptr &&
+                face.exactSurface->kind() == hz::geo::SurfaceKind::Plane) {
+                planes.insert(face.topoId.tag());
+            }
+        }
+        std::size_t seams = 0;
+        for (const auto& edge : bridge->edges()) {
+            const hz::topo::HalfEdge* he = edge.halfEdge;
+            if (!edge.alive || he == nullptr || he->twin == nullptr) continue;
+            const std::string face = hz::model::logicalFace(he->face->topoId.tag());
+            if (planes.count(face) != 0 &&
+                face == hz::model::logicalFace(he->twin->face->topoId.tag())) {
+                ++seams;
+            }
+        }
+        EXPECT_EQ(seams, c.flatSeams) << "master's seams inside the flat faces";
     }
 }
 

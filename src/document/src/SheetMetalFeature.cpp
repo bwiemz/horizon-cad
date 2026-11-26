@@ -91,6 +91,11 @@ std::vector<std::string> rolesOf(const model::SheetMetalStrip& strip,
 struct ExactOutline {
     std::vector<std::shared_ptr<draft::DraftEntity>> pieces;
     std::vector<std::string> roles;
+    /// The name of the face each of master's lines (the outline's, by index) extrudes to under
+    /// Ruling 28: a flat's or an end's its piece's role, a bend's chord `<bend's role>/facet:<c>`,
+    /// c counted along the bend from the flat before it in the strip's order, as the bridge
+    /// numbers a bend's facets (master's own faceted flange, Ruling 44).
+    std::vector<std::string> lineRoles;
 };
 
 /// The flange's exact outline on the sketch (stage 3), in master's order: @p bent, the strip's
@@ -114,6 +119,12 @@ ExactOutline exactOutline(const std::vector<std::shared_ptr<draft::DraftEntity>>
     ExactOutline laid;
     laid.pieces.reserve(bent.size());
     laid.roles = roles;
+    laid.lineRoles.assign(n, std::string());
+    // Master's line along crossSection's edge @p e: flipped, master's polygon ran backwards from
+    // its last corner but one, its closing line still last.
+    const auto lineOf = [n, flipped](std::size_t e) {
+        return !flipped || e + 1 == n ? e : n - 2 - e;
+    };
     std::size_t edge = 0;  // the first of crossSection's edges the piece spans
     for (std::size_t j = 0; j < bent.size(); ++j) {
         const auto& piece = bent[j];
@@ -129,14 +140,23 @@ ExactOutline exactOutline(const std::vector<std::shared_ptr<draft::DraftEntity>>
                 math::normalizeAngle(std::atan2(start.y - centre.y, start.x - centre.x)));
             arc->setEndAngle(math::normalizeAngle(std::atan2(end.y - centre.y, end.x - centre.x)));
             laid.pieces.push_back(piece);
+            // Counted from the flat before the bend in the strip's order, as the bridge numbers
+            // a bend's facets: forward along the bottom, which crossSection walks forward, and
+            // back along the top, which it walks back (after the far end, its middle piece).
+            const auto chords = static_cast<std::size_t>(perBend);
+            const bool top = j > (bent.size() - 2) / 2;
+            for (std::size_t c = 0; c < chords; ++c) {
+                if (edge + c >= n) return refuse();
+                laid.lineRoles[lineOf(edge + c)] =
+                    roles[j] + "/facet:" + std::to_string(top ? chords - 1 - c : c);
+            }
             edge += static_cast<std::size_t>(perBend);
             continue;
         }
         const auto* line = dynamic_cast<const draft::DraftLine*>(piece.get());
         if (line == nullptr || bend || edge >= n) return refuse();
-        // Master's line along that edge: flipped, master's polygon ran backwards from its last
-        // corner but one, its closing line still last.
-        const std::size_t k = !flipped || edge + 1 == n ? edge : n - 2 - edge;
+        // Master's line along that edge.
+        const std::size_t k = lineOf(edge);
         const auto* masters = dynamic_cast<const draft::DraftLine*>(outline[k].get());
         const math::Vec2 a = lay(line->start());
         const math::Vec2 b = lay(line->end());
@@ -145,6 +165,7 @@ ExactOutline exactOutline(const std::vector<std::shared_ptr<draft::DraftEntity>>
             return refuse();
         }
         laid.pieces.push_back(outline[k]);
+        laid.lineRoles[k] = roles[j];
         ++edge;
     }
     if (edge != n || laid.pieces.empty()) return refuse();
@@ -436,8 +457,33 @@ FeatureOutput SheetMetalFeature::executeWithExact(const BuildContext& /*context*
         face.topoId = topo::TopologyID::make(m_featureID, found->second);
     }
     model::nameEdgesLogically(*exact);
+    // The faceted flange is master's own: its cross-section's polygon extruded as master's Stable
+    // path built it, every bend in master's chords, its faces named after the sketch as the exact
+    // flange's are (Ruling 28), then as the bridge names the same places (Ruling 44).
+    const auto own = [&](std::string& ownWhy) -> std::unique_ptr<topo::Solid> {
+        auto made =
+            model::Extrude::mastersSolid(outline, plane, plane.normal(), m_width, m_featureID,
+                                         model::Extrude::kDefaultSegments, 0.0, &ownWhy);
+        if (!made) return made;
+        std::unordered_map<std::string, std::string> lineRole;
+        for (std::size_t k = 0; k < outline.size(); ++k) {
+            lineRole.emplace("e" + std::to_string(outline[k]->id()), bent.lineRoles[k]);
+        }
+        for (auto& face : made->faces()) {
+            const std::string tag = face.topoId.tag();
+            if (tag.compare(0, sideOf.size(), sideOf) != 0) continue;
+            const auto found = lineRole.find(tag.substr(sideOf.size()));
+            if (found == lineRole.end() || found->second.empty()) {
+                ownWhy = "its face " + tag + " is no line of its sheet's cross-section";
+                return nullptr;
+            }
+            face.topoId = topo::TopologyID::make(m_featureID, found->second);
+        }
+        model::nameEdgesLogically(*made);
+        return made;
+    };
     auto built = model::buildWithBridge([&exact](std::string& /*why*/) { return std::move(exact); },
-                                        facetResolution(), {}, &why);
+                                        facetResolution(), {}, &why, own);
     if (!built.faceted || !built.exact) {
         return fail(why.empty() ? "the sheet could not be made" : why);
     }

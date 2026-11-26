@@ -21,6 +21,7 @@ add_executable(hz_document_tests
     test_ExactConstruction.cpp
     test_BridgeNumbering.cpp
     test_RegressionSet.cpp
+    test_DownstreamNumbering.cpp
 )
 
 target_link_libraries(hz_document_tests

@@ -279,10 +279,10 @@ TEST(SheetMetalFeature, ABendIsTwoCylinders) {
     EXPECT_NEAR(volumeOf(doc), 10.0 * facetedArea(flats, 1.0, 2.0, kPi / 2, 8), 1e-9);
 }
 
-// A bend of 60 degrees: exact as any, and its faceted copy cut by its arcs' own sweep, as every
-// exact arc's bridge is (FacetResolution::stepsFor, at 32 chords a turn): 6 chords, where master
-// cut every bend, whatever its angle, into 8 (re-baselined: master's faceted 60-degree flange had
-// 8 chords to each arc).
+// A bend of 60 degrees: exact as any, and its faceted copy master's own flange (Ruling 44): every
+// bend, whatever its angle, cut into its bendSegments chords, 8 (re-baselined: the copy was cut
+// from the exact flange by its arcs' own sweep, 6 chords at 32 a turn, FacetResolution::stepsFor,
+// which still cuts the bridge that names it).
 TEST(SheetMetalFeature, ABendOtherThanNinetyDegrees) {
     const double angle = kPi / 3.0;
     auto flange = std::make_unique<SheetMetalFeature>(
@@ -297,9 +297,9 @@ TEST(SheetMetalFeature, ABendOtherThanNinetyDegrees) {
     const hz::model::FacetResolution resolution = flange->facetResolution();
     EXPECT_EQ(resolution.segmentsPerTurn, 32);
     EXPECT_EQ(resolution.chordTolerance, 0.0);
-    const int chords = resolution.stepsFor(2.0, angle);
-    EXPECT_EQ(chords, 6);
-    EXPECT_EQ(resolution.stepsFor(3.0, angle), chords);
+    EXPECT_EQ(resolution.stepsFor(2.0, angle), 6) << "the bridge that names the copy";
+    EXPECT_EQ(resolution.stepsFor(3.0, angle), 6);
+    const int chords = 8;  // master's, bendSegments
     Document doc;
     doc.featureTree().addFeature(std::move(flange));
     ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();

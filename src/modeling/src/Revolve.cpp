@@ -1452,11 +1452,21 @@ ExactAndBridge buildExactAndBridge(const ProfileRegions& found, const draft::Ske
         return mastersRevolve(found, plane, axisPoint, axisDir, angle, featureID, segments,
                               chordTolerance);
     };
+    // A single loop's faceted body is master's own revolve, as its Stable path built and named
+    // it, named as the bridge names the same places (Ruling 44); master turned several loops and
+    // made the solid by Booleans, whose pieces are theirs (Ruling 23).
+    MastersSolid own;
+    if (found.isSingleLoop()) {
+        own = [&](std::string& why) {
+            return revolveLoop(found.regions.front().outer, plane, axisPoint, axisDir, angle,
+                               featureID, segments, chordTolerance, &why, NamingScheme::Stable);
+        };
+    }
     return buildWithBridge(
         [&](std::string& why) {
             return revolveExactly(found, plane, axisPoint, axisDir, angle, featureID, why);
         },
-        resolution, masters, reason);
+        resolution, masters, reason, own);
 }
 
 }  // namespace

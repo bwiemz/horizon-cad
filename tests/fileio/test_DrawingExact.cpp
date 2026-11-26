@@ -224,8 +224,11 @@ TEST(DrawingExact, ATwoToOneViewHalvesTheTolerance) {
 }
 
 // A part with a cut has no exact part: it is drawn from its faceted part, as before, each view
-// with the edges of each kind master drew (recorded before this change, at d89f6422, whose drawing
-// code and faceted part are master's, 25b1947b).
+// with the edges of each kind master drew. Recorded at master, 6e822892 (re-baselined for Ruling
+// 44: the figures were recorded at d89f6422, whose cylinder's faceted copy was cut from its exact
+// form, so the cut, and the right view's hidden lines, met its faces in another order than
+// master's; the copy is master's own cylinder now, and the right view is master's: 263 visible
+// and 431 hidden edges, where that copy gave 257 and 437).
 TEST(DrawingExact, AFacetedPartIsDrawnAsBefore) {
     const TempFolder folder("faceted");
     Document part;
@@ -255,7 +258,7 @@ TEST(DrawingExact, AFacetedPartIsDrawnAsBefore) {
     const std::vector<Kinds> masters{
         {{{0, 0}, 364}, {{0, 1}, 328}, {{2, 0}, 2}},
         {{{0, 0}, 672}, {{0, 1}, 18}},
-        {{{0, 0}, 257}, {{0, 1}, 437}, {{2, 0}, 2}},
+        {{{0, 0}, 263}, {{0, 1}, 431}, {{2, 0}, 2}},
         {{{0, 0}, 518}, {{0, 1}, 175}, {{2, 0}, 2}},
     };
     EXPECT_EQ(kindsOf(drawing), masters);

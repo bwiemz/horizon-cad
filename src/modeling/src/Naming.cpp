@@ -655,6 +655,141 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
     for (topo::Edge* edge : unmatchedEdges) renumber(edge->topoId);
 }
 
+void nameAfterBridge(topo::Solid& own, const topo::Solid& bridge) {
+    // The bridge's vertices, found again near where master's are: master's vertices to the
+    // rounding of the curves they were evaluated on (Rulings 21 and 24).
+    std::vector<math::Vec3> points;
+    points.reserve(bridge.vertices().size());
+    std::unordered_map<const topo::Vertex*, std::size_t> bridgeIndex;
+    double size = 0.0;
+    for (const auto& v : bridge.vertices()) {
+        if (!v.alive) continue;
+        if (!std::isfinite(v.point.x) || !std::isfinite(v.point.y) || !std::isfinite(v.point.z)) {
+            return;  // nothing to match against: master's own names stand
+        }
+        bridgeIndex.emplace(&v, points.size());
+        points.push_back(v.point);
+        size = std::max(size, v.point.length());
+    }
+    if (points.empty()) return;
+    math::Vec3 lo = points.front();
+    math::Vec3 hi = points.front();
+    for (const math::Vec3& p : points) {
+        lo = math::Vec3(std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z));
+        hi = math::Vec3(std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z));
+    }
+    size = std::max(size, (hi - lo).length());
+    const PointIndex index(points, 1e-9 * std::max(size, 1e-300));
+    std::unordered_map<const topo::Vertex*, std::size_t> at;
+    at.reserve(own.vertices().size());
+    for (const auto& v : own.vertices()) {
+        if (!v.alive) continue;
+        const std::optional<std::size_t> i = index.find(v.point);
+        if (i.has_value()) at.emplace(&v, i.value());
+    }
+
+    // A face's corners, its holes' too, as the bridge's points; empty where one has none.
+    const auto cornersOf = [](const topo::Face& face, const auto& pointOf) {
+        std::vector<std::size_t> corners;
+        std::vector<const topo::Wire*> loops{face.outerLoop};
+        loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+        for (const topo::Wire* loop : loops) {
+            if (loop == nullptr || loop->halfEdge == nullptr) return std::vector<std::size_t>{};
+            const topo::HalfEdge* he = loop->halfEdge;
+            do {
+                const std::optional<std::size_t> p = pointOf(he->origin);
+                if (!p.has_value()) return std::vector<std::size_t>{};
+                corners.push_back(p.value());
+                he = he->next;
+            } while (he != nullptr && he != loop->halfEdge);
+        }
+        std::sort(corners.begin(), corners.end());
+        return corners;
+    };
+    const auto bridgePoint = [&bridgeIndex](const topo::Vertex* v) -> std::optional<std::size_t> {
+        const auto found = bridgeIndex.find(v);
+        if (found == bridgeIndex.end()) return std::nullopt;
+        return found->second;
+    };
+    const auto ownPoint = [&at](const topo::Vertex* v) -> std::optional<std::size_t> {
+        const auto found = at.find(v);
+        if (found == at.end()) return std::nullopt;
+        return found->second;
+    };
+    struct CornersHash {
+        std::size_t operator()(const std::vector<std::size_t>& corners) const {
+            std::size_t h = corners.size();
+            for (const std::size_t c : corners) h = h * 1000003u ^ std::hash<std::size_t>{}(c);
+            return h;
+        }
+    };
+    std::unordered_map<std::vector<std::size_t>, const topo::TopologyID*, CornersHash> faceAt;
+    faceAt.reserve(bridge.faces().size());
+    for (const auto& face : bridge.faces()) {
+        if (!face.alive) continue;
+        auto corners = cornersOf(face, bridgePoint);
+        if (!corners.empty()) faceAt.emplace(std::move(corners), &face.topoId);
+    }
+    std::unordered_map<PointPair, const topo::TopologyID*, PointPairHash> edgeAt;
+    edgeAt.reserve(bridge.edges().size());
+    for (const auto& edge : bridge.edges()) {
+        if (!edge.alive || edge.halfEdge == nullptr || edge.halfEdge->twin == nullptr) continue;
+        const std::optional<std::size_t> a = bridgePoint(edge.halfEdge->origin);
+        const std::optional<std::size_t> b = bridgePoint(edge.halfEdge->twin->origin);
+        if (a.has_value() && b.has_value()) {
+            edgeAt.emplace(unordered(a.value(), b.value()), &edge.topoId);
+        }
+    }
+
+    // Each face and edge of master's construction takes the bridge's name for the same place;
+    // what the bridge has no place for (a partial turn's flat face, which the bridge cuts as one)
+    // keeps master's.
+    std::unordered_set<std::string> given;
+    std::vector<topo::TopologyID*> kept;
+    for (auto& face : own.faces()) {
+        if (!face.alive) continue;
+        const auto found = faceAt.find(cornersOf(face, ownPoint));
+        if (found != faceAt.end() && found->second->isValid()) {
+            face.topoId = *found->second;
+            given.insert(face.topoId.tag());
+        } else if (face.topoId.isValid()) {
+            kept.push_back(&face.topoId);
+        }
+    }
+    for (auto& edge : own.edges()) {
+        if (!edge.alive) continue;
+        const topo::HalfEdge* he = edge.halfEdge;
+        auto found = edgeAt.end();
+        if (he != nullptr && he->twin != nullptr) {
+            const std::optional<std::size_t> a = ownPoint(he->origin);
+            const std::optional<std::size_t> b = ownPoint(he->twin->origin);
+            if (a.has_value() && b.has_value())
+                found = edgeAt.find(unordered(a.value(), b.value()));
+        }
+        if (found != edgeAt.end() && found->second->isValid()) {
+            edge.topoId = *found->second;
+            given.insert(edge.topoId.tag());
+        } else if (edge.topoId.isValid()) {
+            kept.push_back(&edge.topoId);
+        }
+    }
+    // A name master's construction keeps that the bridge gave elsewhere is renumbered past every
+    // name taken, as nameAsMasters renumbers what has no place: no name names two places.
+    std::unordered_set<std::string> taken = given;
+    std::unordered_map<std::string, int> from;
+    for (topo::TopologyID* id : kept) {
+        if (taken.insert(id->tag()).second) continue;
+        const std::optional<std::string> prefix = numberedPrefix(id->tag());
+        if (!prefix.has_value()) continue;
+        const std::string& stem = prefix.value();
+        int& n = from[stem];
+        std::string name = stem + std::to_string(n);
+        while (taken.count(name) != 0) name = stem + std::to_string(++n);
+        *id = topo::TopologyID::fromTag(name);
+        taken.insert(name);
+    }
+}
+
 void nameEdges(topo::Solid& solid, NamingScheme naming) {
     if (naming == NamingScheme::Stable) {
         nameEdgesLogically(solid);
