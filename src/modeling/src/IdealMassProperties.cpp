@@ -719,6 +719,7 @@ IdealMassProperties MassPropertiesCalculator::computeIdeal(const topo::Solid& so
         result.withoutIdeal = exact.plainFaces;
         result.onIdealSurfaces = exact.properties.valid && exact.plainFaces.empty();
         result.estimatedError = exact.estimatedError;
+        result.note = exact.note;
         result.tolerance = tolerance;
         result.withinTolerance = exact.properties.valid && exact.estimatedError <= tolerance;
         // Estimated, never measured once: each piece by two rules, Gauss's and Kronrod's.

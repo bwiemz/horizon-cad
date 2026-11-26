@@ -35,19 +35,23 @@ struct ExactIssue {
 /// Every way @p solid's exact geometry disagrees with its topology; empty when it agrees.
 /// The solid must be combinatorially valid (`Solid::isValid`): twins, next pointers and origins
 /// are followed without null checks. Each pcurve is sampled at 17 parameters (its two ends and
-/// 15 between). Closeness tests use @p tolerance together with the edge's and vertices' own
-/// tolerances. Pass topo::exactTolerance(solid) (horizon/topology/ExactTolerance.h): the validator
-/// then lays the loops out in parameter space exactly as the mesher does. That is not a promise
-/// that the mesher succeeds: it has a triangle cap and a refinement limit, and loops touching at
-/// one point pass here but are reported by the mesher.
+/// 15 between), and how far it strays from its edge's curve is measured there and at the peaks
+/// between them (geo::pcurveGap, the measure pcurveOn takes of a closed form). Closeness tests use
+/// @p tolerance together with the edge's and vertices' own tolerances. Pass
+/// topo::exactTolerance(solid) (horizon/topology/ExactTolerance.h): the validator then lays the
+/// loops out in parameter space exactly as the mesher does. That is not a promise that the mesher
+/// succeeds: it has a triangle cap and a refinement limit, and loops touching at one point pass
+/// here but are reported by the mesher.
 std::vector<ExactIssue> validateExact(const Solid& solid, const math::ModelTolerance& tolerance);
 
 /// The distances validateExact measures on a half-edge's pcurve and compares with its edge's
 /// tolerance.
 struct PcurveGaps {
-    double start = 0.0;   ///< the pcurve's start, on its face's surface, from its origin vertex
-    double end = 0.0;     ///< its end from its next half-edge's origin vertex
-    double strays = 0.0;  ///< the farthest of its samples, on the surface, from the edge's curve
+    double start = 0.0;  ///< the pcurve's start, on its face's surface, from its origin vertex
+    double end = 0.0;    ///< its end from its next half-edge's origin vertex
+    /// The farthest of its samples, on the surface, from the edge's curve, and of the peaks between
+    /// them that could pass the edge's tolerance (geo::pcurveGap).
+    double strays = 0.0;
 };
 
 /// What validateExact measures on @p h's pcurve with @p tolerance, by the same code on the same

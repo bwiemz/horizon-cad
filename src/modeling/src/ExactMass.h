@@ -26,6 +26,10 @@ struct ExactMeasure {
     std::vector<std::string> plainFaces;
     /// The most pieces one stretch of a face's boundary was integrated in.
     int pieces = 0;
+    /// "its error estimate stops at <e>" (e the estimated error) where the quadrature's estimate
+    /// is above the tolerance asked for with every face taken as far as Gauss–Kronrod's floor: no
+    /// finer request brings it nearer. Empty otherwise.
+    std::string note;
 };
 
 /// The mass properties of @p solid, which has exact faces (topo::hasExactFaces).
@@ -38,7 +42,8 @@ struct ExactMeasure {
 /// Gauss–Legendre between the surface's knots (in u, or in v where that is cheaper: a cylinder's
 /// or a cone's axis); the line integral is adaptive Gauss–Kronrod (15 points), to 1e-11 of the
 /// face. Where the estimate summed over the faces is still above @p tolerance relative to the
-/// volume or the area (a thin wall), every face is taken again as much tighter as that needs.
+/// volume or the area (a thin wall), every face is taken again as much tighter as that needs, as
+/// far as Gauss–Kronrod's floor; an estimate still above it there says so (ExactMeasure::note).
 ///
 /// The boundary is each half-edge's pcurve where that is a closed form (a line, a circle, any
 /// B-spline on a plane); a fitted pcurve is replaced by its edge's exact curve, integrated in its
@@ -55,7 +60,9 @@ struct ExactMeasure {
 ///
 /// A face that cannot be integrated (no loop, a half-edge with no pcurve, a loop that winds round
 /// its surface or runs against the face's sense, a value that is not finite, an integral that
-/// does not settle within its budget of evaluations, stretches or subdivisions) leaves the result
+/// does not settle within its budget of evaluations, stretches or subdivisions: four million
+/// evaluations of its surface for a face of up to 64 knot spans, and proportionally more for a
+/// B-spline face of more, whose every integral crosses its knots) leaves the result
 /// not valid, its problem "<face>: <why>"; so do sums that are not finite. Nothing throws.
 /// @p cancelled, when set, stops it between faces and within one, and the result is not valid.
 ExactMeasure measureExact(const topo::Solid& solid, const Material* material,

@@ -1123,3 +1123,51 @@ TEST(Pcurve, AParameterLineIsMeasuredAtItsSamplesToo) {
         EXPECT_GE(pc.deviation, truth * 0.999) << limit;
     }
 }
+
+namespace {
+
+/// Ruling 23's rim: a band (a cylinder of radius 1 about z) whose top rim, a circle of radius 1 at
+/// z = 2, is tilted 0.0008 off the cylinder's parallels, its axis leaning 0.27 rad round z, with
+/// its vertex 6.06 rad round it, as test_StepExact's band writes it.
+CircleCurve tiltedRim() {
+    const double tilt = 8e-4;
+    const double lean = 0.27;
+    const math::Vec3 axis{std::sin(tilt) * std::cos(lean), std::sin(tilt) * std::sin(lean),
+                          std::cos(tilt)};
+    math::Vec3 x = math::Vec3{1, 0, 0} - axis * axis.x;
+    x = x * (1.0 / x.length());
+    return CircleCurve(Frame::fromAxis({0, 0, 2}, axis, x), 1.0);
+}
+
+}  // namespace
+
+// The tilted rim's pcurve is the parallel through its vertex, a closed form, which stands up to
+// 0.0015 off it, within the limit (a thousandth of the band's size). Its gap peaks between the
+// points it is measured at: read at those alone (49 of them, as before) it was 0.0015042933,
+// 3.7e-7 short of the peak, which the validator then found between its own points. The peak is
+// found: the stand-off, and the deviation the reader grows the rim's tolerance to, are the peak's
+// (to 1%, and in fact to rounding), not the samples'.
+TEST(Pcurve, APeakBetweenSamplesIsFound) {
+    const CircleCurve rim = tiltedRim();
+    const Cylinder side(Frame::fromAxis({0, 0, 0}, {0, 0, 1}, {1, 0, 0}), 1.0);
+    const double at = 6.06;  // the rim's vertex; the band's half-edge runs against the rim
+    const double tol = 3.4645e-7;
+    const Pcurve pc = pcurveOn(side, rim, at + kTwoPi, at, tol, 1e4 * tol);
+    ASSERT_TRUE(pc.problem.empty()) << pc.problem;
+    ASSERT_NE(as<Line2D>(pc), nullptr) << "the parallel, its closed form";
+
+    // The true peak: the pcurve's image measured to the circle at 100,000 points.
+    double truth = 0.0;
+    constexpr int kN = 100000;
+    for (int k = 0; k <= kN; ++k) {
+        const math::Vec2 uv = pc.curve->evaluate(pc.start + (pc.end - pc.start) * k / kN);
+        const math::Vec3 p = side.evaluate(uv.x, uv.y);
+        truth = std::max(truth, (rim.evaluate(rim.closestParameter(p)) - p).length());
+    }
+    constexpr double kAtSamples = 0.0015042933256460393;  // the old reading
+    EXPECT_GT(truth - kAtSamples, 3.69e-7);
+    EXPECT_NEAR(pc.standOff, truth, 0.01 * truth);
+    EXPECT_GE(pc.standOff, truth - 1e-14) << "never below the peak";
+    EXPECT_GE(pc.standOff - kAtSamples, 3.69e-7);
+    EXPECT_EQ(pc.deviation, pc.standOff);
+}

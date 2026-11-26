@@ -1,8 +1,8 @@
 #pragma once
 
 // STEP text for the reader's tests, written by hand as other systems write their solids.
-// Shared by test_StepFormat, test_StepCurved, test_StepExact, test_ExactMass and
-// test_ExactTransform.
+// Shared by test_StepFormat, test_StepCurved, test_StepExact, test_ExactMass, test_ExactTransform
+// and test_ExactValidator.
 
 #include <cmath>
 #include <iomanip>
@@ -497,6 +497,45 @@ inline std::string real(double v) {
     std::string s = out.str();
     if (s.find_first_of(".eE") == std::string::npos) s += ".";
     return s;
+}
+
+/// A band (a cylinder of radius 1 and height 2 whose side is bounded by its two rims alone) whose
+/// top rim, a circle of radius 1, is tilted @p tilt off the cylinder's parallels, its axis leaning
+/// towards the angle @p lean about z, and its cap's plane with it. The rim's vertex is at @p at on
+/// its circle, the bottom rim's at angle 0, so the band's seam splits the top rim.
+inline std::string bandWithATiltedRim(double tilt, double lean, double at) {
+    const math::Vec3 axis{std::sin(tilt) * std::cos(lean), std::sin(tilt) * std::sin(lean),
+                          std::cos(tilt)};
+    math::Vec3 x = math::Vec3{1, 0, 0} - axis * axis.x;
+    x = x * (1.0 / x.length());
+    const math::Vec3 vertex = math::Vec3{0, 0, 2} + x * std::cos(at) + axis.cross(x) * std::sin(at);
+    const auto triple = [](const math::Vec3& v) {
+        return "(" + real(v.x) + "," + real(v.y) + "," + real(v.z) + ")";
+    };
+    return "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\nDATA;\n"
+           "#1 = CARTESIAN_POINT('',(0.,0.,0.));\n#2 = DIRECTION('',(0.,0.,1.));\n"
+           "#3 = DIRECTION('',(0.,1.,0.));\n#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);\n"
+           "#5 = CIRCLE('',#4,1.);\n#6 = CARTESIAN_POINT('',(1.,0.,0.));\n"
+           "#7 = VERTEX_POINT('',#6);\n#8 = CARTESIAN_POINT('',(0.,0.,2.));\n"
+           "#9 = DIRECTION('',(1.,0.,0.));\n#50 = DIRECTION(''," +
+           triple(axis) + ");\n#51 = DIRECTION(''," + triple(x) +
+           ");\n#10 = AXIS2_PLACEMENT_3D('',#8,#50,#51);\n#11 = CIRCLE('',#10,1.);\n"
+           "#12 = CARTESIAN_POINT(''," +
+           triple(vertex) +
+           ");\n#13 = VERTEX_POINT('',#12);\n#14 = EDGE_CURVE('',#7,#7,#5,.T.);\n"
+           "#15 = EDGE_CURVE('',#13,#13,#11,.T.);\n#19 = AXIS2_PLACEMENT_3D('',#1,#2,#9);\n"
+           "#20 = CYLINDRICAL_SURFACE('',#19,1.);\n#21 = ORIENTED_EDGE('',*,*,#14,.T.);\n"
+           "#22 = EDGE_LOOP('',(#21));\n#23 = FACE_OUTER_BOUND('',#22,.T.);\n"
+           "#24 = ORIENTED_EDGE('',*,*,#15,.F.);\n#25 = EDGE_LOOP('',(#24));\n"
+           "#26 = FACE_BOUND('',#25,.T.);\n#27 = ADVANCED_FACE('',(#23,#26),#20,.T.);\n"
+           "#28 = AXIS2_PLACEMENT_3D('',#8,#50,$);\n#29 = PLANE('',#28);\n"
+           "#30 = ORIENTED_EDGE('',*,*,#15,.T.);\n#31 = EDGE_LOOP('',(#30));\n"
+           "#32 = FACE_OUTER_BOUND('',#31,.T.);\n#33 = ADVANCED_FACE('',(#32),#29,.T.);\n"
+           "#34 = AXIS2_PLACEMENT_3D('',#1,#2,$);\n#35 = PLANE('',#34);\n"
+           "#36 = ORIENTED_EDGE('',*,*,#14,.F.);\n#37 = EDGE_LOOP('',(#36));\n"
+           "#38 = FACE_OUTER_BOUND('',#37,.T.);\n#39 = ADVANCED_FACE('',(#38),#35,.F.);\n"
+           "#40 = CLOSED_SHELL('',(#27,#33,#39));\n#41 = MANIFOLD_SOLID_BREP('band',#40);\n"
+           "ENDSEC;\nEND-ISO-10303-21;\n";
 }
 
 /// A cap of a sphere of radius 10 about the origin as OpenCASCADE writes one: the sphere's face

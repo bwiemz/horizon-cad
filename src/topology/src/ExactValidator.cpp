@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "ExactLoopGeometry.h"
+#include "horizon/geometry/Pcurve.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Curve2D.h"
 #include "horizon/geometry/curves/Curve3.h"
@@ -58,13 +59,22 @@ const geo::NurbsCurve* straightSegment(const geo::Curve3& c) {
     return n;
 }
 
+/// The parameters @p h's pcurve is sampled at: its two ends and 15 between.
+std::vector<double> sampleParameters(const HalfEdge& h) {
+    std::vector<double> at;
+    at.reserve(kSamples);
+    for (int i = 0; i < kSamples; ++i) at.push_back(loopSampleParameter(h, i, kSamples));
+    return at;
+}
+
 /// Whether checkPcurve's search, on an edge that is a straight segment, would find @p h's
-/// pcurve on the curve and running with it: each sample's projection onto the segment is
-/// within the tolerance by a margin far above rounding (the search's own point is the same
-/// one, to rounding, so its distance is too), and the projections advance by the order test
-/// with half its slack (rounding cannot move a step across the other half). It only ever
-/// accepts: anything else is left to the search, so what is reported, and how far a pcurve
-/// strays, are the search's, as ever.
+/// pcurve on the curve and running with it: each sample's projection onto the segment, and the
+/// peaks between them (geo::peakOfGap, the search's own way of finding them), are within the
+/// tolerance by a margin far above rounding (the search's own point is the same one, to
+/// rounding, so its distance is too), and the projections advance by the order test with half
+/// its slack (rounding cannot move a step across the other half). It only ever accepts: anything
+/// else is left to the search, so what is reported, and how far a pcurve strays, are the
+/// search's, as ever.
 bool passesOnASegment(const Edge& e, const HalfEdge& h, const math::ModelTolerance& tol) {
     const geo::NurbsCurve* seg = straightSegment(*e.exactCurve);
     if (seg == nullptr) return false;
@@ -75,18 +85,46 @@ bool passesOnASegment(const Edge& e, const HalfEdge& h, const math::ModelToleran
     const double t0 = seg->tMin();
     const double span = seg->tMax() - t0;
     const double reach = p0.length() + seg->controlPoints()[1].length();
-    std::vector<double> params;
-    params.reserve(kSamples);
-    for (int i = 0; i < kSamples; ++i) {
-        const Vec2 uv = sample(h, i);
+    // A point of the pcurve's distance from the segment, the parameter it projects to, and how
+    // far from the origin it lies.
+    const auto project = [&](double at, double& t, double& far) {
+        const Vec2 uv = h.pcurve->evaluate(at);
         const Vec3 p = s.evaluate(uv.x, uv.y);
-        const double along = std::clamp((p - p0).dot(d) / len2, 0.0, 1.0);
-        const double t = t0 + along * span;
-        const double dist = (e.exactCurve->evaluate(t) - p).length();
-        const double margin = 1e-12 * (reach + p.length());
+        t = t0 + std::clamp((p - p0).dot(d) / len2, 0.0, 1.0) * span;
+        far = p.length();
+        return (e.exactCurve->evaluate(t) - p).length();
+    };
+    const std::vector<double> at = sampleParameters(h);
+    std::vector<double> params;
+    std::vector<double> gaps;
+    params.reserve(kSamples);
+    gaps.reserve(kSamples);
+    double most = 0.0;  // the largest margin
+    double sampled = 0.0;
+    for (const double a : at) {
+        double t = 0.0;
+        double far = 0.0;
+        const double dist = project(a, t, far);
+        const double margin = 1e-12 * (reach + far);
         if (!std::isfinite(dist) || !tol.within(dist + margin, e.tolerance)) return false;
+        most = std::max(most, margin);
+        sampled = std::max(sampled, dist);
         params.push_back(t);
+        gaps.push_back(dist);
     }
+    // The peaks between, pinned far within the margin (a thousandth of it, some units in the last
+    // place of the points), where one could pass what is allowed: one found above the samples is
+    // within by the largest margin.
+    const double allowed = tol.effective(e.tolerance) - most;
+    const double peak = geo::peakOfGap(
+        at, gaps,
+        [&project](double a) {
+            double t = 0.0;
+            double far = 0.0;
+            return project(a, t, far);
+        },
+        1e-3 * most, allowed);
+    if (peak > sampled && !(peak <= allowed)) return false;
     const bool forward = &h == e.halfEdge;
     params.front() = forward ? e.curveStart : e.curveEnd;
     params.back() = forward ? e.curveEnd : e.curveStart;
@@ -106,7 +144,9 @@ bool passesOnASegment(const Edge& e, const HalfEdge& h, const math::ModelToleran
 
 /// What checkPcurve measures on @p h's pcurve (pcurveGaps), and, where it searched the curve for
 /// each sample's nearest point (not on a segment the fast path accepts), the parameters found
-/// in @p params, in sample order.
+/// in @p params, in sample order. How far the pcurve strays is geo::pcurveGap's measure, the one
+/// pcurveOn measures a closed form by: at the samples, and at the peaks between them that could
+/// pass the edge's tolerance (one that cannot changes no verdict).
 PcurveGaps measurePcurve(const Edge& e, const HalfEdge& h, const math::ModelTolerance& tol,
                          std::vector<double>& params) {
     const geo::Surface& s = *h.face->exactSurface;
@@ -117,14 +157,10 @@ PcurveGaps measurePcurve(const Edge& e, const HalfEdge& h, const math::ModelTole
     gaps.end = (s.evaluate(b.x, b.y) - h.next->origin->point).length();
     params.clear();
     if (!e.exactCurve || passesOnASegment(e, h, tol)) return gaps;
-    for (int i = 0; i < kSamples; ++i) {
-        const Vec2 uv = sample(h, i);
-        const Vec3 p = s.evaluate(uv.x, uv.y);
-        // The pcurve and the curve need not share parameters: measure to the nearest point.
-        const double t = e.exactCurve->closestParameter(p);
-        params.push_back(t);
-        gaps.strays = std::max(gaps.strays, (e.exactCurve->evaluate(t) - p).length());
-    }
+    geo::PcurveGap measured = geo::pcurveGap(s, *h.pcurve, sampleParameters(h), *e.exactCurve,
+                                             tol.effective(e.tolerance));
+    params = std::move(measured.params);
+    gaps.strays = measured.strays;
     return gaps;
 }
 

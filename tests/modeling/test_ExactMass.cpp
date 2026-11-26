@@ -397,9 +397,12 @@ std::unique_ptr<topo::Solid> blockWithAKnottedTop(int spansU, int spansV) {
 
 }  // namespace
 
-// A B-spline face with more knots than one integral may cross, or so many that its integral
-// would cost more evaluations than a face's budget, says so: within the budget it is integrated,
-// past it it is not guessed.
+// A B-spline face with more knots than one integral may cross, or whose integral would cost more
+// evaluations than a face's budget, says so: within the budget it is integrated, past it it is not
+// guessed. The budget is four million evaluations of its surface for a face of up to 64 knot spans,
+// and proportionally more beyond (a dense face's every integral crosses its knots: one of 12000 by
+// 20 spans, past four million once, settles now); a boundary that wiggles faster than any
+// subdivision can follow spends whatever it is given.
 TEST(ExactMass, AFaceBeyondItsBudgetGivesWhy) {
     const auto fine = blockWithAKnottedTop(100, 10);
     ASSERT_NE(fine, nullptr);
@@ -414,12 +417,25 @@ TEST(ExactMass, AFaceBeyondItsBudgetGivesWhy) {
     EXPECT_NE(tooMany.problem.find("box/top"), std::string::npos) << tooMany.problem;
     EXPECT_NE(tooMany.problem.find("16384 of its knots"), std::string::npos) << tooMany.problem;
 
-    const auto costly = blockWithAKnottedTop(12000, 20);
-    ASSERT_NE(costly, nullptr);
-    const MassProperties tooDear = MassPropertiesCalculator::compute(*costly);
-    EXPECT_FALSE(tooDear.valid);
-    EXPECT_NE(tooDear.problem.find("box/top"), std::string::npos) << tooDear.problem;
-    EXPECT_NE(tooDear.problem.find("4000000 evaluations"), std::string::npos) << tooDear.problem;
+    struct Case {
+        int spans;
+        const char* budget;
+    };
+    for (const Case c : {Case{64, "4000000 evaluations"}, Case{100, "6250000 evaluations"}}) {
+        SCOPED_TRACE(c.spans);
+        auto costly = blockWithAKnottedTop(c.spans, 1);
+        ASSERT_NE(costly, nullptr);
+        topo::HalfEdge* h = faceTagged(*costly, "box/top")->outerLoop->halfEdge;
+        const Vec2 a = h->pcurve->evaluate(h->pcurveStart);
+        const Vec2 b = h->pcurve->evaluate(h->pcurveEnd);
+        h->pcurve = std::make_shared<Wiggle>(a, b);
+        h->pcurveStart = 0.0;
+        h->pcurveEnd = 1.0;
+        const MassProperties tooDear = MassPropertiesCalculator::compute(*costly);
+        EXPECT_FALSE(tooDear.valid);
+        EXPECT_NE(tooDear.problem.find("box/top"), std::string::npos) << tooDear.problem;
+        EXPECT_NE(tooDear.problem.find(c.budget), std::string::npos) << tooDear.problem;
+    }
 }
 
 // A solid with some faces exact and others plain loops: the plain ones are summed by the polygon
@@ -807,4 +823,83 @@ TEST(ExactMass, TheCoarseShellVolumeIsWithinItsEstimate) {
         EXPECT_LT(coarse[0].error, 0.05 * std::fabs(exact[0].volume));
         EXPECT_GT(coarse[0].volume, 4.0 * coarse[0].error) << "its sign beyond doubt";
     }
+}
+
+namespace {
+
+/// makeBlock's block with its top face (z = 4, u along x from 0 to 2, v along y from 0 to 3, as
+/// its plane is parametrised) on a flat rational bicubic B-spline of @p spans by @p spans knot
+/// spans: a Bezier patch of those parameters, weighted 1.5 on its second row and third column (so
+/// rational, and still flat, its rows and columns straight), its knots inserted. The same face, its
+/// pcurves unchanged.
+std::unique_ptr<topo::Solid> blockWithADenseTop(int spans) {
+    auto block = hz::model::exact::makeBlock({0, 0, 0}, {2, 3, 4});
+    topo::Face* top = faceTagged(*block, "box/top");
+    if (top == nullptr) return nullptr;
+    std::vector<std::vector<Vec3>> points;
+    std::vector<std::vector<double>> weights;
+    for (int i = 0; i <= 3; ++i) {
+        points.emplace_back();
+        weights.emplace_back();
+        for (int j = 0; j <= 3; ++j) {
+            points.back().push_back({2.0 * i / 3.0, static_cast<double>(j), 4.0});
+            weights.back().push_back((i == 1 ? 1.5 : 1.0) * (j == 2 ? 1.5 : 1.0));
+        }
+    }
+    geo::NurbsSurface patch(points, weights, {0, 0, 0, 0, 2, 2, 2, 2}, {0, 0, 0, 0, 3, 3, 3, 3}, 3,
+                            3);
+    for (int k = 1; k < spans; ++k) patch = patch.insertKnotU(2.0 * k / spans);
+    for (int k = 1; k < spans; ++k) patch = patch.insertKnotV(3.0 * k / spans);
+    top->exactSurface = std::make_shared<geo::NurbsSurface>(std::move(patch));
+    return block;
+}
+
+}  // namespace
+
+// A dense B-spline face, 150 by 150 knot spans of a rational bicubic, is given the budget its
+// spans need: four million surface evaluations for 64 spans and proportionally beyond, so its
+// integral, which needs more than the four million every face once had, settles, and the block
+// measures exactly.
+TEST(ExactMass, ADenseSplineFaceSettles) {
+    const auto dense = blockWithADenseTop(150);
+    ASSERT_NE(dense, nullptr);
+    const IdealMassProperties ideal = MassPropertiesCalculator::computeIdeal(*dense);
+    ASSERT_TRUE(ideal.properties.valid) << ideal.properties.problem;
+    EXPECT_EQ(ideal.properties.problem.find("did not settle"), std::string::npos);
+    expectRelative(ideal.properties.volume, 24.0, 1e-12, "its volume");
+    expectRelative(ideal.properties.surfaceArea, 52.0, 1e-12, "its area");
+    EXPECT_TRUE(ideal.withinTolerance) << ideal.estimatedError;
+}
+
+// A thin part whose estimate cannot reach the tolerance asked for, even with every face taken to
+// Gauss–Kronrod's floor, says where its estimate stops, rather than reading as within the request:
+// a coin a thousandth as thick as it is wide, at the default tolerance, and one ten times thicker
+// at a hundredth of it. Where the request is reached, nothing is said.
+TEST(ExactMass, AThinPartSaysWhereItsEstimateStops) {
+    const auto says = [](const IdealMassProperties& ideal) {
+        const std::string head = "its error estimate stops at ";
+        ASSERT_EQ(ideal.note.rfind(head, 0), 0u) << ideal.note;
+        const double stops = std::stod(ideal.note.substr(head.size()));
+        EXPECT_NEAR(stops, ideal.estimatedError, 1e-3 * ideal.estimatedError) << ideal.note;
+    };
+    const auto coin =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {1, 1, 0}), 10.0, 1e-3);
+    ASSERT_NE(coin, nullptr);
+    const IdealMassProperties thin = MassPropertiesCalculator::computeIdeal(*coin);
+    ASSERT_TRUE(thin.properties.valid) << thin.properties.problem;
+    expectRelative(thin.properties.volume, kPi * 100.0 * 1e-3, 1e-9, "its volume");
+    EXPECT_FALSE(thin.withinTolerance);
+    EXPECT_GT(thin.estimatedError, 1e-10);
+    says(thin);
+
+    const auto thicker =
+        hz::model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {1, 1, 0}), 10.0, 1e-2);
+    ASSERT_NE(thicker, nullptr);
+    const IdealMassProperties within = MassPropertiesCalculator::computeIdeal(*thicker);
+    EXPECT_TRUE(within.withinTolerance) << within.estimatedError;
+    EXPECT_EQ(within.note, "");
+    const IdealMassProperties finer =
+        MassPropertiesCalculator::computeIdeal(*thicker, nullptr, 1e-12);
+    EXPECT_FALSE(finer.withinTolerance) << finer.estimatedError;
+    says(finer);
 }

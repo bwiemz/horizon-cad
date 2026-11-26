@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "StepTestText.h"
+#include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Circle2D.h"
@@ -19,6 +21,7 @@
 #include "horizon/math/ModelTolerance.h"
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/TrimmedFaceMesher.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/LoopUnwrap.h"
 
@@ -1134,4 +1137,113 @@ TEST(ExactValidator, HolesWhoseBoxesOverlapKeepTheirVerdicts) {
     const auto beyond = topo::validateExact(outside.solid, kTol);
     ASSERT_EQ(beyond.size(), 1u);
     EXPECT_EQ(beyond[0].kind, ExactIssueKind::HoleOutsideOuterLoop);
+}
+
+namespace {
+
+/// What the validator read a pcurve's gap as before its peaks were searched for: the farthest of
+/// its 17 samples, on the surface, from the nearest point of its edge's curve.
+double atItsSamplesAlone(const topo::HalfEdge& h) {
+    const geo::Surface& s = *h.face->exactSurface;
+    const geo::Curve3& c = *h.edge->exactCurve;
+    double most = 0.0;
+    for (int i = 0; i < topo::kLoopSamples; ++i) {
+        const math::Vec2 uv =
+            h.pcurve->evaluate(topo::loopSampleParameter(h, i, topo::kLoopSamples));
+        const Vec3 p = s.evaluate(uv.x, uv.y);
+        most = std::max(most, (c.evaluate(c.closestParameter(p)) - p).length());
+    }
+    return most;
+}
+
+/// The farthest of 20,000 points of @p h's pcurve, on the surface, from its edge's curve.
+double densely(const topo::HalfEdge& h) {
+    const geo::Surface& s = *h.face->exactSurface;
+    const geo::Curve3& c = *h.edge->exactCurve;
+    double most = 0.0;
+    constexpr int kN = 20000;
+    for (int k = 0; k <= kN; ++k) {
+        const double t = h.pcurveStart + (h.pcurveEnd - h.pcurveStart) * k / kN;
+        const math::Vec2 uv = h.pcurve->evaluate(t);
+        const Vec3 p = s.evaluate(uv.x, uv.y);
+        most = std::max(most, (c.evaluate(c.closestParameter(p)) - p).length());
+    }
+    return most;
+}
+
+/// These files name no length unit, as hand-written ones often do: read in millimetres.
+io::StepReadOptions inMillimetres() {
+    io::StepReadOptions options;
+    options.unknownLengthUnit = math::LengthUnit::Millimetre;
+    return options;
+}
+
+}  // namespace
+
+// A gap that peaks between the validator's samples is measured at its peak, not at the samples
+// (stage 2's lesson: the reader grows a tolerance to what one measure finds, and the validator
+// checks it with the same). The cylinder's top rim is moved to the circle through its vertex whose
+// centre is 1e-3 off the axis, towards 1 rad round it: the rim stands off the side's parallel and
+// the cap's circle by a gap peaking half a turn from there, between the 17 samples of either
+// pcurve, which read it 1.6e-5 short. With the rim's tolerance what the samples read, it strays;
+// with it the peak, it is clean, and a last bit below that, it strays.
+//
+// Ruling 23's tilted band rim too: read, its rim is exact to the peak of its gap; with its pieces'
+// tolerance what pcurveOn read at its samples before (0.0015042933), the piece holding the peak
+// strays 3.7e-7 past it.
+TEST(ExactValidator, APeakBetweenSamplesStrays) {
+    auto cyl = model::exact::makeCylinder(geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    topo::Edge* rim = nullptr;
+    for (auto& e : cyl->edges()) {
+        const auto* c = dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get());
+        if (c == nullptr || std::abs(c->frame().origin.z - 2.0) > 1e-12) continue;
+        geo::Frame f = c->frame();
+        const Vec3 vertex = e.halfEdge->origin->point;
+        f.origin = f.origin + Vec3{std::cos(1.0), std::sin(1.0), 0.0} * 1e-3;
+        f.x = (vertex - f.origin) * (1.0 / (vertex - f.origin).length());
+        f.y = f.z.cross(f.x);
+        ASSERT_EQ(e.curveStart, 0.0);
+        e.exactCurve = std::make_shared<geo::CircleCurve>(f, (vertex - f.origin).length());
+        rim = &e;
+    }
+    ASSERT_NE(rim, nullptr);
+    const double sampled =
+        std::max(atItsSamplesAlone(*rim->halfEdge), atItsSamplesAlone(*rim->halfEdge->twin));
+    const double peak = std::max(densely(*rim->halfEdge), densely(*rim->halfEdge->twin));
+    ASSERT_GT(peak - sampled, 1.5e-5) << "the peak lies between the samples";
+
+    rim->tolerance = sampled;
+    const auto issues = topo::validateExact(*cyl, kTol);
+    ASSERT_FALSE(issues.empty()) << "a tolerance of what the samples read";
+    for (const auto& i : issues) {
+        EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve) << i.detail;
+        EXPECT_EQ(i.edge, rim);
+    }
+    const double measured = mostMeasured(*rim);
+    EXPECT_NEAR(measured, peak, 0.01 * peak);
+    EXPECT_GE(measured, peak - 1e-15) << "never below the peak";
+    expectStraysOnlyPast(*cyl, *rim, measured);
+
+    const auto band = io::StepFormat::fromString(
+        hz::step_text::bandWithATiltedRim(8e-4, 0.27, 6.06), nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(band.size(), 1u) << io::StepFormat::lastError();
+    const math::ModelTolerance resolution = topo::exactTolerance(*band[0]);
+    EXPECT_TRUE(topo::validateExact(*band[0], resolution).empty());
+    constexpr double kAtSamples = 0.0015042933256460393;
+    std::vector<topo::Edge*> pieces;
+    for (auto& e : band[0]->edges()) {
+        if (e.alive && e.tolerance > 1e-3) pieces.push_back(&e);
+    }
+    ASSERT_FALSE(pieces.empty());
+    for (topo::Edge* e : pieces) {
+        EXPECT_GE(e->tolerance - kAtSamples, 3.69e-7) << "grown to the peak";
+        e->tolerance = kAtSamples;
+    }
+    const auto strays = topo::validateExact(*band[0], resolution);
+    ASSERT_FALSE(strays.empty());
+    for (const auto& i : strays) {
+        EXPECT_EQ(i.kind, ExactIssueKind::PcurveOffCurve) << i.detail;
+        ASSERT_NE(i.halfEdge, nullptr);
+        EXPECT_GE(topo::pcurveGaps(*i.halfEdge, resolution).strays - kAtSamples, 3.69e-7);
+    }
 }
