@@ -1,18 +1,33 @@
 #include "horizon/modeling/Extrude.h"
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
+#include <exception>
+#include <iomanip>
+#include <locale>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "ExactProfile.h"
 #include "RingStack.h"
+#include "horizon/geometry/Frame.h"
+#include "horizon/geometry/curves/AnalyticCurves.h"
+#include "horizon/geometry/curves/Line2D.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/math/ModelTolerance.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/ProfileValidator.h"
 #include "horizon/topology/EulerOps.h"
+#include "horizon/topology/ExactTolerance.h"
 
 namespace hz::model {
 
@@ -497,7 +512,382 @@ std::unique_ptr<topo::Solid> extrudeLoop(const ProfileValidationResult& validati
     return solid;
 }
 
+/// Why master refuses to extrude what @p found holds along @p direction by @p distance, in its
+/// words; nullopt where it builds it.
+std::optional<std::string> refusal(const ProfileRegions& found, const draft::SketchPlane& plane,
+                                   const Vec3& direction, double distance) {
+    if (!found.ok()) return found.errorMessage;
+    if (!(std::abs(distance) > 0.0) || !std::isfinite(distance)) {
+        return std::string("the extrusion distance must be a non-zero number");
+    }
+    if (std::abs(direction.normalized().dot(plane.normal())) < 1e-9) {
+        return std::string(
+            "the extrusion direction lies in the sketch plane, so it sweeps no volume");
+    }
+    return std::nullopt;
+}
+
+// ---------------------------------------------------------------------------
+// The exact extrusion (stage 3): whole faces carrying exact geometry.
+// ---------------------------------------------------------------------------
+
+/// Builds the exact extrusion of a profile's regions by an offset, a shell for each region.
+///
+/// Each loop's material lies on its left (exact::Loop), and the solid lies on the offset's side
+/// of the sketch plane ("up" where the offset rises along the plane's normal). Every face's loops
+/// run counter-clockwise about its outward normal: in its (u, v), counter-clockwise where the
+/// face is not reversed and clockwise where it is.
+///
+/// - A curve's side face, over its corners i and i + 1 of the loop at the sketch (b0, b1) and at
+///   the offset (t0, t1), runs b0, b1, t1, t0 going up and b1, b0, t0, t1 going down. A line's
+///   is a plane whose frame's z is the outward normal. An arc's or a circle's is, along the
+///   normal, a cylinder about the offset whose u runs the arc's own way (counter-clockwise about
+///   the normal) from its own start, its v up the normal from the sketch, reversed where the loop
+///   runs the arc backwards (its material outside the circle); along any other direction, the
+///   arc swept by the offset (NurbsSurface::makeExtrusion), u its own way, v from 0 at the
+///   sketch to 1, reversed where the loop runs it backwards going up or forwards going down.
+/// - The caps are planes in the sketch's own frame, so that their (u, v) are the sketch's (x, y):
+///   at the sketch (reversed going up) and at the offset (reversed going down). Each runs its
+///   loops against the side faces, a hole's as an inner loop.
+/// - Each edge's curve is exact: the profile's curve at the sketch or at the offset, and a line
+///   along the offset at each corner. A closed curve's corner is the seam of its side.
+class ExactExtrusion {
+public:
+    ExactExtrusion(topo::Solid& solid, const draft::SketchPlane& plane, const Vec3& offset)
+        : solid_(solid),
+          plane_(plane),
+          offset_(offset),
+          length_(offset.length()),
+          along_(offset * (1.0 / offset.length())),
+          up_(offset.dot(plane.normal()) > 0.0) {
+        // Within the model's angular resolution of the normal, the offset is along it: an arc
+        // sweeps a circular cylinder.
+        const math::ModelTolerance resolution;
+        alongNormal_ = along_.cross(plane.normal()).length() <= resolution.angular;
+    }
+
+    /// Adds @p region as a shell of its own: its caps and its outer loop's sides named for
+    /// @p source, each hole's sides for the source @p holeSources gives it.
+    void addRegion(const exact::Region& region, const std::string& source,
+                   const std::vector<std::string>& holeSources) {
+        topo::Shell* shell = solid_.allocShell();
+        shell->solid = &solid_;
+        geo::Frame atSketch;
+        atSketch.origin = plane_.origin();
+        atSketch.x = plane_.xAxis();
+        atSketch.y = plane_.yAxis();
+        atSketch.z = plane_.normal();
+        geo::Frame atOffset = atSketch;
+        atOffset.origin = plane_.origin() + offset_;
+        Face* bottom =
+            face(shell, source, "cap_bottom", std::make_shared<geo::Plane>(atSketch), up_);
+        Face* top = face(shell, source, "cap_top", std::make_shared<geo::Plane>(atOffset), !up_);
+        addLoop(region.outer, source, shell, bottom, top, true);
+        for (size_t k = 0; k < region.holes.size(); ++k) {
+            addLoop(region.holes[k], holeSources[k], shell, bottom, top, false);
+        }
+    }
+
+    /// Where the profile's curves miss the corners they meet at by more than the model's
+    /// resolution (a sketch's ends join within the profile's tolerance), the corner's vertices
+    /// and its line along the offset are given that gap as their tolerance (topo::ToleranceGrowth:
+    /// as far as a thousandth of the solid's size). False, with @p why, past that.
+    bool coverGaps(std::string* why) {
+        if (gaps_.empty()) return true;
+        const topo::ToleranceGrowth growth(topo::exactExtent(solid_));
+        for (const Gap& g : gaps_) {
+            if (!growth.grow(g.bottom->tolerance, g.gap) || !growth.grow(g.top->tolerance, g.gap) ||
+                !growth.grow(g.along->tolerance, g.gap)) {
+                if (why) {
+                    std::ostringstream out;
+                    out.imbue(std::locale::classic());
+                    out << "the profile's curves miss each other at (" << std::setprecision(6)
+                        << g.where.x << ", " << g.where.y << ") by " << g.gap
+                        << ", more than its exact form can take at its size";
+                    *why = out.str();
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+
+private:
+    /// A corner where a curve's own end misses the vertex.
+    struct Gap {
+        Vertex* bottom = nullptr;
+        Vertex* top = nullptr;
+        Edge* along = nullptr;
+        double gap = 0.0;
+        Vec2 where;
+    };
+
+    /// A side face and where its corners b0, b1, t1, t0 are in its (u, v).
+    struct Side {
+        Face* face = nullptr;
+        std::array<Vec2, 4> uv;
+    };
+
+    Vertex* vertex(const Vec3& p) {
+        Vertex* v = solid_.allocVertex();
+        v->point = p;
+        return v;
+    }
+
+    Face* face(topo::Shell* shell, const std::string& source, const std::string& role,
+               std::shared_ptr<const geo::Surface> surface, bool reversed) {
+        Face* f = solid_.allocFace();
+        f->topoId = TopologyID::make(source, role);
+        f->exactSurface = std::move(surface);
+        f->reversed = reversed;
+        f->shell = shell;
+        shell->faces.push_back(f);
+        return f;
+    }
+
+    HalfEdge* halfEdge(Vertex* origin) {
+        HalfEdge* he = solid_.allocHalfEdge();
+        he->origin = origin;
+        if (origin->halfEdge == nullptr) origin->halfEdge = he;
+        return he;
+    }
+
+    /// Closes @p hes into a loop of @p f: its outer loop, or one more inner loop.
+    void close(Face* f, const std::vector<HalfEdge*>& hes, bool outer) {
+        topo::Wire* w = solid_.allocWire();
+        w->halfEdge = hes.front();
+        for (size_t i = 0; i < hes.size(); ++i) {
+            HalfEdge* he = hes[i];
+            he->face = f;
+            he->next = hes[(i + 1) % hes.size()];
+            he->next->prev = he;
+        }
+        if (outer) {
+            f->outerLoop = w;
+        } else {
+            f->innerLoops.push_back(w);
+        }
+    }
+
+    /// Joins @p a and @p b as the two sides of an edge along @p course, which runs from a's
+    /// origin to b's.
+    Edge* edge(HalfEdge* a, HalfEdge* b, const exact::Course<geo::Curve3>& course) {
+        Edge* e = solid_.allocEdge();
+        e->halfEdge = a;
+        a->twin = b;
+        b->twin = a;
+        a->edge = b->edge = e;
+        e->exactCurve = course.curve;
+        e->curveStart = course.start;
+        e->curveEnd = course.end;
+        return e;
+    }
+
+    static void setPcurve(HalfEdge* he, const exact::Course<geo::Curve2D>& course) {
+        he->pcurve = course.curve;
+        he->pcurveStart = course.start;
+        he->pcurveEnd = course.end;
+    }
+
+    static void setLinePcurve(HalfEdge* he, const Vec2& from, const Vec2& to) {
+        setPcurve(he, {std::make_shared<geo::Line2D>(from, to), 0.0, 1.0});
+    }
+
+    /// The side face @p c sweeps, from corners @p b0 and @p b1 at the sketch to @p t1 and @p t0.
+    Side side(const exact::LoopCurve& c, topo::Shell* shell, const std::string& source,
+              const Vertex* b0, const Vertex* b1, const Vertex* t1, const Vertex* t0) {
+        Side out;
+        const std::string role = "side:" + c.source;
+        if (!c.curved()) {
+            const Vec3 run = (b1->point - b0->point).normalized();
+            const Vec3 outward = run.cross(along_) * (up_ ? 1.0 : -1.0);
+            const auto plane = std::make_shared<geo::Plane>(
+                geo::Frame::fromAxis(b0->point, outward.normalized(), run));
+            out.face = face(shell, source, role, plane, false);
+            out.uv = {plane->invert(b0->point), plane->invert(b1->point), plane->invert(t1->point),
+                      plane->invert(t0->point)};
+            return out;
+        }
+        const double u0 = c.forward ? 0.0 : c.sweep;
+        const double u1 = c.forward ? c.sweep : 0.0;
+        double vTop = 1.0;
+        if (alongNormal_) {
+            // About the offset, pointed up the normal: u runs counter-clockwise about it.
+            const Vec3 axis = along_ * (up_ ? 1.0 : -1.0);
+            const geo::Frame own = c.ownFrame(plane_, Vec3{});
+            out.face = face(shell, source, role,
+                            std::make_shared<geo::Cylinder>(
+                                geo::Frame::fromAxis(own.origin, axis, own.x), c.radius),
+                            !c.forward);
+            vTop = up_ ? length_ : -length_;
+        } else {
+            const auto arc = c.curve(plane_, Vec3{}, c.forward);  // its own way, 0 to sweep
+            const auto nurbs = arc.curve->toNurbs(0.0, c.sweep);
+            out.face = face(shell, source, role,
+                            std::make_shared<geo::NurbsSurface>(
+                                geo::NurbsSurface::makeExtrusion(*nurbs, offset_)),
+                            c.forward != up_);
+        }
+        out.uv = {Vec2(u0, 0.0), Vec2(u1, 0.0), Vec2(u1, vTop), Vec2(u0, vTop)};
+        return out;
+    }
+
+    /// How far the curves of @p loop meeting at its corner @p j miss it: an arc's own end may.
+    static double gapAt(const exact::Loop& loop, size_t j) {
+        const size_t m = loop.curves.size();
+        const exact::LoopCurve& leaving = loop.curves[j];
+        const exact::LoopCurve& reaching = loop.curves[(j + m - 1) % m];
+        const Vec2 corner = leaving.start;
+        double gap = 0.0;
+        if (leaving.curved()) {
+            const Vec2 own = leaving.forward ? leaving.ownStartPoint() : leaving.ownEndPoint();
+            gap = std::max(gap, (own - corner).length());
+        }
+        if (reaching.curved()) {
+            const Vec2 own = reaching.forward ? reaching.ownEndPoint() : reaching.ownStartPoint();
+            gap = std::max(gap, (own - corner).length());
+        }
+        return gap;
+    }
+
+    void addLoop(const exact::Loop& loop, const std::string& source, topo::Shell* shell,
+                 Face* bottomCap, Face* topCap, bool outer) {
+        const size_t m = loop.curves.size();
+        std::vector<Vertex*> b(m);
+        std::vector<Vertex*> t(m);
+        for (size_t j = 0; j < m; ++j) {
+            b[j] = vertex(plane_.localToWorld(loop.curves[j].start));
+            t[j] = vertex(b[j]->point + offset_);
+        }
+        // Each corner's two half-edges along the offset: up from the sketch and down to it.
+        std::vector<HalfEdge*> rising(m, nullptr);
+        std::vector<HalfEdge*> falling(m, nullptr);
+        std::vector<HalfEdge*> capBottom(m, nullptr);
+        std::vector<HalfEdge*> capTop(m, nullptr);
+        for (size_t i = 0; i < m; ++i) {
+            const exact::LoopCurve& c = loop.curves[i];
+            const size_t j0 = i;
+            const size_t j1 = (i + 1) % m;
+            const Side s = side(c, shell, source, b[j0], b[j1], t[j1], t[j0]);
+            const Vec2& b0 = s.uv[0];
+            const Vec2& b1 = s.uv[1];
+            const Vec2& t1 = s.uv[2];
+            const Vec2& t0 = s.uv[3];
+            HalfEdge* below = nullptr;  // along the curve at the sketch
+            HalfEdge* above = nullptr;  // and at the offset
+            if (up_) {
+                below = halfEdge(b[j0]);
+                HalfEdge* rise = halfEdge(b[j1]);
+                above = halfEdge(t[j1]);
+                HalfEdge* fall = halfEdge(t[j0]);
+                close(s.face, {below, rise, above, fall}, true);
+                setLinePcurve(below, b0, b1);
+                setLinePcurve(rise, b1, t1);
+                setLinePcurve(above, t1, t0);
+                setLinePcurve(fall, t0, b0);
+                rising[j1] = rise;
+                falling[j0] = fall;
+            } else {
+                below = halfEdge(b[j1]);
+                HalfEdge* rise = halfEdge(b[j0]);
+                above = halfEdge(t[j0]);
+                HalfEdge* fall = halfEdge(t[j1]);
+                close(s.face, {below, rise, above, fall}, true);
+                setLinePcurve(below, b1, b0);
+                setLinePcurve(rise, b0, t0);
+                setLinePcurve(above, t0, t1);
+                setLinePcurve(fall, t1, b1);
+                rising[j0] = rise;
+                falling[j1] = fall;
+            }
+            // The caps run against the side: at the sketch along the loop going down, at the
+            // offset going up.
+            capBottom[i] = halfEdge(up_ ? b[j1] : b[j0]);
+            capTop[i] = halfEdge(up_ ? t[j0] : t[j1]);
+            setPcurve(capBottom[i], c.pcurve(!up_));
+            setPcurve(capTop[i], c.pcurve(up_));
+            edge(below, capBottom[i], c.curve(plane_, Vec3{}, up_));
+            edge(above, capTop[i], c.curve(plane_, offset_, !up_));
+        }
+        // Each cap's loop in the order its half-edges run.
+        std::vector<HalfEdge*> alongLoop = up_ ? capTop : capBottom;
+        std::vector<HalfEdge*> againstLoop = up_ ? capBottom : capTop;
+        std::reverse(againstLoop.begin(), againstLoop.end());
+        close(up_ ? topCap : bottomCap, alongLoop, outer);
+        close(up_ ? bottomCap : topCap, againstLoop, outer);
+        for (size_t j = 0; j < m; ++j) {
+            Edge* e = edge(rising[j], falling[j],
+                           {std::make_shared<geo::LineCurve>(b[j]->point, along_), 0.0, length_});
+            const double gap = gapAt(loop, j);
+            if (gap > 0.0) gaps_.push_back({b[j], t[j], e, gap, loop.curves[j].start});
+        }
+    }
+
+    topo::Solid& solid_;
+    const draft::SketchPlane& plane_;
+    Vec3 offset_;
+    double length_;
+    Vec3 along_;  ///< the offset's direction
+    bool up_;     ///< the offset rises along the sketch's normal
+    bool alongNormal_ = false;
+    std::vector<Gap> gaps_;
+};
+
 }  // namespace
+
+namespace {
+
+/// The exact extrusion of the regions @p found (which master builds) along @p offset, or null
+/// with "could not be built exactly: <why>".
+std::unique_ptr<topo::Solid> extrudeExactly(const ProfileRegions& found,
+                                            const draft::SketchPlane& plane, const Vec3& offset,
+                                            const std::string& featureID, std::string* reason) {
+    const auto notExactly = [reason](const std::string& why) -> std::unique_ptr<topo::Solid> {
+        if (reason) *reason = "could not be built exactly: " + why;
+        return nullptr;
+    };
+    if (!std::isfinite(offset.length())) return notExactly("its direction is not a finite vector");
+    try {
+        auto solid = std::make_unique<topo::Solid>();
+        ExactExtrusion build(*solid, plane, offset);
+        // Named as master named the faceted extrusion's: the first region for the feature, the
+        // others `<feature>~region<r>`, and each hole's sides `<feature>~hole<k>`, counted
+        // through the regions.
+        int holeCount = 0;
+        for (size_t r = 0; r < found.regions.size(); ++r) {
+            std::string why;
+            const auto region = exact::regionOf(found.regions[r], &why);
+            if (!region) return notExactly(why);
+            std::vector<std::string> holeSources;
+            holeSources.reserve(region->holes.size());
+            for (size_t k = 0; k < region->holes.size(); ++k) {
+                holeSources.push_back(featureID + "~hole" + std::to_string(holeCount++));
+            }
+            build.addRegion(*region, r == 0 ? featureID : featureID + "~region" + std::to_string(r),
+                            holeSources);
+        }
+        std::string why;
+        if (!build.coverGaps(&why)) return notExactly(why);
+        nameEdgesLogically(*solid);
+        return solid;
+    } catch (const std::exception& e) {
+        return notExactly(e.what());
+    }
+}
+
+}  // namespace
+
+std::unique_ptr<topo::Solid> Extrude::exact(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+    const draft::SketchPlane& plane, const Vec3& direction, double distance,
+    const std::string& featureID, std::string* reason) {
+    const ProfileRegions found = ProfileValidator::regions(profile);
+    if (auto refused = refusal(found, plane, direction, distance)) {
+        if (reason) *reason = std::move(*refused);
+        return nullptr;
+    }
+    return extrudeExactly(found, plane, direction * distance, featureID, reason);
+}
 
 std::unique_ptr<topo::Solid> Extrude::execute(
     const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
@@ -510,13 +900,7 @@ std::unique_ptr<topo::Solid> Extrude::execute(
     };
 
     const ProfileRegions found = ProfileValidator::regions(profile);
-    if (!found.ok()) return fail(found.errorMessage);
-    if (!(std::abs(distance) > 0.0) || !std::isfinite(distance)) {
-        return fail("the extrusion distance must be a non-zero number");
-    }
-    if (std::abs(direction.normalized().dot(plane.normal())) < 1e-9) {
-        return fail("the extrusion direction lies in the sketch plane, so it sweeps no volume");
-    }
+    if (auto refused = refusal(found, plane, direction, distance)) return fail(*refused);
     if (segments < 3) {
         return fail("arcs need at least 3 segments per turn");
     }
