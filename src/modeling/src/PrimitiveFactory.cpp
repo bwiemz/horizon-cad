@@ -557,10 +557,10 @@ int PrimitiveFactory::segmentsForTolerance(double radius, double tolerance) {
 // makeCylinder
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<topo::Solid> PrimitiveFactory::makeCylinder(double radius, double height,
-                                                            int segments) {
+std::vector<SolidSewer::InputFace> PrimitiveFactory::cylinderFaces(double radius, double height,
+                                                                   int segments) {
     if (!(radius > 0.0) || !(height > 0.0) || segments < 3) {
-        return nullptr;
+        return {};
     }
 
     const auto bottom = ringPoints(radius, 0.0, segments);
@@ -590,6 +590,13 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCylinder(double radius, doubl
     }
 
     orientOutward(faces);
+    return faces;
+}
+
+std::unique_ptr<topo::Solid> PrimitiveFactory::makeCylinder(double radius, double height,
+                                                            int segments) {
+    const auto faces = cylinderFaces(radius, height, segments);
+    if (faces.empty()) return nullptr;
     auto solid = SolidSewer::sew(faces);
     if (solid != nullptr) {
         tagAnalyticSurface(*solid, "cylinder/side",
@@ -605,12 +612,13 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCylinder(double radius, doubl
 // makeSphere
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius, int segments, int stacks) {
+std::vector<SolidSewer::InputFace> PrimitiveFactory::sphereFaces(double radius, int segments,
+                                                                 int stacks) {
     if (stacks <= 0) {
         stacks = std::max(2, segments / 2);
     }
     if (!(radius > 0.0) || segments < 3 || stacks < 2) {
-        return nullptr;
+        return {};
     }
 
     // Rings of constant polar angle; the poles are single vertices, so the
@@ -644,6 +652,12 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius, int seg
     }
 
     orientOutward(faces);
+    return faces;
+}
+
+std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius, int segments, int stacks) {
+    const auto faces = sphereFaces(radius, segments, stacks);
+    if (faces.empty()) return nullptr;
     auto solid = SolidSewer::sew(faces);
     if (solid != nullptr) {
         tagAnalyticSurface(*solid, "sphere/band",
@@ -657,23 +671,30 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeSphere(double radius, int seg
 // makeCone
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, double topRadius,
-                                                        double height, int segments) {
-    constexpr double kRingEps = 1e-12;
+namespace {
+
+/// A ring of a cone no wider than this is its apex.
+constexpr double kRingEps = 1e-12;
+
+}  // namespace
+
+std::vector<SolidSewer::InputFace> PrimitiveFactory::coneFaces(double bottomRadius,
+                                                               double topRadius, double height,
+                                                               int segments) {
     // A negative radius is no cone. It was built as a point, while the cone
     // recorded for the side took the signed radius, its apex and angle
     // wrong; one that is no number made no shape at all.
     if (!std::isfinite(bottomRadius) || !std::isfinite(topRadius) || bottomRadius < -kRingEps ||
         topRadius < -kRingEps) {
-        return nullptr;
+        return {};
     }
     bottomRadius = std::max(bottomRadius, 0.0);
     topRadius = std::max(topRadius, 0.0);
     if (bottomRadius <= kRingEps && topRadius <= kRingEps) {
-        return nullptr;  // Both ends degenerate: no solid to build.
+        return {};  // Both ends degenerate: no solid to build.
     }
     if (!std::isfinite(height) || height <= kRingEps || segments < 3) {
-        return nullptr;
+        return {};
     }
 
     // A zero radius collapses its ring to a point, so that end is an apex
@@ -713,6 +734,18 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, dou
     }
 
     orientOutward(faces);
+    return faces;
+}
+
+std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, double topRadius,
+                                                        double height, int segments) {
+    const auto faces = coneFaces(bottomRadius, topRadius, height, segments);
+    if (faces.empty()) return nullptr;
+    // As coneFaces took them: a radius within kRingEps of zero is an apex.
+    bottomRadius = std::max(bottomRadius, 0.0);
+    topRadius = std::max(topRadius, 0.0);
+    const bool sharpTop = topRadius <= kRingEps;
+    const bool sharpBottom = bottomRadius <= kRingEps;
     auto solid = SolidSewer::sew(faces);
     if (solid != nullptr) {
         // The carrier cone runs from its apex: where the side meets the axis,
@@ -744,13 +777,14 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeCone(double bottomRadius, dou
 // makeTorus
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<topo::Solid> PrimitiveFactory::makeTorus(double majorRadius, double minorRadius,
-                                                         int segments, int tubeSegments) {
+std::vector<SolidSewer::InputFace> PrimitiveFactory::torusFaces(double majorRadius,
+                                                                double minorRadius, int segments,
+                                                                int tubeSegments) {
     if (tubeSegments <= 0) {
         tubeSegments = std::max(3, segments / 2);
     }
     if (!(minorRadius > 0.0) || !(majorRadius > minorRadius) || segments < 3 || tubeSegments < 3) {
-        return nullptr;
+        return {};
     }
 
     // Grid of tube cross-sections around the major circle.  Unlike the other
@@ -787,6 +821,13 @@ std::unique_ptr<topo::Solid> PrimitiveFactory::makeTorus(double majorRadius, dou
     }
 
     orientOutward(faces);
+    return faces;
+}
+
+std::unique_ptr<topo::Solid> PrimitiveFactory::makeTorus(double majorRadius, double minorRadius,
+                                                         int segments, int tubeSegments) {
+    const auto faces = torusFaces(majorRadius, minorRadius, segments, tubeSegments);
+    if (faces.empty()) return nullptr;
     auto solid = SolidSewer::sew(faces);
     if (solid != nullptr) {
         tagAnalyticSurface(*solid, "torus/patch",
