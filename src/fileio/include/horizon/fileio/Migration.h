@@ -26,8 +26,8 @@ inline constexpr int kLastFacetedFormat = 31;
 ///   <k> (<its name>)", or "sketch '<name>'" for a sketch no feature is made from. Why:
 ///   - "a sheet's faces are named anew": a face or an edge of a sheet, which master named after
 ///     lines it made anew in each build (Ruling 28);
-///   - "named the old way": one a feature named the old ways made, or one made after a Join, a
-///     Cut or another change of the part named the old ways, which renamed what it changed;
+///   - "named the old way": one whose name a feature named the old ways made, which the name
+///     carries (its id, or an old primitive's shared source: `box/top`);
 ///   - "built from pieces before": a piece, a region, a chord or a seam of an extrusion or a
 ///     revolve of a profile with holes or of several regions, which master built by Booleans
 ///     whose names the exact build has not (Ruling 23);

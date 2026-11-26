@@ -451,30 +451,40 @@ TEST(Migration, EveryReferenceIntoAnOldSheetIsReported) {
     EXPECT_TRUE(hole->face().empty());
 }
 
-// A Join made the old way renames what it joins: a reference made after it, to a face or an edge
-// of a feature before it, was made against its names, and is said even though that feature was
-// Stable. One to a feature after the old ones was made against its own names, and stays.
-TEST(Migration, AReferenceMadeAfterAnOldJoinIsReported) {
+// A Join made the old way leaves the names of the faces it does not make: a reference made after
+// it, to a face of a Stable feature before it, means what it meant. It is kept, nothing is said,
+// and it finds its face once the Join is named Stable (the review of Task 11, finding 1). A name
+// the old Join made or rewrote carries its id, and is said (APositionalPartsReferencesAreReported).
+TEST(Migration, AStableFeaturesFaceIsKeptThroughAnOldJoin) {
     Document doc;
     doc.setType(DocumentType::Part);
     auto box = PrimitiveFeature::makeBox(10, 10, 10);
-    const std::string boxId = box->featureID();
+    const std::string bottom = box->featureID() + "/bottom";
     doc.featureTree().addFeature(std::move(box));
-    auto sketch = square(4.0);
-    doc.addSketch(sketch);
-    auto join = std::make_unique<ExtrudeFeature>(sketch, Vec3(0, 0, 1), 12.0);
+    // A post standing out of the box's top, joined the old way.
+    auto post = lines({{1, 1}, {3, 1}, {3, 3}, {1, 3}});
+    post->setPlane(hz::draft::SketchPlane(Vec3(0, 0, 5), Vec3(0, 0, 1), Vec3(1, 0, 0)));
+    doc.addSketch(post);
+    auto join = std::make_unique<ExtrudeFeature>(post, Vec3(0, 0, 1), 10.0);
     join->setOperation(BodyOperation::Join);
     join->setNaming(NamingScheme::Positional);
     doc.featureTree().addFeature(std::move(join));
-    const std::string edge = boxId + "/edge:front|top";
-    doc.featureTree().addFeature(
-        std::make_unique<FilletFeature>(std::vector<TopologyID>{TopologyID::fromTag(edge)}, 0.5));
+    // A hole drilled up into the box's bottom, which the Join does not reach.
+    doc.featureTree().addFeature(HoleFeature::make(bottom, Vec3(7, 7, 0), 2.0, 3.0));
 
     Opened opened = openText(asFormat(doc, 25));
-    EXPECT_EQ(opened.report.skipped,
-              std::vector<std::string>{
-                  notCarried("feature 3 (Fillet)", edge, "an edge it rounds", "named the old way")})
-        << joined(opened.report.skipped);
+    EXPECT_TRUE(opened.report.skipped.empty()) << joined(opened.report.skipped);
+    EXPECT_FALSE(opened.doc->readInPart());
+    const FeatureTree& tree = opened.doc->featureTree();
+    EXPECT_EQ(tree.feature(1)->naming(), NamingScheme::Stable);
+    const auto* hole = dynamic_cast<const HoleFeature*>(tree.feature(2));
+    ASSERT_NE(hole, nullptr);
+    EXPECT_EQ(hole->face(), bottom) << "kept as it was";
+    ASSERT_TRUE(opened.doc->rebuildModel()) << opened.doc->lastBuildMessage();
+    // The box and the post above its top (1000 + 2 x 2 x 5), less the hole: it found its face.
+    const double volume = volumeOf(*opened.doc->solid());
+    EXPECT_LT(volume, 1020.0 - kPi * 3.0) << "the hole is cut";
+    EXPECT_GT(volume, 1000.0);
 
     // The old one first: a Stable feature after it names what it makes its own way.
     Document later;

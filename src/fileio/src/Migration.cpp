@@ -83,17 +83,11 @@ const char* oldSourceOf(doc::PrimitiveFeature::Kind kind) {
     return "";
 }
 
-/// Whether @p feature takes part in a build, as the tree's own rule has it.
-bool takesPart(const Feature& feature) {
-    return !feature.isConstruction() && !feature.isSuppressed();
-}
-
 /// What the migration knows of a feature as a maker of names, found before it is named Stable.
 struct Maker {
-    bool old = false;      ///< named Positional or FromGeometry
-    bool renames = false;  ///< old, and changing the part as it stands (anything but a new body)
-    bool sheet = false;    ///< a sheet (Ruling 28)
-    bool pieces = false;   ///< an extrusion or revolve of several loops: master's Booleans
+    bool old = false;     ///< named Positional or FromGeometry
+    bool sheet = false;   ///< a sheet (Ruling 28)
+    bool pieces = false;  ///< an extrusion or revolve of several loops: master's Booleans
     const doc::RevolveFeature* partTurn = nullptr;  ///< a revolve through part of a turn
 };
 
@@ -102,9 +96,8 @@ class Judge {
 public:
     explicit Judge(const doc::FeatureTree& tree);
 
-    /// Why @p name, kept by what is built as feature @p holder is (the feature count: by
-    /// nothing), is not carried over; null when it is.
-    const char* lost(const std::string& name, std::size_t holder);
+    /// Why @p name is not carried over; null when it is.
+    const char* lost(const std::string& name);
 
 private:
     /// The faces square to the axis of the revolve feature @p index is (through part of a turn):
@@ -125,10 +118,6 @@ Judge::Judge(const doc::FeatureTree& tree) {
         const Feature& feature = *tree.feature(i);
         Maker& maker = m_makers[i];
         maker.old = feature.naming() != model::NamingScheme::Stable;
-        // A new body (or the first) joins nothing: what the part had keeps its names.
-        maker.renames =
-            maker.old && takesPart(feature) &&
-            (!feature.createsNewBody() || feature.operation() != doc::BodyOperation::NewBody);
         maker.sheet = dynamic_cast<const doc::SheetMetalFeature*>(&feature) != nullptr;
         m_byPart[feature.featureID()].push_back(i);
         if (maker.old) {
@@ -157,7 +146,7 @@ Judge::Judge(const doc::FeatureTree& tree) {
     }
 }
 
-const char* Judge::lost(const std::string& name, std::size_t holder) {
+const char* Judge::lost(const std::string& name) {
     std::vector<std::size_t> makers;
     for (const std::string& part : partsOf(name)) {
         const auto found = m_byPart.find(part);
@@ -171,22 +160,18 @@ const char* Judge::lost(const std::string& name, std::size_t holder) {
     bool sheet = false;
     bool old = false;
     bool pieces = false;
-    std::size_t latest = 0;
     for (const std::size_t i : makers) {
         const Maker& maker = m_makers[i];
         sheet = sheet || maker.sheet;
         old = old || maker.old;
         pieces = pieces || maker.pieces;
-        latest = std::max(latest, i);
     }
     if (sheet) return kSheetNamedAnew;
+    // A name an operation named the old ways made or rewrote carries its feature's id (a fillet's
+    // `<fillet>/edge<N>`, an old primitive's `box/top`). One that carries a Stable feature's alone
+    // was made by it, and a change named the old ways after it (a Positional Join) leaves it: it
+    // means what it meant (the review of Task 11, finding 1).
     if (old) return kNamedTheOldWay;
-    // Kept by a feature after a change of the part named the old ways, itself after the features
-    // the name is of: it was made against the names that change gave what it changed (a Join's
-    // pieces, a fillet's renumbered edges), which the change named Stable does not give.
-    for (std::size_t j = latest + 1; j < holder && j < m_makers.size(); ++j) {
-        if (m_makers[j].renames) return kNamedTheOldWay;
-    }
     if (pieces && (holds(name, "/piece:") || holds(name, "~region") || holds(name, "/chord:") ||
                    holds(name, "/seam:"))) {
         return kBuiltFromPieces;
@@ -336,7 +321,7 @@ ImportReport migrateToExact(doc::Document& doc, int fileVersion) {
         const std::string owner = used ? ownerOf(tree, holder) : "sketch '" + sketch.name() + "'";
         const std::string& face = sketch.face();
         if (!face.empty()) {
-            if (const char* why = judge.lost(face, holder)) {
+            if (const char* why = judge.lost(face)) {
                 report.skipped.push_back(notCarried(
                     owner, face,
                     used ? "the face sketch '" + sketch.name() + "' is on" : "the face it is on",
@@ -349,7 +334,7 @@ ImportReport migrateToExact(doc::Document& doc, int fileVersion) {
         for (const auto& entity : sketch.entities()) {
             const std::string& edge = entity->sourceEdge();
             if (edge.empty()) continue;
-            if (const char* why = judge.lost(edge, holder)) {
+            if (const char* why = judge.lost(edge)) {
                 report.skipped.push_back(
                     notCarried(owner, edge,
                                used ? "an edge projected into sketch '" + sketch.name() + "'"
@@ -372,7 +357,7 @@ ImportReport migrateToExact(doc::Document& doc, int fileVersion) {
         for (std::size_t r = 0; r < references.size(); ++r) {
             const StoredReference& reference = references[r];
             if (reference.name.empty()) continue;
-            if (const char* why = judge.lost(reference.name, i)) {
+            if (const char* why = judge.lost(reference.name)) {
                 report.skipped.push_back(
                     notCarried(ownerOf(tree, i), reference.name, reference.what, why));
                 dropped.push_back(r);
