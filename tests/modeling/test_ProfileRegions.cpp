@@ -5,15 +5,19 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/drafting/BlockDefinition.h"
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftLinearDimension.h"
+#include "horizon/drafting/DraftPolyline.h"
 #include "horizon/drafting/DraftRectangle.h"
 #include "horizon/drafting/DraftText.h"
 #include "horizon/drafting/SketchPlane.h"
@@ -170,5 +174,50 @@ TEST(ProfileRegionsTest, AProfileWithAHoleRevolves) {
         EXPECT_TRUE(solid->checkManifold());
         const double pappus = angle * 15.0 * area;
         EXPECT_NEAR(volumeOf(*solid), pappus, pappus * 0.002);
+    }
+}
+
+// Ruling 22: a profile at a point that is not a number (as a fuzzed file can give) is refused,
+// saying so, before anything is chained or indexed: a line's end, an arc's centre, a circle's
+// radius. Extruded, exactly or as master did, it is refused alike.
+TEST(ProfileRegionsTest, AProfileAtAPointThatIsNotANumberIsRefused) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    const std::vector<std::pair<const char*, Profile>> cases = {
+        {"a line's end",
+         {std::make_shared<DraftLine>(Vec2(0, 0), Vec2(10, 0)),
+          std::make_shared<DraftLine>(Vec2(10, 0), Vec2(nan, 10)),
+          std::make_shared<DraftLine>(Vec2(nan, 10), Vec2(0, 0))}},
+        {"a polyline's corner",
+         {std::make_shared<hz::draft::DraftPolyline>(std::vector<Vec2>{{0, 0}, {10, 0}, {inf, 10}},
+                                                     true)}},
+        {"an arc's centre",
+         {std::make_shared<hz::draft::DraftArc>(Vec2(nan, 0), 5.0, 0.0, kPi),
+          std::make_shared<DraftLine>(Vec2(-5, 0), Vec2(5, 0))}},
+        {"a circle's radius", {circle(0, 0, nan)}},
+        {"a hole's centre", {rect(0, 0, 100, 60), circle(nan, 30, 5)}},
+    };
+    for (const auto& [what, profile] : cases) {
+        SCOPED_TRACE(what);
+        const auto found = ProfileValidator::regions(profile);
+        EXPECT_FALSE(found.ok());
+        EXPECT_NE(found.errorMessage.find("not a finite number"), std::string::npos)
+            << found.errorMessage;
+        const auto single = ProfileValidator::validate(profile);
+        EXPECT_FALSE(single.isClosed);
+        EXPECT_NE(single.errorMessage.find("not a finite number"), std::string::npos)
+            << single.errorMessage;
+        for (const auto naming :
+             {hz::model::NamingScheme::Stable, hz::model::NamingScheme::FromGeometry}) {
+            std::string why;
+            EXPECT_EQ(hz::model::Extrude::execute(profile, SketchPlane(), Vec3(0, 0, 1), 2.0, "x",
+                                                  32, 0.0, &why, naming),
+                      nullptr);
+            EXPECT_NE(why.find("not a finite number"), std::string::npos) << why;
+        }
+        std::string why;
+        EXPECT_EQ(hz::model::Extrude::exact(profile, SketchPlane(), Vec3(0, 0, 1), 2.0, "x", &why),
+                  nullptr);
+        EXPECT_NE(why.find("not a finite number"), std::string::npos) << why;
     }
 }

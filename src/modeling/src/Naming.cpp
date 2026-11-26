@@ -208,11 +208,15 @@ class PointIndex {
 public:
     PointIndex(const std::vector<math::Vec3>& points, double within)
         : points_(points), within_(within), cell_(std::max(within, 1e-300) * 4.0) {
-        for (std::size_t i = 0; i < points.size(); ++i) grid_[keyOf(points[i])].push_back(i);
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            if (finite(points[i])) grid_[keyOf(points[i])].push_back(i);
+        }
     }
 
-    /// The point nearest @p p within the distance given, if one is.
+    /// The point nearest @p p within the distance given, if one is; none for a point with a
+    /// coordinate that is not finite, which is near nothing.
     std::optional<std::size_t> find(const math::Vec3& p) const {
+        if (!finite(p)) return std::nullopt;
         const Key k = keyOf(p);
         std::optional<std::size_t> best;
         double nearest = within_;
@@ -237,6 +241,11 @@ public:
 
 private:
     using Key = std::tuple<std::int64_t, std::int64_t, std::int64_t>;
+    /// Whether @p p's cell can be had: its coordinates finite, and within the cells' reach.
+    bool finite(const math::Vec3& p) const {
+        const double reach = 1e18 * cell_;
+        return std::abs(p.x) < reach && std::abs(p.y) < reach && std::abs(p.z) < reach;
+    }
     struct KeyHash {
         std::size_t operator()(const Key& k) const {
             const auto h = [](std::int64_t v) { return std::hash<std::int64_t>{}(v); };
@@ -325,6 +334,14 @@ MastersFacets mastersFacets(const std::vector<SolidSewer::InputFace>& soup,
                             const std::string& curvedSide, const std::string& featureID,
                             const math::Mat4& placement) {
     MastersFacets out;
+    // A soup with a coordinate that is not finite names nothing: the map below orders points by
+    // their coordinates, which needs a total order (a primitive's soup is finite: its make
+    // function refuses what is not).
+    for (const auto& face : soup) {
+        for (const math::Vec3& p : face.points) {
+            if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) return out;
+        }
+    }
     // The sewer welds a point every face that meets there shares; the soup shares them exactly.
     std::map<std::tuple<double, double, double>, std::size_t> index;
     std::vector<std::size_t> curved;
@@ -377,6 +394,7 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
     math::Vec3 hi = lo * -1.0;
     double reach = 0.0;
     for (const math::Vec3& p : masters.points) {
+        if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) return;
         lo = math::Vec3(std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z));
         hi = math::Vec3(std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z));
         reach = std::max(reach, p.length());

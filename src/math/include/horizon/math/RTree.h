@@ -88,7 +88,8 @@ public:
     /// level above packs the one below alike. The tree answers every query as one built by
     /// inserting them would (the same entries, in another order), built far faster: 100,000
     /// points took 0.18 s to insert one by one in an optimised build. Inserts and removals work
-    /// on it as on any other.
+    /// on it as on any other. A box with a coordinate that is not a number is held and meets no
+    /// query: it is nowhere, and the boxes beside it are found as ever.
     void load(std::vector<std::pair<ValueT, BoundingBox>> entries) {
         m_nodes.clear();
         m_free.clear();
@@ -100,8 +101,13 @@ public:
         std::vector<Entry> all;
         all.reserve(entries.size());
         for (auto& e : entries) all.push_back(Entry{std::move(e.first), e.second});
+        // Twice a box's centre along an axis, the key it is sorted by: a total order whatever the
+        // box, one with a coordinate that is not a number (or spanning the whole axis) last, for
+        // std::sort must be given a strict weak order (NaN compares false both ways, and an
+        // unguarded insertion sort reads past the range on one).
         const auto centre = [](const BoundingBox& box, int axis) {
-            return axis == 0 ? box.min().x + box.max().x : box.min().y + box.max().y;
+            const double twice = axis == 0 ? box.min().x + box.max().x : box.min().y + box.max().y;
+            return std::isnan(twice) ? std::numeric_limits<double>::infinity() : twice;
         };
         // Runs of at most MaxChildren, sliced across x, then each slice along y.
         const auto tile = [&centre](auto& items, const auto& boxOf) {
@@ -133,8 +139,9 @@ public:
             leaf.entries.assign(
                 all.begin() + static_cast<std::ptrdiff_t>(from),
                 all.begin() + static_cast<std::ptrdiff_t>(std::min(all.size(), from + per)));
-            leaf.bbox = leaf.entries.front().bbox;
-            for (const Entry& e : leaf.entries) leaf.bbox.expand(e.bbox);
+            // From nothing, as insert() grows one: a coordinate that is not a number leaves the
+            // node's box as it was, so the finite entries beside it are still found.
+            recomputeBBox(index);
             level.push_back(index);
         }
         while (level.size() > 1) {

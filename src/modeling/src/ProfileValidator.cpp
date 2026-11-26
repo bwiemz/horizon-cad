@@ -8,6 +8,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/drafting/DraftArc.h"
@@ -106,6 +107,39 @@ static Curves asCurves(const std::vector<std::shared_ptr<draft::DraftEntity>>& e
         }
     }
     return out;
+}
+
+/// Why @p curve, one a profile is made of, is at no point: a number that places it (a line's
+/// ends, an arc's centre, radius and angles, a circle's centre and radius) is not finite, as a
+/// file may give one. Empty where it is placed.
+static std::string unplaced(const draft::DraftEntity& curve) {
+    const auto finite = [](const Vec2& p) { return std::isfinite(p.x) && std::isfinite(p.y); };
+    if (const auto* line = dynamic_cast<const draft::DraftLine*>(&curve)) {
+        if (finite(line->start()) && finite(line->end())) return {};
+        return "a line of the profile has an end that is not a finite number";
+    }
+    if (const auto* arc = dynamic_cast<const draft::DraftArc*>(&curve)) {
+        if (finite(arc->center()) && std::isfinite(arc->radius()) &&
+            std::isfinite(arc->startAngle()) && std::isfinite(arc->endAngle())) {
+            return {};
+        }
+        return "an arc of the profile has a centre, radius or angle that is not a finite number";
+    }
+    if (const auto* circle = dynamic_cast<const draft::DraftCircle*>(&curve)) {
+        if (finite(circle->center()) && std::isfinite(circle->radius())) return {};
+        return "a circle of the profile has a centre or radius that is not a finite number";
+    }
+    return {};
+}
+
+/// Why @p curves are at no point (unplaced), the first that is not; empty where all are. Checked
+/// before anything is indexed or chained: no point of a solid is at a number that is not one.
+static std::string unplaced(const std::vector<std::shared_ptr<draft::DraftEntity>>& curves) {
+    for (const auto& curve : curves) {
+        std::string why = unplaced(*curve);
+        if (!why.empty()) return why;
+    }
+    return {};
 }
 
 /// A note on the sketch rather than part of its shape.
@@ -258,6 +292,10 @@ ProfileValidationResult ProfileValidator::validate(
 
     if (entities.empty()) {
         result.errorMessage = "the profile is empty";
+        return result;
+    }
+    if (std::string why = unplaced(entities); !why.empty()) {
+        result.errorMessage = std::move(why);
         return result;
     }
 
@@ -438,6 +476,10 @@ ProfileRegions ProfileValidator::regions(
     }
     const Curves curves = asCurves(shape);
     const auto& all = curves.curves;
+    if (std::string why = unplaced(all); !why.empty()) {
+        result.errorMessage = std::move(why);
+        return result;
+    }
 
     std::vector<FoundLoop> loops;
     std::vector<bool> used(all.size(), false);
