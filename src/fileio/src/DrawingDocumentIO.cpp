@@ -736,8 +736,8 @@ bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSp
     std::vector<std::string> lost;
     outDrawing = spec.version >= 2 ? build(*solid, drawn, &lost, &holes)
                                    : model::DrawingGenerator::standardViews(*solid, spec.gap);
-    // What the part no longer has an edge for is left out of the sheet as read (stage 3).
-    for (std::string& line : leftOutOf(lost)) outSpec.leftOut.push_back(std::move(line));
+    // What the part no longer has an edge for is said, not drawn (stage 3); the spec keeps it.
+    outSpec.notDrawn = notDrawnOf(lost);
     return true;
 }
 
@@ -868,7 +868,7 @@ const HoleNote* DrawingDocumentIO::holeOfEdge(const std::vector<HoleNote>& holes
     return nullptr;
 }
 
-std::vector<std::string> DrawingDocumentIO::leftOutOf(const std::vector<std::string>& lost) {
+std::vector<std::string> DrawingDocumentIO::notDrawnOf(const std::vector<std::string>& lost) {
     std::vector<std::string> said;
     said.reserve(lost.size());
     for (const std::string& what : lost) {

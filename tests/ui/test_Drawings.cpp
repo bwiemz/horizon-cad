@@ -11,7 +11,6 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
-#include <QByteArray>
 #include <QFile>
 #include <QMessageBox>
 #include <QRegularExpression>
@@ -23,7 +22,9 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <utility>
@@ -435,12 +436,14 @@ void addDetailOfFront(MainWindow& w, const hz::model::DrawingView& front, const 
 
 }  // namespace
 
-// Stage 3 (Task 12): a sheet whose dimension names an edge the part no longer has is read in
-// part, whatever its file's age: opened, the report of what its reading left out says it, and the
-// tab says it is incomplete. A loss never stops it being written (owner amendment A2): Save asks
-// where, the file it was read from is as it was, and the copy keeps the dimension, to be drawn
-// again should the part have its edge again.
-TEST(DrawingsTest, ASheetWhoseDimensionFindsNoEdgeIsReadInPart) {
+// Stage 3 (Task 12, Ruling 41): a sheet whose dimension names an edge the part no longer has
+// says so when it opens, whatever its file's age, in the report's own "Not drawn" lines. Its file
+// keeps the dimension, to be drawn again should the part have its edge again, so saving over it
+// loses nothing: the sheet is not read in part, its tab is not incomplete, and Save writes over
+// its file asking nothing, the dimension kept. Read again when its file changes, it says so again.
+// A sheet the reading left something out of (a dimension of a kind this version does not read) is
+// read in part as before, and says both.
+TEST(DrawingsTest, ASheetWhoseDimensionFindsNoEdgeSaysSoAndIsSavedOverItsFile) {
     QTemporaryDir dir;
     const QString block = dir.filePath(QStringLiteral("block.hzpart"));
     saveBlock(block, 10);
@@ -452,56 +455,69 @@ TEST(DrawingsTest, ASheetWhoseDimensionFindsNoEdgeIsReadInPart) {
         {"primitive_1/edge:no|such", hz::io::DrawingDimensionSpec::Kind::Length});
     const QString file = dir.filePath(QStringLiteral("block.hzdwg"));
     ASSERT_TRUE(hz::io::DrawingDocumentIO::save(file.toStdString(), spec));
-    QFile original(file);
-    ASSERT_TRUE(original.open(QIODevice::ReadOnly));
-    const QByteArray before = original.readAll();
-    original.close();
+    const QString line =
+        QStringLiteral("Not drawn: view 1: a length on an edge the part no longer has");
 
     MainWindow w;
     hz::test::DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
     ASSERT_TRUE(w.openPath(file));
     report.waitForDialog(5000);
     ASSERT_TRUE(report.seen()) << "the dimension not drawn is reported";
-    EXPECT_TRUE(report.detailedText().contains(
-        QStringLiteral("Left out: view 1: a length on an edge the part no longer has")))
+    EXPECT_TRUE(report.detailedText().contains(line)) << report.detailedText().toStdString();
+    EXPECT_FALSE(report.detailedText().contains(QStringLiteral("Left out:")))
         << report.detailedText().toStdString();
+    EXPECT_TRUE(report.informativeText().contains(QStringLiteral("saving keeps")))
+        << report.informativeText().toStdString();
     hz::doc::Document* sheet = w.activeDocument();
-    EXPECT_TRUE(sheet->readInPart());
-    EXPECT_TRUE(
+    EXPECT_FALSE(sheet->readInPart()) << "its file keeps what is not drawn";
+    EXPECT_FALSE(
         tabBar(w)->tabText(tabBar(w)->currentIndex()).contains(QStringLiteral("(incomplete)")))
         << tabBar(w)->tabText(tabBar(w)->currentIndex()).toStdString();
     EXPECT_FALSE(sheet->isDirty());
 
-    const QString copy = dir.filePath(QStringLiteral("copy.hzdwg"));
+    // Saved over its file, asking nothing, and the dimension kept there.
+    sheet->setDirty(true);
     {
-        FilePicker picker(copy);
+        hz::test::ModalCloser closer;
         trigger(w, "action_save");
+        EXPECT_TRUE(closer.dismissed().isEmpty()) << closer.dismissed().join(", ").toStdString();
     }
-    ASSERT_TRUE(original.open(QIODevice::ReadOnly));
-    EXPECT_EQ(original.readAll(), before) << "the file it was read from is as it was";
-    ASSERT_TRUE(QFile::exists(copy)) << "Save asked where";
-    EXPECT_FALSE(sheet->readInPart());
+    EXPECT_FALSE(sheet->isDirty()) << "saved";
+    EXPECT_EQ(sheet->filePath(), file.toStdString());
     hz::io::DrawingDocumentSpec saved;
-    ASSERT_TRUE(hz::io::DrawingDocumentIO::readSpec(copy.toStdString(), saved));
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::readSpec(file.toStdString(), saved));
     ASSERT_FALSE(saved.views.empty());
     ASSERT_EQ(saved.views[0].dimensions.size(), 1u) << "kept";
     EXPECT_EQ(saved.views[0].dimensions[0].edge, "primitive_1/edge:no|such");
 
-    // Read again when its file changes on disk: what it lacks is said again.
+    // Read again when its file changes on disk: said again, and still not read in part.
     w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
     saved.titleBlock.title = "Again";
     hz::test::DialogResponder again(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
-    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(copy.toStdString(), saved));
-    const std::filesystem::path changed(copy.toStdString());
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(file.toStdString(), saved));
+    const std::filesystem::path changed(file.toStdString());
     std::filesystem::last_write_time(
         changed, std::filesystem::last_write_time(changed) + std::chrono::seconds(2));
     again.waitForDialog(5000);
     ASSERT_TRUE(again.seen()) << "read again, and said again";
-    EXPECT_TRUE(again.detailedText().contains(
-        QStringLiteral("Left out: view 1: a length on an edge the part no longer has")))
-        << again.detailedText().toStdString();
+    EXPECT_TRUE(again.detailedText().contains(line)) << again.detailedText().toStdString();
     EXPECT_TRUE(titleBlockText(*sheet).contains(QStringLiteral("Again")));
-    EXPECT_TRUE(sheet->readInPart());
+    EXPECT_FALSE(sheet->readInPart());
+
+    // A dimension of a kind this version does not read is left out: read in part, as before.
+    nlohmann::json root =
+        nlohmann::json::parse(hz::io::DrawingDocumentIO::serialise(file.toStdString(), saved));
+    root["views"][0]["dimensions"].push_back({{"edge", "e"}, {"kind", "wingspan"}});
+    const QString unread = dir.filePath(QStringLiteral("unread.hzdwg"));
+    std::ofstream(unread.toStdString()) << root.dump();
+    hz::test::DialogResponder both(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+    ASSERT_TRUE(w.openPath(unread));
+    both.waitForDialog(5000);
+    ASSERT_TRUE(both.seen());
+    EXPECT_TRUE(both.detailedText().contains(line)) << both.detailedText().toStdString();
+    EXPECT_TRUE(both.detailedText().contains(QStringLiteral("Left out: view 1, dimension 2: ")))
+        << both.detailedText().toStdString();
+    EXPECT_TRUE(w.activeDocument()->readInPart());
 }
 
 // A section cut through the Front view: captioned, hatched, its cut marked

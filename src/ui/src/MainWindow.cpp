@@ -2874,16 +2874,28 @@ void MainWindow::showImportReport(const QString& file, const io::ImportReport& r
     for (const auto& item : report.approximated) {
         lines << tr("Approximated: %1").arg(QString::fromStdString(item));
     }
+    for (const auto& item : report.notDrawn) {
+        lines << tr("Not drawn: %1").arg(QString::fromStdString(item));
+    }
     for (const auto& item : converted) lines << tr("Converted: %1").arg(item);
     QMessageBox box(QMessageBox::Warning, tr("Not Everything Was Read"),
                     tr("\"%1\": %2").arg(file, QString::fromStdString(report.summary())),
                     QMessageBox::Ok, this);
-    box.setInformativeText(
-        notSavedOver
-            ? tr("So that \"%1\" keeps what the document lacks, the document is not saved over "
-                 "it: Save asks where to save it instead.")
-                  .arg(file)
-            : tr("What was left out is not in the document, and saving will not keep it."));
+    QStringList said;
+    if (notSavedOver) {
+        said << tr("So that \"%1\" keeps what the document lacks, the document is not saved over "
+                   "it: Save asks where to save it instead.")
+                    .arg(file);
+    } else if (!report.skipped.empty() || !report.approximated.empty()) {
+        said << tr("What was left out is not in the document, and saving will not keep it.");
+    }
+    // Kept by the sheet and its file (Ruling 41): no reason not to save over it.
+    if (!report.notDrawn.empty()) {
+        said << tr(
+            "What is not drawn is kept, and saving keeps it: it is drawn again should the "
+            "part have its edges again.");
+    }
+    box.setInformativeText(said.join(QLatin1Char(' ')));
     box.setDetailedText(lines.join(QLatin1Char('\n')));
     box.exec();
 }

@@ -474,7 +474,7 @@ model::TitleBlock DrawingWorkbench::roomFor(const Sheet& sheet) {
 
 void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& spec,
                             const Source& source, model::Drawing* drawn,
-                            std::vector<std::string>* leftOut) {
+                            std::vector<std::string>* notDrawn) {
     const topo::Solid* solid = source.solid.get();
     const model::PartsList& partsList = source.partsList;
     // The views keep clear of the parts list, above the title block.
@@ -499,12 +499,10 @@ void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
     } else {
         std::vector<std::string> lost;
         drawing = io::DrawingDocumentIO::build(*solid, spec, &lost, &source.holes);
-        // Kept, and drawn again should the part have the edges again. A sheet read lacks them:
-        // read in part (stage 3), what it lacks in the report of what reading it left out.
-        if (leftOut != nullptr) {
-            for (std::string& line : io::DrawingDocumentIO::leftOutOf(lost)) {
-                leftOut->push_back(std::move(line));
-            }
+        // Kept, and drawn again should the part have the edges again. A sheet read says them in
+        // its report (stage 3); its file keeps them, so it is not read in part (Ruling 41).
+        if (notDrawn != nullptr) {
+            *notDrawn = io::DrawingDocumentIO::notDrawnOf(lost);
         } else if (!lost.empty()) {
             QStringList which;
             for (const std::string& l : lost) which << QString::fromStdString(l);
@@ -634,7 +632,8 @@ bool DrawingWorkbench::open(const QString& fileName) {
     }
     auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
     model::Drawing drawing;
-    draw(*document, spec, *source, &drawing, &spec.leftOut);
+    std::vector<std::string> notDrawn;
+    draw(*document, spec, *source, &drawing, &notDrawn);
     // What was drawn on it by hand, back where it was: the document holds it
     // from here on, and a save writes it from there.
     if (spec.annotations) {
@@ -658,8 +657,21 @@ bool DrawingWorkbench::open(const QString& fileName) {
                                       listedHeight(source->partsList), source}));
     m_host.documents().noteSaved(document);  // found by its path, and watched
     m_host.addTab(document, QFileInfo(fileName).fileName());
-    if (!leftOut.empty()) m_host.reportLeftOut(QFileInfo(fileName).fileName(), leftOut);
+    reportRead(QFileInfo(fileName).fileName(), leftOut, std::move(notDrawn));
     return true;
+}
+
+void DrawingWorkbench::reportRead(const QString& fileName, const std::vector<std::string>& leftOut,
+                                  std::vector<std::string> notDrawn) {
+    if (notDrawn.empty()) {
+        if (!leftOut.empty()) m_host.reportLeftOut(fileName, leftOut);
+        return;
+    }
+    io::ImportReport said;
+    said.skipped = leftOut;
+    said.notDrawn = std::move(notDrawn);
+    // Read in part for what its file has that it lacks alone: what is not drawn, both keep.
+    m_host.showImportReport(fileName, said, !said.skipped.empty());
 }
 
 bool DrawingWorkbench::save(doc::Document& document, const std::string& path, std::string* error) {
@@ -693,7 +705,8 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
         m_host.reportFileError(tr("Could not read again"), path, error);
         return;
     }
-    draw(document, spec, *source, &drawing, &spec.leftOut);
+    std::vector<std::string> notDrawn;
+    draw(document, spec, *source, &drawing, &notDrawn);
     // The file's hand-drawn entities in place of these, and no undoing back
     // into what was given up: read again is the file as it is.
     std::vector<uint64_t> byHand;
@@ -727,9 +740,7 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     m_host.refreshModifiedIndicators();
     // Its paper may be another size now.
     if (m_host.currentDocument() == &document) shown(document);
-    if (!leftOut.empty()) {
-        m_host.reportLeftOut(QFileInfo(QString::fromStdString(path)).fileName(), leftOut);
-    }
+    reportRead(QFileInfo(QString::fromStdString(path)).fileName(), leftOut, std::move(notDrawn));
 }
 
 void DrawingWorkbench::shown(doc::Document& document) {

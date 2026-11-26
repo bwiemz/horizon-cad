@@ -2044,7 +2044,7 @@ Details stehen im Protokoll:
         <translation type="unfinished">%1 wirkt auf ein Zeichnungsblatt: öffnen Sie eines oder erstellen Sie eines aus einem Teil</translation>
     </message>
     <message>
-        <location line="+236"/>
+        <location line="+240"/>
         <source>Dimensions whose edges the part no longer has are not drawn: %1</source>
         <translation type="unfinished">Bemaßungen, deren Kanten das Teil nicht mehr hat, werden nicht gezeichnet: %1</translation>
     </message>
@@ -2088,12 +2088,12 @@ Details stehen im Protokoll:
         <translation type="unfinished">Fehler beim Öffnen von</translation>
     </message>
     <message>
-        <location line="+61"/>
+        <location line="+75"/>
         <source>Could not read again</source>
         <translation type="unfinished">Fehler beim erneuten Einlesen von</translation>
     </message>
     <message>
-        <location line="+70"/>
+        <location line="+69"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">Eine Zeichnung von &quot;%1&quot; konnte nicht neu gezeichnet werden: %2</translation>
     </message>
@@ -3571,7 +3571,7 @@ um Ihr Teil aufzubauen.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+485"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+487"/>
         <source>&amp;File</source>
         <translation>&amp;Datei</translation>
     </message>
@@ -5005,7 +5005,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Abwicklung</translation>
     </message>
     <message>
-        <location line="+499"/>
+        <location line="+501"/>
         <source>Shown from facets</source>
         <translation type="unfinished">Aus Facetten dargestellt</translation>
     </message>
@@ -5025,7 +5025,7 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Alle unterstützten Dateien (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon-CAD-Zeichnungen (*.hcad);;Horizon-Teile (*.hzpart);;Horizon-Baugruppen (*.hzasm);;Horizon-Zeichnungsblätter (*.hzdwg);;DXF-Dateien (*.dxf);;DWG-Dateien (*.dwg);;Alle Dateien (*)</translation>
     </message>
     <message numerus="yes">
-        <location line="+408"/>
+        <location line="+486"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>Datei gespeichert; %n Layer unter einem Namen, den DXF zulässt.</numerusform>
@@ -5033,12 +5033,22 @@ um Ihr Teil aufzubauen.</translation>
         </translation>
     </message>
     <message>
-        <location line="+62"/>
+        <location line="+73"/>
         <source>Horizon CAD reads DWG files but does not write them. Save the drawing as DXF (.dxf), which AutoCAD opens, or as a Horizon CAD drawing (.hcad).</source>
         <translation type="unfinished">Horizon CAD liest DWG-Dateien, schreibt sie aber nicht. Speichern Sie die Zeichnung als DXF (.dxf), das AutoCAD öffnet, oder als Horizon-CAD-Zeichnung (.hcad).</translation>
     </message>
     <message>
-        <location line="+383"/>
+        <location line="+89"/>
+        <source>Not drawn: %1</source>
+        <translation type="unfinished">Nicht gezeichnet: %1</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>What is not drawn is kept, and saving keeps it: it is drawn again should the part have its edges again.</source>
+        <translation type="unfinished">Was nicht gezeichnet wird, bleibt erhalten, auch beim Speichern: Es wird wieder gezeichnet, sobald das Teil seine Kanten wieder hat.</translation>
+    </message>
+    <message>
+        <location line="+291"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">Nichts ausgewählt zum Zoomen: Alles anzeigen (F) zeigt alles</translation>
     </message>
@@ -5133,7 +5143,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</translation>
     </message>
     <message>
-        <location line="-2769"/>
+        <location line="-2873"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -5364,16 +5374,16 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <location line="+97"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1099"/>
-        <location line="+502"/>
-        <location line="+1021"/>
-        <location line="+600"/>
+        <location line="+1174"/>
+        <location line="+530"/>
+        <location line="+1022"/>
+        <location line="+604"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-3313"/>
+        <location line="-3421"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -5394,17 +5404,17 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2953"/>
+        <location line="+3057"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-2947"/>
+        <location line="-3051"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
     <message>
-        <location line="+413"/>
+        <location line="+415"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (wiederhergestellt)</translation>
     </message>
@@ -5704,9 +5714,9 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+41"/>
-        <location line="+38"/>
+        <location line="+42"/>
         <location line="+13"/>
-        <location line="+90"/>
+        <location line="+159"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -5715,19 +5725,19 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Fehler beim Öffnen von</translation>
     </message>
     <message>
-        <location line="-241"/>
+        <location line="-310"/>
         <source>Assembly</source>
         <translation type="unfinished">Baugruppe</translation>
     </message>
     <message>
         <location line="+22"/>
-        <location line="+111"/>
+        <location line="+180"/>
         <source>Drawing</source>
         <translation type="unfinished">Zeichnung</translation>
     </message>
     <message>
-        <location line="-97"/>
-        <location line="+97"/>
+        <location line="-166"/>
+        <location line="+166"/>
         <source>Document</source>
         <translation type="unfinished">Dokument</translation>
     </message>
@@ -5803,18 +5813,18 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+7"/>
-        <location line="+16"/>
-        <location line="+44"/>
+        <location line="+17"/>
+        <location line="+48"/>
         <source>Could not save</source>
         <translation type="unfinished">Fehler beim Speichern von</translation>
     </message>
     <message>
-        <location line="-37"/>
+        <location line="-41"/>
         <source>Drawing saved.</source>
         <translation type="unfinished">Zeichnung gespeichert.</translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+26"/>
         <source>File saved.</source>
         <translation type="unfinished">Datei gespeichert.</translation>
     </message>
@@ -5838,7 +5848,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
 %3</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+22"/>
         <source>Horizon Assemblies (*.hzasm);;All Files (*)</source>
         <translation type="unfinished">Horizon-Baugruppen (*.hzasm);;Alle Dateien (*)</translation>
     </message>
@@ -5885,12 +5895,12 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+25"/>
-        <location line="+13"/>
+        <location line="+16"/>
         <source>&quot;%1&quot;: %2</source>
         <translation type="unfinished">&quot;%1&quot;: %2</translation>
     </message>
     <message>
-        <location line="-7"/>
+        <location line="-10"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Ausgelassen: %1</translation>
     </message>
@@ -5900,7 +5910,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Angenähert: %1</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+5"/>
         <source>Converted: %1</source>
         <translation type="unfinished">Konvertiert: %1</translation>
     </message>
@@ -5915,12 +5925,12 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Damit &quot;%1&quot; behält, was dem Dokument fehlt, wird das Dokument nicht darüber gespeichert: Speichern fragt stattdessen, wohin.</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>What was left out is not in the document, and saving will not keep it.</source>
         <translation type="unfinished">Was ausgelassen wurde, ist nicht im Dokument, und beim Speichern bleibt es nicht erhalten.</translation>
     </message>
     <message>
-        <location line="+32"/>
+        <location line="+40"/>
         <source>&quot;%1&quot; was changed by another program: close it and open it again to see the change</source>
         <translation type="unfinished">&quot;%1&quot; wurde von einem anderen Programm geändert: schließen und erneut öffnen, um die Änderung zu sehen</translation>
     </message>
@@ -5970,7 +5980,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">&quot;%1&quot; wurde von einem anderen Programm geändert; Ihre zwischenzeitlichen Änderungen bleiben erhalten, und beim Speichern ersetzen sie die des anderen Programms</translation>
     </message>
     <message>
-        <location line="+28"/>
+        <location line="+29"/>
         <source>&quot;%1&quot; was changed by another program, and has been read again</source>
         <translation type="unfinished">&quot;%1&quot; wurde von einem anderen Programm geändert und erneut eingelesen</translation>
     </message>
@@ -6331,12 +6341,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">ideal</translation>
     </message>
     <message>
-        <location line="-3665"/>
+        <location line="-3769"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">Es konnte nicht ermittelt werden.</translation>
     </message>
     <message>
-        <location line="+3686"/>
+        <location line="+3790"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">Masseeigenschaften werden bereits gemessen</translation>
     </message>
@@ -6492,7 +6502,7 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">%1 kann den angegebenen Wert nicht verwenden für: %2</translation>
     </message>
     <message>
-        <location line="+85"/>
+        <location line="+87"/>
         <source>Feature rebuild failed at feature %1: %2</source>
         <translation type="unfinished">Neuaufbau fehlgeschlagen bei Feature %1: %2</translation>
     </message>
@@ -6507,12 +6517,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">%1 wird importiert: %2 von %3 Teilen geschrieben...</translation>
     </message>
     <message>
-        <location line="+45"/>
+        <location line="+47"/>
         <source>Rebuild cancelled: the model is as it was before the last change.</source>
         <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
     </message>
     <message>
-        <location line="-3329"/>
+        <location line="-3437"/>
         <source>0 selected</source>
         <translation>0 ausgewählt</translation>
     </message>
@@ -7786,7 +7796,7 @@ seine Eigenschaften anzuzeigen und zu bearbeiten.</translation>
 <context>
     <name>hz::ui::ViewportWidget</name>
     <message>
-        <location filename="../src/ui/src/ViewportWidget.cpp" line="+50"/>
+        <location filename="../src/ui/src/ViewportWidget.cpp" line="+48"/>
         <source>Viewport</source>
         <translation type="unfinished">Ansichtsfenster</translation>
     </message>
@@ -7796,7 +7806,7 @@ seine Eigenschaften anzuzeigen und zu bearbeiten.</translation>
         <translation type="unfinished">Die Zeichnung oder das Modell, wie es dargestellt wird. Arbeiten Sie darin über die Menüs, das Menüband und die Tastenkürzel.</translation>
     </message>
     <message>
-        <location line="+593"/>
+        <location line="+582"/>
         <source>The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.</source>
         <translation type="unfinished">Der Grafiktreiber stellt OpenGL %1.%2 bereit; Horizon CAD benötigt 3.3.</translation>
     </message>

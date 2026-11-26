@@ -2033,7 +2033,7 @@ Details are in the log:
         <translation type="unfinished">%1은(는) 도면 시트에서 사용합니다: 도면을 열거나 부품에서 새로 만드십시오</translation>
     </message>
     <message>
-        <location line="+236"/>
+        <location line="+240"/>
         <source>Dimensions whose edges the part no longer has are not drawn: %1</source>
         <translation type="unfinished">부품에 더 이상 없는 모서리의 치수는 그려지지 않습니다: %1</translation>
     </message>
@@ -2076,12 +2076,12 @@ Details are in the log:
         <translation type="unfinished">열 수 없음</translation>
     </message>
     <message>
-        <location line="+61"/>
+        <location line="+75"/>
         <source>Could not read again</source>
         <translation type="unfinished">다시 읽을 수 없음</translation>
     </message>
     <message>
-        <location line="+70"/>
+        <location line="+69"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">&quot;%1&quot;의 도면을 다시 그릴 수 없습니다: %2</translation>
     </message>
@@ -3549,7 +3549,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+485"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+487"/>
         <source>&amp;File</source>
         <translation>파일(&amp;F)</translation>
     </message>
@@ -4983,7 +4983,7 @@ begin building your part.</source>
         <translation type="unfinished">전개도</translation>
     </message>
     <message>
-        <location line="+499"/>
+        <location line="+501"/>
         <source>Shown from facets</source>
         <translation type="unfinished">패싯으로 표시됨</translation>
     </message>
@@ -5003,19 +5003,29 @@ begin building your part.</source>
         <translation type="unfinished">지원되는 모든 파일 (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD 도면 (*.hcad);;Horizon 부품 (*.hzpart);;Horizon 어셈블리 (*.hzasm);;Horizon 도면 시트 (*.hzdwg);;DXF 파일 (*.dxf);;DWG 파일 (*.dwg);;모든 파일 (*)</translation>
     </message>
     <message numerus="yes">
-        <location line="+408"/>
+        <location line="+486"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>파일을 저장했습니다. 레이어 %n개는 DXF에서 허용하는 이름으로 저장했습니다.</numerusform>
         </translation>
     </message>
     <message>
-        <location line="+62"/>
+        <location line="+73"/>
         <source>Horizon CAD reads DWG files but does not write them. Save the drawing as DXF (.dxf), which AutoCAD opens, or as a Horizon CAD drawing (.hcad).</source>
         <translation type="unfinished">Horizon CAD는 DWG 파일을 읽지만 쓰지는 않습니다. 도면을 AutoCAD에서 열 수 있는 DXF(.dxf)나 Horizon CAD 도면(.hcad)으로 저장하십시오.</translation>
     </message>
     <message>
-        <location line="+383"/>
+        <location line="+89"/>
+        <source>Not drawn: %1</source>
+        <translation type="unfinished">그려지지 않음: %1</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>What is not drawn is kept, and saving keeps it: it is drawn again should the part have its edges again.</source>
+        <translation type="unfinished">그려지지 않은 항목은 보존되며, 저장해도 유지됩니다. 부품에 모서리가 다시 생기면 다시 그려집니다.</translation>
+    </message>
+    <message>
+        <location line="+291"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">확대/축소할 선택 항목이 없습니다. 전체 맞춤(F)은 전체를 표시합니다</translation>
     </message>
@@ -5108,7 +5118,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 오차는 추정되지 않았습니다: 세분화 없이 한 번만 측정했습니다.</translation>
     </message>
     <message>
-        <location line="-2769"/>
+        <location line="-2873"/>
         <source>Radial</source>
         <translation type="unfinished">반지름</translation>
     </message>
@@ -5339,16 +5349,16 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+97"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1099"/>
-        <location line="+502"/>
-        <location line="+1021"/>
-        <location line="+600"/>
+        <location line="+1174"/>
+        <location line="+530"/>
+        <location line="+1022"/>
+        <location line="+604"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-3313"/>
+        <location line="-3421"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
@@ -5369,17 +5379,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2953"/>
+        <location line="+3057"/>
         <source>None</source>
         <translation type="unfinished">없음</translation>
     </message>
     <message>
-        <location line="-2947"/>
+        <location line="-3051"/>
         <source>%1 selected</source>
         <translation>%1개 선택됨</translation>
     </message>
     <message>
-        <location line="+413"/>
+        <location line="+415"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (복구됨)</translation>
     </message>
@@ -5677,9 +5687,9 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+41"/>
-        <location line="+38"/>
+        <location line="+42"/>
         <location line="+13"/>
-        <location line="+90"/>
+        <location line="+159"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -5688,19 +5698,19 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">열 수 없음</translation>
     </message>
     <message>
-        <location line="-241"/>
+        <location line="-310"/>
         <source>Assembly</source>
         <translation type="unfinished">어셈블리</translation>
     </message>
     <message>
         <location line="+22"/>
-        <location line="+111"/>
+        <location line="+180"/>
         <source>Drawing</source>
         <translation type="unfinished">도면</translation>
     </message>
     <message>
-        <location line="-97"/>
-        <location line="+97"/>
+        <location line="-166"/>
+        <location line="+166"/>
         <source>Document</source>
         <translation type="unfinished">문서</translation>
     </message>
@@ -5776,18 +5786,18 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+16"/>
-        <location line="+44"/>
+        <location line="+17"/>
+        <location line="+48"/>
         <source>Could not save</source>
         <translation type="unfinished">저장할 수 없음</translation>
     </message>
     <message>
-        <location line="-37"/>
+        <location line="-41"/>
         <source>Drawing saved.</source>
         <translation type="unfinished">도면을 저장했습니다.</translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+26"/>
         <source>File saved.</source>
         <translation type="unfinished">파일을 저장했습니다.</translation>
     </message>
@@ -5811,7 +5821,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 %3</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+22"/>
         <source>Horizon Assemblies (*.hzasm);;All Files (*)</source>
         <translation type="unfinished">Horizon 어셈블리 (*.hzasm);;모든 파일 (*)</translation>
     </message>
@@ -5858,12 +5868,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+25"/>
-        <location line="+13"/>
+        <location line="+16"/>
         <source>&quot;%1&quot;: %2</source>
         <translation type="unfinished">&quot;%1&quot;: %2</translation>
     </message>
     <message>
-        <location line="-7"/>
+        <location line="-10"/>
         <source>Left out: %1</source>
         <translation type="unfinished">생략됨: %1</translation>
     </message>
@@ -5873,7 +5883,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">근사 처리됨: %1</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+5"/>
         <source>Converted: %1</source>
         <translation type="unfinished">변환됨: %1</translation>
     </message>
@@ -5888,12 +5898,12 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">&quot;%1&quot;이(가) 문서에 없는 내용을 유지하도록, 문서를 그 위에 저장하지 않습니다. 저장하면 대신 저장할 위치를 묻습니다.</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>What was left out is not in the document, and saving will not keep it.</source>
         <translation type="unfinished">생략된 항목은 문서에 포함되지 않으며, 저장해도 보존되지 않습니다.</translation>
     </message>
     <message>
-        <location line="+32"/>
+        <location line="+40"/>
         <source>&quot;%1&quot; was changed by another program: close it and open it again to see the change</source>
         <translation type="unfinished">&quot;%1&quot;이(가) 다른 프로그램에서 변경되었습니다: 변경 내용을 보려면 닫았다가 다시 여십시오</translation>
     </message>
@@ -5943,7 +5953,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">&quot;%1&quot;이(가) 다른 프로그램에서 변경되었습니다. 그동안 변경한 내용은 유지되며, 저장하면 다른 프로그램의 변경 내용을 덮어씁니다</translation>
     </message>
     <message>
-        <location line="+28"/>
+        <location line="+29"/>
         <source>&quot;%1&quot; was changed by another program, and has been read again</source>
         <translation type="unfinished">&quot;%1&quot;이(가) 다른 프로그램에서 변경되어 다시 읽었습니다</translation>
     </message>
@@ -6301,12 +6311,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">이상적</translation>
     </message>
     <message>
-        <location line="-3665"/>
+        <location line="-3769"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">계산할 수 없습니다.</translation>
     </message>
     <message>
-        <location line="+3686"/>
+        <location line="+3790"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">질량 특성을 이미 측정하고 있습니다</translation>
     </message>
@@ -6462,7 +6472,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">%1에서 지정한 값을 사용할 수 없는 항목: %2</translation>
     </message>
     <message>
-        <location line="+85"/>
+        <location line="+87"/>
         <source>Feature rebuild failed at feature %1: %2</source>
         <translation type="unfinished">피처 %1에서 다시 빌드하지 못했습니다: %2</translation>
     </message>
@@ -6477,12 +6487,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">%1 가져오는 중: 부품 %3개 중 %2개 기록됨...</translation>
     </message>
     <message>
-        <location line="+45"/>
+        <location line="+47"/>
         <source>Rebuild cancelled: the model is as it was before the last change.</source>
         <translation type="unfinished">다시 빌드가 취소되었습니다: 모델은 마지막 변경 전 상태입니다.</translation>
     </message>
     <message>
-        <location line="-3329"/>
+        <location line="-3437"/>
         <source>0 selected</source>
         <translation>0개 선택됨</translation>
     </message>
@@ -7756,7 +7766,7 @@ view and edit its properties.</source>
 <context>
     <name>hz::ui::ViewportWidget</name>
     <message>
-        <location filename="../src/ui/src/ViewportWidget.cpp" line="+50"/>
+        <location filename="../src/ui/src/ViewportWidget.cpp" line="+48"/>
         <source>Viewport</source>
         <translation type="unfinished">뷰포트</translation>
     </message>
@@ -7766,7 +7776,7 @@ view and edit its properties.</source>
         <translation type="unfinished">표시된 도면 또는 모델입니다. 메뉴, 리본, 바로 가기 키로 작업합니다.</translation>
     </message>
     <message>
-        <location line="+593"/>
+        <location line="+582"/>
         <source>The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.</source>
         <translation type="unfinished">그래픽 드라이버가 OpenGL %1.%2을(를) 제공합니다. Horizon CAD에는 3.3이 필요합니다.</translation>
     </message>

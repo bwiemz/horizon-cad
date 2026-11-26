@@ -86,6 +86,18 @@ TEST(ImportReportTest, AFileReadWholeReportsNothing) {
     EXPECT_EQ(report.summary(), "");
 }
 
+// What a sheet read kept but did not draw (Ruling 41) is something to say, counted apart from
+// what was left out.
+TEST(ImportReportTest, WhatIsNotDrawnIsSaidApart) {
+    ImportReport report;
+    report.notDrawn = {"view 1: a length on an edge the part no longer has"};
+    EXPECT_FALSE(report.empty());
+    EXPECT_EQ(report.summary(), "1 item is not drawn.");
+    report.skipped = {"view 2: it is not a view", "view 3: it is not a view"};
+    report.notDrawn.push_back("view 1: datum A on an edge the part no longer has");
+    EXPECT_EQ(report.summary(), "2 items were left out, and 2 items are not drawn.");
+}
+
 TEST(ImportReportTest, ADxfLoadCountsWhatItDidNotRead) {
     const std::string dxf =
         "0\nSECTION\n2\nENTITIES\n"

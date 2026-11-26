@@ -227,12 +227,16 @@ private:
     /// sheet's own layers, locked, leaving any other. A version 1 spec is
     /// given the views it was drawn with. The views drawn go to @p drawn.
     /// What is not drawn for an edge the part no longer has goes to
-    /// @p leftOut, as a sheet read says what it left out
-    /// (io::DrawingDocumentIO::leftOutOf), when it is given (a sheet read);
-    /// else it is said in the status bar (a sheet drawn again as it is
-    /// changed).
+    /// @p notDrawn, as a sheet read says it (io::DrawingDocumentIO::notDrawnOf),
+    /// when it is given (a sheet read); else it is said in the status bar (a
+    /// sheet drawn again as it is changed).
     void draw(doc::Document& document, io::DrawingDocumentSpec& spec, const Source& source,
-              model::Drawing* drawn = nullptr, std::vector<std::string>* leftOut = nullptr);
+              model::Drawing* drawn = nullptr, std::vector<std::string>* notDrawn = nullptr);
+    /// The report of a sheet just read from @p fileName, if it has anything to say: what the
+    /// reading left out (@p leftOut, its document read in part), and what it did not draw
+    /// (@p notDrawn, which the sheet and its file both keep: Ruling 41).
+    void reportRead(const QString& fileName, const std::vector<std::string>& leftOut,
+                    std::vector<std::string> notDrawn);
     /// What the sheet @p spec describes (of a part, or an assembly, at spec.partPath) is
     /// drawn from, as it is now: an exact part cut for the sheet's largest scale. Null, with the
     /// reason, when it cannot be read or cut.

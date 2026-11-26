@@ -641,10 +641,11 @@ TEST(DrawingDocumentIOTest, DimensionsAreKeptByTheirEdges) {
 }
 
 // Stage 3 (Task 12): a dimension, callout, tolerance or datum whose edge the part no longer has
-// is not drawn, and is what the sheet's reading left out (DrawingDocumentSpec::leftOut, so the
-// sheet is read in part), whatever its file's age: one on an edge no part has, and one on an
-// outline line of an exact cylinder's copy placed at 1:1, whose name the copy cut for 2:1 has not
-// (Rulings 34 and 36). One that finds its edge is drawn, and said nothing of.
+// is not drawn, and is said to be (DrawingDocumentSpec::notDrawn), whatever its file's age: one
+// on an edge no part has, and one on an outline line of an exact cylinder's copy placed at 1:1,
+// whose name the copy cut for 2:1 has not (Rulings 34 and 36). The spec keeps it, so its file
+// loses nothing saved over: it is not what the reading left out, and the sheet is not read in
+// part for it (Ruling 41). One that finds its edge is drawn, and said nothing of.
 TEST(DrawingDocumentIO, ALostDimensionIsReported) {
     const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_lost";
     std::filesystem::remove_all(dir);
@@ -678,13 +679,14 @@ TEST(DrawingDocumentIO, ALostDimensionIsReported) {
     Drawing drawing;
     std::string error;
     ASSERT_TRUE(DrawingDocumentIO::load(sheet, read, drawing, &error)) << error;
-    EXPECT_EQ(read.leftOut,
+    EXPECT_EQ(read.notDrawn,
               std::vector<std::string>{"view 2: a length on an edge the part no longer has"});
+    EXPECT_TRUE(read.leftOut.empty()) << "not read in part: its file keeps it";
     ASSERT_EQ(drawing.views[0].dimensions.size(), 1u) << "the one that finds its edge";
     EXPECT_TRUE(drawing.views[1].dimensions.empty());
     ASSERT_EQ(read.views[1].dimensions.size(), 1u) << "kept, should the part have it again";
     EXPECT_EQ(
-        DrawingDocumentIO::leftOutOf({"view 3: datum B", "view 1: a hole callout"}),
+        DrawingDocumentIO::notDrawnOf({"view 3: datum B", "view 1: a hole callout"}),
         (std::vector<std::string>{"view 3: datum B on an edge the part no longer has",
                                   "view 1: a hole callout on an edge the part no longer has"}));
 
@@ -707,7 +709,7 @@ TEST(DrawingDocumentIO, ALostDimensionIsReported) {
     const std::string outlined = (dir / "cylinder.hzdwg").string();
     ASSERT_TRUE(DrawingDocumentIO::save(outlined, atOne));
     ASSERT_TRUE(DrawingDocumentIO::load(outlined, read, drawing, &error)) << error;
-    EXPECT_TRUE(read.leftOut.empty());
+    EXPECT_TRUE(read.notDrawn.empty());
     ASSERT_EQ(drawing.views[0].kind, hz::model::StandardView::Front);
     std::string outline;
     for (const auto& e : drawing.views[0].edges) {
@@ -722,14 +724,15 @@ TEST(DrawingDocumentIO, ALostDimensionIsReported) {
     measured.views[0].dimensions.push_back({outline, hz::io::DrawingDimensionSpec::Kind::Length});
     ASSERT_TRUE(DrawingDocumentIO::save(outlined, measured));
     ASSERT_TRUE(DrawingDocumentIO::load(outlined, read, drawing, &error)) << error;
-    EXPECT_TRUE(read.leftOut.empty()) << "found at the scale it was placed at";
+    EXPECT_TRUE(read.notDrawn.empty()) << "found at the scale it was placed at";
     EXPECT_EQ(drawing.views[0].dimensions.size(), 1u);
     for (hz::io::DrawingViewSpec& v : measured.views) v.scale = 2.0;
     ASSERT_TRUE(DrawingDocumentIO::save(outlined, measured));
     ASSERT_TRUE(DrawingDocumentIO::load(outlined, read, drawing, &error)) << error;
-    EXPECT_EQ(read.leftOut,
+    EXPECT_EQ(read.notDrawn,
               std::vector<std::string>{"view 1: a length on an edge the part no longer has"})
         << "the copy cut for 2:1 has no line of its name";
+    EXPECT_TRUE(read.leftOut.empty());
     EXPECT_TRUE(drawing.views[0].dimensions.empty());
     std::filesystem::remove_all(dir);
 }
