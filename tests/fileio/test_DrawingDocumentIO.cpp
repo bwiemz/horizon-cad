@@ -6,6 +6,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <vector>
 
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
@@ -636,6 +637,100 @@ TEST(DrawingDocumentIOTest, DimensionsAreKeptByTheirEdges) {
                R"([{"edge": "e", "kind": "wingspan"}, {"kind": "length"}, 7]}]})");
     ASSERT_TRUE(DrawingDocumentIO::readSpec(dwg, read, &error)) << error;
     EXPECT_TRUE(read.views[0].dimensions.empty()) << "none it could not read";
+    std::filesystem::remove_all(dir);
+}
+
+// Stage 3 (Task 12): a dimension, callout, tolerance or datum whose edge the part no longer has
+// is not drawn, and is what the sheet's reading left out (DrawingDocumentSpec::leftOut, so the
+// sheet is read in part), whatever its file's age: one on an edge no part has, and one on an
+// outline line of an exact cylinder's copy placed at 1:1, whose name the copy cut for 2:1 has not
+// (Rulings 34 and 36). One that finds its edge is drawn, and said nothing of.
+TEST(DrawingDocumentIO, ALostDimensionIsReported) {
+    const auto dir = std::filesystem::temp_directory_path() / "hz_dwg_lost";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::string boxPath = (dir / "box.hzpart").string();
+    saveBox(boxPath);
+    Document box;
+    const hz::topo::Solid* solid = boxSolid(boxPath, box);
+    ASSERT_NE(solid, nullptr);
+
+    DrawingDocumentSpec spec;
+    spec.partPath = boxPath;
+    spec.views = DrawingDocumentIO::viewsOf(
+        hz::model::DrawingGenerator::sheetLayout(*solid, spec.sheet, spec.titleBlock));
+    const Drawing laid = DrawingDocumentIO::build(*solid, spec);
+    std::string edge;  // Front's first edge seen along its length
+    for (const auto& e : laid.views[0].edges) {
+        if ((e.b - e.a).length() > 1e-6 && !e.sourceEdge.tag().empty()) {
+            edge = e.sourceEdge.tag();
+            break;
+        }
+    }
+    ASSERT_FALSE(edge.empty());
+    spec.views[0].dimensions.push_back({edge, hz::io::DrawingDimensionSpec::Kind::Length});
+    spec.views[1].dimensions.push_back(
+        {"box/no-such-edge", hz::io::DrawingDimensionSpec::Kind::Length});
+    const std::string sheet = (dir / "box.hzdwg").string();
+    ASSERT_TRUE(DrawingDocumentIO::save(sheet, spec));
+
+    DrawingDocumentSpec read;
+    Drawing drawing;
+    std::string error;
+    ASSERT_TRUE(DrawingDocumentIO::load(sheet, read, drawing, &error)) << error;
+    EXPECT_EQ(read.leftOut,
+              std::vector<std::string>{"view 2: a length on an edge the part no longer has"});
+    ASSERT_EQ(drawing.views[0].dimensions.size(), 1u) << "the one that finds its edge";
+    EXPECT_TRUE(drawing.views[1].dimensions.empty());
+    ASSERT_EQ(read.views[1].dimensions.size(), 1u) << "kept, should the part have it again";
+    EXPECT_EQ(
+        DrawingDocumentIO::leftOutOf({"view 3: datum B", "view 1: a hole callout"}),
+        (std::vector<std::string>{"view 3: datum B on an edge the part no longer has",
+                                  "view 1: a hole callout on an edge the part no longer has"}));
+
+    // An exact cylinder's outline at -x, measured at 1:1, then drawn at 2:1.
+    const std::string cylinderPath = (dir / "cylinder.hzpart").string();
+    {
+        Document part;
+        part.setType(DocumentType::Part);
+        auto cylinder = PrimitiveFeature::makeCylinder(50.0, 40.0);
+        cylinder->restoreFeatureID("primitive_1");
+        ASSERT_TRUE(cylinder->setParameter("segments", 45));
+        part.featureTree().addFeature(std::move(cylinder));
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        ASSERT_NE(part.exactSolid(), nullptr);
+        ASSERT_TRUE(NativeFormat::save(cylinderPath, part));
+    }
+    DrawingDocumentSpec atOne;
+    atOne.partPath = cylinderPath;
+    atOne.scale = 1.0;
+    const std::string outlined = (dir / "cylinder.hzdwg").string();
+    ASSERT_TRUE(DrawingDocumentIO::save(outlined, atOne));
+    ASSERT_TRUE(DrawingDocumentIO::load(outlined, read, drawing, &error)) << error;
+    EXPECT_TRUE(read.leftOut.empty());
+    ASSERT_EQ(drawing.views[0].kind, hz::model::StandardView::Front);
+    std::string outline;
+    for (const auto& e : drawing.views[0].edges) {
+        if (e.kind == hz::model::ProjectedEdge::Kind::Silhouette && e.a.x < -49.0) {
+            outline = e.sourceEdge.tag();
+        }
+    }
+    ASSERT_EQ(outline.rfind("primitive_1/side/line:", 0), 0u) << outline;
+    DrawingDocumentSpec measured;
+    measured.partPath = cylinderPath;
+    measured.views = DrawingDocumentIO::viewsOf(drawing);
+    measured.views[0].dimensions.push_back({outline, hz::io::DrawingDimensionSpec::Kind::Length});
+    ASSERT_TRUE(DrawingDocumentIO::save(outlined, measured));
+    ASSERT_TRUE(DrawingDocumentIO::load(outlined, read, drawing, &error)) << error;
+    EXPECT_TRUE(read.leftOut.empty()) << "found at the scale it was placed at";
+    EXPECT_EQ(drawing.views[0].dimensions.size(), 1u);
+    for (hz::io::DrawingViewSpec& v : measured.views) v.scale = 2.0;
+    ASSERT_TRUE(DrawingDocumentIO::save(outlined, measured));
+    ASSERT_TRUE(DrawingDocumentIO::load(outlined, read, drawing, &error)) << error;
+    EXPECT_EQ(read.leftOut,
+              std::vector<std::string>{"view 1: a length on an edge the part no longer has"})
+        << "the copy cut for 2:1 has no line of its name";
+    EXPECT_TRUE(drawing.views[0].dimensions.empty());
     std::filesystem::remove_all(dir);
 }
 

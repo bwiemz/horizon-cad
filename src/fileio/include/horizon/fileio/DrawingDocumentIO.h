@@ -149,10 +149,12 @@ public:
 
     /// Load a `.hzdwg`: read the spec, open and rebuild the referenced part, and
     /// project its views into @p outDrawing. @p outSpec receives the spec, its
-    /// part path as found (relative paths are the drawing folder's). Returns
-    /// false, with the reason in @p error when given, on I/O failure, a file
-    /// that is not a drawing, a missing or broken part, or a rebuild that
-    /// makes no solid.
+    /// part path as found (relative paths are the drawing folder's); its
+    /// leftOut has, after what reading it left out, each dimension, callout,
+    /// tolerance or datum whose edge the part no longer has (build()'s lost,
+    /// as leftOutOf() says it). Returns false, with the reason in @p error
+    /// when given, on I/O failure, a file that is not a drawing, a missing or
+    /// broken part, or a rebuild that makes no solid.
     static bool load(const std::string& path, DrawingDocumentSpec& outSpec,
                      model::Drawing& outDrawing, std::string* error = nullptr);
 
@@ -168,6 +170,11 @@ public:
     static model::Drawing build(const topo::Solid& solid, const DrawingDocumentSpec& spec,
                                 std::vector<std::string>* lost = nullptr,
                                 const std::vector<HoleNote>* holes = nullptr);
+    /// What build() said was @p lost, as a sheet read says what its reading left out
+    /// (DrawingDocumentSpec::leftOut; stage 3): "view 2: a length on an edge the part no longer
+    /// has". Not drawn, it is kept in the spec, and drawn again should the part have its edge
+    /// again; the sheet that lacks it is read in part, whatever its file's age.
+    static std::vector<std::string> leftOutOf(const std::vector<std::string>& lost);
 
     /// The most a chord of a view of an exact part sags on paper, in millimetres (stage 3).
     static constexpr double kChordOnPaper = 0.01;

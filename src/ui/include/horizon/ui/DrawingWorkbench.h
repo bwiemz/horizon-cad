@@ -226,8 +226,13 @@ private:
     /// Draw @p spec's sheet into @p document again, from @p source: on the
     /// sheet's own layers, locked, leaving any other. A version 1 spec is
     /// given the views it was drawn with. The views drawn go to @p drawn.
+    /// What is not drawn for an edge the part no longer has goes to
+    /// @p leftOut, as a sheet read says what it left out
+    /// (io::DrawingDocumentIO::leftOutOf), when it is given (a sheet read);
+    /// else it is said in the status bar (a sheet drawn again as it is
+    /// changed).
     void draw(doc::Document& document, io::DrawingDocumentSpec& spec, const Source& source,
-              model::Drawing* drawn = nullptr);
+              model::Drawing* drawn = nullptr, std::vector<std::string>* leftOut = nullptr);
     /// What the sheet @p spec describes (of a part, or an assembly, at spec.partPath) is
     /// drawn from, as it is now: an exact part cut for the sheet's largest scale. Null, with the
     /// reason, when it cannot be read or cut.

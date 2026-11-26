@@ -11,7 +11,9 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QByteArray>
 #include <QFile>
+#include <QMessageBox>
 #include <QRegularExpression>
 #include <QStatusBar>
 #include <QTabBar>
@@ -432,6 +434,75 @@ void addDetailOfFront(MainWindow& w, const hz::model::DrawingView& front, const 
 }
 
 }  // namespace
+
+// Stage 3 (Task 12): a sheet whose dimension names an edge the part no longer has is read in
+// part, whatever its file's age: opened, the report of what its reading left out says it, and the
+// tab says it is incomplete. A loss never stops it being written (owner amendment A2): Save asks
+// where, the file it was read from is as it was, and the copy keeps the dimension, to be drawn
+// again should the part have its edge again.
+TEST(DrawingsTest, ASheetWhoseDimensionFindsNoEdgeIsReadInPart) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    hz::io::DrawingDocumentSpec spec;
+    spec.partPath = block.toStdString();
+    spec.views = hz::io::DrawingDocumentIO::viewsOf(layoutOf(block));
+    ASSERT_FALSE(spec.views.empty());
+    spec.views[0].dimensions.push_back(
+        {"primitive_1/edge:no|such", hz::io::DrawingDimensionSpec::Kind::Length});
+    const QString file = dir.filePath(QStringLiteral("block.hzdwg"));
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(file.toStdString(), spec));
+    QFile original(file);
+    ASSERT_TRUE(original.open(QIODevice::ReadOnly));
+    const QByteArray before = original.readAll();
+    original.close();
+
+    MainWindow w;
+    hz::test::DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+    ASSERT_TRUE(w.openPath(file));
+    report.waitForDialog(5000);
+    ASSERT_TRUE(report.seen()) << "the dimension not drawn is reported";
+    EXPECT_TRUE(report.detailedText().contains(
+        QStringLiteral("Left out: view 1: a length on an edge the part no longer has")))
+        << report.detailedText().toStdString();
+    hz::doc::Document* sheet = w.activeDocument();
+    EXPECT_TRUE(sheet->readInPart());
+    EXPECT_TRUE(
+        tabBar(w)->tabText(tabBar(w)->currentIndex()).contains(QStringLiteral("(incomplete)")))
+        << tabBar(w)->tabText(tabBar(w)->currentIndex()).toStdString();
+    EXPECT_FALSE(sheet->isDirty());
+
+    const QString copy = dir.filePath(QStringLiteral("copy.hzdwg"));
+    {
+        FilePicker picker(copy);
+        trigger(w, "action_save");
+    }
+    ASSERT_TRUE(original.open(QIODevice::ReadOnly));
+    EXPECT_EQ(original.readAll(), before) << "the file it was read from is as it was";
+    ASSERT_TRUE(QFile::exists(copy)) << "Save asked where";
+    EXPECT_FALSE(sheet->readInPart());
+    hz::io::DrawingDocumentSpec saved;
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::readSpec(copy.toStdString(), saved));
+    ASSERT_FALSE(saved.views.empty());
+    ASSERT_EQ(saved.views[0].dimensions.size(), 1u) << "kept";
+    EXPECT_EQ(saved.views[0].dimensions[0].edge, "primitive_1/edge:no|such");
+
+    // Read again when its file changes on disk: what it lacks is said again.
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+    saved.titleBlock.title = "Again";
+    hz::test::DialogResponder again(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(copy.toStdString(), saved));
+    const std::filesystem::path changed(copy.toStdString());
+    std::filesystem::last_write_time(
+        changed, std::filesystem::last_write_time(changed) + std::chrono::seconds(2));
+    again.waitForDialog(5000);
+    ASSERT_TRUE(again.seen()) << "read again, and said again";
+    EXPECT_TRUE(again.detailedText().contains(
+        QStringLiteral("Left out: view 1: a length on an edge the part no longer has")))
+        << again.detailedText().toStdString();
+    EXPECT_TRUE(titleBlockText(*sheet).contains(QStringLiteral("Again")));
+    EXPECT_TRUE(sheet->readInPart());
+}
 
 // A section cut through the Front view: captioned, hatched, its cut marked
 // on Front, saved and opened again; a cut that misses the part is refused.

@@ -473,7 +473,8 @@ model::TitleBlock DrawingWorkbench::roomFor(const Sheet& sheet) {
 }
 
 void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& spec,
-                            const Source& source, model::Drawing* drawn) {
+                            const Source& source, model::Drawing* drawn,
+                            std::vector<std::string>* leftOut) {
     const topo::Solid* solid = source.solid.get();
     const model::PartsList& partsList = source.partsList;
     // The views keep clear of the parts list, above the title block.
@@ -498,8 +499,13 @@ void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
     } else {
         std::vector<std::string> lost;
         drawing = io::DrawingDocumentIO::build(*solid, spec, &lost, &source.holes);
-        // Kept, and drawn again should the part have the edges again.
-        if (!lost.empty()) {
+        // Kept, and drawn again should the part have the edges again. A sheet read lacks them:
+        // read in part (stage 3), what it lacks in the report of what reading it left out.
+        if (leftOut != nullptr) {
+            for (std::string& line : io::DrawingDocumentIO::leftOutOf(lost)) {
+                leftOut->push_back(std::move(line));
+            }
+        } else if (!lost.empty()) {
             QStringList which;
             for (const std::string& l : lost) which << QString::fromStdString(l);
             m_host.showStatus(tr("Dimensions whose edges the part no longer has are not drawn: %1")
@@ -628,7 +634,7 @@ bool DrawingWorkbench::open(const QString& fileName) {
     }
     auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
     model::Drawing drawing;
-    draw(*document, spec, *source, &drawing);
+    draw(*document, spec, *source, &drawing, &spec.leftOut);
     // What was drawn on it by hand, back where it was: the document holds it
     // from here on, and a save writes it from there.
     if (spec.annotations) {
@@ -687,7 +693,7 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
         m_host.reportFileError(tr("Could not read again"), path, error);
         return;
     }
-    draw(document, spec, *source, &drawing);
+    draw(document, spec, *source, &drawing, &spec.leftOut);
     // The file's hand-drawn entities in place of these, and no undoing back
     // into what was given up: read again is the file as it is.
     std::vector<uint64_t> byHand;

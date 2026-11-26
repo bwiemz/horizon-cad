@@ -15,6 +15,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "horizon/document/Document.h"
@@ -732,8 +733,11 @@ bool DrawingDocumentIO::load(const std::string& path, DrawingDocumentSpec& outSp
         if (drawn.views.empty()) drawn.scale = scale;
     }
     // A version 1 file: the four standard views, spaced by its gap, at 1:1.
-    outDrawing = spec.version >= 2 ? build(*solid, drawn, nullptr, &holes)
+    std::vector<std::string> lost;
+    outDrawing = spec.version >= 2 ? build(*solid, drawn, &lost, &holes)
                                    : model::DrawingGenerator::standardViews(*solid, spec.gap);
+    // What the part no longer has an edge for is left out of the sheet as read (stage 3).
+    for (std::string& line : leftOutOf(lost)) outSpec.leftOut.push_back(std::move(line));
     return true;
 }
 
@@ -862,6 +866,15 @@ const HoleNote* DrawingDocumentIO::holeOfEdge(const std::vector<HoleNote>& holes
         }
     }
     return nullptr;
+}
+
+std::vector<std::string> DrawingDocumentIO::leftOutOf(const std::vector<std::string>& lost) {
+    std::vector<std::string> said;
+    said.reserve(lost.size());
+    for (const std::string& what : lost) {
+        said.push_back(what + " on an edge the part no longer has");
+    }
+    return said;
 }
 
 model::Drawing DrawingDocumentIO::build(const topo::Solid& solid, const DrawingDocumentSpec& spec,
