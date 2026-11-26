@@ -519,10 +519,20 @@ a user can see. Each is several PRs.
      counterpart's volume check against its facets stands in for it.
    - *Stage 6:* the spindle torus, unchanged (the screw is on the regression
      list).
-   - *For the owner:* the display's 0.35 rad angle floor, not its chord
-     tolerance, sets the triangle count and the part-file cache (the Moon
-     buggy draws 329k triangles, and its cache grew from 5.8 to 26.7 MB). A
-     coarser angle shrinks both.
+   - *For the owner, settled after stage 2 (2026-11-26):* the display's
+     weight on a large part was its chord tolerance, not its angle. The Moon
+     buggy drew 329,308 triangles, its cache 26.5 MB (5.8 MB on master), and
+     302k of them were its four wheels: spheres of radius 254 and tori of
+     127 about 254, meshed to 0.1 on a part 4488 across. The angle did not
+     move it (329,324 at 0.5 rad, 329,436 with no angle limit at all). The
+     owner chose 0.5 rad between neighbouring triangles (26 chords a turn
+     where the angle sets them, where 0.35 made 36) and a chord tolerance of
+     max(0.1, 1.5e-4 × the part's diagonal)
+     (`SolidTessellator::displayTolerance`). Triangles and cache, stage 2 →
+     now: the Moon buggy 329,308 → 49,462 (26.5 → 3.9 MB); IronCAD (1263
+     across) 41,242 → 20,892 (3.9 → 2.1 MB); ProE (1235 across) 76,238 →
+     43,430 (7.9 → 4.7 MB); irnas (112 across, at 0.1 still) 10,000 → 5,568
+     (1.3 → 0.8 MB).
 
    For the owner to check, the decisions stage 2's plan made:
    - *The exact counterpart, not exact parts everywhere.* Operations and every
