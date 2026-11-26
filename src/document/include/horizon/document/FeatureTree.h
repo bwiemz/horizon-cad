@@ -809,10 +809,23 @@ public:
     /// Needs the part it is in (executeIn): alone, it says so.
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
-    /// The hole's body alone, to be cut: from the face of context.part.
+    /// The hole's body alone, to be cut: from the face of context.part (executeWithExact's
+    /// faceted body).
     std::unique_ptr<topo::Solid> executeIn(const BuildContext& context,
                                            std::unique_ptr<topo::Solid> inputSolid,
                                            std::string* reason = nullptr) const override;
+    /// Its half-section found from its face, its type and its extent as before, turned a whole
+    /// turn about its axis: under Stable naming built exactly (stage 3, model::
+    /// Revolve::exactAndBridge), its tool the bridge copy cut at facetResolution(), master's
+    /// counts and numbers (Ruling 21); under the older schemes, master's faceted revolve and no
+    /// exact body. Either way each surface is named for the line of the half-section it sweeps
+    /// (`top`, `wall`, `bottom`, `bore`, `boreFloor`, `sink`), the exact body's too. A hole stays a
+    /// Cut: the part after it is faceted, as on master.
+    FeatureOutput executeWithExact(const BuildContext& context,
+                                   std::unique_ptr<topo::Solid> inputSolid,
+                                   std::string* reason = nullptr) const override;
+    /// {segments, 0}: the steps round its axis, as its revolve's resolution was.
+    model::FacetResolution facetResolution() const override;
 
     /// "type" and "extent" (choices), "diameter", "depth", "boreDiameter",
     /// "boreDepth", "sinkDiameter", "sinkAngle" and "pointAngle" (0: a flat

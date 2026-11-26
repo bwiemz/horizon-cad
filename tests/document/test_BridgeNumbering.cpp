@@ -12,7 +12,9 @@
 // for a profile of several loops), at 8 segments a turn: each face's name with the centroid of its
 // outer loop, each edge's with its midpoint. "{k}" in a name is the k-th entity of the profile
 // ("e<id>" in the tag). Every revolve turns its profile, drawn at x >= 0, about the sketch's y
-// axis through its origin.
+// axis through its origin. The hole tools are each type of hole 5 across and 6 deep into the top of
+// a 20 x 20 x 10 box at its middle (a counterbore 9 across and 3 deep, a countersink 10 across at
+// 90 degrees), as HoleFeature built its tool to cut.
 
 #include <gtest/gtest.h>
 
@@ -2065,6 +2067,217 @@ const Place kTurnedHoledQuarter[] = {
     {"F x~hole0/revolved:{4}/facet:7.2", 0.919820976681, 1.65092530652, -3.58371297458},
 };
 
+const Place kSimpleHoleTool[] = {
+    {"E hole_1/bottom/seam:0", 10.8838834765, 9.11611652352, 3.24892422622},
+    {"E hole_1/bottom/seam:1", 11.25, 10, 3.24892422622},
+    {"E hole_1/bottom/seam:2", 10, 8.75, 3.24892422622},
+    {"E hole_1/bottom/seam:3", 9.11611652352, 9.11611652352, 3.24892422622},
+    {"E hole_1/bottom/seam:4", 8.75, 10, 3.24892422622},
+    {"E hole_1/bottom/seam:5", 9.11611652352, 10.8838834765, 3.24892422622},
+    {"E hole_1/bottom/seam:6", 10, 11.25, 3.24892422622},
+    {"E hole_1/bottom/seam:7", 10.8838834765, 10.8838834765, 3.24892422622},
+    {"E hole_1/edge:top|wall/chord:0", 12.1338834765, 9.11611652352, 10.120001},
+    {"E hole_1/edge:top|wall/chord:1", 10.8838834765, 7.86611652352, 10.120001},
+    {"E hole_1/edge:top|wall/chord:2", 9.11611652352, 7.86611652352, 10.120001},
+    {"E hole_1/edge:top|wall/chord:3", 7.86611652352, 9.11611652352, 10.120001},
+    {"E hole_1/edge:top|wall/chord:4", 7.86611652352, 10.8838834765, 10.120001},
+    {"E hole_1/edge:top|wall/chord:5", 9.11611652352, 12.1338834765, 10.120001},
+    {"E hole_1/edge:top|wall/chord:6", 10.8838834765, 12.1338834765, 10.120001},
+    {"E hole_1/edge:top|wall/chord:7", 12.1338834765, 10.8838834765, 10.120001},
+    {"E hole_1/edge:wall|bottom/chord:0", 12.1338834765, 9.11611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:1", 10.8838834765, 7.86611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:2", 9.11611652352, 7.86611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:3", 7.86611652352, 9.11611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:4", 7.86611652352, 10.8838834765, 4},
+    {"E hole_1/edge:wall|bottom/chord:5", 9.11611652352, 12.1338834765, 4},
+    {"E hole_1/edge:wall|bottom/chord:6", 10.8838834765, 12.1338834765, 4},
+    {"E hole_1/edge:wall|bottom/chord:7", 12.1338834765, 10.8838834765, 4},
+    {"E hole_1/wall/seam:0", 11.767766953, 8.23223304703, 7.0600005},
+    {"E hole_1/wall/seam:1", 12.5, 10, 7.0600005},
+    {"E hole_1/wall/seam:2", 10, 7.5, 7.0600005},
+    {"E hole_1/wall/seam:3", 8.23223304703, 8.23223304703, 7.0600005},
+    {"E hole_1/wall/seam:4", 7.5, 10, 7.0600005},
+    {"E hole_1/wall/seam:5", 8.23223304703, 11.767766953, 7.0600005},
+    {"E hole_1/wall/seam:6", 10, 12.5, 7.0600005},
+    {"E hole_1/wall/seam:7", 11.767766953, 11.767766953, 7.0600005},
+    {"F hole_1/bottom/facet:0", 11.4225889843, 9.41074434901, 3.49928281748},
+    {"F hole_1/bottom/facet:1", 10.589255651, 8.57741101568, 3.49928281748},
+    {"F hole_1/bottom/facet:2", 9.41074434901, 8.57741101568, 3.49928281748},
+    {"F hole_1/bottom/facet:3", 8.57741101568, 9.41074434901, 3.49928281748},
+    {"F hole_1/bottom/facet:4", 8.57741101568, 10.589255651, 3.49928281748},
+    {"F hole_1/bottom/facet:5", 9.41074434901, 11.4225889843, 3.49928281748},
+    {"F hole_1/bottom/facet:6", 10.589255651, 11.4225889843, 3.49928281748},
+    {"F hole_1/bottom/facet:7", 11.4225889843, 10.589255651, 3.49928281748},
+    {"F hole_1/top", 10, 10, 10.120001},
+    {"F hole_1/wall/facet:0", 12.1338834765, 9.11611652352, 7.0600005},
+    {"F hole_1/wall/facet:1", 10.8838834765, 7.86611652352, 7.0600005},
+    {"F hole_1/wall/facet:2", 9.11611652352, 7.86611652352, 7.0600005},
+    {"F hole_1/wall/facet:3", 7.86611652352, 9.11611652352, 7.0600005},
+    {"F hole_1/wall/facet:4", 7.86611652352, 10.8838834765, 7.0600005},
+    {"F hole_1/wall/facet:5", 9.11611652352, 12.1338834765, 7.0600005},
+    {"F hole_1/wall/facet:6", 10.8838834765, 12.1338834765, 7.0600005},
+    {"F hole_1/wall/facet:7", 12.1338834765, 10.8838834765, 7.0600005},
+};
+const Place kCounterboreHoleTool[] = {
+    {"E hole_1/bore/seam:0", 13.1819805153, 6.81801948466, 8.5600005},
+    {"E hole_1/bore/seam:1", 14.5, 10, 8.5600005},
+    {"E hole_1/bore/seam:2", 10, 5.5, 8.5600005},
+    {"E hole_1/bore/seam:3", 6.81801948466, 6.81801948466, 8.5600005},
+    {"E hole_1/bore/seam:4", 5.5, 10, 8.5600005},
+    {"E hole_1/bore/seam:5", 6.81801948466, 13.1819805153, 8.5600005},
+    {"E hole_1/bore/seam:6", 10, 14.5, 8.5600005},
+    {"E hole_1/bore/seam:7", 13.1819805153, 13.1819805153, 8.5600005},
+    {"E hole_1/bottom/seam:0", 10.8838834765, 9.11611652352, 3.24892422622},
+    {"E hole_1/bottom/seam:1", 11.25, 10, 3.24892422622},
+    {"E hole_1/bottom/seam:2", 10, 8.75, 3.24892422622},
+    {"E hole_1/bottom/seam:3", 9.11611652352, 9.11611652352, 3.24892422622},
+    {"E hole_1/bottom/seam:4", 8.75, 10, 3.24892422622},
+    {"E hole_1/bottom/seam:5", 9.11611652352, 10.8838834765, 3.24892422622},
+    {"E hole_1/bottom/seam:6", 10, 11.25, 3.24892422622},
+    {"E hole_1/bottom/seam:7", 10.8838834765, 10.8838834765, 3.24892422622},
+    {"E hole_1/edge:bore|boreFloor/chord:0", 13.8409902577, 8.40900974233, 7},
+    {"E hole_1/edge:bore|boreFloor/chord:1", 11.5909902577, 6.15900974233, 7},
+    {"E hole_1/edge:bore|boreFloor/chord:2", 8.40900974233, 6.15900974233, 7},
+    {"E hole_1/edge:bore|boreFloor/chord:3", 6.15900974233, 8.40900974233, 7},
+    {"E hole_1/edge:bore|boreFloor/chord:4", 6.15900974233, 11.5909902577, 7},
+    {"E hole_1/edge:bore|boreFloor/chord:5", 8.40900974233, 13.8409902577, 7},
+    {"E hole_1/edge:bore|boreFloor/chord:6", 11.5909902577, 13.8409902577, 7},
+    {"E hole_1/edge:bore|boreFloor/chord:7", 13.8409902577, 11.5909902577, 7},
+    {"E hole_1/edge:top|bore/chord:0", 13.8409902577, 8.40900974233, 10.120001},
+    {"E hole_1/edge:top|bore/chord:1", 11.5909902577, 6.15900974233, 10.120001},
+    {"E hole_1/edge:top|bore/chord:2", 8.40900974233, 6.15900974233, 10.120001},
+    {"E hole_1/edge:top|bore/chord:3", 6.15900974233, 8.40900974233, 10.120001},
+    {"E hole_1/edge:top|bore/chord:4", 6.15900974233, 11.5909902577, 10.120001},
+    {"E hole_1/edge:top|bore/chord:5", 8.40900974233, 13.8409902577, 10.120001},
+    {"E hole_1/edge:top|bore/chord:6", 11.5909902577, 13.8409902577, 10.120001},
+    {"E hole_1/edge:top|bore/chord:7", 13.8409902577, 11.5909902577, 10.120001},
+    {"E hole_1/edge:wall|boreFloor/chord:0", 12.1338834765, 9.11611652352, 7},
+    {"E hole_1/edge:wall|boreFloor/chord:1", 10.8838834765, 7.86611652352, 7},
+    {"E hole_1/edge:wall|boreFloor/chord:2", 9.11611652352, 7.86611652352, 7},
+    {"E hole_1/edge:wall|boreFloor/chord:3", 7.86611652352, 9.11611652352, 7},
+    {"E hole_1/edge:wall|boreFloor/chord:4", 7.86611652352, 10.8838834765, 7},
+    {"E hole_1/edge:wall|boreFloor/chord:5", 9.11611652352, 12.1338834765, 7},
+    {"E hole_1/edge:wall|boreFloor/chord:6", 10.8838834765, 12.1338834765, 7},
+    {"E hole_1/edge:wall|boreFloor/chord:7", 12.1338834765, 10.8838834765, 7},
+    {"E hole_1/edge:wall|bottom/chord:0", 12.1338834765, 9.11611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:1", 10.8838834765, 7.86611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:2", 9.11611652352, 7.86611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:3", 7.86611652352, 9.11611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:4", 7.86611652352, 10.8838834765, 4},
+    {"E hole_1/edge:wall|bottom/chord:5", 9.11611652352, 12.1338834765, 4},
+    {"E hole_1/edge:wall|bottom/chord:6", 10.8838834765, 12.1338834765, 4},
+    {"E hole_1/edge:wall|bottom/chord:7", 12.1338834765, 10.8838834765, 4},
+    {"E hole_1/wall/seam:0", 11.767766953, 8.23223304703, 5.5},
+    {"E hole_1/wall/seam:1", 12.5, 10, 5.5},
+    {"E hole_1/wall/seam:2", 10, 7.5, 5.5},
+    {"E hole_1/wall/seam:3", 8.23223304703, 8.23223304703, 5.5},
+    {"E hole_1/wall/seam:4", 7.5, 10, 5.5},
+    {"E hole_1/wall/seam:5", 8.23223304703, 11.767766953, 5.5},
+    {"E hole_1/wall/seam:6", 10, 12.5, 5.5},
+    {"E hole_1/wall/seam:7", 11.767766953, 11.767766953, 5.5},
+    {"F hole_1/bore/facet:0", 13.8409902577, 8.40900974233, 8.5600005},
+    {"F hole_1/bore/facet:1", 11.5909902577, 6.15900974233, 8.5600005},
+    {"F hole_1/bore/facet:2", 8.40900974233, 6.15900974233, 8.5600005},
+    {"F hole_1/bore/facet:3", 6.15900974233, 8.40900974233, 8.5600005},
+    {"F hole_1/bore/facet:4", 6.15900974233, 11.5909902577, 8.5600005},
+    {"F hole_1/bore/facet:5", 8.40900974233, 13.8409902577, 8.5600005},
+    {"F hole_1/bore/facet:6", 11.5909902577, 13.8409902577, 8.5600005},
+    {"F hole_1/bore/facet:7", 13.8409902577, 11.5909902577, 8.5600005},
+    {"F hole_1/boreFloor", 10, 10, 7},
+    {"F hole_1/bottom/facet:0", 11.4225889843, 9.41074434901, 3.49928281748},
+    {"F hole_1/bottom/facet:1", 10.589255651, 8.57741101568, 3.49928281748},
+    {"F hole_1/bottom/facet:2", 9.41074434901, 8.57741101568, 3.49928281748},
+    {"F hole_1/bottom/facet:3", 8.57741101568, 9.41074434901, 3.49928281748},
+    {"F hole_1/bottom/facet:4", 8.57741101568, 10.589255651, 3.49928281748},
+    {"F hole_1/bottom/facet:5", 9.41074434901, 11.4225889843, 3.49928281748},
+    {"F hole_1/bottom/facet:6", 10.589255651, 11.4225889843, 3.49928281748},
+    {"F hole_1/bottom/facet:7", 11.4225889843, 10.589255651, 3.49928281748},
+    {"F hole_1/top", 10, 10, 10.120001},
+    {"F hole_1/wall/facet:0", 12.1338834765, 9.11611652352, 5.5},
+    {"F hole_1/wall/facet:1", 10.8838834765, 7.86611652352, 5.5},
+    {"F hole_1/wall/facet:2", 9.11611652352, 7.86611652352, 5.5},
+    {"F hole_1/wall/facet:3", 7.86611652352, 9.11611652352, 5.5},
+    {"F hole_1/wall/facet:4", 7.86611652352, 10.8838834765, 5.5},
+    {"F hole_1/wall/facet:5", 9.11611652352, 12.1338834765, 5.5},
+    {"F hole_1/wall/facet:6", 10.8838834765, 12.1338834765, 5.5},
+    {"F hole_1/wall/facet:7", 12.1338834765, 10.8838834765, 5.5},
+};
+const Place kCountersinkHoleTool[] = {
+    {"E hole_1/bottom/seam:0", 10.8838834765, 9.11611652352, 3.24892422622},
+    {"E hole_1/bottom/seam:1", 11.25, 10, 3.24892422622},
+    {"E hole_1/bottom/seam:2", 10, 8.75, 3.24892422622},
+    {"E hole_1/bottom/seam:3", 9.11611652352, 9.11611652352, 3.24892422622},
+    {"E hole_1/bottom/seam:4", 8.75, 10, 3.24892422622},
+    {"E hole_1/bottom/seam:5", 9.11611652352, 10.8838834765, 3.24892422622},
+    {"E hole_1/bottom/seam:6", 10, 11.25, 3.24892422622},
+    {"E hole_1/bottom/seam:7", 10.8838834765, 10.8838834765, 3.24892422622},
+    {"E hole_1/edge:top|sink/chord:0", 14.3701942134, 8.18980628661, 10.120001},
+    {"E hole_1/edge:top|sink/chord:1", 11.8101937134, 5.62980578661, 10.120001},
+    {"E hole_1/edge:top|sink/chord:2", 8.18980628661, 5.62980578661, 10.120001},
+    {"E hole_1/edge:top|sink/chord:3", 5.62980578661, 8.18980628661, 10.120001},
+    {"E hole_1/edge:top|sink/chord:4", 5.62980578661, 11.8101937134, 10.120001},
+    {"E hole_1/edge:top|sink/chord:5", 8.18980628661, 14.3701942134, 10.120001},
+    {"E hole_1/edge:top|sink/chord:6", 11.8101937134, 14.3701942134, 10.120001},
+    {"E hole_1/edge:top|sink/chord:7", 14.3701942134, 11.8101937134, 10.120001},
+    {"E hole_1/edge:wall|bottom/chord:0", 12.1338834765, 9.11611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:1", 10.8838834765, 7.86611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:2", 9.11611652352, 7.86611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:3", 7.86611652352, 9.11611652352, 4},
+    {"E hole_1/edge:wall|bottom/chord:4", 7.86611652352, 10.8838834765, 4},
+    {"E hole_1/edge:wall|bottom/chord:5", 9.11611652352, 12.1338834765, 4},
+    {"E hole_1/edge:wall|bottom/chord:6", 10.8838834765, 12.1338834765, 4},
+    {"E hole_1/edge:wall|bottom/chord:7", 12.1338834765, 10.8838834765, 4},
+    {"E hole_1/edge:wall|sink/chord:0", 12.1338834765, 9.11611652352, 7.5},
+    {"E hole_1/edge:wall|sink/chord:1", 10.8838834765, 7.86611652352, 7.5},
+    {"E hole_1/edge:wall|sink/chord:2", 9.11611652352, 7.86611652352, 7.5},
+    {"E hole_1/edge:wall|sink/chord:3", 7.86611652352, 9.11611652352, 7.5},
+    {"E hole_1/edge:wall|sink/chord:4", 7.86611652352, 10.8838834765, 7.5},
+    {"E hole_1/edge:wall|sink/chord:5", 9.11611652352, 12.1338834765, 7.5},
+    {"E hole_1/edge:wall|sink/chord:6", 10.8838834765, 12.1338834765, 7.5},
+    {"E hole_1/edge:wall|sink/chord:7", 12.1338834765, 10.8838834765, 7.5},
+    {"E hole_1/sink/seam:0", 12.6940771899, 7.30592281013, 8.8100005},
+    {"E hole_1/sink/seam:1", 13.8100005, 10, 8.8100005},
+    {"E hole_1/sink/seam:2", 10, 6.1899995, 8.8100005},
+    {"E hole_1/sink/seam:3", 7.30592281013, 7.30592281013, 8.8100005},
+    {"E hole_1/sink/seam:4", 6.1899995, 10, 8.8100005},
+    {"E hole_1/sink/seam:5", 7.30592281013, 12.6940771899, 8.8100005},
+    {"E hole_1/sink/seam:6", 10, 13.8100005, 8.8100005},
+    {"E hole_1/sink/seam:7", 12.6940771899, 12.6940771899, 8.8100005},
+    {"E hole_1/wall/seam:0", 11.767766953, 8.23223304703, 5.75},
+    {"E hole_1/wall/seam:1", 12.5, 10, 5.75},
+    {"E hole_1/wall/seam:2", 10, 7.5, 5.75},
+    {"E hole_1/wall/seam:3", 8.23223304703, 8.23223304703, 5.75},
+    {"E hole_1/wall/seam:4", 7.5, 10, 5.75},
+    {"E hole_1/wall/seam:5", 8.23223304703, 11.767766953, 5.75},
+    {"E hole_1/wall/seam:6", 10, 12.5, 5.75},
+    {"E hole_1/wall/seam:7", 11.767766953, 11.767766953, 5.75},
+    {"F hole_1/bottom/facet:0", 11.4225889843, 9.41074434901, 3.49928281748},
+    {"F hole_1/bottom/facet:1", 10.589255651, 8.57741101568, 3.49928281748},
+    {"F hole_1/bottom/facet:2", 9.41074434901, 8.57741101568, 3.49928281748},
+    {"F hole_1/bottom/facet:3", 8.57741101568, 9.41074434901, 3.49928281748},
+    {"F hole_1/bottom/facet:4", 8.57741101568, 10.589255651, 3.49928281748},
+    {"F hole_1/bottom/facet:5", 9.41074434901, 11.4225889843, 3.49928281748},
+    {"F hole_1/bottom/facet:6", 10.589255651, 11.4225889843, 3.49928281748},
+    {"F hole_1/bottom/facet:7", 11.4225889843, 10.589255651, 3.49928281748},
+    {"F hole_1/sink/facet:0", 13.3801914171, 8.59987887163, 8.96014057741},
+    {"F hole_1/sink/facet:1", 11.4001211284, 6.61980858293, 8.96014057741},
+    {"F hole_1/sink/facet:2", 8.59987887163, 6.61980858293, 8.96014057741},
+    {"F hole_1/sink/facet:3", 6.61980858293, 8.59987887163, 8.96014057741},
+    {"F hole_1/sink/facet:4", 6.61980858293, 11.4001211284, 8.96014057741},
+    {"F hole_1/sink/facet:5", 8.59987887163, 13.3801914171, 8.96014057741},
+    {"F hole_1/sink/facet:6", 11.4001211284, 13.3801914171, 8.96014057741},
+    {"F hole_1/sink/facet:7", 13.3801914171, 11.4001211284, 8.96014057741},
+    {"F hole_1/top", 10, 10, 10.120001},
+    {"F hole_1/wall/facet:0", 12.1338834765, 9.11611652352, 5.75},
+    {"F hole_1/wall/facet:1", 10.8838834765, 7.86611652352, 5.75},
+    {"F hole_1/wall/facet:2", 9.11611652352, 7.86611652352, 5.75},
+    {"F hole_1/wall/facet:3", 7.86611652352, 9.11611652352, 5.75},
+    {"F hole_1/wall/facet:4", 7.86611652352, 10.8838834765, 5.75},
+    {"F hole_1/wall/facet:5", 9.11611652352, 12.1338834765, 5.75},
+    {"F hole_1/wall/facet:6", 10.8838834765, 12.1338834765, 5.75},
+    {"F hole_1/wall/facet:7", 12.1338834765, 10.8838834765, 5.75},
+};
+
 // clang-format on
 
 /// The centroid of @p face's outer loop, by area: what a face is, whatever corners stand in its
@@ -2653,5 +2866,47 @@ TEST(BridgeNumbering, AHoledRevolveIsNumberedAsMastersWasWhereItCanBe) {
         };
         expectNumberedAsMasters(*out.faceted, table, size, &p, gone, merged);
         expectChordsOnTheirEdges(*out.faceted, *out.exact);
+    }
+}
+
+// Hole tools (Ruling 21): each type's tool, a revolve of its half-section renamed for what each
+// surface is, is numbered as master's was, its facets, its rims' chords and its seams, every one.
+TEST(BridgeNumbering, HoleToolsAreNumberedAsMastersWere) {
+    struct Case {
+        const char* what;
+        const Place* table;
+        std::size_t size;
+    };
+    const std::vector<Case> cases = {
+        {"simple", kSimpleHoleTool, std::size(kSimpleHoleTool)},
+        {"counterbore", kCounterboreHoleTool, std::size(kCounterboreHoleTool)},
+        {"countersink", kCountersinkHoleTool, std::size(kCountersinkHoleTool)}};
+    for (std::size_t type = 0; type < cases.size(); ++type) {
+        const Case& c = cases[type];
+        SCOPED_TRACE(c.what);
+        auto box = PrimitiveFeature::makeBox(20, 20, 10);
+        box->restoreFeatureID("primitive_1");
+        std::string why;
+        const auto part = box->execute(nullptr, &why);
+        ASSERT_NE(part, nullptr) << why;
+        auto hole = hz::doc::HoleFeature::make("primitive_1/top", Vec3(10, 10, 10), 5.0, 6.0);
+        hole->restoreFeatureID("hole_1");
+        ASSERT_TRUE(hole->setParameter("segments", 8));
+        if (type == 1) {
+            ASSERT_TRUE(hole->setParameter("type", 1));
+            ASSERT_TRUE(hole->setParameter("boreDiameter", 9.0));
+            ASSERT_TRUE(hole->setParameter("boreDepth", 3.0));
+        } else if (type == 2) {
+            ASSERT_TRUE(hole->setParameter("type", 2));
+            ASSERT_TRUE(hole->setParameter("sinkDiameter", 10.0));
+            ASSERT_TRUE(hole->setParameter("sinkAngle", kPi / 2));
+        }
+        hz::doc::BuildContext context;
+        context.part = part.get();
+        const hz::doc::FeatureOutput tool = hole->executeWithExact(context, nullptr, &why);
+        ASSERT_NE(tool.faceted, nullptr) << why;
+        ASSERT_NE(tool.exact, nullptr) << why;
+        expectNumberedAsMasters(*tool.faceted, c.table, c.size, nullptr, {});
+        expectChordsOnTheirEdges(*tool.faceted, *tool.exact);
     }
 }
