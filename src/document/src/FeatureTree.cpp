@@ -235,16 +235,49 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::execute(std::unique_ptr<topo::Solid
 }
 
 std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& context,
-                                                       std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                       std::unique_ptr<topo::Solid> inputSolid,
                                                        std::string* reason) const {
+    return executeWithExact(context, std::move(inputSolid), reason).faceted;
+}
+
+FeatureOutput ExtrudeFeature::executeWithExact(const BuildContext& context,
+                                               std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                               std::string* reason) const {
     // The extrusion alone; the tree combines it with the part according to
     // operation() (see applyFeature), as for every body-creating feature.
+    const auto fail = [reason](std::string why) {
+        if (reason) *reason = std::move(why);
+        return FeatureOutput{};
+    };
     const draft::SketchPlane& plane = m_sketch->plane();
     // Placed on a face that has turned, the sketch takes its direction along.
     const math::Vec3 direction = m_sketch->placement().transformDirection(m_direction);
     const auto extrude = [&](const draft::SketchPlane& from, double distance) {
-        return model::Extrude::execute(m_sketch->entities(), from, direction, distance, m_featureID,
-                                       m_segments, m_chordTolerance, reason, naming());
+        FeatureOutput out;
+        if (naming() != model::NamingScheme::Stable) {
+            out.faceted = model::Extrude::execute(m_sketch->entities(), from, direction, distance,
+                                                  m_featureID, m_segments, m_chordTolerance, reason,
+                                                  naming());
+            return out;
+        }
+        // Built exactly (stage 3); the faceted extrusion every operation not yet converted reads
+        // is its bridge copy, master's facets named for the exact faces they lie on.
+        auto exact = model::Extrude::exact(m_sketch->entities(), from, direction, distance,
+                                           m_featureID, reason);
+        if (!exact) return out;
+        model::FacetedSolid bridge;
+        try {
+            bridge = model::facetExact(*exact, facetResolution());
+        } catch (const std::exception& e) {
+            bridge.error = e.what();
+        }
+        if (!bridge.solid) {
+            return fail("its exact form could not be cut into facets: " + bridge.error);
+        }
+        model::nameBridgeEdges(*bridge.solid, *exact);
+        out.faceted = std::move(bridge.solid);
+        out.exact = std::move(exact);
+        return out;
     };
     // Along the direction, a plane the sketch's, moved @p by.
     const auto moved = [&plane](const math::Vec3& by) {
@@ -259,7 +292,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
         case Extent::ThroughAll:
         case Extent::ThroughAllBoth: {
             if (!context.part || context.part->vertices().empty()) {
-                return failWith(reason, "there is no part before it to go through");
+                return fail("there is no part before it to go through");
             }
             // How far the part reaches along the direction, from the
             // sketch, each way, and a little past it at each end: how far
@@ -269,7 +302,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
             const math::Vec3 n = plane.normal();
             const double rise = unit.dot(n);  // height gained per length travelled
             if (std::abs(rise) < 1e-9) {
-                return failWith(reason, "the direction lies in the sketch plane");
+                return fail("the direction lies in the sketch plane");
             }
             double lo = std::numeric_limits<double>::infinity();
             double hi = -lo;
@@ -281,7 +314,7 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
             const double margin = 0.01 * (hi - lo) + 1e-6;
             if (m_extent == Extent::ThroughAll) {
                 if (hi <= 1e-9) {
-                    return failWith(reason, "the part is not in front of the sketch that way");
+                    return fail("the part is not in front of the sketch that way");
                 }
                 return extrude(plane, (hi + margin) / direction.length());
             }
@@ -292,25 +325,25 @@ std::unique_ptr<topo::Solid> ExtrudeFeature::executeIn(const BuildContext& conte
         case Extent::UpToFace: {
             // Phase 157: as far as a flat face of the part, parallel to the
             // sketch, where the part now puts it.
-            if (m_upToFace.empty()) return failWith(reason, "no face is chosen to go up to");
+            if (m_upToFace.empty()) return fail("no face is chosen to go up to");
             const std::string face = "the face it goes up to (" + m_upToFace + ")";
             if (!context.part) {
-                return failWith(reason, face + " is not there: there is no part before it");
+                return fail(face + " is not there: there is no part before it");
             }
             std::string why;
             const auto to = model::planeOfFace(*context.part, m_upToFace, &why);
-            if (!to) return failWith(reason, face + " " + why);
+            if (!to) return fail(face + " " + why);
             if (to->normal.cross(plane.normal()).length() > 1e-9) {
-                return failWith(reason, face +
-                                            " is at a slant to the sketch: it goes up to a face "
-                                            "parallel to the sketch");
+                return fail(face +
+                            " is at a slant to the sketch: it goes up to a face "
+                            "parallel to the sketch");
             }
             // Parallel, so every point of the profile is as far from it.
             const double reach =
                 (to->origin - plane.origin()).dot(to->normal) / unit.dot(to->normal);
             const double size = std::max(1.0, (to->origin - plane.origin()).length());
             if (!(reach > 1e-9 * size)) {
-                return failWith(reason, face + " is not in front of the sketch that way");
+                return fail(face + " is not in front of the sketch that way");
             }
             return extrude(plane, reach / direction.length());
         }

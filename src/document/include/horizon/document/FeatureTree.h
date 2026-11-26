@@ -292,9 +292,19 @@ public:
     std::string featureID() const override;
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
+    /// Its extrusion in facets: under Stable naming, its exact extrusion's bridge copy
+    /// (executeWithExact); under the older schemes, master's faceted extrusion.
     std::unique_ptr<topo::Solid> executeIn(const BuildContext& context,
                                            std::unique_ptr<topo::Solid> inputSolid,
                                            std::string* reason = nullptr) const override;
+    /// Its plane and distance found from its extent as before; then, under Stable naming, built
+    /// exactly (stage 3): model::Extrude::exact, its faces named for this feature, and its bridge
+    /// copy cut at facetResolution(), master's counts, its edges named by model::nameBridgeEdges.
+    /// An extrusion only the exact construction cannot build fails with "could not be built
+    /// exactly: <why>". Under the older schemes, master's faceted extrusion and no exact body.
+    FeatureOutput executeWithExact(const BuildContext& context,
+                                   std::unique_ptr<topo::Solid> inputSolid,
+                                   std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     ParameterKind parameterKind(const std::string& name) const override;

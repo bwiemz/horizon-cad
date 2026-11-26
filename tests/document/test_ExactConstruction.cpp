@@ -21,7 +21,10 @@
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftArc.h"
+#include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
+#include "horizon/drafting/SketchPlane.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/MeshData.h"
 #include "horizon/math/BoundingBox.h"
@@ -29,6 +32,7 @@
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Quaternion.h"
 #include "horizon/math/Units.h"
+#include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
@@ -541,4 +545,179 @@ TEST(ExactConstruction, ABoxWithANegativeSizeIsBuiltAsBefore) {
         EXPECT_NEAR(volumeOf(*part.exactSolid()), 24.0, 24.0 * 1e-9);
         expectNamedAsItsFacets(*part.exactSolid(), faceted);
     }
+}
+
+namespace {
+
+/// A slot of two lines of 20 and two half circles of radius 5 on @p sketch: (20 x 10 + 25 pi) in
+/// area.
+void drawSlot(hz::doc::Sketch& sketch) {
+    sketch.addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, -5), Vec2(20, -5)));
+    sketch.addEntity(std::make_shared<hz::draft::DraftArc>(Vec2(20, 0), 5, -kPi / 2, kPi / 2));
+    sketch.addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(20, 5), Vec2(0, 5)));
+    sketch.addEntity(std::make_shared<hz::draft::DraftArc>(Vec2(0, 0), 5, kPi / 2, 3 * kPi / 2));
+}
+
+/// The names @p recorded, "{k}" standing for the k-th entity of @p sketch ("e<id>").
+std::set<std::string> namedFor(const std::set<std::string>& recorded,
+                               const hz::doc::Sketch& sketch) {
+    std::set<std::string> out;
+    for (std::string name : recorded) {
+        for (size_t k = 0; k < sketch.entities().size(); ++k) {
+            const std::string mark = "{" + std::to_string(k) + "}";
+            const size_t at = name.find(mark);
+            if (at != std::string::npos) {
+                name.replace(at, mark.size(), "e" + std::to_string(sketch.entities()[k]->id()));
+            }
+        }
+        out.insert(name);
+    }
+    return out;
+}
+
+}  // namespace
+
+// Extrusions are exact (stage 3): a Symmetric one, and one up to a face of a part built before it
+// as a new body, plane and distance found as before. Each faceted part is master's: its counts and
+// logical faces recorded at 1709c556, before the extrude was exact (the symmetric slot 36 faces,
+// 102 edges and 68 vertices; the box and the rod up to its top 40, 108 and 72 in two shells).
+TEST(ExactConstruction, SymmetricAndUpToFaceExtrudesAreExact) {
+    {
+        SCOPED_TRACE("a slot, 6 each way");
+        auto sketch = std::make_shared<hz::doc::Sketch>();
+        drawSlot(*sketch);
+        auto extrude = std::make_unique<hz::doc::ExtrudeFeature>(sketch, Vec3(0, 0, 1), 6.0);
+        extrude->setExtent(hz::doc::ExtrudeFeature::Extent::Symmetric);
+        extrude->restoreFeatureID("extrude_1");
+        Document part;
+        part.setType(DocumentType::Part);
+        part.addSketch(sketch);
+        part.featureTree().addFeature(std::move(extrude));
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+        EXPECT_EQ(part.exactSolid()->faceCount(), 6u);
+        const double volume = (200.0 + 25.0 * kPi) * 6.0;
+        EXPECT_NEAR(volumeOf(*part.exactSolid()), volume, volume * 1e-9);
+        hz::math::BoundingBox box;
+        for (const auto& v : part.exactSolid()->vertices()) box.expand(v.point);
+        EXPECT_NEAR(box.min().z, -3.0, 1e-12);
+        EXPECT_NEAR(box.max().z, 3.0, 1e-12);
+
+        const hz::topo::Solid& faceted = *part.solid();
+        EXPECT_EQ(faceted.faceCount(), 36u);
+        EXPECT_EQ(faceted.edges().size(), 102u);
+        EXPECT_EQ(faceted.vertices().size(), 68u);
+        EXPECT_EQ(logicalFaces(faceted),
+                  namedFor({"extrude_1/cap_bottom", "extrude_1/cap_top", "extrude_1/side:{0}",
+                            "extrude_1/side:{1}", "extrude_1/side:{2}", "extrude_1/side:{3}"},
+                           *sketch));
+        expectNamedAsItsFacets(*part.exactSolid(), faceted);
+        expectMeshed(part, volume);
+    }
+    {
+        SCOPED_TRACE("a rod down to a box's top, a new body");
+        Document part;
+        part.setType(DocumentType::Part);
+        auto box = PrimitiveFeature::makeBox(10, 10, 10);
+        box->restoreFeatureID("primitive_1");
+        part.featureTree().addFeature(std::move(box));
+        auto sketch = std::make_shared<hz::doc::Sketch>(
+            hz::draft::SketchPlane(Vec3(25, 5, 20), Vec3(0, 0, 1), Vec3(1, 0, 0)));
+        sketch->addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(0, 0), 2.0));
+        part.addSketch(sketch);
+        auto extrude = std::make_unique<hz::doc::ExtrudeFeature>(sketch, Vec3(0, 0, -1), 1.0);
+        extrude->setExtent(hz::doc::ExtrudeFeature::Extent::UpToFace);
+        extrude->setUpToFace("primitive_1/top");
+        extrude->setOperation(BodyOperation::NewBody);
+        extrude->restoreFeatureID("extrude_2");
+        part.featureTree().addFeature(std::move(extrude));
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        const hz::topo::Solid* exact = part.exactSolid();
+        ASSERT_NE(exact, nullptr) << part.exactNote();
+        EXPECT_EQ(exact->shellCount(), 2u);
+        EXPECT_EQ(exact->faceCount(), 9u);
+        const double volume = 1000.0 + kPi * 4.0 * 10.0;
+        EXPECT_NEAR(volumeOf(*exact), volume, volume * 1e-9);
+
+        const hz::topo::Solid& faceted = *part.solid();
+        EXPECT_EQ(faceted.faceCount(), 40u);
+        EXPECT_EQ(faceted.edges().size(), 108u);
+        EXPECT_EQ(faceted.vertices().size(), 72u);
+        EXPECT_EQ(faceted.shellCount(), 2u);
+        EXPECT_EQ(logicalFaces(faceted),
+                  namedFor({"extrude_2/cap_bottom", "extrude_2/cap_top", "extrude_2/side:{0}",
+                            "primitive_1/back", "primitive_1/bottom", "primitive_1/front",
+                            "primitive_1/left", "primitive_1/right", "primitive_1/top"},
+                           *sketch));
+        expectNamedAsItsFacets(*exact, faceted);
+        expectMeshed(part, volume);
+    }
+}
+
+// An extrude named by position (a part saved before persistent naming) builds as master did: its
+// faceted prism, `lateral_<i>`, and no exact part.
+TEST(ExactConstruction, APositionalExtrudeBuildsAsMasterDid) {
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    drawSlot(*sketch);
+    auto extrude = std::make_unique<hz::doc::ExtrudeFeature>(sketch, Vec3(0, 0, 1), 3.0);
+    extrude->setNaming(hz::model::NamingScheme::Positional);
+    extrude->restoreFeatureID("extrude_1");
+    hz::doc::FeatureOutput out = extrude->executeWithExact({}, nullptr, nullptr);
+    ASSERT_NE(out.faceted, nullptr);
+    EXPECT_EQ(out.exact, nullptr);
+    std::set<std::string> expected{"extrude_1/cap_bottom", "extrude_1/cap_top"};
+    for (int i = 0; i < 34; ++i) expected.insert("extrude_1/lateral_" + std::to_string(i));
+    EXPECT_EQ(faceNames(*out.faceted), expected);
+
+    Document part;
+    part.setType(DocumentType::Part);
+    part.addSketch(sketch);
+    part.featureTree().addFeature(std::move(extrude));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    EXPECT_TRUE(part.exactNote().empty()) << part.exactNote();
+    EXPECT_EQ(faceNames(*part.solid()), expected);
+}
+
+// Decision 1b: an extrude whose exact build fails fails, saying why; master's faceted
+// construction never builds it in its place. A slot a third of a micrometre across whose top line
+// misses its arcs by 0.9 nm (within the profile's join tolerance of 1 nm), which master's prism
+// took, is too loose a fit for an exact part of that size: its corners may be off its curves by a
+// thousandth of its size at most (topo::ToleranceGrowth).
+TEST(ExactConstruction, AFailedExactExtrudeFailsTheFeature) {
+    const double s = 1e-5;
+    const double gap = 9e-7;
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    sketch->addEntity(
+        std::make_shared<hz::draft::DraftLine>(Vec2(0, -5 * s), Vec2(20 * s, -5 * s)));
+    sketch->addEntity(
+        std::make_shared<hz::draft::DraftArc>(Vec2(20 * s, 0), 5 * s, -kPi / 2, kPi / 2));
+    sketch->addEntity(
+        std::make_shared<hz::draft::DraftLine>(Vec2(20 * s, 5 * s + gap), Vec2(0, 5 * s + gap)));
+    sketch->addEntity(
+        std::make_shared<hz::draft::DraftArc>(Vec2(0, 0), 5 * s, kPi / 2, 3 * kPi / 2));
+    std::string masters;
+    EXPECT_NE(
+        hz::model::Extrude::execute(sketch->entities(), sketch->plane(), Vec3(0, 0, 1), 3 * s, "x",
+                                    32, 0.0, &masters, hz::model::NamingScheme::FromGeometry),
+        nullptr)
+        << "master's prism took it: " << masters;
+    auto extrude = std::make_unique<hz::doc::ExtrudeFeature>(sketch, Vec3(0, 0, 1), 3 * s);
+    std::string why;
+    const hz::doc::FeatureOutput out = extrude->executeWithExact({}, nullptr, &why);
+    EXPECT_EQ(out.faceted, nullptr);
+    EXPECT_EQ(out.exact, nullptr);
+    EXPECT_EQ(why.rfind("could not be built exactly: ", 0), 0u) << why;
+
+    Document part;
+    part.setType(DocumentType::Part);
+    part.addSketch(sketch);
+    part.featureTree().addFeature(std::move(extrude));
+    EXPECT_FALSE(part.rebuildModel());
+    EXPECT_EQ(
+        part.lastBuildMessage().rfind("Feature 'Extrude' failed: could not be built exactly: ", 0),
+        0u)
+        << part.lastBuildMessage();
+    EXPECT_EQ(part.solid(), nullptr);
+    EXPECT_EQ(part.exactSolid(), nullptr);
 }
