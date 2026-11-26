@@ -15,6 +15,7 @@
 #include "horizon/geometry/curves/NurbsCurve.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/modeling/BoundaryMesh.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/HalfEdge.h"
 
 namespace hz::model {
@@ -176,14 +177,14 @@ double turnBetween(const Vec3& a, const Vec3& b) {
 
 /// Points along an exact edge's curve, @p curve from @p t0 to @p t1, strictly between its ends:
 /// each chord within half @p tolerance of the curve at its middle and turning by at most half the
-/// read point's default angle (TrimmedFaceMesher's sampling of the faces' boundaries), so that
-/// the line runs where the faces it parts meet.
+/// display's angle (TrimmedFaceMesher's sampling of the faces' boundaries), so that the line runs
+/// where the faces it parts meet.
 void sampleBetween(const geo::Curve3& curve, double t0, double t1, double tolerance,
                    const std::function<void(const Vec3&)>& add) {
     if (curve.kind() == geo::CurveKind::Line) return;  // its ends are all of it
-    constexpr int kPieces = 8;       // a closed curve's ends meet: its middle is found first
-    constexpr int kDepth = 10;       // at most 8 x 1024 chords
-    constexpr double kTurn = 0.175;  // radians: half MeshOptions::maxAngle's default
+    constexpr int kPieces = 8;  // a closed curve's ends meet: its middle is found first
+    constexpr int kDepth = 10;  // at most 8 x 1024 chords
+    constexpr double kTurn = 0.5 * SolidTessellator::kDisplayMaxAngle;  // radians
     const double sag = 0.5 * tolerance;
     const std::function<void(double, const Vec3&, double, const Vec3&, int)> split =
         [&](double a, const Vec3& pa, double b, const Vec3& pb, int depth) {
@@ -258,6 +259,14 @@ void appendEdges(const topo::Solid& solid, double tolerance, geo::MeshData& out)
 
 }  // namespace
 
+double SolidTessellator::displayTolerance(const topo::Solid& solid) {
+    return std::max(kDisplayTolerance, kDisplayRelativeTolerance * topo::exactExtent(solid));
+}
+
+geo::MeshData SolidTessellator::tessellate(const topo::Solid& solid) {
+    return tessellate(solid, displayTolerance(solid));
+}
+
 geo::MeshData SolidTessellator::tessellate(const topo::Solid& solid, double tolerance,
                                            std::string* problem,
                                            const std::atomic<bool>* cancelled) {
@@ -270,7 +279,11 @@ geo::MeshData SolidTessellator::tessellate(const topo::Solid& solid, double tole
     // a click on it names the face. A face that cannot be meshed is said, not
     // thrown, and left out.
     std::string unmeshed;
-    const auto polygons = BoundaryMesh::extractFacePolygons(solid, tolerance, &unmeshed, cancelled);
+    MeshOptions options;
+    options.chordTolerance = tolerance;
+    options.maxAngle = kDisplayMaxAngle;
+    options.cancelled = cancelled;
+    const auto polygons = BoundaryMesh::extractFacePolygons(solid, options, &unmeshed);
     if (problem != nullptr) *problem = std::move(unmeshed);
     for (std::size_t i = 0; i < polygons.size();) {
         const BoundaryPolygon& poly = polygons[i];

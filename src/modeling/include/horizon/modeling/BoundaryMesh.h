@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/TrimmedFaceMesher.h"
 #include "horizon/topology/TopologyID.h"
 
 namespace hz::topo {
@@ -84,6 +85,13 @@ public:
     static std::vector<BoundaryPolygon> extractFacePolygons(
         const topo::Solid& solid, double chordTolerance, std::string* problem = nullptr,
         const std::atomic<bool>* cancelled = nullptr);
+
+    /// As above, the exact faces meshed with @p options whole (its chord tolerance, its angle and
+    /// its cancel flag), not at the read point's default angle: for the display
+    /// (SolidTessellator), which meshes coarser.
+    static std::vector<BoundaryPolygon> extractFacePolygons(const topo::Solid& solid,
+                                                            const MeshOptions& options,
+                                                            std::string* problem = nullptr);
 
     /// Triangulate a planar (or near-planar) polygon by ear clipping in its
     /// dominant plane, preserving winding.  Handles non-convex polygons.

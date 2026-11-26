@@ -1590,8 +1590,8 @@ void MainWindow::rebuildScene() {
             if (!mesh && meshed) {
                 mesh = tab->mesh;
             } else if (!mesh) {
-                mesh = std::make_shared<const geo::MeshData>(model::SolidTessellator::tessellate(
-                    *m_document->solid(), model::SolidTessellator::kDisplayTolerance));
+                mesh = std::make_shared<const geo::MeshData>(
+                    model::SolidTessellator::tessellate(*m_document->solid()));
                 ++m_tessellations;
                 if (tab != nullptr) {
                     tab->mesh = mesh;

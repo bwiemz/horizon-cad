@@ -43,13 +43,15 @@ bool rayTriangleIntersect(const math::Vec3& rayOrigin, const math::Vec3& rayDir,
 }  // namespace
 
 std::vector<math::Vec3> ExactPredicates::tessellateSolid(const topo::Solid& solid, double tessTol) {
-    // Reuse the display tessellator so classification and rendering agree on
-    // the solid's boundary: planar bounding-rectangle patches are triangulated
-    // from their trimmed loops (they otherwise over-cover, see Extrude), while
-    // curved faces keep smooth surface tessellation — the latter matters for
-    // ray-parity on cylinders/spheres/tori, whose coarse box-topology loops
-    // enclose little-to-no volume (a torus's are coplanar). Expand the indexed
-    // mesh into a flat triangle-corner list.
+    // Reuse the display tessellator: it meshes an exact face at the display's
+    // angle, and the chord tolerance is the caller's (@p tessTol; the display's
+    // own grows with a part above about 667 across). Planar bounding-rectangle
+    // patches are triangulated from their trimmed loops (they otherwise
+    // over-cover, see Extrude), while curved faces keep smooth surface
+    // tessellation — the latter matters for ray-parity on cylinders/spheres/
+    // tori, whose coarse box-topology loops enclose little-to-no volume (a
+    // torus's are coplanar). Expand the indexed mesh into a flat
+    // triangle-corner list.
     const geo::MeshData mesh = SolidTessellator::tessellate(solid, tessTol);
     std::vector<math::Vec3> triangles;
     triangles.reserve(mesh.indices.size());
