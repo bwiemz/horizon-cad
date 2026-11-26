@@ -17,13 +17,15 @@
 // lemon exactly). The
 // hole tools are each type of hole 5 across and 6 deep into the top of a 20 x 20 x 10 box at its
 // middle (a counterbore 9 across and 3 deep, a countersink 10 across at 90 degrees), as HoleFeature
-// built its tool to cut.
+// built its tool to cut. The base flanges' tables are master's at 8fea3e9d (before its bends
+// were exact), each line of a flange's polygon numbered by the order the build made it.
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -33,11 +35,14 @@
 #include <vector>
 
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/Sketch.h"
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
+#include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/geometry/curves/Curve3.h"
+#include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/Naming.h"
@@ -46,6 +51,7 @@
 #include "horizon/topology/Solid.h"
 
 using hz::doc::PrimitiveFeature;
+using hz::doc::SheetMetalFeature;
 using hz::math::kPi;
 using hz::math::Vec2;
 using hz::math::Vec3;
@@ -2812,6 +2818,354 @@ const Place kTurnedOgive12[] = {
     {"F x/revolved:{2}", -3.23815048849e-17, 0, 6.29482353029e-17},
 };
 
+// Base flanges, "sheetmetal_1", master's at 8fea3e9d (its cross-section's polygon extruded, each
+// bend cut into its bendSegments chords): "{k}" is the k-th entity the build made, master's k-th
+// line of the polygon. An L of lines (0, 0), (50, 0), (50, 30), 2 thick, an inside radius of 1, 20
+// wide, at 8 chords a bend, and flipped at 2; a Z (0, 0), (40, 0), (40, 30), (80, 30) as thick, at
+// 2; a 60-degree bend (0, 0), (40, 0), (55, 25.98...), 1 thick, a radius of 2, 10 wide, at 8; and
+// an L (0, 0), (40, 0), (40, 25) 1.5 thick, a radius of 2, 30 wide, at 2, on the YZ plane at
+// x = 100 (its x along the world's y).
+const Place kSheetL[] = {
+    {"E sheetmetal_1/edge:cap_bottom|side:{0}", 23.5, 0, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{10}", 49, 30, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{11}", 48, 16.5, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{12}", 47.9903926402, 2.90245483899, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{13}", 47.9523324065, 2.71111312281, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{14}", 47.8776745724, 2.53087316731, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{15}", 47.7692881967, 2.3686614929, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{16}", 47.6313385071, 2.23071180326, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{17}", 47.4691268327, 2.12232542759, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{18}", 47.2888868772, 2.04766759354, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{19}", 47.097545161, 2.0096073598, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{1}", 47.292635483, 0.0288220793952, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{20}", 23.5, 2, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{21}", 0, 1, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{2}", 47.8666606316, 0.143002780628, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{3}", 48.4073804981, 0.366976282779, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{4}", 48.8940155213, 0.692135409766, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{5}", 49.3078645902, 1.10598447869, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{6}", 49.6330237172, 1.59261950192, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{7}", 49.8569972194, 2.13333936843, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{8}", 49.9711779206, 2.70736451698, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{9}", 50, 16.5, 0},
+    {"E sheetmetal_1/edge:cap_top|side:{0}", 23.5, 0, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{10}", 49, 30, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{11}", 48, 16.5, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{12}", 47.9903926402, 2.90245483899, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{13}", 47.9523324065, 2.71111312281, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{14}", 47.8776745724, 2.53087316731, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{15}", 47.7692881967, 2.3686614929, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{16}", 47.6313385071, 2.23071180326, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{17}", 47.4691268327, 2.12232542759, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{18}", 47.2888868772, 2.04766759354, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{19}", 47.097545161, 2.0096073598, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{1}", 47.292635483, 0.0288220793952, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{20}", 23.5, 2, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{21}", 0, 1, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{2}", 47.8666606316, 0.143002780628, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{3}", 48.4073804981, 0.366976282779, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{4}", 48.8940155213, 0.692135409766, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{5}", 49.3078645902, 1.10598447869, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{6}", 49.6330237172, 1.59261950192, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{7}", 49.8569972194, 2.13333936843, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{8}", 49.9711779206, 2.70736451698, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{9}", 50, 16.5, 20},
+    {"E sheetmetal_1/edge:side:{0}|side:{1}", 47, 0, 10},
+    {"E sheetmetal_1/edge:side:{10}|side:{11}", 48, 30, 10},
+    {"E sheetmetal_1/edge:side:{11}|side:{12}", 48, 3, 10},
+    {"E sheetmetal_1/edge:side:{12}|side:{13}", 47.9807852804, 2.80490967798, 10},
+    {"E sheetmetal_1/edge:side:{13}|side:{14}", 47.9238795325, 2.61731656763, 10},
+    {"E sheetmetal_1/edge:side:{14}|side:{15}", 47.8314696123, 2.44442976698, 10},
+    {"E sheetmetal_1/edge:side:{15}|side:{16}", 47.7071067812, 2.29289321881, 10},
+    {"E sheetmetal_1/edge:side:{16}|side:{17}", 47.555570233, 2.1685303877, 10},
+    {"E sheetmetal_1/edge:side:{17}|side:{18}", 47.3826834324, 2.07612046749, 10},
+    {"E sheetmetal_1/edge:side:{18}|side:{19}", 47.195090322, 2.0192147196, 10},
+    {"E sheetmetal_1/edge:side:{19}|side:{20}", 47, 2, 10},
+    {"E sheetmetal_1/edge:side:{1}|side:{2}", 47.585270966, 0.0576441587903, 10},
+    {"E sheetmetal_1/edge:side:{20}|side:{21}", 0, 2, 10},
+    {"E sheetmetal_1/edge:side:{21}|side:{0}", 0, 0, 10},
+    {"E sheetmetal_1/edge:side:{2}|side:{3}", 48.1480502971, 0.228361402466, 10},
+    {"E sheetmetal_1/edge:side:{3}|side:{4}", 48.6667106991, 0.505591163092, 10},
+    {"E sheetmetal_1/edge:side:{4}|side:{5}", 49.1213203436, 0.87867965644, 10},
+    {"E sheetmetal_1/edge:side:{6}|side:{5}", 49.4944088369, 1.33328930094, 10},
+    {"E sheetmetal_1/edge:side:{6}|side:{7}", 49.7716385975, 1.8519497029, 10},
+    {"E sheetmetal_1/edge:side:{7}|side:{8}", 49.9423558412, 2.41472903395, 10},
+    {"E sheetmetal_1/edge:side:{8}|side:{9}", 50, 3, 10},
+    {"E sheetmetal_1/edge:side:{9}|side:{10}", 50, 30, 10},
+    {"F sheetmetal_1/cap_bottom", 35.5915926761, 7.21383082851, 0},
+    {"F sheetmetal_1/cap_top", 35.5652893043, 7.12470628557, 20},
+    {"F sheetmetal_1/side:{0}", 23.5, 0, 10},
+    {"F sheetmetal_1/side:{10}", 49, 30, 10},
+    {"F sheetmetal_1/side:{11}", 48, 16.5, 10},
+    {"F sheetmetal_1/side:{12}", 47.9903926402, 2.90245483899, 10},
+    {"F sheetmetal_1/side:{13}", 47.9523324065, 2.71111312281, 10},
+    {"F sheetmetal_1/side:{14}", 47.8776745724, 2.53087316731, 10},
+    {"F sheetmetal_1/side:{15}", 47.7692881967, 2.3686614929, 10},
+    {"F sheetmetal_1/side:{16}", 47.6313385071, 2.23071180326, 10},
+    {"F sheetmetal_1/side:{17}", 47.4691268327, 2.12232542759, 10},
+    {"F sheetmetal_1/side:{18}", 47.2888868772, 2.04766759354, 10},
+    {"F sheetmetal_1/side:{19}", 47.097545161, 2.0096073598, 10},
+    {"F sheetmetal_1/side:{1}", 47.292635483, 0.0288220793952, 10},
+    {"F sheetmetal_1/side:{20}", 23.5, 2, 10},
+    {"F sheetmetal_1/side:{21}", 0, 1, 10},
+    {"F sheetmetal_1/side:{2}", 47.8666606316, 0.143002780628, 10},
+    {"F sheetmetal_1/side:{3}", 48.4073804981, 0.366976282779, 10},
+    {"F sheetmetal_1/side:{4}", 48.8940155213, 0.692135409766, 10},
+    {"F sheetmetal_1/side:{5}", 49.3078645902, 1.10598447869, 10},
+    {"F sheetmetal_1/side:{6}", 49.6330237172, 1.59261950192, 10},
+    {"F sheetmetal_1/side:{7}", 49.8569972194, 2.13333936843, 10},
+    {"F sheetmetal_1/side:{8}", 49.9711779206, 2.70736451698, 10},
+    {"F sheetmetal_1/side:{9}", 50, 16.5, 10},
+};
+const Place kSheetLFlipped[] = {
+    {"E sheetmetal_1/edge:cap_bottom|side:{0}", 24.5, -2, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{1}", 50.0606601718, -1.56066017178, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{2}", 51.5606601718, -0.0606601717798, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{3}", 52, 15.5, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{4}", 51, 30, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{5}", 50, 15.5, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{6}", 49.8535533906, 0.646446609407, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{7}", 49.3535533906, 0.146446609407, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{8}", 24.5, 0, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{9}", 0, -1, 0},
+    {"E sheetmetal_1/edge:cap_top|side:{0}", 24.5, -2, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{1}", 50.0606601718, -1.56066017178, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{2}", 51.5606601718, -0.0606601717798, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{3}", 52, 15.5, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{4}", 51, 30, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{5}", 50, 15.5, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{6}", 49.8535533906, 0.646446609407, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{7}", 49.3535533906, 0.146446609407, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{8}", 24.5, 0, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{9}", 0, -1, 20},
+    {"E sheetmetal_1/edge:side:{0}|side:{1}", 49, -2, 10},
+    {"E sheetmetal_1/edge:side:{0}|side:{9}", 0, -2, 10},
+    {"E sheetmetal_1/edge:side:{1}|side:{2}", 51.1213203436, -1.12132034356, 10},
+    {"E sheetmetal_1/edge:side:{2}|side:{3}", 52, 1, 10},
+    {"E sheetmetal_1/edge:side:{3}|side:{4}", 52, 30, 10},
+    {"E sheetmetal_1/edge:side:{4}|side:{5}", 50, 30, 10},
+    {"E sheetmetal_1/edge:side:{5}|side:{6}", 50, 1, 10},
+    {"E sheetmetal_1/edge:side:{6}|side:{7}", 49.7071067812, 0.292893218813, 10},
+    {"E sheetmetal_1/edge:side:{7}|side:{8}", 49, 0, 10},
+    {"E sheetmetal_1/edge:side:{8}|side:{9}", 0, 0, 10},
+    {"F sheetmetal_1/cap_bottom", 37.1822322576, 5.75233384147, 0},
+    {"F sheetmetal_1/cap_top", 37.1553211772, 5.66249101882, 20},
+    {"F sheetmetal_1/side:{0}", 24.5, -2, 10},
+    {"F sheetmetal_1/side:{1}", 50.0606601718, -1.56066017178, 10},
+    {"F sheetmetal_1/side:{2}", 51.5606601718, -0.0606601717798, 10},
+    {"F sheetmetal_1/side:{3}", 52, 15.5, 10},
+    {"F sheetmetal_1/side:{4}", 51, 30, 10},
+    {"F sheetmetal_1/side:{5}", 50, 15.5, 10},
+    {"F sheetmetal_1/side:{6}", 49.8535533906, 0.646446609407, 10},
+    {"F sheetmetal_1/side:{7}", 49.3535533906, 0.146446609407, 10},
+    {"F sheetmetal_1/side:{8}", 24.5, 0, 10},
+    {"F sheetmetal_1/side:{9}", 0, -1, 10},
+};
+const Place kSheetZ[] = {
+    {"E sheetmetal_1/edge:cap_bottom|side:{0}", 18.5, 0, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{10}", 38.4393398282, 30.0606601718, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{11}", 38, 16, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{12}", 37.8535533906, 2.64644660941, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{13}", 37.3535533906, 2.14644660941, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{14}", 18.5, 2, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{15}", 0, 1, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{1}", 38.0606601718, 0.43933982822, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{2}", 39.5606601718, 1.93933982822, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{3}", 40, 16, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{4}", 40.1464466094, 29.3535533906, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{5}", 40.6464466094, 29.8535533906, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{6}", 60.5, 30, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{7}", 80, 31, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{8}", 60.5, 32, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{9}", 39.9393398282, 31.5606601718, 0},
+    {"E sheetmetal_1/edge:cap_top|side:{0}", 18.5, 0, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{10}", 38.4393398282, 30.0606601718, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{11}", 38, 16, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{12}", 37.8535533906, 2.64644660941, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{13}", 37.3535533906, 2.14644660941, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{14}", 18.5, 2, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{15}", 0, 1, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{1}", 38.0606601718, 0.43933982822, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{2}", 39.5606601718, 1.93933982822, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{3}", 40, 16, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{4}", 40.1464466094, 29.3535533906, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{5}", 40.6464466094, 29.8535533906, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{6}", 60.5, 30, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{7}", 80, 31, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{8}", 60.5, 32, 20},
+    {"E sheetmetal_1/edge:cap_top|side:{9}", 39.9393398282, 31.5606601718, 20},
+    {"E sheetmetal_1/edge:side:{0}|side:{15}", 0, 0, 10},
+    {"E sheetmetal_1/edge:side:{0}|side:{1}", 37, 0, 10},
+    {"E sheetmetal_1/edge:side:{10}|side:{11}", 38, 29, 10},
+    {"E sheetmetal_1/edge:side:{11}|side:{12}", 38, 3, 10},
+    {"E sheetmetal_1/edge:side:{12}|side:{13}", 37.7071067812, 2.29289321881, 10},
+    {"E sheetmetal_1/edge:side:{13}|side:{14}", 37, 2, 10},
+    {"E sheetmetal_1/edge:side:{14}|side:{15}", 0, 2, 10},
+    {"E sheetmetal_1/edge:side:{1}|side:{2}", 39.1213203436, 0.87867965644, 10},
+    {"E sheetmetal_1/edge:side:{2}|side:{3}", 40, 3, 10},
+    {"E sheetmetal_1/edge:side:{3}|side:{4}", 40, 29, 10},
+    {"E sheetmetal_1/edge:side:{4}|side:{5}", 40.2928932188, 29.7071067812, 10},
+    {"E sheetmetal_1/edge:side:{5}|side:{6}", 41, 30, 10},
+    {"E sheetmetal_1/edge:side:{6}|side:{7}", 80, 30, 10},
+    {"E sheetmetal_1/edge:side:{7}|side:{8}", 80, 32, 10},
+    {"E sheetmetal_1/edge:side:{8}|side:{9}", 41, 32, 10},
+    {"E sheetmetal_1/edge:side:{9}|side:{10}", 38.8786796564, 31.1213203436, 10},
+    {"F sheetmetal_1/cap_bottom", 50.0867139296, 19.7836000606, 0},
+    {"F sheetmetal_1/cap_top", 50.2153297418, 19.2706377007, 20},
+    {"F sheetmetal_1/side:{0}", 18.5, 0, 10},
+    {"F sheetmetal_1/side:{10}", 38.4393398282, 30.0606601718, 10},
+    {"F sheetmetal_1/side:{11}", 38, 16, 10},
+    {"F sheetmetal_1/side:{12}", 37.8535533906, 2.64644660941, 10},
+    {"F sheetmetal_1/side:{13}", 37.3535533906, 2.14644660941, 10},
+    {"F sheetmetal_1/side:{14}", 18.5, 2, 10},
+    {"F sheetmetal_1/side:{15}", 0, 1, 10},
+    {"F sheetmetal_1/side:{1}", 38.0606601718, 0.43933982822, 10},
+    {"F sheetmetal_1/side:{2}", 39.5606601718, 1.93933982822, 10},
+    {"F sheetmetal_1/side:{3}", 40, 16, 10},
+    {"F sheetmetal_1/side:{4}", 40.1464466094, 29.3535533906, 10},
+    {"F sheetmetal_1/side:{5}", 40.6464466094, 29.8535533906, 10},
+    {"F sheetmetal_1/side:{6}", 60.5, 30, 10},
+    {"F sheetmetal_1/side:{7}", 80, 31, 10},
+    {"F sheetmetal_1/side:{8}", 60.5, 32, 10},
+    {"F sheetmetal_1/side:{9}", 39.9393398282, 31.5606601718, 10},
+};
+const Place kSheet60[] = {
+    {"E sheetmetal_1/edge:cap_bottom|side:{0}", 19.1339745962, 0, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{10}", 54.5669872981, 26.2307621135, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{11}", 47.0669872981, 14.2403810568, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{12}", 39.9273279365, 1.89123857099, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{13}", 39.7684093139, 1.6841317898, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{14}", 39.5838174026, 1.49953987852, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{15}", 39.3767106214, 1.34062125592, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{16}", 39.1506326248, 1.2100950637, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{17}", 38.9094516699, 1.1101946412, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{18}", 38.6572944298, 1.04262931234, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{19}", 38.3984753847, 1.00855513863, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{1}", 38.4637384808, 0.0128327079393, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{20}", 19.1339745962, 1, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{21}", 0, 0.5, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{2}", 38.8519670484, 0.0639439685057, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{3}", 39.2302029086, 0.165291961799, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{4}", 39.591974341, 0.315142595556, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{5}", 39.9310913359, 0.510931883886, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{6}", 40.2417515077, 0.749309817783, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{7}", 40.5186393746, 1.02619768471, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{8}", 40.7570173085, 1.33685785649, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{9}", 47.9330127019, 13.7403810568, 0},
+    {"E sheetmetal_1/edge:cap_top|side:{0}", 19.1339745962, 0, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{10}", 54.5669872981, 26.2307621135, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{11}", 47.0669872981, 14.2403810568, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{12}", 39.9273279365, 1.89123857099, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{13}", 39.7684093139, 1.6841317898, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{14}", 39.5838174026, 1.49953987852, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{15}", 39.3767106214, 1.34062125592, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{16}", 39.1506326248, 1.2100950637, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{17}", 38.9094516699, 1.1101946412, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{18}", 38.6572944298, 1.04262931234, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{19}", 38.3984753847, 1.00855513863, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{1}", 38.4637384808, 0.0128327079393, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{20}", 19.1339745962, 1, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{21}", 0, 0.5, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{2}", 38.8519670484, 0.0639439685057, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{3}", 39.2302029086, 0.165291961799, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{4}", 39.591974341, 0.315142595556, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{5}", 39.9310913359, 0.510931883886, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{6}", 40.2417515077, 0.749309817783, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{7}", 40.5186393746, 1.02619768471, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{8}", 40.7570173085, 1.33685785649, 10},
+    {"E sheetmetal_1/edge:cap_top|side:{9}", 47.9330127019, 13.7403810568, 10},
+    {"E sheetmetal_1/edge:side:{0}|side:{1}", 38.2679491924, 0, 5},
+    {"E sheetmetal_1/edge:side:{0}|side:{21}", 0, 0, 5},
+    {"E sheetmetal_1/edge:side:{10}|side:{11}", 54.1339745962, 26.4807621135, 5},
+    {"E sheetmetal_1/edge:side:{11}|side:{12}", 40, 2, 5},
+    {"E sheetmetal_1/edge:side:{12}|side:{13}", 39.854655873, 1.78247714198, 5},
+    {"E sheetmetal_1/edge:side:{13}|side:{14}", 39.6821627548, 1.58578643763, 5},
+    {"E sheetmetal_1/edge:side:{14}|side:{15}", 39.4854720504, 1.41329331942, 5},
+    {"E sheetmetal_1/edge:side:{15}|side:{16}", 39.2679491924, 1.26794919243, 5},
+    {"E sheetmetal_1/edge:side:{16}|side:{17}", 39.0333160572, 1.15224093498, 5},
+    {"E sheetmetal_1/edge:side:{17}|side:{18}", 38.7855872826, 1.06814834742, 5},
+    {"E sheetmetal_1/edge:side:{18}|side:{19}", 38.5290015769, 1.01711027725, 5},
+    {"E sheetmetal_1/edge:side:{19}|side:{20}", 38.2679491924, 1, 5},
+    {"E sheetmetal_1/edge:side:{1}|side:{2}", 38.6595277691, 0.0256654158786, 5},
+    {"E sheetmetal_1/edge:side:{20}|side:{21}", 0, 1, 5},
+    {"E sheetmetal_1/edge:side:{2}|side:{3}", 39.0444063277, 0.102222521133, 5},
+    {"E sheetmetal_1/edge:side:{3}|side:{4}", 39.4159994895, 0.228361402466, 5},
+    {"E sheetmetal_1/edge:side:{4}|side:{5}", 39.7679491924, 0.401923788647, 5},
+    {"E sheetmetal_1/edge:side:{5}|side:{6}", 40.0942334795, 0.619939979126, 5},
+    {"E sheetmetal_1/edge:side:{6}|side:{7}", 40.389269536, 0.87867965644, 5},
+    {"E sheetmetal_1/edge:side:{7}|side:{8}", 40.6480092133, 1.17371571297, 5},
+    {"E sheetmetal_1/edge:side:{8}|side:{9}", 40.8660254038, 1.5, 5},
+    {"E sheetmetal_1/edge:side:{9}|side:{10}", 55, 25.9807621135, 5},
+    {"F sheetmetal_1/cap_bottom", 35.1942018673, 7.09053529843, 0},
+    {"F sheetmetal_1/cap_top", 33.6490389268, 6.61235649928, 10},
+    {"F sheetmetal_1/side:{0}", 19.1339745962, 0, 5},
+    {"F sheetmetal_1/side:{10}", 54.5669872981, 26.2307621135, 5},
+    {"F sheetmetal_1/side:{11}", 47.0669872981, 14.2403810568, 5},
+    {"F sheetmetal_1/side:{12}", 39.9273279365, 1.89123857099, 5},
+    {"F sheetmetal_1/side:{13}", 39.7684093139, 1.6841317898, 5},
+    {"F sheetmetal_1/side:{14}", 39.5838174026, 1.49953987852, 5},
+    {"F sheetmetal_1/side:{15}", 39.3767106214, 1.34062125592, 5},
+    {"F sheetmetal_1/side:{16}", 39.1506326248, 1.2100950637, 5},
+    {"F sheetmetal_1/side:{17}", 38.9094516699, 1.1101946412, 5},
+    {"F sheetmetal_1/side:{18}", 38.6572944298, 1.04262931234, 5},
+    {"F sheetmetal_1/side:{19}", 38.3984753847, 1.00855513863, 5},
+    {"F sheetmetal_1/side:{1}", 38.4637384808, 0.0128327079393, 5},
+    {"F sheetmetal_1/side:{20}", 19.1339745962, 1, 5},
+    {"F sheetmetal_1/side:{21}", 0, 0.5, 5},
+    {"F sheetmetal_1/side:{2}", 38.8519670484, 0.0639439685057, 5},
+    {"F sheetmetal_1/side:{3}", 39.2302029086, 0.165291961799, 5},
+    {"F sheetmetal_1/side:{4}", 39.591974341, 0.315142595556, 5},
+    {"F sheetmetal_1/side:{5}", 39.9310913359, 0.510931883886, 5},
+    {"F sheetmetal_1/side:{6}", 40.2417515077, 0.749309817783, 5},
+    {"F sheetmetal_1/side:{7}", 40.5186393746, 1.02619768471, 5},
+    {"F sheetmetal_1/side:{8}", 40.7570173085, 1.33685785649, 5},
+    {"F sheetmetal_1/side:{9}", 47.9330127019, 13.7403810568, 5},
+};
+const Place kSheetOnYZ[] = {
+    {"E sheetmetal_1/edge:cap_bottom|side:{0}", 100, 18.25, 0},
+    {"E sheetmetal_1/edge:cap_bottom|side:{1}", 100, 37.7374368671, 0.512563132924},
+    {"E sheetmetal_1/edge:cap_bottom|side:{2}", 100, 39.4874368671, 2.26256313292},
+    {"E sheetmetal_1/edge:cap_bottom|side:{3}", 100, 40, 14.25},
+    {"E sheetmetal_1/edge:cap_bottom|side:{4}", 100, 39.25, 25},
+    {"E sheetmetal_1/edge:cap_bottom|side:{5}", 100, 38.5, 14.25},
+    {"E sheetmetal_1/edge:cap_bottom|side:{6}", 100, 38.2071067812, 2.79289321881},
+    {"E sheetmetal_1/edge:cap_bottom|side:{7}", 100, 37.2071067812, 1.79289321881},
+    {"E sheetmetal_1/edge:cap_bottom|side:{8}", 100, 18.25, 1.5},
+    {"E sheetmetal_1/edge:cap_bottom|side:{9}", 100, 0, 0.75},
+    {"E sheetmetal_1/edge:cap_top|side:{0}", 130, 18.25, 0},
+    {"E sheetmetal_1/edge:cap_top|side:{1}", 130, 37.7374368671, 0.512563132924},
+    {"E sheetmetal_1/edge:cap_top|side:{2}", 130, 39.4874368671, 2.26256313292},
+    {"E sheetmetal_1/edge:cap_top|side:{3}", 130, 40, 14.25},
+    {"E sheetmetal_1/edge:cap_top|side:{4}", 130, 39.25, 25},
+    {"E sheetmetal_1/edge:cap_top|side:{5}", 130, 38.5, 14.25},
+    {"E sheetmetal_1/edge:cap_top|side:{6}", 130, 38.2071067812, 2.79289321881},
+    {"E sheetmetal_1/edge:cap_top|side:{7}", 130, 37.2071067812, 1.79289321881},
+    {"E sheetmetal_1/edge:cap_top|side:{8}", 130, 18.25, 1.5},
+    {"E sheetmetal_1/edge:cap_top|side:{9}", 130, 0, 0.75},
+    {"E sheetmetal_1/edge:side:{0}|side:{1}", 115, 36.5, 0},
+    {"E sheetmetal_1/edge:side:{0}|side:{9}", 115, 0, 0},
+    {"E sheetmetal_1/edge:side:{1}|side:{2}", 115, 38.9748737342, 1.02512626585},
+    {"E sheetmetal_1/edge:side:{2}|side:{3}", 115, 40, 3.5},
+    {"E sheetmetal_1/edge:side:{3}|side:{4}", 115, 40, 25},
+    {"E sheetmetal_1/edge:side:{4}|side:{5}", 115, 38.5, 25},
+    {"E sheetmetal_1/edge:side:{5}|side:{6}", 115, 38.5, 3.5},
+    {"E sheetmetal_1/edge:side:{6}|side:{7}", 115, 37.9142135624, 2.08578643763},
+    {"E sheetmetal_1/edge:side:{7}|side:{8}", 115, 36.5, 1.5},
+    {"E sheetmetal_1/edge:side:{8}|side:{9}", 115, 0, 1.5},
+    {"F sheetmetal_1/cap_bottom", 100, 30.3806057072, 6.87344670139},
+    {"F sheetmetal_1/cap_top", 130, 30.3339260864, 6.74223616481},
+    {"F sheetmetal_1/side:{0}", 115, 18.25, 0},
+    {"F sheetmetal_1/side:{1}", 115, 37.7374368671, 0.512563132924},
+    {"F sheetmetal_1/side:{2}", 115, 39.4874368671, 2.26256313292},
+    {"F sheetmetal_1/side:{3}", 115, 40, 14.25},
+    {"F sheetmetal_1/side:{4}", 115, 39.25, 25},
+    {"F sheetmetal_1/side:{5}", 115, 38.5, 14.25},
+    {"F sheetmetal_1/side:{6}", 115, 38.2071067812, 2.79289321881},
+    {"F sheetmetal_1/side:{7}", 115, 37.2071067812, 1.79289321881},
+    {"F sheetmetal_1/side:{8}", 115, 18.25, 1.5},
+    {"F sheetmetal_1/side:{9}", 115, 0, 0.75},
+};
+
 // clang-format on
 
 /// The centroid of @p face's outer loop, by area: what a face is, whatever corners stand in its
@@ -3067,6 +3421,26 @@ Profile holed() {
 Profile clockwiseSlot() {
     return {line({0, 5}, {20, 5}), arc({20, 0}, 5, -kPi / 2, kPi / 2), line({20, -5}, {0, -5}),
             arc({0, 0}, 5, kPi / 2, 3 * kPi / 2)};
+}
+
+/// Stand-ins whose ids are the @p count ids made after @p before, in order: "{k}" of a base
+/// flange's table is the k-th line of master's polygon, the k-th entity its build made.
+Profile madeAfter(std::uint64_t before, std::size_t count) {
+    Profile made;
+    made.reserve(count);
+    for (std::size_t k = 0; k < count; ++k) {
+        auto standIn = line({0, 0}, {1, 0});
+        standIn->setId(before + 1 + k);
+        made.push_back(standIn);
+    }
+    return made;
+}
+
+/// Whether @p tag names one of the entities @p ks ("{k}").
+bool namesAny(const std::string& tag, const std::set<std::size_t>& ks) {
+    return std::any_of(ks.begin(), ks.end(), [&tag](std::size_t k) {
+        return tag.find("{" + std::to_string(k) + "}") != std::string::npos;
+    });
 }
 
 }  // namespace
@@ -3528,5 +3902,91 @@ TEST(BridgeNumbering, HoleToolsAreNumberedAsMastersWere) {
         ASSERT_NE(tool.exact, nullptr) << why;
         expectNumberedAsMasters(*tool.faceted, c.table, c.size, nullptr, {});
         expectChordsOnTheirEdges(*tool.faceted, *tool.exact);
+    }
+}
+
+// Sheet metal (Ruling 26). Master's base flange was its cross-section's polygon extruded: each bend
+// cut into bendSegments chords, each line of the polygon a line the build made, its face
+// `<feature>/side:e<id>`. The exact flange's flats and ends are master's own lines, made first and
+// in master's order, so every flat's face, both caps and every edge of a flat or a cap keeps
+// master's name at master's place. A bend is one cylinder on each boundary, named after an arc
+// made after master's lines: master's names of its chords' faces and of the edges round them are
+// gone (each arc's c chords: c faces, 2c edges at the caps and c + 1 along the width). A 60-degree
+// bend is cut into 6 chords, not master's 8 (facetResolution's stepsFor), so its caps' outlines,
+// still named as master's, run through other points: their places are not compared.
+TEST(BridgeNumbering, ASheetsFlatsAreNumberedAsMastersWere) {
+    struct Case {
+        const char* what;
+        std::vector<Vec2> points;
+        hz::draft::SketchPlane plane;
+        double thickness;
+        double radius;
+        double width;
+        bool flipped;
+        int perBend;
+        const Place* table;
+        std::size_t size;
+        std::size_t lines;             ///< of master's polygon
+        std::set<std::size_t> chords;  ///< its bends' chords among them
+        std::size_t gone;              ///< master's names of them
+        bool capsMoved;
+    };
+    const double c60 = std::cos(kPi / 3.0);
+    const double s60 = std::sin(kPi / 3.0);
+    const std::set<std::size_t> oneBendAt8{1, 2, 3, 4, 5, 6, 7, 8, 12, 13, 14, 15, 16, 17, 18, 19};
+    const hz::draft::SketchPlane yz(Vec3(100, 0, 0), Vec3(1, 0, 0), Vec3(0, 1, 0));
+    // clang-format off
+    const std::vector<Case> cases = {
+        {"an L", {{0, 0}, {50, 0}, {50, 30}}, {}, 2.0, 1.0, 20.0, false, 8,
+         kSheetL, std::size(kSheetL), 22, oneBendAt8, 66, false},
+        {"an L flipped", {{0, 0}, {50, 0}, {50, 30}}, {}, 2.0, 1.0, 20.0, true, 2,
+         kSheetLFlipped, std::size(kSheetLFlipped), 10, {1, 2, 6, 7}, 18, false},
+        {"a Z", {{0, 0}, {40, 0}, {40, 30}, {80, 30}}, {}, 2.0, 1.0, 20.0, false, 2,
+         kSheetZ, std::size(kSheetZ), 16, {1, 2, 4, 5, 9, 10, 12, 13}, 36, false},
+        {"a 60-degree bend", {{0, 0}, {40, 0}, {40 + 30 * c60, 30 * s60}}, {}, 1.0, 2.0, 10.0,
+         false, 8, kSheet60, std::size(kSheet60), 22, oneBendAt8, 66, true},
+        {"an L on the YZ plane", {{0, 0}, {40, 0}, {40, 25}}, yz, 1.5, 2.0, 30.0, false, 2,
+         kSheetOnYZ, std::size(kSheetOnYZ), 10, {1, 2, 6, 7}, 18, false},
+    };
+    // clang-format on
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        auto sketch = std::make_shared<hz::doc::Sketch>(c.plane);
+        for (std::size_t i = 0; i + 1 < c.points.size(); ++i) {
+            sketch->addEntity(line(c.points[i], c.points[i + 1]));
+        }
+        SheetMetalFeature flange(sketch, c.thickness, c.radius, c.width);
+        flange.restoreFeatureID("sheetmetal_1");
+        ASSERT_TRUE(flange.setParameter("bendSegments", c.perBend));
+        ASSERT_TRUE(flange.setParameter("flip", c.flipped ? 1.0 : 0.0));
+        const std::uint64_t before = hz::draft::DraftEntity::newId();
+        std::string why;
+        const auto out = flange.executeWithExact({}, nullptr, &why);
+        ASSERT_NE(out.faceted, nullptr) << why;
+        ASSERT_NE(out.exact, nullptr) << why;
+        const Profile made = madeAfter(before, c.lines);
+        std::set<std::string> gone;
+        for (std::size_t i = 0; i < c.size; ++i) {
+            if (namesAny(c.table[i].tag, c.chords)) gone.insert(c.table[i].tag);
+        }
+        EXPECT_EQ(gone.size(), c.gone);
+        const auto caps = [&c](const std::string& tag) {
+            return c.capsMoved && tag.rfind("F sheetmetal_1/cap_", 0) == 0;
+        };
+        expectNumberedAsMasters(*out.faceted, c.table, c.size, &made, gone, caps);
+        expectChordsOnTheirEdges(*out.faceted, *out.exact);
+        // Each bend's faces are named after entities made after master's lines.
+        int bends = 0;
+        for (const auto& face : out.exact->faces()) {
+            if (dynamic_cast<const hz::geo::Cylinder*>(face.exactSurface.get()) == nullptr) {
+                continue;
+            }
+            ++bends;
+            const std::string tag = face.topoId.tag();
+            const std::size_t at = tag.find("/side:e");
+            ASSERT_NE(at, std::string::npos) << tag;
+            EXPECT_GT(std::stoull(tag.substr(at + 7)), before + c.lines) << tag;
+        }
+        EXPECT_EQ(static_cast<std::size_t>(bends), 2 * (c.points.size() - 2));
     }
 }

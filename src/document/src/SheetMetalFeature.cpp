@@ -1,7 +1,9 @@
 // The base flange (sheet metal): an open sketch of lines folded into a sheet.
 // The fold is model::SheetMetalSolid's cross-section, laid on the sketch and
 // extruded along its normal, so the flange is named and placed as an
-// extrusion of its sketch is.
+// extrusion of its sketch is. Under Stable naming it is built exactly (stage
+// 3): the fold's exact profile, each bend two arcs, so each bend is two
+// cylinders, its flats master's own lines (Ruling 26).
 
 #include <algorithm>
 #include <charconv>
@@ -16,9 +18,13 @@
 
 #include "horizon/document/FeatureTree.h"
 #include "horizon/document/Sketch.h"
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/math/MathUtils.h"
+#include "horizon/modeling/ExactBuild.h"
 #include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/FacetResolution.h"
 #include "horizon/modeling/SheetMetal.h"
 #include "horizon/modeling/SheetMetalSolid.h"
 
@@ -30,16 +36,82 @@ constexpr const char* kPrefix = "sheetmetal_";
 /// No more chords than this to a bend: past it a bend is round to the eye.
 constexpr int kMaxSegments = 64;
 
-std::unique_ptr<topo::Solid> failWith(std::string* reason, std::string why) {
-    if (reason != nullptr) *reason = std::move(why);
-    return nullptr;
-}
-
 /// Two sketch points within this of each other are one (model mm).
 constexpr double kJoin = 1e-6;
 
 bool same(const math::Vec2& a, const math::Vec2& b) {
     return std::abs(a.x - b.x) <= kJoin && std::abs(a.y - b.y) <= kJoin;
+}
+
+/// How the strip's cross-section is laid on the sketch: the strip runs from the origin along +x,
+/// its material toward +y; laid from the sketch's first point along its first line, its material
+/// to the left of the lines, or (flipped) the right.
+struct Laying {
+    math::Vec2 origin;
+    math::Vec2 along;
+    math::Vec2 side;
+
+    math::Vec2 operator()(const math::Vec2& q) const {
+        return {origin.x + along.x * q.x + side.x * q.y, origin.y + along.y * q.x + side.y * q.y};
+    }
+};
+
+/// The flange's exact outline on the sketch (stage 3, Ruling 26), in master's order: @p bent, the
+/// strip's exact profile (model::SheetMetalSolid::profile, in crossSection's order and frame),
+/// each flat and end replaced by master's own line along it, from @p outline (master's
+/// cross-section at @p perBend chords a bend, laid and made in master's order, which a flipped
+/// flange runs the other way round), and each bend's arc laid by @p lay. Master's lines keep
+/// their ids, so the faces of the flats are named as master's were; the arcs are entities made
+/// after them. Empty, with why, where a flat of @p bent is not one of master's lines.
+std::vector<std::shared_ptr<draft::DraftEntity>> exactOutline(
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& bent,
+    const std::vector<std::shared_ptr<draft::DraftEntity>>& outline, int perBend, bool flipped,
+    const Laying& lay, std::string& why) {
+    const std::size_t n = outline.size();
+    std::vector<std::shared_ptr<draft::DraftEntity>> laid;
+    laid.reserve(bent.size());
+    std::size_t edge = 0;  // the first of crossSection's edges the piece spans
+    for (const auto& piece : bent) {
+        if (auto* arc = dynamic_cast<draft::DraftArc*>(piece.get())) {
+            // Mirrored, an arc turns the other way round: its start is its end.
+            const math::Vec2 centre = lay(arc->center());
+            const math::Vec2 start = lay(flipped ? arc->endPoint() : arc->startPoint());
+            const math::Vec2 end = lay(flipped ? arc->startPoint() : arc->endPoint());
+            arc->setCenter(centre);
+            arc->setStartAngle(
+                math::normalizeAngle(std::atan2(start.y - centre.y, start.x - centre.x)));
+            arc->setEndAngle(math::normalizeAngle(std::atan2(end.y - centre.y, end.x - centre.x)));
+            laid.push_back(piece);
+            edge += static_cast<std::size_t>(perBend);
+            continue;
+        }
+        const auto* line = dynamic_cast<const draft::DraftLine*>(piece.get());
+        if (line == nullptr || edge >= n) {
+            why = "the sheet's exact profile does not follow its cross-section";
+            return {};
+        }
+        // Master's line along that edge: flipped, master's polygon ran backwards from its last
+        // corner but one, its closing line still last.
+        const std::size_t k = !flipped || edge + 1 == n ? edge : n - 2 - edge;
+        const auto* masters = dynamic_cast<const draft::DraftLine*>(outline[k].get());
+        const math::Vec2 a = lay(line->start());
+        const math::Vec2 b = lay(line->end());
+        if (masters == nullptr || !((same(masters->start(), a) && same(masters->end(), b)) ||
+                                    (same(masters->start(), b) && same(masters->end(), a)))) {
+            why = "the sheet's exact profile does not follow its cross-section";
+            return {};
+        }
+        laid.push_back(outline[k]);
+        ++edge;
+    }
+    if (edge != n || laid.empty()) {
+        why = "the sheet's exact profile does not follow its cross-section";
+        return {};
+    }
+    // Master's polygon, flipped, ran from the top's first flat back to the bottom's, then its
+    // near end.
+    if (flipped) std::reverse(laid.begin(), laid.end() - 1);
+    return laid;
 }
 
 }  // namespace
@@ -208,19 +280,36 @@ std::optional<model::SheetMetalStrip> SheetMetalFeature::strip(std::string* why)
     return model::stripFromPolyline(points, m_params, m_flip, why);
 }
 
-std::unique_ptr<topo::Solid> SheetMetalFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
+std::unique_ptr<topo::Solid> SheetMetalFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
                                                         std::string* reason) const {
+    return executeWithExact(BuildContext{}, std::move(inputSolid), reason).faceted;
+}
+
+model::FacetResolution SheetMetalFeature::facetResolution() const {
+    model::FacetResolution resolution;
+    resolution.segmentsPerTurn = 4 * m_segments;
+    resolution.chordTolerance = 0.0;
+    return resolution;
+}
+
+FeatureOutput SheetMetalFeature::executeWithExact(const BuildContext& /*context*/,
+                                                  std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                  std::string* reason) const {
     // The flange alone; the tree combines it with the part as its operation
     // says, as for every feature that makes a body.
+    const auto fail = [reason](std::string why) {
+        if (reason != nullptr) *reason = std::move(why);
+        return FeatureOutput{};
+    };
     std::string why;
     const std::vector<math::Vec2> points = profile(&why);
-    if (points.empty()) return failWith(reason, why);
+    if (points.empty()) return fail(why);
     const auto folded = model::stripFromPolyline(points, m_params, m_flip, &why);
-    if (!folded) return failWith(reason, why);
-    if (!(m_width > 0.0)) return failWith(reason, "the width must be more than 0");
+    if (!folded) return fail(why);
+    if (!(m_width > 0.0)) return fail("the width must be more than 0");
     const std::vector<math::Vec2> section =
         model::SheetMetalSolid::crossSection(*folded, m_params, m_segments);
-    if (section.size() < 3) return failWith(reason, "the sheet could not be folded");
+    if (section.size() < 3) return fail("the sheet could not be folded");
 
     // The strip runs from the origin along +x, its material toward +y: laid
     // on the sketch from the first point along the first line, its material
@@ -229,24 +318,47 @@ std::unique_ptr<topo::Solid> SheetMetalFeature::execute(std::unique_ptr<topo::So
     const double length = std::hypot(points[1].x - origin.x, points[1].y - origin.y);
     const math::Vec2 along{(points[1].x - origin.x) / length, (points[1].y - origin.y) / length};
     const math::Vec2 side = m_flip ? math::Vec2(along.y, -along.x) : math::Vec2(-along.y, along.x);
+    const Laying lay{origin, along, side};
     std::vector<math::Vec2> laid;
     laid.reserve(section.size());
-    for (const math::Vec2& q : section) {
-        laid.emplace_back(origin.x + along.x * q.x + side.x * q.y,
-                          origin.y + along.y * q.x + side.y * q.y);
-    }
+    for (const math::Vec2& q : section) laid.push_back(lay(q));
     // Mirrored onto the right, the outline runs the other way round.
     if (m_flip) std::reverse(laid.begin(), laid.end());
+    // Master's lines, one to each edge of the polygon, made in its order: under Stable naming the
+    // flats and ends are these very lines (exactOutline).
     std::vector<std::shared_ptr<draft::DraftEntity>> outline;
     outline.reserve(laid.size());
     for (std::size_t i = 0; i < laid.size(); ++i) {
         outline.push_back(std::make_shared<draft::DraftLine>(laid[i], laid[(i + 1) % laid.size()]));
     }
     const draft::SketchPlane& plane = m_sketch->plane();
-    auto solid = model::Extrude::execute(outline, plane, plane.normal(), m_width, m_featureID,
-                                         model::Extrude::kDefaultSegments, 0.0, &why, naming());
-    if (!solid) return failWith(reason, why.empty() ? "the sheet could not be made" : why);
-    return solid;
+    FeatureOutput out;
+    if (naming() != model::NamingScheme::Stable) {
+        // Named by geometry or by position: master's faceted flange.
+        out.faceted =
+            model::Extrude::execute(outline, plane, plane.normal(), m_width, m_featureID,
+                                    model::Extrude::kDefaultSegments, 0.0, &why, naming());
+        if (!out.faceted) return fail(why.empty() ? "the sheet could not be made" : why);
+        return out;
+    }
+    // Built exactly (stage 3): each bend two arcs, so two cylinders, and the faceted flange every
+    // operation not yet converted reads is its bridge copy, cut at facetResolution(). Its flats'
+    // faces and edges are master's by their lines; a bend's are new, numbered as the bridge
+    // numbers them (master built no faces of these arcs to number them after).
+    const std::vector<std::shared_ptr<draft::DraftEntity>> bent = exactOutline(
+        model::SheetMetalSolid::profile(*folded, m_params), outline, m_segments, m_flip, lay, why);
+    if (bent.empty()) return fail("could not be built exactly: " + why);
+    // Master's refusal in its words, or "could not be built exactly: <why>".
+    auto exact = model::Extrude::exact(bent, plane, plane.normal(), m_width, m_featureID, &why);
+    if (!exact) return fail(why.empty() ? "the sheet could not be made" : why);
+    auto built = model::buildWithBridge([&exact](std::string& /*why*/) { return std::move(exact); },
+                                        facetResolution(), {}, &why);
+    if (!built.faceted || !built.exact) {
+        return fail(why.empty() ? "the sheet could not be made" : why);
+    }
+    out.faceted = std::move(built.faceted);
+    out.exact = std::move(built.exact);
+    return out;
 }
 
 }  // namespace hz::doc

@@ -4,8 +4,12 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -15,9 +19,17 @@
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/geometry/MeshData.h"
+#include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/math/BoundingBox.h"
+#include "horizon/modeling/FacetResolution.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/SheetMetal.h"
+#include "horizon/topology/ExactTolerance.h"
+#include "horizon/topology/ExactValidator.h"
+#include "horizon/topology/HalfEdge.h"
+#include "horizon/topology/Solid.h"
 
 using hz::doc::Document;
 using hz::doc::SheetMetalFeature;
@@ -54,6 +66,53 @@ hz::math::BoundingBox boundsOf(const Document& doc) {
 double facetedArea(double flats, double t, double r, double angle, int chords) {
     const double ring = 0.5 * chords * std::sin(angle / chords) * ((r + t) * (r + t) - r * r);
     return flats * t + ring;
+}
+
+/// The radii of @p exact's cylinders, in order.
+std::vector<double> cylinderRadii(const hz::topo::Solid& exact) {
+    std::vector<double> radii;
+    for (const auto& face : exact.faces()) {
+        if (const auto* c = dynamic_cast<const hz::geo::Cylinder*>(face.exactSurface.get())) {
+            radii.push_back(c->radius());
+        }
+    }
+    std::sort(radii.begin(), radii.end());
+    return radii;
+}
+
+/// How many chords of @p faceted, the bridge copy of @p exact, lie along each of @p exact's arcs
+/// (the edges between a cylinder and a cap): the edges model::logicalEdge takes to it.
+std::vector<int> chordsPerArc(const hz::topo::Solid& exact, const hz::topo::Solid& faceted) {
+    const auto bend = [](const hz::topo::Face* face) {
+        return dynamic_cast<const hz::geo::Cylinder*>(face->exactSurface.get()) != nullptr;
+    };
+    const auto cap = [](const hz::topo::Face* face) {
+        const std::string tag = face->topoId.tag();
+        return tag.find("/cap_") != std::string::npos;
+    };
+    std::map<std::string, int> chords;
+    for (const auto& edge : exact.edges()) {
+        const hz::topo::Face* a = edge.halfEdge->face;
+        const hz::topo::Face* b = edge.halfEdge->twin->face;
+        if ((bend(a) && cap(b)) || (cap(a) && bend(b))) chords[edge.topoId.tag()] = 0;
+    }
+    for (const auto& edge : faceted.edges()) {
+        const auto found = chords.find(hz::model::logicalEdge(edge.topoId.tag()));
+        if (found != chords.end()) ++found->second;
+    }
+    std::vector<int> counts;
+    counts.reserve(chords.size());
+    for (const auto& entry : chords) counts.push_back(entry.second);
+    return counts;
+}
+
+/// @p exact is a valid exact solid: combinatorially, and its geometry agrees with its topology at
+/// its own tolerance.
+void expectValidExactly(const hz::topo::Solid& exact) {
+    EXPECT_TRUE(exact.isValid()) << exact.validationReport();
+    const auto issues = hz::topo::validateExact(exact, hz::topo::exactTolerance(exact));
+    EXPECT_TRUE(issues.empty()) << issues.size() << " issues, the first: "
+                                << (issues.empty() ? "" : issues.front().detail);
 }
 
 }  // namespace
@@ -180,4 +239,176 @@ TEST(SheetMetalFeatureTest, AnOpenPolylineIsItsLines) {
     doc.featureTree().addFeature(std::make_unique<SheetMetalFeature>(sketch, 2.0, 1.0, 20.0));
     ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
     EXPECT_NEAR(volumeOf(doc), 20.0 * facetedArea(47.0 + 27.0, 2.0, 1.0, kPi / 2, 8), 1e-6);
+}
+
+// Stage 3: a bend is exact, two cylinders about one axis, its inside of the bend radius and its
+// outside of the radius and the thickness, and the flange's volume is the closed form. Its faceted
+// copy, which every operation not yet exact reads, cuts a 90-degree bend into master's 8 chords
+// (facetResolution(): four times the chords a bend, a turn).
+TEST(SheetMetalFeature, ABendIsTwoCylinders) {
+    // An L 30 by 20 on the outside, 1 thick, an inside radius of 2, 10 wide.
+    auto flange =
+        std::make_unique<SheetMetalFeature>(polyline({{0, 0}, {30, 0}, {30, 20}}), 1.0, 2.0, 10.0);
+    const auto strip = flange->strip();
+    ASSERT_TRUE(strip.has_value());
+    double flats = 0.0;
+    for (const double length : strip->segments) flats += length;
+    EXPECT_NEAR(flats, 27.0 + 17.0, 1e-12) << "each line less the setback r + t = 3";
+    Document doc;
+    doc.featureTree().addFeature(std::move(flange));
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+    const hz::topo::Solid* exact = doc.exactSolid();
+    ASSERT_NE(exact, nullptr) << doc.exactNote();
+    expectValidExactly(*exact);
+    const auto radii = cylinderRadii(*exact);
+    ASSERT_EQ(radii.size(), 2u);
+    EXPECT_NEAR(radii[0], 2.0, 1e-12);
+    EXPECT_NEAR(radii[1], 3.0, 1e-12);
+    const double volume = (flats * 1.0 + (kPi / 4.0) * (3.0 * 3.0 - 2.0 * 2.0)) * 10.0;
+    const auto mass = hz::model::MassPropertiesCalculator::compute(*exact);
+    ASSERT_TRUE(mass.valid) << mass.problem;
+    EXPECT_NEAR(mass.volume, volume, 1e-9 * volume);
+
+    ASSERT_NE(doc.solid(), nullptr);
+    EXPECT_EQ(chordsPerArc(*exact, *doc.solid()), (std::vector<int>{8, 8, 8, 8}))
+        << "each arc, at each cap";
+    // Master's faceted flange, face for face: 4 flats, 2 ends, 2 caps and 16 chords' facets.
+    EXPECT_EQ(doc.solid()->faceCount(), 24u);
+    EXPECT_NEAR(volumeOf(doc), 10.0 * facetedArea(flats, 1.0, 2.0, kPi / 2, 8), 1e-9);
+}
+
+// A bend of 60 degrees: exact as any, and its faceted copy cut by its arcs' own sweep, as every
+// exact arc's bridge is (FacetResolution::stepsFor, at 32 chords a turn): 6 chords, where master
+// cut every bend, whatever its angle, into 8 (re-baselined: master's faceted 60-degree flange had
+// 8 chords to each arc).
+TEST(SheetMetalFeature, ABendOtherThanNinetyDegrees) {
+    const double angle = kPi / 3.0;
+    auto flange = std::make_unique<SheetMetalFeature>(
+        polyline({{0, 0}, {30, 0}, {30 + 20 * std::cos(angle), 20 * std::sin(angle)}}), 1.0, 2.0,
+        10.0);
+    const auto strip = flange->strip();
+    ASSERT_TRUE(strip.has_value());
+    ASSERT_EQ(strip->bendAngles.size(), 1u);
+    EXPECT_NEAR(strip->bendAngles[0], angle, 1e-12);
+    double flats = 0.0;
+    for (const double length : strip->segments) flats += length;
+    const hz::model::FacetResolution resolution = flange->facetResolution();
+    EXPECT_EQ(resolution.segmentsPerTurn, 32);
+    EXPECT_EQ(resolution.chordTolerance, 0.0);
+    const int chords = resolution.stepsFor(2.0, angle);
+    EXPECT_EQ(chords, 6);
+    EXPECT_EQ(resolution.stepsFor(3.0, angle), chords);
+    Document doc;
+    doc.featureTree().addFeature(std::move(flange));
+    ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+    const hz::topo::Solid* exact = doc.exactSolid();
+    ASSERT_NE(exact, nullptr) << doc.exactNote();
+    expectValidExactly(*exact);
+    const auto radii = cylinderRadii(*exact);
+    ASSERT_EQ(radii.size(), 2u);
+    EXPECT_NEAR(radii[0], 2.0, 1e-12);
+    EXPECT_NEAR(radii[1], 3.0, 1e-12);
+    const double volume = (flats * 1.0 + (angle / 2.0) * (3.0 * 3.0 - 2.0 * 2.0)) * 10.0;
+    const auto mass = hz::model::MassPropertiesCalculator::compute(*exact);
+    ASSERT_TRUE(mass.valid) << mass.problem;
+    EXPECT_NEAR(mass.volume, volume, 1e-9 * volume);
+
+    ASSERT_NE(doc.solid(), nullptr);
+    EXPECT_EQ(chordsPerArc(*exact, *doc.solid()),
+              (std::vector<int>{chords, chords, chords, chords}));
+    EXPECT_EQ(doc.solid()->faceCount(), 8u + 2u * static_cast<std::size_t>(chords));
+    EXPECT_NEAR(volumeOf(doc), 10.0 * facetedArea(flats, 1.0, 2.0, angle, chords), 1e-9);
+}
+
+// Named by geometry or by position (a part saved before Stable naming), a flange builds as
+// master did: its cross-section's polygon, every bend in its bendSegments chords whatever its
+// angle, and no exact part.
+TEST(SheetMetalFeature, NamedTheOlderWaysItBuildsAsMasterDid) {
+    const double angle = kPi / 3.0;
+    for (const auto naming :
+         {hz::model::NamingScheme::FromGeometry, hz::model::NamingScheme::Positional}) {
+        auto flange = std::make_unique<SheetMetalFeature>(
+            polyline({{0, 0}, {30, 0}, {30 + 20 * std::cos(angle), 20 * std::sin(angle)}}), 1.0,
+            2.0, 10.0);
+        flange->setNaming(naming);
+        const auto strip = flange->strip();
+        ASSERT_TRUE(strip.has_value());
+        double flats = 0.0;
+        for (const double length : strip->segments) flats += length;
+        Document doc;
+        doc.featureTree().addFeature(std::move(flange));
+        ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+        EXPECT_EQ(doc.exactSolid(), nullptr);
+        ASSERT_NE(doc.solid(), nullptr);
+        EXPECT_EQ(doc.solid()->faceCount(), 8u + 2u * 8u);
+        EXPECT_NEAR(volumeOf(doc), 10.0 * facetedArea(flats, 1.0, 2.0, angle, 8), 1e-9);
+    }
+}
+
+// Every way a flange folds is exact, and its faceted copy is named for its exact faces: bent up or
+// down, flipped, on a plane of its own, and several bends; its volume the closed form, the flats
+// times the thickness and each bend's ring between its radii, times the width.
+TEST(SheetMetalFeature, EveryWayItFoldsIsExact) {
+    struct Case {
+        const char* what;
+        std::vector<Vec2> points;
+        hz::draft::SketchPlane plane;
+        bool flipped;
+    };
+    const double c60 = std::cos(kPi / 3.0);
+    const double s60 = std::sin(kPi / 3.0);
+    const hz::draft::SketchPlane yz(Vec3(100, 0, 0), Vec3(1, 0, 0), Vec3(0, 1, 0));
+    const std::vector<Case> cases = {
+        {"an L", {{0, 0}, {50, 0}, {50, 30}}, {}, false},
+        {"an L flipped", {{0, 0}, {50, 0}, {50, 30}}, {}, true},
+        {"a Z", {{0, 0}, {40, 0}, {40, 30}, {80, 30}}, {}, false},
+        {"a Z flipped", {{0, 0}, {40, 0}, {40, 30}, {80, 30}}, {}, true},
+        {"a hat", {{0, 0}, {20, 0}, {20, 20}, {50, 20}, {50, 0}, {70, 0}}, {}, false},
+        {"bent 60 degrees down", {{0, 0}, {40, 0}, {40 + 30 * c60, -30 * s60}}, {}, false},
+        {"on the YZ plane, flipped", {{10, 5}, {40, 5}, {40, 25}}, yz, true},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        auto flange =
+            std::make_unique<SheetMetalFeature>(polyline(c.points, c.plane), 1.5, 2.0, 12.0);
+        ASSERT_TRUE(flange->setParameter("flip", c.flipped ? 1.0 : 0.0));
+        const auto strip = flange->strip();
+        ASSERT_TRUE(strip.has_value());
+        double area = 0.0;
+        for (const double length : strip->segments) area += length * 1.5;
+        for (const double angle : strip->bendAngles) {
+            area += (std::abs(angle) / 2.0) * (3.5 * 3.5 - 2.0 * 2.0);
+        }
+        Document doc;
+        doc.featureTree().addFeature(std::move(flange));
+        ASSERT_TRUE(doc.rebuildModel()) << doc.lastBuildMessage();
+        const hz::topo::Solid* exact = doc.exactSolid();
+        ASSERT_NE(exact, nullptr) << doc.exactNote();
+        expectValidExactly(*exact);
+        EXPECT_EQ(cylinderRadii(*exact).size(), 2 * strip->bendAngles.size());
+        // Shown from its exact form's mesh, every face of it.
+        ASSERT_NE(doc.exactMesh(), nullptr);
+        EXPECT_EQ(std::set<std::string>(doc.exactMesh()->faceTags.begin(),
+                                        doc.exactMesh()->faceTags.end())
+                      .size(),
+                  exact->faceCount());
+        const auto mass = hz::model::MassPropertiesCalculator::compute(*exact);
+        ASSERT_TRUE(mass.valid) << mass.problem;
+        EXPECT_NEAR(mass.volume, area * 12.0, 1e-9 * area * 12.0);
+        // Its faceted copy: a facet of each exact face, or several of a bend's, each named for it.
+        ASSERT_NE(doc.solid(), nullptr);
+        std::set<std::string> faces;
+        std::set<std::string> facets;
+        for (const auto& face : exact->faces()) faces.insert(face.topoId.tag());
+        for (const auto& face : doc.solid()->faces()) {
+            facets.insert(hz::model::logicalFace(face.topoId.tag()));
+        }
+        EXPECT_EQ(facets, faces);
+        // And it stands where master's faceted flange stood: the same box.
+        hz::math::BoundingBox exactBox;
+        for (const auto& v : exact->vertices()) exactBox.expand(v.point);
+        const auto facetedBox = boundsOf(doc);
+        EXPECT_LT((exactBox.min() - facetedBox.min()).length(), 1e-9);
+        EXPECT_LT((exactBox.max() - facetedBox.max()).length(), 1e-9);
+    }
 }

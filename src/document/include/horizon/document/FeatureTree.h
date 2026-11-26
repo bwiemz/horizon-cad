@@ -893,8 +893,35 @@ public:
     std::string name() const override;
     std::string featureID() const override;
     void restoreFeatureID(const std::string& id) override;
+    /// Its flange in facets: under Stable naming, its exact flange's bridge copy
+    /// (executeWithExact); under the older schemes, master's faceted flange.
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
+    /// Under Stable naming, built exactly (stage 3): the strip's exact profile
+    /// (model::SheetMetalSolid::profile), each bend an inside and an outside arc,
+    /// laid on the sketch as master laid its cross-section, and extruded by
+    /// model::Extrude::exact, so each bend is two cylinders; its bridge copy is
+    /// cut at facetResolution() (model::buildWithBridge). Named as master's
+    /// flange was where it can be (Ruling 26): master built the cross-section's
+    /// polygon from lines it made anew each build, a face of each,
+    /// `<featureID>/side:e<id>`; the flats and the two ends are those very
+    /// lines, made first and in master's order, so each flat, both caps and every
+    /// edge of a flat or a cap keep master's names. Each bend's arcs are made
+    /// after them, so its faces, `<featureID>/side:e<id>` of an arc, are named
+    /// after entities none of master's lines was, their facets, chords and seams
+    /// numbered as the bridge numbers them (`/facet:<k>`, `/chord:<k>`,
+    /// `/seam:<k>`); master's names of its chords' faces and edges are gone. One
+    /// whose exact form cannot be built fails, with "could not be built exactly:
+    /// <why>". Under the older schemes, master's faceted flange (each bend in
+    /// segmentsPerBend() chords) and no exact body.
+    FeatureOutput executeWithExact(const BuildContext& context,
+                                   std::unique_ptr<topo::Solid> inputSolid,
+                                   std::string* reason = nullptr) const override;
+    /// {4 x segmentsPerBend(), 0}: a 90-degree bend is cut into master's
+    /// segmentsPerBend() chords, a bend of another angle in proportion
+    /// (FacetResolution::stepsFor), where master cut every bend into
+    /// segmentsPerBend().
+    model::FacetResolution facetResolution() const override;
     std::vector<std::shared_ptr<Sketch>> sketches() const override { return {m_sketch}; }
     bool createsNewBody() const override { return true; }
     /// thickness, bendRadius, kFactor, width, bendSegments (chords per bend) and

@@ -140,8 +140,9 @@ TEST_F(CadToolsTest, ABaseFlangeAndItsFlatPattern) {
     EXPECT_EQ(made["bends"], 1);
     const double ba = (3.14159265358979323846 / 2) * (1.0 + 0.44 * 2.0);
     EXPECT_NEAR(made["flat_length"].get<double>(), 47.0 + 27.0 + ba, 1e-5);
-    // Flats 47 and 27, 2 thick, 20 wide, and the bend's ring in 8 chords.
-    const double ring = 0.5 * 8 * std::sin(3.14159265358979323846 / 16) * (9.0 - 1.0);
+    // Flats 47 and 27, 2 thick, 20 wide, and the bend's ring between radii 1 and 3: the flange is
+    // exact (stage 3), and the part is measured on its exact form.
+    const double ring = (3.14159265358979323846 / 4) * (9.0 - 1.0);
     EXPECT_NEAR(volume(), 20.0 * ((47.0 + 27.0) * 2.0 + ring), 1e-3);
 
     const json blank = ok("get_flat_pattern");
