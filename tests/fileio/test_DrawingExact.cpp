@@ -519,3 +519,50 @@ TEST(DrawingExact, ADetailIsCutFromTheCopyOfItsView) {
     EXPECT_EQ(drawing.views[4].role, hz::model::ViewRole::Detail);
     EXPECT_FALSE(drawing.views[4].edges.empty());
 }
+
+// Ruling 36: an outline line's name carries how many lines its face is cut into,
+// `<face>/line:<n>/of:<m>/at:<k>`, so a dimension placed on one (the cylinder's outline at -x,
+// its height) holds through an edit that cuts the face alike (a taller cylinder: it measures the
+// new height) and is lost, and said to be, after one that cuts it into another number (a wider
+// cylinder), not measured on whichever line took its number.
+TEST(DrawingExact, ADimensionOnAnOutlineIsLostWhenItsFaceIsCutAnew) {
+    const TempFolder folder("recut");
+    const std::string path = folder.file("cylinder.hzpart");
+    Document part;
+    part.featureTree().addFeature(cylinder());
+    savePart(path, part);
+
+    const Drawing atOne = loadSheet(folder, path, standardSheet(1.0));
+    std::string outline;
+    for (const ProjectedEdge& e : viewOf(atOne, StandardView::Front).edges) {
+        if (e.kind == ProjectedEdge::Kind::Silhouette && e.a.x < -49.0)
+            outline = e.sourceEdge.tag();
+    }
+    ASSERT_NE(outline.find("/of:"), std::string::npos) << outline;
+    DrawingDocumentSpec spec;
+    spec.views = DrawingDocumentIO::viewsOf(atOne);
+    spec.views[0].dimensions.push_back({outline, hz::io::DrawingDimensionSpec::Kind::Length});
+
+    ASSERT_TRUE(part.featureTree().feature(0)->setParameter("height", 50.0));
+    savePart(path, part);
+    const Drawing taller = loadSheet(folder, path, spec);
+    ASSERT_EQ(taller.views[0].dimensions.size(), 1u) << "cut into as many lines";
+    EXPECT_NEAR(taller.views[0].dimensions[0].value, 50.0, 1e-9);
+
+    ASSERT_TRUE(part.featureTree().feature(0)->setParameter("radius", 60.0));
+    savePart(path, part);
+    EXPECT_TRUE(loadSheet(folder, path, spec).views[0].dimensions.empty());
+    const auto wider = DrawingDocumentIO::cutForSheet(*part.exactSolid(), 1.0);
+    ASSERT_NE(wider, nullptr);
+    std::size_t sameNumber = 0;  // a line of the wider copy that took the outline's number
+    const std::string number = outline.substr(0, outline.find("/of:"));
+    for (const auto& e : wider->edges()) {
+        const std::string& tag = e.topoId.tag();
+        EXPECT_NE(tag, outline);
+        if (tag.rfind(number + "/of:", 0) == 0) ++sameNumber;
+    }
+    EXPECT_EQ(sameNumber, 1u) << "the number is taken, by a line elsewhere";
+    std::vector<std::string> lost;
+    EXPECT_TRUE(DrawingDocumentIO::build(*wider, spec, &lost).views[0].dimensions.empty());
+    EXPECT_EQ(lost, std::vector<std::string>{"view 1: a length"});
+}

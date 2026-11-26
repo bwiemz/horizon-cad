@@ -152,10 +152,11 @@ bool usableScale(double s) {
 /// cutForSheet; Ruling 31): logically (model::nameEdgesLogically), so that a curve's chords
 /// share its logical name, as the faceted part's do; a chord of an exact edge inside one face (a
 /// cylinder's seam) keeps the name model::facetExact gave it, its exact edge's; and every other
-/// line inside a face is `<face>/line:<n>/at:<step>`, in storage order, @p step the copy's
-/// tolerance step (Ruling 34), a name the faceted part's lines (`<face>/seam:<n>`) and a copy at
-/// another step never have. A dimension or callout on one of those is then lost, and said to be,
-/// rather than bound to a line somewhere else.
+/// line inside a face is `<face>/line:<n>/of:<m>/at:<step>`, in storage order, of the face's
+/// @p m such lines (Ruling 36), @p step the copy's tolerance step (Ruling 34): a name the faceted
+/// part's lines (`<face>/seam:<n>`), a copy at another step and a face cut into another number of
+/// lines (a cylinder of another radius) never have. A dimension or callout on one of those is then
+/// lost, and said to be, rather than bound by its number to a line somewhere else.
 void nameForSheet(topo::Solid& copy, const topo::Solid& exact, int step) {
     std::unordered_set<std::string> exactNames;
     for (const topo::Edge& e : exact.edges()) {
@@ -167,24 +168,38 @@ void nameForSheet(topo::Solid& copy, const topo::Solid& exact, int step) {
         given.push_back(e.topoId.isValid() ? e.topoId.tag() : std::string());
     }
     model::nameEdgesLogically(copy);
-    std::unordered_map<std::string, int> next;  // by face: its next line's number
+    // Each line inside a face, on no exact edge: its face, and how many each face has.
+    std::vector<std::string> lineOf(copy.edges().size());
+    std::unordered_map<std::string, int> lines;
     std::size_t i = 0;
     for (topo::Edge& e : copy.edges()) {
-        const std::string& was = given[i++];
+        const std::string& was = given[i];
+        std::string& face = lineOf[i++];
         const topo::HalfEdge* he = e.halfEdge;
         if (he == nullptr || he->twin == nullptr || he->face == nullptr ||
             he->twin->face == nullptr) {
             continue;
         }
-        const std::string face = model::logicalFace(he->face->topoId.tag());
-        if (face != model::logicalFace(he->twin->face->topoId.tag())) continue;  // two faces'
+        const std::string logical = model::logicalFace(he->face->topoId.tag());
+        if (logical != model::logicalFace(he->twin->face->topoId.tag())) continue;  // two faces'
         const bool onExact = !was.empty() && (exactNames.count(was) != 0 ||
                                               (was.find("/chord:") != std::string::npos &&
                                                exactNames.count(model::logicalEdge(was)) != 0));
-        e.topoId =
-            topo::TopologyID::fromTag(onExact ? was
-                                              : face + "/line:" + std::to_string(next[face]++) +
-                                                    "/at:" + std::to_string(step));
+        if (onExact) {
+            e.topoId = topo::TopologyID::fromTag(was);
+            continue;
+        }
+        face = logical;
+        ++lines[face];
+    }
+    std::unordered_map<std::string, int> next;  // by face: its next line's number
+    i = 0;
+    for (topo::Edge& e : copy.edges()) {
+        const std::string& face = lineOf[i++];
+        if (face.empty()) continue;
+        e.topoId = topo::TopologyID::fromTag(face + "/line:" + std::to_string(next[face]++) +
+                                             "/of:" + std::to_string(lines.at(face)) +
+                                             "/at:" + std::to_string(step));
     }
 }
 

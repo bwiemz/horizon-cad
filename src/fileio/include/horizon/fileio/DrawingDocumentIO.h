@@ -196,13 +196,15 @@ public:
     /// Its edges are named so that dimensions, callouts, tolerances and datums find theirs by
     /// model::logicalEdge as on the faceted part: a curve's chords logically
     /// (model::nameEdgesLogically), a chord of an exact edge inside one face (a seam) as that
-    /// edge. Every other line inside a face is `<face>/line:<n>/at:<k>` (Rulings 31 and 34), a
-    /// name of this copy alone: the lines depend on the tolerance, and so their names carry its
-    /// step k. A dimension placed on one resolves on a copy cut at that step, and on no other: at
-    /// another scale it is lost, and said to be, never measured on a line elsewhere; and the
-    /// faceted part's lines (`<face>/seam:<n>`) are none of them. A part with no exact part is
-    /// drawn from its faceted solid (Document::solid), as before. Null, with why, where it cannot
-    /// be cut.
+    /// edge. Every other line inside a face is `<face>/line:<n>/of:<m>/at:<k>` (Rulings 31, 34
+    /// and 36), the face's n-th of its m lines, a name of this copy alone: the lines depend on the
+    /// tolerance and on the face, and so their names carry the tolerance's step k and the face's
+    /// count m. A dimension placed on one resolves on a copy cut at that step of a face cut into
+    /// as many lines, and on no other: at another scale, or after an edit that cuts the face into
+    /// another number (a cylinder's radius changed), it is lost, and said to be, never measured on
+    /// a line elsewhere; and the faceted part's lines (`<face>/seam:<n>`) are none of them. A part
+    /// with no exact part is drawn from its faceted solid (Document::solid), as before. Null, with
+    /// why, where it cannot be cut.
     static std::unique_ptr<topo::Solid> cutForSheet(const topo::Solid& exact, double scale,
                                                     std::string* error = nullptr);
 
