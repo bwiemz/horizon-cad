@@ -600,6 +600,11 @@ struct Sample {
     SurfacePoint surface;
     Vec2 evaluatedAt{std::numeric_limits<double>::quiet_NaN(),
                      std::numeric_limits<double>::quiet_NaN()};
+    /// The (u, v) of the sample it was placed from, as it was then (not a number where it was
+    /// placed from none, or moved since): placed from that again, it would be placed where it
+    /// is, to the last bit (Inverter::place reads nothing else of it).
+    Vec2 placedFrom{std::numeric_limits<double>::quiet_NaN(),
+                    std::numeric_limits<double>::quiet_NaN()};
 };
 
 /// Whether @p a and @p b are the same (u, v), bit for bit (equal and of one sign; a NaN is equal
@@ -675,6 +680,9 @@ public:
             here = local(uv);
         }
         smp.uv = uv;
+        smp.placedFrom = prev != nullptr ? prev->uv
+                                         : Vec2(std::numeric_limits<double>::quiet_NaN(),
+                                                std::numeric_limits<double>::quiet_NaN());
         if (nurbs_ != nullptr) {
             smp.surface = {here.point, here.du, here.dv};
             smp.evaluatedAt = uv;
@@ -1252,14 +1260,24 @@ void fixSingularStart(std::vector<Sample>& samples) {
                                       [](const Sample& smp) { return !smp.singular; });
     for (auto it = samples.begin(); it != regular && regular != samples.end(); ++it) {
         it->uv.x = regular->uv.x;
+        it->placedFrom = Vec2(std::numeric_limits<double>::quiet_NaN(),
+                              std::numeric_limits<double>::quiet_NaN());  // moved since
     }
 }
 
 /// Places every sample again in order, each from the one before it, so that u and v stay
 /// continuous with the samples between them, and gives a pole or an apex at the start the first
-/// regular u.
+/// regular u. A sample is placed again only where the one before it is not the (u, v) it was
+/// placed from (a sample new before it, or one placed again with other bits, or moved): a
+/// placement reads nothing but its point and that (u, v), so the rest would be placed where they
+/// are, to the last bit. Each sample is projected once, and again only where what it was
+/// projected from has changed.
 void rechain(const Inverter& inv, std::vector<Sample>& samples) {
-    for (size_t i = 1; i < samples.size(); ++i) inv.place(samples[i], &samples[i - 1]);
+    for (size_t i = 1; i < samples.size(); ++i) {
+        if (!sameBits(samples[i].placedFrom, samples[i - 1].uv)) {
+            inv.place(samples[i], &samples[i - 1]);
+        }
+    }
     fixSingularStart(samples);
 }
 
