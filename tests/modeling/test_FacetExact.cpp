@@ -22,6 +22,7 @@
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/Curve3.h"
+#include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Units.h"
 #include "horizon/math/Vec2.h"
@@ -514,3 +515,78 @@ TEST(FacetExact, AnImportsVoidBesideABodyBuiltExactlyStaysWithItsBlock) {
 }
 
 }  // namespace
+
+namespace {
+
+/// A resolution of @p segments per turn and @p chordTolerance turning @p aroundAxis steps round
+/// the z axis through the origin (Ruling 24), or none where it is 0.
+FacetResolution roundZ(int segments, double chordTolerance, int aroundAxis) {
+    FacetResolution resolution;
+    resolution.segmentsPerTurn = segments;
+    resolution.chordTolerance = chordTolerance;
+    resolution.aroundAxis = aroundAxis;
+    resolution.axisPoint = Vec3(0, 0, 0);
+    resolution.axisDirection = Vec3(0, 0, 2);  // any length
+    return resolution;
+}
+
+/// How far each of @p solid's vertices off the z axis is from the nearest of @p n equal angles
+/// round it from the x axis, in radians: the most.
+double offTheAngles(const topo::Solid& solid, int n) {
+    double worst = 0.0;
+    for (const auto& v : solid.vertices()) {
+        if (std::hypot(v.point.x, v.point.y) < 1e-9) continue;
+        const double step = 2.0 * kPi / static_cast<double>(n);
+        const double a = std::atan2(v.point.y, v.point.x) / step;
+        worst = std::max(worst, std::abs(a - std::round(a)) * step);
+    }
+    return worst;
+}
+
+}  // namespace
+
+// Ruling 24: about a revolve's axis (FacetResolution::aroundAxis) every circle round it and every
+// face turned about it are cut into the revolve's one count, whatever the chord tolerance would
+// give each radius, and a curve along the profile keeps stepsFor. A cylinder of radius 1 at a
+// chord tolerance of 0.01 (23 steps by its own radius) is cut 45 times round; a ring torus's
+// equator 20 times round while its tube keeps 8.
+TEST(FacetExact, RoundARevolvesAxisEveryCircleAndFaceTakesItsCount) {
+    const auto cylinder = exact::makeCylinder(geo::Frame{}, 1.0, 3.0);
+    ASSERT_NE(cylinder, nullptr);
+    const auto own = facetExact(*cylinder, FacetResolution{45, 0.01});
+    ASSERT_NE(own.solid, nullptr) << own.error;
+    EXPECT_EQ(own.solid->vertexCount(), 2u * 23u) << "each rim by its own radius";
+    const auto round = facetExact(*cylinder, roundZ(45, 0.01, 45));
+    ASSERT_NE(round.solid, nullptr) << round.error;
+    EXPECT_EQ(round.solid->vertexCount(), 2u * 45u);
+    EXPECT_EQ(round.solid->faceCount(), 45u + 2u);
+    EXPECT_LT(offTheAngles(*round.solid, 45), 1e-12);
+
+    const auto torus = exact::makeTorus(geo::Frame{}, 5.0, 1.0);
+    ASSERT_NE(torus, nullptr);
+    const auto bridge = facetExact(*torus, roundZ(8, 0.0, 20));
+    ASSERT_NE(bridge.solid, nullptr) << bridge.error;
+    EXPECT_EQ(bridge.solid->faceCount(), 20u * 8u);
+    EXPECT_LT(offTheAngles(*bridge.solid, 20), 1e-12);
+}
+
+// A NURBS surface of revolution's u is no angle between its rational arcs' knots, and a face of
+// one with a pole at each end (an apple) has no rim to take its columns from: cut evenly in u its
+// points miss the turned profile's. About the axis its points inside are its first meridian turned
+// to equal angles: every vertex of the apple's bridge lies at a twelfth of a turn, and on the face.
+TEST(FacetExact, AnAppleIsCutAtEqualAnglesRoundItsAxis) {
+    const auto apple = exact::makeTorus(geo::Frame{}, 1.0, 2.0);
+    ASSERT_NE(apple, nullptr);
+    const auto even = facetExact(*apple, FacetResolution{12, 0.0});
+    ASSERT_NE(even.solid, nullptr) << even.error;
+    EXPECT_GT(offTheAngles(*even.solid, 12), 1e-3) << "cut evenly in its u";
+    const auto round = facetExact(*apple, roundZ(12, 0.0, 12));
+    ASSERT_NE(round.solid, nullptr) << round.error;
+    EXPECT_EQ(round.solid->faceCount(), even.solid->faceCount());
+    EXPECT_LT(offTheAngles(*round.solid, 12), 1e-12);
+    const auto& surface = *apple->faces().front().exactSurface;
+    for (const auto& v : round.solid->vertices()) {
+        const auto uv = surface.invert(v.point);
+        EXPECT_LT((surface.evaluate(uv.x, uv.y) - v.point).length(), 1e-9);
+    }
+}

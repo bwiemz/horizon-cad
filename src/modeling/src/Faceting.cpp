@@ -1702,10 +1702,78 @@ int stepsAlong(const std::function<Vec3(double)>& at, double t0, double t1,
     return enough;
 }
 
+/// Whether @p circle turns about @p resolution's axis (FacetResolution::aroundAxis): centred on it
+/// within @p within, in a plane square to it.
+bool aboutTheAxis(const geo::CircleCurve& circle, const FacetResolution& resolution,
+                  double within) {
+    if (!resolution.turnsAboutAnAxis()) return false;
+    const Vec3 axis = resolution.axisDirection.normalized();
+    const geo::Frame& f = circle.frame();
+    const Vec3 rel = f.origin - resolution.axisPoint;
+    const Vec3 off = rel - axis * rel.dot(axis);
+    return f.z.normalized().cross(axis).length() <= 1e-9 && off.length() <= within;
+}
+
+/// The angle a curved face turns through about @p resolution's axis from its rectangle's u0 to
+/// its u1, about the axis's direction, where it is a surface turned about that axis whose u runs
+/// round it (Ruling 24): each point of its iso-curves across u, sampled at three heights, as far
+/// from the axis and as high along it as the first (within @p within). Its size is u1 - u0 where
+/// that is the angle (an analytic surface's u, and a NURBS surface of revolution's from its start
+/// to its end), else as sampled. Nullopt where it is no such surface.
+std::optional<double> turnAbout(const geo::Surface& s, double u0, double u1, double v0, double v1,
+                                const FacetResolution& resolution, double within) {
+    if (!resolution.turnsAboutAnAxis()) return std::nullopt;
+    const Vec3 axis = resolution.axisDirection.normalized();
+    const Vec3& origin = resolution.axisPoint;
+    const auto radialOf = [&](const Vec3& p) {
+        const Vec3 rel = p - origin;
+        return rel - axis * rel.dot(axis);
+    };
+    constexpr int kSamples = 64;  // each step of a whole turn well under half of one
+    std::optional<double> sweep;
+    for (const double f : {0.5, 0.25, 0.75}) {
+        const double v = v0 + (v1 - v0) * f;
+        const Vec3 first = s.evaluate(u0, v);
+        Vec3 previous = radialOf(first);
+        const double radius = previous.length();
+        const double height = (first - origin).dot(axis);
+        if (!(radius > within)) continue;  // on the axis: a pole's height
+        double turned = 0.0;
+        for (int k = 1; k <= kSamples; ++k) {
+            const double u =
+                u0 + (u1 - u0) * static_cast<double>(k) / static_cast<double>(kSamples);
+            const Vec3 p = s.evaluate(u, v);
+            const Vec3 radial = radialOf(p);
+            if (!(std::abs(radial.length() - radius) <= within) ||
+                !(std::abs((p - origin).dot(axis) - height) <= within)) {
+                return std::nullopt;
+            }
+            turned += std::atan2(previous.cross(radial).dot(axis), previous.dot(radial));
+            previous = radial;
+        }
+        if (sweep && !(std::abs(turned - *sweep) <= 1e-6)) return std::nullopt;
+        if (!sweep) sweep = turned;
+    }
+    if (!sweep || !(std::abs(*sweep) > 1e-9)) return std::nullopt;
+    const double span = std::abs(u1 - u0);
+    const double size = std::abs(std::abs(*sweep) - span) <= 1e-6 ? span : std::abs(*sweep);
+    return std::copysign(size, *sweep);
+}
+
+/// @p p turned by @p angle about the axis through @p origin along the unit @p axis (Rodrigues),
+/// as master's revolve turned its profile.
+Vec3 turnedAbout(const Vec3& p, const Vec3& origin, const Vec3& axis, double angle) {
+    const Vec3 rel = p - origin;
+    const double c = std::cos(angle);
+    const double sn = std::sin(angle);
+    return origin + rel * c + axis.cross(rel) * sn + axis * (axis.dot(rel) * (1.0 - c));
+}
+
 /// The chords @p e is cut into by its exact curve alone: a circle or an arc by stepsFor at equal
-/// angles, a line in one, an ellipse or a NURBS curve by stepsAlong. With no exact curve it is
-/// one chord, straight.
-int edgeSteps(const Edge& e, const FacetResolution& resolution) {
+/// angles (by stepsAround where it turns about the resolution's axis, within @p within of it), a
+/// line in one, an ellipse or a NURBS curve by stepsAlong. With no exact curve it is one chord,
+/// straight.
+int edgeSteps(const Edge& e, const FacetResolution& resolution, double within) {
     if (!e.exactCurve) return 1;
     const double sweep = std::abs(e.curveEnd - e.curveStart);
     switch (e.exactCurve->kind()) {
@@ -1713,6 +1781,9 @@ int edgeSteps(const Edge& e, const FacetResolution& resolution) {
             return 1;
         case geo::CurveKind::Circle:
             if (const auto* circle = dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get())) {
+                if (aboutTheAxis(*circle, resolution, within)) {
+                    return std::min(kMostSteps, resolution.stepsAround(sweep));
+                }
                 return std::min(kMostSteps, resolution.stepsFor(circle->radius(), sweep));
             }
             break;
@@ -2140,6 +2211,17 @@ int FacetResolution::stepsFor(double radius, double sweep) const {
     return std::max(1, static_cast<int>(std::ceil(steps - 1e-9)));
 }
 
+int FacetResolution::stepsAround(double sweep) const {
+    const double steps = sweep / math::kTwoPi * static_cast<double>(std::max(aroundAxis, 3));
+    return std::max(1, static_cast<int>(std::ceil(steps - 1e-9)));
+}
+
+bool FacetResolution::turnsAboutAnAxis() const {
+    const double length = axisDirection.length();
+    return aroundAxis > 0 && length > 0.0 && std::isfinite(length) &&
+           std::isfinite(axisPoint.length());
+}
+
 namespace {
 
 /// Whether every live face of @p solid lies on a plane (its exact surface) and every live edge
@@ -2328,8 +2410,11 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         std::optional<ExactRectangle> rectangle;  ///< a curved face's
         std::array<int, 2> steps{};               ///< its columns (along u) and rows (along v)
         std::array<int, 2> own{};  ///< where both sides across are poles: its surface's own
-        /// Where FacetResolution::minorSegments sets it (a sphere's v, a torus's): its count.
+        /// Where FacetResolution::minorSegments sets it (a sphere's v, a torus's): its count; and
+        /// its u's, where aroundAxis does.
         std::array<int, 2> fixed{};
+        /// Where it turns about FacetResolution's axis round u: the angle from u0 to u1 about it.
+        std::optional<double> turn;
     };
     std::vector<Plan> plans;
     for (const auto& face : exact.faces()) {
@@ -2359,7 +2444,7 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
     std::unordered_map<const Edge*, int> steps;
     for (const auto& e : exact.edges()) {
         if (!e.alive || e.halfEdge == nullptr || e.halfEdge->origin == nullptr) continue;
-        int n = edgeSteps(e, resolution);
+        int n = edgeSteps(e, resolution, tolerance.linear);
         const bool curved = e.exactCurve && e.exactCurve->kind() != geo::CurveKind::Line;
         const HalfEdge* twin = e.halfEdge->twin;
         // A closed curve is no chord: three or more.
@@ -2398,10 +2483,17 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
             plan.own[1] = ownSteps(s, 1, r.u0, r.u1, r.v0, r.v1, resolution);
         }
         plan.fixed[1] = minorSteps(s, r, resolution);
+        // Turned about a revolve's axis: round it master's count, whatever its own curves give.
+        plan.turn = turnAbout(s, r.u0, r.u1, r.v0, r.v1, resolution, tolerance.linear);
+        if (const auto& turn = plan.turn) plan.fixed[0] = resolution.stepsAround(std::abs(*turn));
         // The edges along it cut so, whatever their own curve would give.
         for (const Side side : {kLeft, kRight}) {
             if (plan.fixed[1] == 0 || r.pole[side] || r.sides[side].size() != 1) continue;
             steps[r.sides[side].front()->edge] = plan.fixed[1];
+        }
+        for (const Side side : {kBottom, kTop}) {
+            if (plan.fixed[0] == 0 || r.pole[side] || r.sides[side].size() != 1) continue;
+            steps[r.sides[side].front()->edge] = plan.fixed[0];
         }
     }
     const auto chordsOn = [&steps](const std::vector<const HalfEdge*>& side) {
@@ -2615,7 +2707,12 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         const auto& L = sides[kLeft];
         const auto& R = sides[kRight];
         // A Coons patch in (u, v) from its sides, each point inside on the surface: uniform in
-        // (u, v) where its sides are.
+        // (u, v) where its sides are. A face turned about a revolve's axis (Ruling 24) has its
+        // points inside on its first meridian (its u0 side) turned to master's angles instead.
+        const auto& turn = plan.turn;
+        const bool turned = turn.has_value() && !r.pole[kLeft];
+        const Vec3 axis =
+            resolution.turnsAboutAnAxis() ? resolution.axisDirection.normalized() : Vec3();
         std::vector<std::vector<Vec3>> grid(nu + 1, std::vector<Vec3>(nv + 1));
         for (std::size_t i = 0; i <= nu; ++i) {
             for (std::size_t j = 0; j <= nv; ++j) {
@@ -2627,6 +2724,10 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
                     grid[i][j] = L[j].point;
                 } else if (i == nu) {
                     grid[i][j] = R[j].point;
+                } else if (turned) {
+                    const double angle =
+                        turn.value_or(0.0) * static_cast<double>(i) / static_cast<double>(nu);
+                    grid[i][j] = turnedAbout(L[j].point, resolution.axisPoint, axis, angle);
                 } else {
                     const double a = static_cast<double>(i) / static_cast<double>(nu);
                     const double b = static_cast<double>(j) / static_cast<double>(nv);
