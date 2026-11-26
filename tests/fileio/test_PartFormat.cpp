@@ -328,11 +328,11 @@ TEST(PartFormatTest, MalformedTypeFieldDoesNotThrow) {
 TEST(PartFormatTest, LoadPartMeshRejectsInvalidIndices) {
     // Out-of-range index (only 3 vertices, index 999) and negative index
     // must both be rejected instead of producing a mesh that crashes the
-    // renderer.
+    // renderer. (Format 32: a cache of 31 or older is not read at all.)
     std::string outOfRange = tempPath("hz_test_bad_indices.hzpart");
     {
         std::ofstream out(outOfRange);
-        out << R"({"version": 16, "type": "hzpart", "entities": [],
+        out << R"({"version": 32, "type": "hzpart", "entities": [],
                    "tessellationCache": {
                        "positions": [0,0,0, 1,0,0, 0,1,0],
                        "normals": [0,0,1, 0,0,1, 0,0,1],
@@ -343,7 +343,7 @@ TEST(PartFormatTest, LoadPartMeshRejectsInvalidIndices) {
     std::string negative = tempPath("hz_test_neg_indices.hzpart");
     {
         std::ofstream out(negative);
-        out << R"({"version": 16, "type": "hzpart", "entities": [],
+        out << R"({"version": 32, "type": "hzpart", "entities": [],
                    "tessellationCache": {
                        "positions": [0,0,0, 1,0,0, 0,1,0],
                        "normals": [0,0,1, 0,0,1, 0,0,1],
@@ -355,7 +355,7 @@ TEST(PartFormatTest, LoadPartMeshRejectsInvalidIndices) {
     std::string good = tempPath("hz_test_good_indices.hzpart");
     {
         std::ofstream out(good);
-        out << R"({"version": 16, "type": "hzpart", "entities": [],
+        out << R"({"version": 32, "type": "hzpart", "entities": [],
                    "tessellationCache": {
                        "positions": [0,0,0, 1,0,0, 0,1,0],
                        "normals": [0,0,1, 0,0,1, 0,0,1],

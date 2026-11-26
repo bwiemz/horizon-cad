@@ -62,6 +62,9 @@ std::string oldPartFile(const std::string& step, const std::string& source) {
     for (json& feature : root.at("featureTree")) {
         if (feature.value("type", "") == "imported") feature["step"] = step;
     }
+    // Of the format a part saved before stage 2 has, whatever this build writes: one of 31 or
+    // older is migrated as it is read (Task 11), and an imported body has nothing to migrate.
+    root["version"] = 31;
     return root.dump();
 }
 
@@ -111,6 +114,14 @@ const ImportedBodyFeature* openedText(Document& part, const std::string& step,
     hz::io::ImportReport report;
     EXPECT_TRUE(NativeFormat::documentFromJson(oldPartFile(step, source), part, &error, &report))
         << error;
+    // Its migration to format 32 says nothing of an imported body: it keeps its names, and it
+    // has no segments.
+    for (const auto& line : report.skipped) {
+        EXPECT_EQ(line.find("is not carried over"), std::string::npos) << line;
+    }
+    for (const auto& line : report.approximated) {
+        EXPECT_EQ(line.find("round now"), std::string::npos) << line;
+    }
     if (part.featureTree().featureCount() != 1) return nullptr;
     return dynamic_cast<const ImportedBodyFeature*>(part.featureTree().feature(0));
 }

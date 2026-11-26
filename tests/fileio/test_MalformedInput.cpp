@@ -369,7 +369,8 @@ TEST(MalformedInputTest, InfiniteParameterIsRefusedByTheFeature) {
 TEST(MalformedInputTest, ACachedMeshIndexThatIsNotAWholeNumberIsRefused) {
     const auto path = std::filesystem::temp_directory_path() / "hz_malformed_mesh.hzpart";
     const auto meshWith = [&path](const std::string& indices) {
-        std::ofstream(path) << R"({"version": 29, "type": "hzpart", "entities": [],)"
+        // Format 32: a cache of 31 or older is not read at all.
+        std::ofstream(path) << R"({"version": 32, "type": "hzpart", "entities": [],)"
                             << R"("tessellationCache": {"positions": [0,0,0, 1,0,0, 0,1,0],)"
                             << R"("normals": [], "indices": )" << indices << "}}";
         return NativeFormat::loadPartMesh(path.string());

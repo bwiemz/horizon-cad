@@ -6,6 +6,7 @@ add_executable(hz_fileio_tests
     test_LoadErrors.cpp
     test_MalformedInput.cpp
     test_PartFormat.cpp
+    test_Migration.cpp
     test_AssemblyFormat.cpp
     test_BinaryFormat.cpp
     test_StepFormat.cpp

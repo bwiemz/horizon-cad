@@ -15,23 +15,28 @@
 #include <QTemporaryDir>
 #include <fstream>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "UiTestSupport.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/Sketch.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/fileio/DxfFormat.h"
+#include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 #include "horizon/ui/DwgImport.h"
 #include "horizon/ui/MainWindow.h"
 
@@ -529,6 +534,102 @@ TEST(ImportExportTest, SavingOverTheFileItWasReadFromAsksFirst) {
         EXPECT_TRUE(replace.seen());
     }
     EXPECT_NE(contents(path), before) << "replaced, as asked";
+    EXPECT_FALSE(w.activeDocument()->readInPart());
+}
+
+namespace {
+
+/// A part of format 18 (before persistent naming) at @p path: a square extruded, and a fillet on
+/// its edge named by position, `<extrude>/edge7`, which its migration to format 32 cannot carry
+/// over.
+void writeOldPartWithAPositionalReference(const QString& path) {
+    hz::doc::Document part;
+    part.setType(hz::doc::DocumentType::Part);
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    const Vec2 corners[] = {{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+    for (int i = 0; i < 4; ++i) {
+        sketch->addEntity(std::make_shared<hz::draft::DraftLine>(corners[i], corners[(i + 1) % 4]));
+    }
+    part.addSketch(sketch);
+    auto extrude = std::make_unique<hz::doc::ExtrudeFeature>(sketch, hz::math::Vec3(0, 0, 1), 5.0);
+    extrude->setNaming(hz::model::NamingScheme::Positional);
+    const std::string edge7 = extrude->featureID() + "/edge7";
+    part.featureTree().addFeature(std::move(extrude));
+    auto fillet = std::make_unique<hz::doc::FilletFeature>(
+        std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::fromTag(edge7)}, 1.0);
+    fillet->setNaming(hz::model::NamingScheme::Positional);
+    part.featureTree().addFeature(std::move(fillet));
+    nlohmann::json root = nlohmann::json::parse(
+        hz::io::NativeFormat::documentToJson(part, /*includeTessellation=*/false));
+    root["version"] = 18;
+    std::ofstream(path.toStdString()) << root.dump();
+}
+
+int formatOf(const QString& path) {
+    return nlohmann::json::parse(contents(path).toStdString()).at("version").get<int>();
+}
+
+}  // namespace
+
+// Owner amendment A2: a part migrated to format 32 that lost a reference on the way is read in
+// part, and a lost reference never stops it being written. Save asks where, as for any document
+// read in part, and writes a new file; the file it was read from is written over only once that is
+// confirmed, and Cancel (the default) writes nothing.
+TEST(ImportExport, AMigratedPartWithALostReferenceCanStillBeSaved) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("old.hzpart"));
+    writeOldPartWithAPositionalReference(path);
+    const QByteArray before = contents(path);
+
+    {
+        MainWindow w;
+        DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+        {
+            FilePicker picker(path);
+            menuAction(w, QStringLiteral("&Open..."))->trigger();
+        }
+        report.waitForDialog(5000);
+        ASSERT_TRUE(report.seen()) << "the lost reference is reported";
+        EXPECT_TRUE(report.detailedText().contains(QStringLiteral("is not carried over")))
+            << report.detailedText().toStdString();
+        ASSERT_TRUE(w.activeDocument()->readInPart());
+
+        const QString copy = dir.filePath(QStringLiteral("copy.hzpart"));
+        {
+            FilePicker picker(copy);
+            action(w, "action_save")->trigger();
+        }
+        EXPECT_EQ(contents(path), before) << "the file it was read from is as it was";
+        ASSERT_TRUE(QFileInfo::exists(copy)) << "written as a new file";
+        EXPECT_EQ(formatOf(copy), 32);
+        EXPECT_EQ(w.activeDocument()->filePath(), copy.toStdString());
+        EXPECT_FALSE(w.activeDocument()->readInPart());
+    }
+
+    MainWindow w;
+    openReadInPart(w, path);
+    ASSERT_TRUE(w.activeDocument()->readInPart());
+    const QString title = QStringLiteral("Replace the File It Was Read From?");
+    {
+        DialogResponder exists(QMessageBox::Yes);  // the file dialog's own question
+        DialogResponder keep(QMessageBox::Cancel, title);
+        FilePicker picker(path);
+        action(w, "action_save")->trigger();
+        EXPECT_TRUE(keep.seen());
+        EXPECT_EQ(keep.defaultButton(), QMessageBox::Cancel);
+    }
+    EXPECT_EQ(contents(path), before) << "Cancel writes nothing";
+    EXPECT_TRUE(w.activeDocument()->readInPart());
+    {
+        DialogResponder exists(QMessageBox::Yes);
+        DialogResponder replace(QStringLiteral("Replace"), title);
+        FilePicker picker(path);
+        action(w, "action_save")->trigger();
+        EXPECT_TRUE(replace.seen());
+    }
+    EXPECT_NE(contents(path), before) << "replaced, as confirmed";
+    EXPECT_EQ(formatOf(path), 32);
     EXPECT_FALSE(w.activeDocument()->readInPart());
 }
 
