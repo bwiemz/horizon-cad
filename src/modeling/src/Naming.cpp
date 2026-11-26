@@ -608,7 +608,7 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
                 first = chord;
             }
         }
-        const std::string theirs = mastersName(*first);
+        const std::string& theirs = mastersName(*first);
         if (theirs.empty()) {
             for (topo::Edge* chord : chords) given.push_back(&chord->topoId);
             continue;
