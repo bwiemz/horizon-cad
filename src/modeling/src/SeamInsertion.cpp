@@ -21,6 +21,7 @@
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/topology/EulerOps.h"
 #include "horizon/topology/LoopUnwrap.h"
 
 namespace hz::model {
@@ -1117,6 +1118,157 @@ std::string seamAlong(Solid& solid, Face& face, int dir, std::vector<Loop>& loop
            "once, or runs through a hole";
 }
 
+/// The u, in @p loop's unwrapped chain, of where it meets a line of v at @p x: at a vertex, its
+/// value there; inside a pcurve, the pcurve's at the split @p split plans; at an end vertex the
+/// split fell on (@p leaving, from placeCrossing), that vertex's.
+double crossingU(const Loop& loop, const Crossing& x, const std::optional<Split>& split,
+                 const HalfEdge* leaving) {
+    const std::size_t first = x.index * kChords;
+    if (split) {
+        return loop.ring[x.index]->pcurve->evaluate(split->sOwn).x + loop.chain[first].shift.x;
+    }
+    if (x.atOrigin || leaving == loop.ring[x.index]) return loop.chain[first].a.x;
+    return loop.chain[first + kChords - 1].b.x;
+}
+
+/// Cuts @p face, a band whose loops wound round its surface both ways, seamed along u (its loop
+/// spans a period in u and more than one in v), in two along the iso-curve v = c that halves its
+/// span in v: each piece then spans less than a period each way, as every face's region must.
+/// The cut is a new edge between the two (topo::euler::makeEdgeFace), on the surface's own
+/// iso-curve, as a seam is; the pieces share the band's surfaces and sense, and are its pieces,
+/// `<face>/piece:0` and `/piece:1`; the cut is `<face>/seam:1`. Empty on success; else why.
+std::string cutAcross(Solid& solid, Face& face, const math::ModelTolerance& tolerance) {
+    const geo::Surface& s = *face.exactSurface;
+    const double vPeriod = periodOf(s, 1);
+    auto read = loopsOf(solid, face, tolerance);
+    if (!read || read->size() != 1) return kNoSeam + "its loop does not close with its seam";
+    Loop& loop = read->front();
+    const std::pair<double, double> span = spanOf(loop, 1);
+    const double c = (span.first + span.second) / 2.0;
+    const std::vector<Crossing> xs = crossingsOf(loop, s, 1, c, vPeriod);
+    if (xs.size() != 2) {
+        return kNoSeam + "the line across it that halves it meets its loop " +
+               (xs.size() < 2 ? "less" : "more") + " than twice";
+    }
+    std::array<HalfEdge*, 2> leaving{};
+    std::array<std::optional<Split>, 2> splits;
+    std::array<double, 2> at{};
+    for (std::size_t k = 0; k < 2; ++k) {
+        if (loop.ring[xs[k].index]->twin->face == &face) {
+            return kNoSeam + "the line across it that halves it runs along its seam";
+        }
+        if (std::string why = placeCrossing(loop, xs[k], 1, tolerance, leaving[k], splits[k]);
+            !why.empty()) {
+            return why;
+        }
+        at[k] = crossingU(loop, xs[k], splits[k], leaving[k]);
+    }
+    if (splits[0] && splits[1] && splits[0]->h->edge == splits[1]->h->edge) {
+        return kNoSeam + "the line across it that halves it meets one edge twice";
+    }
+    for (std::size_t k = 0; k < 2; ++k) {
+        if (splits[k]) leaving[k] = applySplit(solid, *splits[k]);
+    }
+    Vertex* va = leaving[0]->origin;
+    Vertex* vb = leaving[1]->origin;
+    if (va == vb || (va->point - vb->point).length() <=
+                        tolerance.effective(std::max(va->tolerance, vb->tolerance))) {
+        return kNoSeam + "its two loops meet where it would be cut";
+    }
+
+    // The cut's curve, the surface's own iso-curve all along it (a B-spline's within its knots).
+    const auto curve = isoCurve(s, 1, c);
+    if (curve == nullptr) return kNoSeam + "its surface gives no exact curve across it";
+    double from = at[0];
+    double to = at[1];
+    if (const auto* nurbs = dynamic_cast<const geo::NurbsCurve*>(curve.get()); nurbs != nullptr) {
+        const double uPeriod = periodOf(s, 0);
+        const double slop = 1e-9 * (nurbs->tMax() - nurbs->tMin());
+        const double shift =
+            uPeriod * std::ceil((nurbs->tMin() - slop - std::min(from, to)) / uPeriod);
+        from += shift;
+        to += shift;
+        if (std::max(from, to) > nurbs->tMax() + slop) {
+            return kNoSeam + "the line across it would cross where its surface closes";
+        }
+        from = std::clamp(from, nurbs->tMin(), nurbs->tMax());
+        to = std::clamp(to, nurbs->tMin(), nurbs->tMax());
+    }
+    for (int k = 0; k <= 8; ++k) {
+        const double u = at[0] + (at[1] - at[0]) * k / 8.0;
+        const double w = from + (to - from) * k / 8.0;
+        if (!((curve->evaluate(w) - s.evaluate(u, c)).length() <= tolerance.linear)) {
+            return kNoSeam + "its surface gives no exact curve across it";
+        }
+    }
+
+    // Its sides' pcurves, and its tolerance: how far their ends, sampled where the validator
+    // samples them, and its curve's ends lie from the vertices it joins.
+    const std::shared_ptr<const geo::Curve2D> along =
+        std::make_shared<geo::Line2D>(Vec2{at[0], c}, Vec2{at[1], c});
+    const std::shared_ptr<const geo::Curve2D> back =
+        std::make_shared<geo::Line2D>(Vec2{at[1], c}, Vec2{at[0], c});
+    double gap = std::max((curve->evaluate(from) - va->point).length(),
+                          (curve->evaluate(to) - vb->point).length());
+    gap = std::max({gap, (s.evaluate(at[0], c) - va->point).length(),
+                    (s.evaluate(at[1], c) - vb->point).length()});
+    double near = std::max(va->tolerance, vb->tolerance);
+    for (const HalfEdge* h : {leaving[0], leaving[0]->prev, leaving[1], leaving[1]->prev}) {
+        near = std::max(near, h->edge->tolerance);
+    }
+    if (!(gap <= 4.0 * tolerance.effective(near))) {
+        return kNoSeam + "the line across it passes " + std::to_string(gap) +
+               " from a vertex it joins";
+    }
+
+    // Cut: the face keeps the side from b's crossing round to a's, the new face the rest.
+    const topo::TopologyID whole = face.topoId;
+    const topo::MEFResult made = topo::euler::makeEdgeFace(solid, leaving[0], leaving[1]);
+    Edge* cut = made.edge;
+    Face* piece = made.newFace;
+    if (whole.isValid()) cut->topoId = whole.child("seam", 1);
+    cut->exactCurve = curve;
+    cut->curveStart = from;
+    cut->curveEnd = to;
+    cut->tolerance = gap > tolerance.linear ? gap : 0.0;
+    cut->curve = seamCarrier(*curve, from, to, va->point, vb->point);
+    HalfEdge* forward = cut->halfEdge;  // from a's crossing to b's, on the face
+    forward->pcurve = along;
+    forward->pcurveStart = 0.0;
+    forward->pcurveEnd = 1.0;
+    forward->twin->pcurve = back;
+    forward->twin->pcurveStart = 0.0;
+    forward->twin->pcurveEnd = 1.0;
+    piece->exactSurface = face.exactSurface;
+    piece->surface = face.surface;
+    piece->analyticSurface = face.analyticSurface;
+    piece->reversed = face.reversed;
+    if (whole.isValid()) {
+        face.topoId = whole.child("piece", 0);
+        piece->topoId = whole.child("piece", 1);
+    }
+    return {};
+}
+
+/// Gives @p face, a band whose two loops each wind once round its surface both ways and
+/// opposite ways (a helical band on a torus), a seam along u, which leaves its region over more
+/// than a period in v, then cuts it in two across that (cutAcross).
+std::string seamAndCut(Solid& solid, Face& face, std::vector<Loop>& loops,
+                       const math::ModelTolerance& tolerance) {
+    if (loops.size() != 2) {
+        return kNoSeam +
+               "a band whose loops wind round it both ways is cut in two only where "
+               "it has no hole";
+    }
+    const std::array<double, 2>& wa = loops[0].winds;
+    const std::array<double, 2>& wb = loops[1].winds;
+    if (std::fabs(wa[0]) != 1.0 || std::fabs(wa[1]) != 1.0 || wb[0] != -wa[0] || wb[1] != -wa[1]) {
+        return kNoSeam + "its two loops do not each wind once round it both ways, opposite ways";
+    }
+    if (std::string why = seamAlong(solid, face, 0, loops, tolerance); !why.empty()) return why;
+    return cutAcross(solid, face, tolerance);
+}
+
 }  // namespace
 
 std::string insertSeams(Solid& solid, Face& face, const math::ModelTolerance& tolerance) {
@@ -1127,24 +1279,24 @@ std::string insertSeams(Solid& solid, Face& face, const math::ModelTolerance& to
     try {
         auto loops = loopsOf(solid, face, tolerance);
         if (!loops) return {};
-        // The one way its loops wind round, if any: a loop that winds round both ways (a helical
-        // band on a torus) needs a seam each way, which this stage does not lay.
+        // The way its loops wind round, if any: each the one way (a band, seamed that way), or
+        // each both ways (a helical band on a torus, seamed along u and cut in two along v).
         int dir = -1;
+        bool both = false;
         for (const Loop& loop : *loops) {
             const bool u = loop.winds[0] != 0.0;
             const bool v = loop.winds[1] != 0.0;
-            if (u && v) {
-                return "its loop winds round the surface both ways, which no seam this stage "
-                       "lays can open";
-            }
             if (!u && !v) continue;
-            if (dir >= 0 && dir != (u ? 0 : 1)) {
-                return "its loops wind round the surface both ways, which no seam this stage "
-                       "lays can open";
+            const int way = u && v ? 2 : (u ? 0 : 1);
+            if (dir >= 0 && dir != way) {
+                return "its loops wind round the surface different ways, which no seam this "
+                       "stage lays can open";
             }
-            dir = u ? 0 : 1;
+            dir = way;
+            both = way == 2;
         }
         if (dir < 0) return {};
+        if (both) return seamAndCut(solid, face, *loops, tolerance);
         return seamAlong(solid, face, dir, *loops, tolerance);
     } catch (const std::exception& e) {
         return kNoSeam + e.what();
@@ -1152,8 +1304,11 @@ std::string insertSeams(Solid& solid, Face& face, const math::ModelTolerance& to
 }
 
 std::string insertSeams(Solid& solid, const math::ModelTolerance& tolerance) {
-    for (Face& face : solid.faces()) {
-        if (std::string why = insertSeams(solid, face, tolerance); !why.empty()) return why;
+    // By index: a band cut in two adds a face, and a deque's iterators do not outlive that.
+    for (std::size_t k = 0; k < solid.faces().size(); ++k) {
+        if (std::string why = insertSeams(solid, solid.faces()[k], tolerance); !why.empty()) {
+            return why;
+        }
     }
     return {};
 }

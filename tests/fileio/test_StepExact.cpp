@@ -953,6 +953,77 @@ TEST(StepExact, ATorusFaceOutsideItsLoopIsNeverTurnedInsideOut) {
         << StepFormat::lastError();
 }
 
+/// A torus of radii 4 and 1 cut along two Villarceau circles of one family (radius 4, each in a
+/// plane tangent to it twice), half a turn apart about its axis, into two bands that each wind
+/// round it once in u and once in v, as a helix does (test_SeamInsertion's helicalTorusBands).
+std::string helicalTorus() {
+    return hz::step_text::stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = DIRECTION('',(0.,0.,1.));
+#3 = DIRECTION('',(1.,0.,0.));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = TOROIDAL_SURFACE('',#4,4.,1.);
+#10 = CARTESIAN_POINT('',(0.,1.,0.));
+#11 = DIRECTION('',(-0.25,0.,0.9682458365518543));
+#12 = DIRECTION('',(0.9682458365518543,0.,0.25));
+#13 = AXIS2_PLACEMENT_3D('',#10,#11,#12);
+#14 = CIRCLE('',#13,4.);
+#15 = CARTESIAN_POINT('',(3.872983346207417,1.,1.));
+#16 = VERTEX_POINT('',#15);
+#17 = EDGE_CURVE('',#16,#16,#14,.T.);
+#20 = CARTESIAN_POINT('',(0.,-1.,0.));
+#21 = DIRECTION('',(0.25,0.,0.9682458365518543));
+#22 = DIRECTION('',(-0.9682458365518543,0.,0.25));
+#23 = AXIS2_PLACEMENT_3D('',#20,#21,#22);
+#24 = CIRCLE('',#23,4.);
+#25 = CARTESIAN_POINT('',(-3.872983346207417,-1.,1.));
+#26 = VERTEX_POINT('',#25);
+#27 = EDGE_CURVE('',#26,#26,#24,.T.);
+#30 = ORIENTED_EDGE('',*,*,#17,.T.);
+#31 = EDGE_LOOP('',(#30));
+#32 = FACE_OUTER_BOUND('',#31,.T.);
+#33 = ORIENTED_EDGE('',*,*,#27,.F.);
+#34 = EDGE_LOOP('',(#33));
+#35 = FACE_BOUND('',#34,.T.);
+#36 = ADVANCED_FACE('',(#32,#35),#5,.T.);
+#40 = ORIENTED_EDGE('',*,*,#17,.F.);
+#41 = EDGE_LOOP('',(#40));
+#42 = FACE_OUTER_BOUND('',#41,.T.);
+#43 = ORIENTED_EDGE('',*,*,#27,.T.);
+#44 = EDGE_LOOP('',(#43));
+#45 = FACE_BOUND('',#44,.T.);
+#46 = ADVANCED_FACE('',(#42,#45),#5,.T.);
+#50 = CLOSED_SHELL('',(#36,#46));
+#51 = MANIFOLD_SOLID_BREP('helix',#50);
+)");
+}
+
+// Ruling 29's class, from a file: each band, whose loops wind round the torus both ways, is
+// seamed along u and cut in two along v (model::insertSeams), so the solid comes in exact: four
+// faces, two pieces of each band, enclosing 2 pi^2 R r^2. Sent out and read back, it comes back
+// exact, the same four faces (none a band now), to the same volume.
+TEST(StepExact, ATorusBandWindingBothWaysComesInExactAndGoesOutAndBack) {
+    const double volume = 2.0 * hz::math::kPi * hz::math::kPi * 4.0;
+    const auto read = StepFormat::fromString(helicalTorus(), nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(read.size(), 1u) << StepFormat::lastError();
+    const topo::Solid& solid = *read.front();
+    EXPECT_TRUE(topo::hasExactFaces(solid));
+    EXPECT_EQ(solid.faceCount(), 4u);
+    for (const auto& f : solid.faces()) {
+        EXPECT_NE(f.topoId.tag().find("/piece:"), std::string::npos) << f.topoId.tag();
+    }
+    EXPECT_EQ(firstIssue(solid), "");
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(solid).volume, volume, volume * 1e-9);
+
+    const auto again =
+        StepFormat::fromString(StepFormat::toString({&solid}), nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(again.size(), 1u) << StepFormat::lastError();
+    EXPECT_TRUE(topo::hasExactFaces(*again.front()));
+    EXPECT_EQ(again.front()->faceCount(), 4u);
+    EXPECT_EQ(firstIssue(*again.front()), "");
+    EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*again.front()).volume, volume,
+                volume * 1e-9);
+}
+
 // Ruling 18: a clean file with a loose UNCERTAINTY (0.01) is fitted to the model resolution, not
 // to its uncertainty: its edges' tolerances stay at the resolution and nothing says it is exact
 // only to the file's. Its top a B-spline patch, the rim's pcurve on it a circle in (u, v), which

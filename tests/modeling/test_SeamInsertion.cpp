@@ -279,8 +279,12 @@ double exactVolume(const topo::Solid& solid) {
 }
 constexpr double kExactVolumeError = 1e-9;
 
-/// Every edge's carrier ends at its vertices and lies along its exact curve.
-void expectCarriersOnTheirCurves(const topo::Solid& solid) {
+/// Every edge's carrier ends at its vertices and lies along its exact curve. With
+/// @p withinTolerance, its ends lie within the edge's tolerance of its vertices instead: a seam
+/// joining pcurves fitted to their curves passes as near its vertices as they do, and its
+/// tolerance covers that.
+void expectCarriersOnTheirCurves(const topo::Solid& solid, bool withinTolerance = false) {
+    const auto tolerance = topo::exactTolerance(solid);
     for (const auto& e : solid.edges()) {
         if (!e.curve) continue;
         const Vec3 a = e.halfEdge->origin->point;
@@ -289,7 +293,12 @@ void expectCarriersOnTheirCurves(const topo::Solid& solid) {
         const Vec3 c1 = e.curve->evaluate(e.curve->tMax());
         const double ends = std::min(std::max((c0 - a).length(), (c1 - b).length()),
                                      std::max((c0 - b).length(), (c1 - a).length()));
-        EXPECT_LT(ends, 1e-9) << e.topoId.tag();
+        const double near =
+            withinTolerance
+                ? tolerance.effective(std::max({e.tolerance, e.halfEdge->origin->tolerance,
+                                                e.halfEdge->twin->origin->tolerance}))
+                : 1e-9;
+        EXPECT_LT(ends, near) << e.topoId.tag();
         for (int k = 1; k < 8; ++k) {
             const double t = e.curveStart + (e.curveEnd - e.curveStart) * k / 8.0;
             const Vec3 p = e.exactCurve->evaluate(t);
@@ -849,24 +858,72 @@ std::unique_ptr<topo::Solid> helicalTorusBands() {
 
 }  // namespace
 
-// Ruling 29: a loop that winds round both ways (a helical band on a torus) needs a seam each way,
-// which this stage does not lay. It is refused before any seam is laid, with why, and nothing is
-// split.
-TEST(SeamInsertion, ALoopWindingRoundBothWaysIsRefused) {
+// Ruling 29's class, as stage 3 rules it: a band whose loops wind round it both ways (a helical
+// band on a torus) gets both seams. A seam along u alone leaves its region over more than a
+// period in v, which no face's may be (the validator's one-period window, a guard on imported
+// data): its two loops each run a whole period both ways, one beside the other. So it is seamed
+// along u and then cut in two across, along the parallel that halves its span in v (seam:1), as
+// topo::euler::makeEdgeFace splits a face. Each piece spans less than a period each way. The two
+// bands are the whole torus of radii 4 and 1: 2 pi^2 R r^2 = 8 pi^2 inside, 4 pi^2 R r = 16 pi^2
+// round it, each band half of that.
+TEST(SeamInsertion, ATorusBandWindingBothWaysGetsTwoSeams) {
     const auto solid = helicalTorusBands();
     ASSERT_NE(solid, nullptr);
-    topo::Face* side = nullptr;
-    for (auto& f : solid->faces()) {
-        if (f.topoId.tag() == "test/helix/one") side = &f;
+    EXPECT_NE(firstIssue(*solid), "") << "no band is exact without its seams";
+    EXPECT_EQ(hz::model::insertSeams(*solid, topo::exactTolerance(*solid)), "");
+
+    std::vector<std::string> faces;
+    for (const auto& f : solid->faces()) {
+        if (f.alive) faces.push_back(f.topoId.tag());
+        EXPECT_TRUE(seamsOf(f).empty()) << f.topoId.tag() << ": its seams lie between its pieces";
     }
-    ASSERT_NE(side, nullptr);
-    const std::string why = hz::model::insertSeams(*solid, *side, topo::exactTolerance(*solid));
-    EXPECT_EQ(why,
-              "its loop winds round the surface both ways, which no seam this stage lays "
-              "can open");
-    EXPECT_EQ(solid->vertexCount(), 2u);
-    EXPECT_EQ(solid->edgeCount(), 2u);
-    EXPECT_TRUE(seamsOf(*side).empty());
+    std::sort(faces.begin(), faces.end());
+    EXPECT_EQ(faces,
+              (std::vector<std::string>{"test/helix/one/piece:0", "test/helix/one/piece:1",
+                                        "test/helix/two/piece:0", "test/helix/two/piece:1"}));
+    for (const std::string band : {"one", "two"}) {
+        for (const int k : {0, 1}) {
+            const std::string name = "test/helix/" + band + "/seam:" + std::to_string(k);
+            const topo::Edge* seam = nullptr;
+            for (const auto& e : solid->edges()) {
+                if (e.topoId.tag() == name) seam = &e;
+            }
+            ASSERT_NE(seam, nullptr) << name;
+            EXPECT_EQ(seam->exactCurve->kind(), geo::CurveKind::Circle) << name;
+            const std::string a = seam->halfEdge->face->topoId.tag();
+            const std::string b = seam->halfEdge->twin->face->topoId.tag();
+            EXPECT_NE(a, b) << name;
+            EXPECT_EQ(a.rfind("test/helix/" + band + "/piece:", 0), 0u) << name << " on " << a;
+            EXPECT_EQ(b.rfind("test/helix/" + band + "/piece:", 0), 0u) << name << " on " << b;
+        }
+    }
+    EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+    EXPECT_EQ(firstIssue(*solid), "");
+    EXPECT_EQ(meshProblem(*solid), "");
+    expectCarriersOnTheirCurves(*solid, true);
+
+    const auto props = hz::model::MassPropertiesCalculator::compute(*solid);
+    ASSERT_TRUE(props.valid) << props.problem;
+    const double volume = 2.0 * kPi * kPi * 4.0 * 1.0;
+    const double area = 4.0 * kPi * kPi * 4.0 * 1.0;
+    EXPECT_NEAR(props.volume, volume, volume * kExactVolumeError);
+    EXPECT_NEAR(props.surfaceArea, area, area * kExactVolumeError);
+    EXPECT_NEAR(props.centerOfMass.length(), 0.0, 1e-9);
+
+    // Each band is half the torus: its pieces' triangles, at a chord of 1e-3.
+    std::string problem;
+    const auto mesh = hz::model::BoundaryMesh::extractFacePolygons(*solid, 1e-3, &problem);
+    ASSERT_EQ(problem, "");
+    double one = 0.0;
+    double two = 0.0;
+    for (const auto& t : mesh) {
+        if (t.points.size() != 3) continue;
+        const double a =
+            (t.points[1] - t.points[0]).cross(t.points[2] - t.points[0]).length() / 2.0;
+        (t.topoId.tag().rfind("test/helix/one/", 0) == 0 ? one : two) += a;
+    }
+    EXPECT_NEAR(one, area / 2.0, area * 1e-3);
+    EXPECT_NEAR(two, area / 2.0, area * 1e-3);
 }
 
 // The parts of a rim a seam's line splits are pieces of it, `<rim>/piece:0` and `/piece:1`: a

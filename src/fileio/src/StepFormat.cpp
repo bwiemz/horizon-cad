@@ -4702,11 +4702,18 @@ ExactRead finishExact(topo::Solid& solid, const std::atomic<bool>* cancelled) {
     // The tolerances its seam and splits are given, measured as grow measures, are held to the
     // limit as every other is: the seam's, how far its line passes from the vertices it joins; a
     // split's vertex's, how far its edge's pcurves have it.
-    for (topo::Face* f : bands) {
+    // A band whose loops wind round both ways is cut in two (model::insertSeams): its other piece
+    // is taken on as a band, held to the limit and given its sense and layout as the band is.
+    for (std::size_t i = 0; i < bands.size(); ++i) {
+        topo::Face* f = bands[i];
         if (stop()) return read;
+        const std::size_t before = solid.faces().size();
         if (std::string why = model::insertSeams(solid, *f, resolution); !why.empty()) {
             read.problem = why + whereIn(f, f->outerLoop->halfEdge->edge);
             return read;
+        }
+        for (std::size_t k = before; k < solid.faces().size(); ++k) {
+            bands.push_back(&solid.faces()[k]);
         }
         std::vector<topo::Wire*> loops{f->outerLoop};
         loops.insert(loops.end(), f->innerLoops.begin(), f->innerLoops.end());

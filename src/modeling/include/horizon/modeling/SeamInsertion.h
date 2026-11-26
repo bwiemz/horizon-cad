@@ -18,9 +18,15 @@ namespace hz::model {
 /// each way. Exact fields and carriers are both split. Empty on success; else why.
 ///
 /// - **Or v.** A face whose loops wind round in v instead (round a torus's tube, a pipe's elbow;
-///   a B-spline closed that way) gets its seam along v the same way. A loop that winds round both
-///   ways (a helical band on a torus) is refused, with why: it needs a seam each way, which this
-///   stage does not lay.
+///   a B-spline closed that way) gets its seam along v the same way.
+/// - **Both ways.** A band whose two loops each wind once round both ways, opposite ways (a
+///   helical band on a torus), gets both seams. Seamed along u alone, its region would span more
+///   than a period in v, which no face's may; so once seamed along u it is cut in two across,
+///   along the iso-curve of v that halves its span (topo::euler::makeEdgeFace), and each piece
+///   spans less than a period each way. The pieces share the band's surfaces and sense and are
+///   its pieces, `<face>/piece:0` and `/piece:1`, so a reference to the band takes both; the seam
+///   along u and the cut, `<face>/seam:0` and `/seam:1`, each lie between them. Such a band
+///   with a hole is refused, with why.
 /// - **The seam's curve** is the surface's own iso-curve, parametrised by the other parameter:
 ///   a LineCurve on a cylinder or a cone, a CircleCurve meridian on a sphere or a torus (a
 ///   parallel for a torus's v seam), and on a B-spline the NurbsCurve it gives exactly. Where
@@ -43,12 +49,13 @@ namespace hz::model {
 ///   limit on tolerances holds these to it. The parts of a split edge are its pieces,
 ///   `<edge>/piece:<k>`, so a reference to the edge takes them all; the seam is
 ///   `<face>/seam:<0 for u, 1 for v>`.
-/// - **Failure.** A face that cannot be given its seam may be left with edges split. The solid
-///   stays combinatorially valid.
+/// - **Failure.** A face that cannot be given its seam may be left with edges split, or seamed
+///   along u and not cut. The solid stays combinatorially valid.
 std::string insertSeams(topo::Solid& solid, const math::ModelTolerance& tolerance);
 
 /// insertSeams for the one face @p face of @p solid, so that a caller can say which face could
-/// not have its seam. Splitting an edge also splits its twin's half-edge, on the face next to it.
+/// not have its seam. Splitting an edge also splits its twin's half-edge, on the face next to it;
+/// a band cut in two adds its second piece at the end of the solid's faces.
 std::string insertSeams(topo::Solid& solid, topo::Face& face,
                         const math::ModelTolerance& tolerance);
 
