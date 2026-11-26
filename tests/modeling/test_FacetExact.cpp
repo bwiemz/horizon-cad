@@ -692,14 +692,16 @@ TEST(FacetExact, AFaceWithACarrierIsCutAsTheImportsBridgeCutsIt) {
 // needs (0.01 mm on paper): the rims, and the lines and triangles across the side, each with its
 // corners on the cylinder, sag no more than it, on a band between two rims and on a side cut
 // within its trim (a cylinder cut on a slant). At 32 a turn alone they sag four times as much.
+// Each direction of the side is stepped by its own curvature (Ruling 30): round the cylinder as
+// finely as the tolerance asks, along it not at all, every point on a rim.
 TEST(FacetExact, AnImportsFacesAreCutWithinAChordTolerance) {
     const struct {
         const char* what;
         std::string text;
-        double volume;
+        double lean;  ///< of the top: it is at z = 2 + x tan(lean)
     } imports[] = {
-        {"a band between two rims", hz::step_text::bandCylinder(), 2.0 * kPi},
-        {"a cylinder cut on a slant", hz::step_text::slantCylinder(1.0, 2.0, 0.3), 2.0 * kPi},
+        {"a band between two rims", hz::step_text::bandCylinder(), 0.0},
+        {"a cylinder cut on a slant", hz::step_text::slantCylinder(1.0, 2.0, 0.3), 0.3},
     };
     constexpr double kTolerance = 1e-3;
     for (const auto& i : imports) {
@@ -713,10 +715,19 @@ TEST(FacetExact, AnImportsFacesAreCutWithinAChordTolerance) {
         ASSERT_NE(fine.solid, nullptr) << fine.error;
         EXPECT_TRUE(fine.solid->isValid()) << fine.solid->validationReport();
         EXPECT_TRUE(fine.outlined.empty());
-        EXPECT_GT(fine.solid->vertexCount(), coarse.solid->vertexCount());
         EXPECT_LE(sagInside(*fine.solid, {}, 1.0, 1e-9), kTolerance);
+        std::size_t onTheBottom = 0;
+        for (const auto& v : fine.solid->vertices()) {
+            const Vec3& p = v.point;
+            const bool bottom = std::abs(p.z) < 1e-9;
+            const bool top = std::abs(p.z - (2.0 + p.x * std::tan(i.lean))) < 1e-9;
+            EXPECT_TRUE(bottom || top)
+                << "a point inside, at " << p.x << ", " << p.y << ", " << p.z;
+            if (bottom) ++onTheBottom;
+        }
+        EXPECT_EQ(onTheBottom, 71u) << "pi / acos(1 - 0.001) = 70.2: 71 chords round, alike";
         const double volume = MassPropertiesCalculator::compute(*fine.solid).volume;
-        EXPECT_NEAR(volume, i.volume, i.volume * 2.0 * kTolerance) << "within its sag";
+        EXPECT_NEAR(volume, 2.0 * kPi, 2.0 * kPi * 2.0 * kTolerance) << "within its sag";
     }
 }
 

@@ -1324,18 +1324,48 @@ void insertPoints(std::vector<RegionVertex>& vertices,
     }
 }
 
+/// The steps in u and in v over the box [@p u0, @p u1] x [@p v0, @p v1] of @p s within which a
+/// chord that way sags no more than @p tolerance off the surface (Ruling 30): sqrt(8 tolerance /
+/// k), k the most the second derivative that way leaves the surface (its part along the normal,
+/// |S_uu . n|, the normal curvature times the speed squared) at 9 x 9 points of the box. Infinite
+/// for a direction that does not curve (a cylinder's along its axis).
+std::pair<double, double> sagSteps(const geo::NurbsSurface& s, double u0, double u1, double v0,
+                                   double v1, double tolerance) {
+    constexpr int kSamples = 9;
+    double bendU = 0.0;
+    double bendV = 0.0;
+    for (int i = 0; i < kSamples; ++i) {
+        for (int j = 0; j < kSamples; ++j) {
+            const double u = u0 + (u1 - u0) * i / (kSamples - 1);
+            const double v = v0 + (v1 - v0) * j / (kSamples - 1);
+            const geo::SurfaceDerivatives d = s.derivatives(u, v);
+            const Vec3 normal = d.du.cross(d.dv);
+            const double length = normal.length();
+            if (!(length > 0.0)) continue;  // a pole: its neighbours say how it bends
+            const Vec3 n = normal * (1.0 / length);
+            bendU = std::max(bendU, std::abs(d.duu.dot(n)));
+            bendV = std::max(bendV, std::abs(d.dvv.dot(n)));
+        }
+    }
+    const auto step = [tolerance](double bend) {
+        return bend > 0.0 ? std::sqrt(8.0 * tolerance / bend)
+                          : std::numeric_limits<double>::infinity();
+    };
+    return {step(bendU), step(bendV)};
+}
+
 /// A curved face with any outline, and holes, cut into facets on its
 /// surface within it (Phase 152): the region in (u, v), scaled to about the
 /// surface's own lengths there, cut into triangles by ears, then points
 /// added inside as far apart as the outline's own, and as near as keeps the
 /// surface turning by no more than @p maxAngle between them across its middle,
-/// kept Delaunay. With a positive @p tolerance, near enough too that no
-/// triangle's edge sags more than it: grid neighbours by a sixth of it, as a
-/// chord's sag grows as the square of its length and a triangle's edges run
-/// about two and a half times as far as they are apart (from a point of the
-/// outline, cut to the whole tolerance, to one inside, kept 0.6 of a spacing
-/// off it). Its outline points are the edges' own, so the facets meet the
-/// faces beside. Nullopt when it cannot be (a pole on it, a hole across a
+/// kept Delaunay. With a positive @p tolerance (a drawing's copy, Ruling 30),
+/// the region is measured in steps instead, one each way the step its chords
+/// that way sag no more than the tolerance by (sagSteps; no more than a turn
+/// of @p maxAngle, nor than the region), and the points go a step apart: a
+/// cylinder's side is cut round it as finely as the tolerance asks and along
+/// it not at all. Its outline points are the edges' own, so the facets meet
+/// the faces beside. Nullopt when it cannot be (a pole on it, a hole across a
 /// seam).
 std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
     std::vector<LoopPoint> outer, std::vector<std::vector<LoopPoint>> holes, SurfaceMap& map,
@@ -1368,16 +1398,31 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
         if (signedArea(hole) > 0.0) std::reverse(hole.begin(), hole.end());
     }
 
-    // Lengths on the surface per unit of u and of v, in the middle.
-    const UV mid{0.5 * (u0 + u1), 0.5 * (v0 + v1)};
-    const double du = 1e-4 * (u1 - u0);
-    const double dv = 1e-4 * (v1 - v0);
-    const double su =
-        (map.at({mid.first + du, mid.second}) - map.at({mid.first - du, mid.second})).length() /
-        (2.0 * du);
-    const double sv =
-        (map.at({mid.first, mid.second + dv}) - map.at({mid.first, mid.second - dv})).length() /
-        (2.0 * dv);
+    const UV low{u0, 0.5 * (v0 + v1)};
+    const UV high{u1, 0.5 * (v0 + v1)};
+    const UV lowV{0.5 * (u0 + u1), v0};
+    const UV highV{0.5 * (u0 + u1), v1};
+    // Lengths on the surface per unit of u and of v, in the middle; with a tolerance, steps per
+    // unit of each.
+    double su = 0.0;
+    double sv = 0.0;
+    if (tolerance > 0.0) {
+        const std::pair<double, double> steps = sagSteps(map.surface(), u0, u1, v0, v1, tolerance);
+        const auto turnsU = static_cast<double>(piecesAcross(map, low, high, 0, maxAngle, 0.0));
+        const auto turnsV = static_cast<double>(piecesAcross(map, lowV, highV, 1, maxAngle, 0.0));
+        su = 1.0 / std::min(steps.first, (u1 - u0) / turnsU);
+        sv = 1.0 / std::min(steps.second, (v1 - v0) / turnsV);
+    } else {
+        const UV mid{0.5 * (u0 + u1), 0.5 * (v0 + v1)};
+        const double du = 1e-4 * (u1 - u0);
+        const double dv = 1e-4 * (v1 - v0);
+        su =
+            (map.at({mid.first + du, mid.second}) - map.at({mid.first - du, mid.second})).length() /
+            (2.0 * du);
+        sv =
+            (map.at({mid.first, mid.second + dv}) - map.at({mid.first, mid.second - dv})).length() /
+            (2.0 * dv);
+    }
     if (!(su > 0.0) || !(sv > 0.0)) return std::nullopt;
 
     std::vector<RegionVertex> vertices;
@@ -1421,14 +1466,14 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
                      lengths.begin() + static_cast<std::ptrdiff_t>(lengths.size() / 2),
                      lengths.end());
     double spacing = lengths.empty() ? 0.0 : lengths[lengths.size() / 2];
-    const UV low{u0, 0.5 * (v0 + v1)};
-    const UV high{u1, 0.5 * (v0 + v1)};
-    const UV lowV{0.5 * (u0 + u1), v0};
-    const UV highV{0.5 * (u0 + u1), v1};
-    const auto turnsU = piecesAcross(map, low, high, 0, maxAngle, tolerance / 6.0);
-    const auto turnsV = piecesAcross(map, lowV, highV, 1, maxAngle, tolerance / 6.0);
-    if (turnsU > 1) spacing = std::min(spacing, (u1 - u0) * su / static_cast<double>(turnsU));
-    if (turnsV > 1) spacing = std::min(spacing, (v1 - v0) * sv / static_cast<double>(turnsV));
+    if (tolerance > 0.0) {
+        spacing = std::min(spacing, 1.0);  // a step each way
+    } else {
+        const auto turnsU = piecesAcross(map, low, high, 0, maxAngle, 0.0);
+        const auto turnsV = piecesAcross(map, lowV, highV, 1, maxAngle, 0.0);
+        if (turnsU > 1) spacing = std::min(spacing, (u1 - u0) * su / static_cast<double>(turnsU));
+        if (turnsV > 1) spacing = std::min(spacing, (v1 - v0) * sv / static_cast<double>(turnsV));
+    }
 
     const auto onSurface = [&](double x, double y) {
         const UV uv{x / su, y / sv};

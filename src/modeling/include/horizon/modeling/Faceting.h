@@ -64,8 +64,13 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle = math::kTwoP
 /// - A face with a NURBS carrier is an import's (Ruling 17), and is cut as
 ///   facetCurved cuts it, at 2π/segmentsPerTurn of turning, its edges with
 ///   it; at no chord tolerance, as facetCurved's facets, corner for corner.
-///   With one, each of its edges, and the lines and triangles inside it, sag
-///   no more than the tolerance besides. A curved face of an import that
+///   With one, each of its edges is cut so that no chord sags more than it,
+///   and a face cut within its trim is stepped each way of its (u, v) by
+///   that way's own greatest normal curvature over it, so that a chord that
+///   way sags no more than it either (Ruling 30): a cylinder's side round it
+///   as finely as the tolerance asks, along it not at all. A face of an import
+///   bounded by a rectangle of its (u, v) is a grid whose lines run between
+///   its edges' points. A curved face of an import that
 ///   cannot be cut is its outline, and is listed (`outlined`), as
 ///   facetCurved's is. An exact part of imports and constructed bodies (a
 ///   drawing's copy of it) is so cut each its own way.
