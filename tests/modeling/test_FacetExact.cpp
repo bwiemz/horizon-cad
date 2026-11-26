@@ -174,6 +174,63 @@ TEST(FacetExact, APoleAndAnApexAreMastersToo) {
     }
 }
 
+// Master's torus is cut round its tube into half its segments (makeTorus's tubeSegments), which
+// stepsFor of the tube's circle is not: at {32, 0, 16} the exact torus's bridge is master's torus,
+// its rings round the tube from the outer equator (v = 0) as master's start, vertex for vertex.
+TEST(FacetExact, ATorusAtThirtyTwoAndSixteenIsMastersTorus) {
+    const auto torus = exact::makeTorus(geo::Frame{}, 5.0, 1.0);
+    ASSERT_NE(torus, nullptr);
+    const auto bridge = facetExact(*torus, FacetResolution{32, 0.0, 16});
+    ASSERT_NE(bridge.solid, nullptr) << bridge.error;
+    const auto master = hz::model::PrimitiveFactory::makeTorus(5.0, 1.0, 32);
+    ASSERT_NE(master, nullptr);
+    EXPECT_EQ(master->faceCount(), 32u * 16u);
+    EXPECT_EQ(bridge.solid->faceCount(), master->faceCount());
+    EXPECT_EQ(bridge.solid->edgeCount(), master->edgeCount());
+    EXPECT_EQ(bridge.solid->vertexCount(), master->vertexCount());
+    std::vector<Vec3> ours;
+    for (const auto& v : bridge.solid->vertices()) ours.push_back(v.point);
+    std::vector<Vec3> theirs;
+    for (const auto& v : master->vertices()) theirs.push_back(v.point);
+    for (const Vec3& p : theirs) {
+        EXPECT_TRUE(hasPointNear(ours, p, 1e-12))
+            << "master's vertex " << p.x << ", " << p.y << ", " << p.z;
+    }
+    for (const Vec3& p : ours) {
+        EXPECT_TRUE(hasPointNear(theirs, p, 1e-12))
+            << "a vertex of its own " << p.x << ", " << p.y << ", " << p.z;
+    }
+}
+
+// Master's sphere is cut pole to pole into half its segments, rounded down (makeSphere's stacks):
+// at 33 segments, 16 rows, where stepsFor(r, pi) would give 17. At {33, 0, 16} the exact sphere's
+// bridge is master's sphere, vertex for vertex: 33 columns from its seam, 16 rows at equal
+// latitudes, a fan of triangles at each pole.
+TEST(FacetExact, ASphereAtThirtyThreeIsMastersSphere) {
+    const auto sphere = exact::makeSphere(geo::Frame{}, 3.0);
+    ASSERT_NE(sphere, nullptr);
+    const auto bridge = facetExact(*sphere, FacetResolution{33, 0.0, 16});
+    ASSERT_NE(bridge.solid, nullptr) << bridge.error;
+    const auto master = hz::model::PrimitiveFactory::makeSphere(3.0, 33, 16);
+    ASSERT_NE(master, nullptr);
+    EXPECT_EQ(master->vertexCount(), 33u * 15u + 2u);
+    EXPECT_EQ(bridge.solid->faceCount(), master->faceCount());
+    EXPECT_EQ(bridge.solid->edgeCount(), master->edgeCount());
+    EXPECT_EQ(bridge.solid->vertexCount(), master->vertexCount());
+    std::vector<Vec3> ours;
+    for (const auto& v : bridge.solid->vertices()) ours.push_back(v.point);
+    std::vector<Vec3> theirs;
+    for (const auto& v : master->vertices()) theirs.push_back(v.point);
+    for (const Vec3& p : theirs) {
+        EXPECT_TRUE(hasPointNear(ours, p, 1e-12))
+            << "master's vertex " << p.x << ", " << p.y << ", " << p.z;
+    }
+    for (const Vec3& p : ours) {
+        EXPECT_TRUE(hasPointNear(theirs, p, 1e-12))
+            << "a vertex of its own " << p.x << ", " << p.y << ", " << p.z;
+    }
+}
+
 // Each facet is named for its exact face (`<face>/facet:<k>`, or the face's own tag where it is
 // one facet) and each chord for its exact edge (`<edge>/chord:<k>`, or the edge's tag where it is
 // one chord): logicalFace and logicalEdge take them back to the exact solid's names, a seam's

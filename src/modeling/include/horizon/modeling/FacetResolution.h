@@ -11,6 +11,14 @@ struct FacetResolution {
     /// When positive, each arc's count is instead derived from its own radius so that no chord
     /// sags more than this (PrimitiveFactory::segmentsForTolerance).
     double chordTolerance = 0.0;
+    /// When positive, the count master's faceted primitives give the second direction of a
+    /// sphere or a torus, in place of stepsFor's: a sphere's face is cut from pole to pole into
+    /// this many rows (in proportion over less than the whole half turn), a torus's round its
+    /// tube into this many per whole turn; never fewer than master's least, 2 from pole to pole
+    /// and 3 round a whole tube. 0 is none: those directions are cut by stepsFor, as every other
+    /// is. (PrimitiveFactory::makeSphere's stacks and makeTorus's tubeSegments, each half the
+    /// segments by default, rounded down.)
+    int minorSegments = 0;
 
     /// Chords across an arc of @p radius sweeping @p sweep radians (>= 1): the per-turn count
     /// (segmentsPerTurn, or the radius's own under chordTolerance; at least 3) in proportion to

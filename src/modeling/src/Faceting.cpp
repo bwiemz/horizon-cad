@@ -1797,6 +1797,29 @@ struct ExactRectangle {
     std::unordered_map<const HalfEdge*, std::pair<math::Vec2, math::Vec2>> ends;
 };
 
+/// The count FacetResolution::minorSegments gives a face's v (0 where it gives none): a sphere's
+/// from pole to pole, minorSegments over the half turn in proportion to its span (at least 2
+/// where it runs from pole to pole), a torus's round its tube, minorSegments a whole turn in
+/// proportion (at least 3 for a whole turn), as master's makeSphere and makeTorus cut them.
+int minorSteps(const geo::Surface& surface, const ExactRectangle& r,
+               const FacetResolution& resolution) {
+    if (resolution.minorSegments <= 0) return 0;
+    const double span = r.v1 - r.v0;
+    const auto inProportion = [&resolution, span](double whole, int least) {
+        const double steps = span / whole * static_cast<double>(resolution.minorSegments);
+        return std::clamp(static_cast<int>(std::ceil(steps - 1e-9)), least, kMostSteps);
+    };
+    switch (surface.kind()) {
+        case geo::SurfaceKind::Sphere:
+            return inProportion(math::kPi, r.pole[kBottom] && r.pole[kTop] ? 2 : 1);
+        case geo::SurfaceKind::Torus:
+            return inProportion(math::kTwoPi,
+                                span + kOnSide * math::kTwoPi >= topo::vPeriod(surface) ? 3 : 1);
+        default:
+            return 0;
+    }
+}
+
 /// @p face's outer loop as a rectangle of its exact surface's (u, v), unwrapped as the exact
 /// validator unwraps it (topo::unwrapLoop, with the face's sense); nullopt, with @p why, where it
 /// has holes, a half-edge has no pcurve, or its outline is no such rectangle.
@@ -2134,6 +2157,8 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         std::optional<ExactRectangle> rectangle;  ///< a curved face's
         std::array<int, 2> steps{};               ///< its columns (along u) and rows (along v)
         std::array<int, 2> own{};  ///< where both sides across are poles: its surface's own
+        /// Where FacetResolution::minorSegments sets it (a sphere's v, a torus's): its count.
+        std::array<int, 2> fixed{};
     };
     std::vector<Plan> plans;
     for (const auto& face : exact.faces()) {
@@ -2201,6 +2226,12 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         if (r.pole[kLeft] && r.pole[kRight]) {
             plan.own[1] = ownSteps(s, 1, r.u0, r.u1, r.v0, r.v1, resolution);
         }
+        plan.fixed[1] = minorSteps(s, r, resolution);
+        // The edges along it cut so, whatever their own curve would give.
+        for (const Side side : {kLeft, kRight}) {
+            if (plan.fixed[1] == 0 || r.pole[side] || r.sides[side].size() != 1) continue;
+            steps[r.sides[side].front()->edge] = plan.fixed[1];
+        }
     }
     const auto chordsOn = [&steps](const std::vector<const HalfEdge*>& side) {
         int total = 0;
@@ -2226,6 +2257,11 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
                     if (!r.pole[side]) n = std::max(n, chordsOn(r.sides[side]));
                 }
                 n = std::min(n, kMostSteps);
+                // A count minorSegments sets is not raised: an edge another face cuts finer
+                // leaves the sides unlike, and the face is refused below.
+                if (plan.fixed[static_cast<std::size_t>(dir)] > 0) {
+                    n = plan.fixed[static_cast<std::size_t>(dir)];
+                }
                 plan.steps[static_cast<std::size_t>(dir)] = n;
                 for (const Side side : across) {
                     if (r.pole[side] || r.sides[side].size() != 1) continue;

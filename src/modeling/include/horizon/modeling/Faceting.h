@@ -75,9 +75,12 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle = math::kTwoP
 ///   along v, and the edges of a side alone on it are cut to match (so a
 ///   periodic face's columns are the largest count of its edges); a
 ///   direction with no edges along it (a sphere's u) is cut as its widest
-///   iso-curve is. Its facets are `<face>/facet:<k>`, row by row from its
-///   first corner; a face of one facet keeps its tag. Each records the face's
-///   surface as NURBS over that rectangle (topo::Face::analyticSurface), one
+///   iso-curve is. Where FacetResolution::minorSegments is set, a sphere's
+///   rows and a torus's count round its tube are as many as it says, the
+///   edges along them cut alike (as master's primitives are), and are not
+///   raised: an edge another face cuts finer leaves the face refused. Its facets are
+///   `<face>/facet:<k>`, row by row from its first corner; a face of one facet keeps its tag. Each
+///   records the face's surface as NURBS over that rectangle (topo::Face::analyticSurface), one
 ///   shared by all of them.
 /// - Each chord of an edge is `<edge>/chord:<k>`, counted along the edge from
 ///   its half-edge's origin; an edge of one chord keeps its tag; an edge with
