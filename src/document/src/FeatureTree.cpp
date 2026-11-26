@@ -198,6 +198,13 @@ bool ExtrudeFeature::setVector(const std::string& name, const math::Vec3& value)
     return true;
 }
 
+model::FacetResolution ExtrudeFeature::facetResolution() const {
+    model::FacetResolution resolution;
+    resolution.segmentsPerTurn = m_segments;
+    resolution.chordTolerance = m_chordTolerance;
+    return resolution;
+}
+
 bool ExtrudeFeature::hasCurvedProfile() const {
     if (!m_sketch) return false;
     for (const auto& ent : m_sketch->entities()) {
@@ -373,6 +380,13 @@ int RevolveFeature::segments() const {
         if (radius > 0.0) return model::Revolve::segmentsForTolerance(radius, m_chordTolerance);
     }
     return m_segments;
+}
+
+model::FacetResolution RevolveFeature::facetResolution() const {
+    model::FacetResolution resolution;
+    resolution.segmentsPerTurn = segments();
+    resolution.chordTolerance = m_chordTolerance;
+    return resolution;
 }
 
 std::string RevolveFeature::featureID() const {
@@ -1404,6 +1418,15 @@ std::unique_ptr<topo::Solid> ImportedBodyFeature::execute(
     return body;
 }
 
+FeatureOutput ImportedBodyFeature::executeWithExact(const BuildContext& context,
+                                                    std::unique_ptr<topo::Solid> inputSolid,
+                                                    std::string* reason) const {
+    FeatureOutput out;
+    out.faceted = executeIn(context, std::move(inputSolid), reason);
+    if (out.faceted) out.exact = exactBody();
+    return out;
+}
+
 // ---------------------------------------------------------------------------
 // FeatureTree
 // ---------------------------------------------------------------------------
@@ -1528,13 +1551,19 @@ std::unique_ptr<topo::Solid> checked(std::unique_ptr<topo::Solid> solid, std::st
 /// Run a feature, turning an exception from the kernel (the NURBS constructors
 /// throw on invalid input, for one) into a failure with its reason, instead of
 /// letting it unwind into the caller — ultimately the Qt event loop, which
-/// cannot carry an exception and would terminate the application.
+/// cannot carry an exception and would terminate the application. The exact
+/// body it built, where it built one (Feature::executeWithExact), goes to
+/// @p exact when given, with a faceted body that passes.
 std::unique_ptr<topo::Solid> executeContained(const Feature& feat,
                                               std::unique_ptr<topo::Solid> input,
                                               std::string* reason = nullptr,
-                                              const BuildContext& context = {}) {
+                                              const BuildContext& context = {},
+                                              std::unique_ptr<topo::Solid>* exact = nullptr) {
     try {
-        return checked(feat.executeIn(context, std::move(input), reason), reason);
+        FeatureOutput out = feat.executeWithExact(context, std::move(input), reason);
+        auto faceted = checked(std::move(out.faceted), reason);
+        if (faceted && exact != nullptr) *exact = std::move(out.exact);
+        return faceted;
     } catch (const std::exception& e) {
         if (reason) *reason = e.what();
     } catch (...) {
@@ -1773,10 +1802,14 @@ bool prepareSketches(const Feature& feature, const topo::Solid* part, Placed& pl
 /// result) is kernel code too, and an exception from it would unwind through
 /// every build: out of a worker, or out of a trial build that has put the
 /// feature into the tree and not yet taken it out.
+///
+/// The exact body a creating feature built (Feature::executeWithExact) goes
+/// to @p exactTool when given, once the feature has applied: what the build's
+/// ExactFollower joins to the part's exact solid.
 std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_ptr<topo::Solid> part,
                                           std::string* reason,
-                                          const std::vector<const Feature*>& before,
-                                          Placed& placed) {
+                                          const std::vector<const Feature*>& before, Placed& placed,
+                                          std::unique_ptr<topo::Solid>* exactTool = nullptr) {
     try {
         if (!prepareSketches(feature, part.get(), placed, reason)) return nullptr;
         BuildContext context;
@@ -1785,10 +1818,13 @@ std::unique_ptr<topo::Solid> applyFeature(const Feature& feature, std::unique_pt
             return executeContained(feature, std::move(part), reason, context);
         }
         context.part = part.get();  // what a through-all extrusion goes through
-        auto tool = executeContained(feature, nullptr, reason, context);
+        std::unique_ptr<topo::Solid> exact;
+        auto tool = executeContained(feature, nullptr, reason, context, &exact);
         if (!tool) return nullptr;
-        return combine(feature.operation(), std::move(part), std::move(tool), reason,
-                       feature.naming());
+        auto combined = combine(feature.operation(), std::move(part), std::move(tool), reason,
+                                feature.naming());
+        if (combined && exactTool != nullptr) *exactTool = std::move(exact);
+        return combined;
     } catch (const std::exception& e) {
         if (reason) *reason = e.what();
     } catch (...) {
@@ -2427,9 +2463,10 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
         const Feature& feature = *m_features[static_cast<size_t>(i)];
         std::string reason = feature.expressionError();  // Phase 155
         const bool first = solid == nullptr;
-        auto next = reason.empty()
-                        ? applyFeature(feature, std::move(solid), &reason, before, placed)
-                        : nullptr;
+        std::unique_ptr<topo::Solid> exactTool;
+        auto next = reason.empty() ? applyFeature(feature, std::move(solid), &reason, before,
+                                                  placed, &exactTool)
+                                   : nullptr;
         if (!next) {
             result.failedFeatureIndex = i;
             result.failureMessage = reason.empty()
@@ -2449,7 +2486,7 @@ BuildResult FeatureTree::buildWithDiagnostics(BuildControl* control,
             return result;
         }
         solid = std::move(next);
-        exact.follow(feature, first);
+        exact.follow(feature, first, std::move(exactTool));
         before.push_back(&feature);
         result.lastSuccessfulFeature = i;
     }

@@ -15,6 +15,7 @@
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BooleanOp.h"
 #include "horizon/modeling/Extrude.h"
+#include "horizon/modeling/FacetResolution.h"
 #include "horizon/modeling/FilletOp.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/ReferenceGeometry.h"
@@ -66,6 +67,15 @@ struct BuildContext {
     std::vector<const Feature*> before;
 };
 
+/// What a feature builds (stage 3): its body in facets, as every operation not yet converted
+/// reads it, and, for a feature built exactly, the exact body those facets are the bridge copy of
+/// (model::facetExact at the feature's facetResolution()). `exact` is null for a feature master's
+/// construction still builds; both are null when the feature fails.
+struct FeatureOutput {
+    std::unique_ptr<topo::Solid> faceted;
+    std::unique_ptr<topo::Solid> exact;
+};
+
 class Feature {
 public:
     virtual ~Feature() = default;
@@ -99,6 +109,23 @@ public:
         (void)context;
         return execute(std::move(inputSolid), reason);
     }
+
+    /// executeIn(), with the exact body where the feature is built exactly (stage 3): the tree
+    /// builds every feature this way. A converted feature builds its exact body, named for the
+    /// feature, and gives its bridge copy (model::facetExact at facetResolution()) as `faceted`,
+    /// which its executeIn() gives too. Where its exact body cannot be built it fails, with
+    /// "could not be built exactly: <why>", and never builds master's faceted body in its place.
+    /// By default: executeIn(), and no exact body.
+    virtual FeatureOutput executeWithExact(const BuildContext& context,
+                                           std::unique_ptr<topo::Solid> inputSolid,
+                                           std::string* reason = nullptr) const {
+        return {executeIn(context, std::move(inputSolid), reason), nullptr};
+    }
+
+    /// Master's faceting rule for this feature: how finely its faceted construction cut its
+    /// curves, and so how finely the bridge cuts its exact body, for master's facet, edge and
+    /// vertex counts. By default FacetResolution's own.
+    virtual model::FacetResolution facetResolution() const { return {}; }
 
     /// The sketches it is made from (Phase 157). Before it builds the
     /// feature, the tree places each that follows a face on that face, and
@@ -287,6 +314,8 @@ public:
     double chordTolerance() const { return m_chordTolerance; }
     /// Whether the profile has an arc or circle, and so a resolution.
     bool hasCurvedProfile() const;
+    /// {segments(), chordTolerance()}: its profile's resolution.
+    model::FacetResolution facetResolution() const override;
 
 private:
     std::shared_ptr<Sketch> m_sketch;
@@ -337,6 +366,8 @@ public:
     /// count whose error grows with the radius.  0 means the count is used as
     /// given.  Setting the count explicitly returns to count mode.
     double chordTolerance() const { return m_chordTolerance; }
+    /// {segments(), chordTolerance()}: its profile's resolution, and its turn's.
+    model::FacetResolution facetResolution() const override;
     void restoreFeatureID(const std::string& id) override;
 
 private:
@@ -935,6 +966,10 @@ public:
     /// (the faceted copy; Phase 141).
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
+    /// execute()'s faceted copy, and exactBody() (null where its body is not exact).
+    FeatureOutput executeWithExact(const BuildContext& context,
+                                   std::unique_ptr<topo::Solid> inputSolid,
+                                   std::string* reason = nullptr) const override;
     bool createsNewBody() const override { return true; }
 
     /// The body as read, exact, for the part's exact counterpart
