@@ -33,8 +33,9 @@ struct ExactCounterpart;
 
 /// Why a part whose bodies would give it an exact counterpart is shown from its facets instead,
 /// as a kind (Document::exactNoteKind): the window says it in its own words, translated, and the
-/// note's detail (Document::exactNote), the technical reason, beside them. The document builds no
-/// words for it.
+/// note's detail (Document::exactNote) beside them. The kind is what is translated; the document
+/// builds no words for it. The detail stays a technical reason in English, as an import's report
+/// and a `problem` string are (Ruling 38): which face, and why, or the two volumes.
 enum class ExactNoteKind {
     None,             ///< no note: the part is shown exactly, or has no counterpart by design
     ShownFromFacets,  ///< its exact form could not be had, meshed or measured
