@@ -1072,6 +1072,15 @@ std::unique_ptr<topo::Solid> PatternFeature::execute(std::unique_ptr<topo::Solid
 
 math::IdCounter<int> PrimitiveFeature::s_nextID{1};
 
+namespace {
+
+/// Why master's factory made no primitive, as master said it.
+constexpr const char* kNoPrimitive =
+    "these dimensions do not make a solid: they must be positive (a cone may have one zero "
+    "radius, a torus's tube must be thinner than its ring)";
+
+}  // namespace
+
 std::unique_ptr<PrimitiveFeature> PrimitiveFeature::makeBox(double width, double height,
                                                             double depth) {
     std::unique_ptr<PrimitiveFeature> f(new PrimitiveFeature());
@@ -1262,11 +1271,7 @@ std::unique_ptr<topo::Solid> PrimitiveFeature::facetedAsMaster(std::string* reas
             solid = model::PrimitiveFactory::makeTorus(m_p0, m_p1, n);
             break;
     }
-    if (!solid) {
-        return failWith(reason,
-                        "these dimensions do not make a solid: they must be positive (a cone may "
-                        "have one zero radius, a torus's tube must be thinner than its ring)");
-    }
+    if (!solid) return failWith(reason, kNoPrimitive);
     if (naming() == model::NamingScheme::Stable) {
         // This feature's names, not the kind's: every box's top was
         // `box/top`, so a second box's was the first's too. Edges after the
@@ -1290,6 +1295,12 @@ FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/
     FeatureOutput out;
     if (naming() != model::NamingScheme::Stable) {
         out.faceted = facetedAsMaster(reason);
+        return out;
+    }
+    // A torus whose tube reaches its axis is refused as master refused it (Ruling 2): the exact
+    // primitive's apple is for revolves.
+    if (m_kind == Kind::Torus && m_p1 >= m_p0) {
+        if (reason) *reason = kNoPrimitive;
         return out;
     }
     // Built in the frame master's placement moves its primitive to: the seam along that frame's

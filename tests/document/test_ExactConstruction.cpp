@@ -431,31 +431,26 @@ TEST(ExactConstruction, EachPrimitiveStandsWhereMastersStood) {
     }
 }
 
-// A torus whose tube meets or crosses its axis, which master's factory refused, is the exact
-// primitive's "apple" (the tube's circle on the frame's x side of the axis, turned about it): a
-// spindle (ring 5, tube 6) is exact, its volume the closed form's, 2 pi (pi r^2 R - M), M the
-// moment about the axis of the tube's piece across it. A horn (tube as wide as its ring) comes to
-// a cusp at its pole, which the read point does not mesh yet (Ruling 9): built, and shown from its
-// facets, saying why.
-TEST(ExactConstruction, ATorusWhoseTubeMeetsItsAxisIsAnApple) {
-    const double R = 5.0;
-    const double r = 6.0;
-    Document spindle;
-    buildAlone(spindle, PrimitiveFeature::makeTorus(R, r));
-    ASSERT_TRUE(spindle.rebuildModel()) << spindle.lastBuildMessage();
-    ASSERT_NE(spindle.exactSolid(), nullptr) << spindle.exactNote();
-    // The piece of the tube's disc across the axis, u = x - R from -r to -R: its moment about the
-    // axis, the integral of (u + R) 2 sqrt(r^2 - u^2).
-    const double s = std::sqrt(r * r - R * R);
-    const double across = 2.0 * (-s * s * s / 3.0 - R * R * s / 2.0 +
-                                 R * r * r / 2.0 * std::asin(-R / r) + R * r * r * kPi / 4.0);
-    const double volume = 2.0 * kPi * (kPi * r * r * R - across);
-    EXPECT_NEAR(volumeOf(*spindle.exactSolid()), volume, volume * 1e-9);
-
-    Document horn;
-    buildAlone(horn, PrimitiveFeature::makeTorus(R, R));
-    ASSERT_TRUE(horn.rebuildModel()) << horn.lastBuildMessage();
-    ASSERT_NE(horn.solid(), nullptr);
-    EXPECT_EQ(horn.exactSolid(), nullptr);
-    EXPECT_NE(horn.exactNote().find("cusp"), std::string::npos) << horn.exactNote();
+// Ruling 2: a torus whose tube reaches its axis (a tube as wide as its ring, or wider), which
+// master's factory refused, is refused as master refused it, in master's words (recorded at
+// 0fe10934). The exact primitive's apple stays for the revolves that will need it. A torus with
+// no tube has no exact form, and says so (AFailedExactBuildFailsTheFeature).
+TEST(ExactConstruction, ATorusWhoseTubeReachesItsAxisIsRefusedAsBefore) {
+    const std::string masters =
+        "Feature 'Torus' failed: these dimensions do not make a solid: they must be positive (a "
+        "cone may have one zero radius, a torus's tube must be thinner than its ring)";
+    for (const double tube : {5.0, 6.0}) {
+        SCOPED_TRACE(tube);
+        auto torus = PrimitiveFeature::makeTorus(5.0, tube);
+        std::string why;
+        const hz::doc::FeatureOutput out = torus->executeWithExact({}, nullptr, &why);
+        EXPECT_EQ(out.faceted, nullptr);
+        EXPECT_EQ(out.exact, nullptr);
+        Document part;
+        buildAlone(part, std::move(torus));
+        EXPECT_FALSE(part.rebuildModel());
+        EXPECT_EQ(part.lastBuildMessage(), masters);
+        EXPECT_EQ(part.solid(), nullptr);
+        EXPECT_EQ(part.exactSolid(), nullptr);
+    }
 }
