@@ -884,4 +884,43 @@ inline std::string blockWithABall() {
     return stepFile(d.text);
 }
 
+/// A cylinder of radius @p radius about the z axis, from z = 0 up to its top cut off by a plane
+/// leaning @p lean radians off the flat, through (0, 0, @p height) and rising towards +x: as
+/// OpenCASCADE writes one, its side bounded by its round rim, a seam and its top's ELLIPSE, which
+/// lies on both. Its side is no rectangle of the cylinder's (u, v): its top rim is a wave across
+/// it, a trimmed curved face.
+inline std::string slantCylinder(double radius, double height, double lean) {
+    Data d;
+    const math::Vec3 up{0, 0, 1};
+    const math::Vec3 x{1, 0, 0};
+    const int axis = d.placement({0, 0, 0}, up, x);
+    const int rim = d.add("CIRCLE(''," + Data::ref(axis) + "," + real(radius) + ")");
+    const math::Vec3 low{radius, 0, 0};
+    const math::Vec3 high{radius, 0, height + radius * std::tan(lean)};
+    const int bottom = d.add("VERTEX_POINT(''," + Data::ref(d.point(low)) + ")");
+    const int top = d.add("VERTEX_POINT(''," + Data::ref(d.point(high)) + ")");
+    const math::Vec3 normal{-std::sin(lean), 0, std::cos(lean)};
+    const math::Vec3 major{std::cos(lean), 0, std::sin(lean)};
+    const int tilted = d.placement({0, 0, height}, normal, major);
+    const int ellipse = d.add("ELLIPSE(''," + Data::ref(tilted) + "," +
+                              real(radius / std::cos(lean)) + "," + real(radius) + ")");
+    const int line = d.add("LINE(''," + Data::ref(d.point(low)) + ",VECTOR(''," +
+                           Data::ref(d.direction(up)) + ",1.))");
+    const int round = d.add("EDGE_CURVE(''," + Data::ref(bottom) + "," + Data::ref(bottom) + "," +
+                            Data::ref(rim) + ",.T.)");
+    const int cut = d.add("EDGE_CURVE(''," + Data::ref(top) + "," + Data::ref(top) + "," +
+                          Data::ref(ellipse) + ",.T.)");
+    const int seam = d.add("EDGE_CURVE(''," + Data::ref(bottom) + "," + Data::ref(top) + "," +
+                           Data::ref(line) + ",.T.)");
+    const int cylinder = d.add("CYLINDRICAL_SURFACE(''," +
+                               Data::ref(d.placement({0, 0, 0}, up, x)) + "," + real(radius) + ")");
+    const int side = d.face({{round, true}, {seam, true}, {cut, false}, {seam, false}}, cylinder);
+    const int lid = d.face({{cut, true}}, d.add("PLANE(''," + Data::ref(tilted) + ")"));
+    const int base = d.face({{round, false}}, d.add("PLANE(''," + Data::ref(axis) + ")"), false);
+    const int shell = d.add("CLOSED_SHELL('',(" + Data::ref(side) + "," + Data::ref(lid) + "," +
+                            Data::ref(base) + "))");
+    d.add("MANIFOLD_SOLID_BREP('slant'," + Data::ref(shell) + ")");
+    return stepFile(d.text);
+}
+
 }  // namespace hz::step_text

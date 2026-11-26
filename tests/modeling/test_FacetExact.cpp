@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <map>
@@ -35,6 +36,7 @@
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/HalfEdge.h"
+#include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
 namespace {
@@ -589,4 +591,158 @@ TEST(FacetExact, AnAppleIsCutAtEqualAnglesRoundItsAxis) {
         const auto uv = surface.invert(v.point);
         EXPECT_LT((surface.evaluate(uv.x, uv.y) - v.point).length(), 1e-9);
     }
+}
+
+namespace {
+
+/// The one solid @p text holds, read as File > Import > STEP reads it, in millimetres.
+std::unique_ptr<topo::Solid> readOne(const std::string& text) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto read = hz::io::StepFormat::fromString(text, nullptr, nullptr, inMillimetres);
+    EXPECT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    return read.empty() ? nullptr : std::move(read.front());
+}
+
+/// Each face of @p solid as its name and its outer loop's corners, in order from its wire's
+/// start; sorted, so two solids sewn from the same facets compare equal.
+std::vector<std::pair<std::string, std::vector<std::array<double, 3>>>> facetsOf(
+    const topo::Solid& solid) {
+    std::vector<std::pair<std::string, std::vector<std::array<double, 3>>>> out;
+    for (const auto& f : solid.faces()) {
+        std::vector<std::array<double, 3>> corners;
+        const topo::HalfEdge* h = f.outerLoop->halfEdge;
+        do {
+            corners.push_back({h->origin->point.x, h->origin->point.y, h->origin->point.z});
+            h = h->next;
+        } while (h != f.outerLoop->halfEdge);
+        out.emplace_back(f.topoId.tag(), std::move(corners));
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+/// The farthest any point of @p solid's edges and faces strays inside the cylinder of radius
+/// @p radius about the z axis through @p centre, of those whose corners are all on it (within
+/// @p on): an edge's middle, the centre of a face along it (not across it, as a cap is). The sag
+/// of its chords and facets.
+double sagInside(const topo::Solid& solid, const Vec3& centre, double radius, double on) {
+    const auto off = [&](const Vec3& p) {
+        return radius - std::hypot(p.x - centre.x, p.y - centre.y);
+    };
+    double worst = 0.0;
+    for (const auto& e : solid.edges()) {
+        const Vec3 a = e.halfEdge->origin->point;
+        const Vec3 b = e.halfEdge->twin->origin->point;
+        if (std::abs(off(a)) > on || std::abs(off(b)) > on) continue;
+        worst = std::max(worst, off((a + b) * 0.5));
+    }
+    for (const auto& f : solid.faces()) {
+        Vec3 sum;
+        int n = 0;
+        bool onIt = true;
+        const topo::HalfEdge* h = f.outerLoop->halfEdge;
+        do {
+            onIt = onIt && std::abs(off(h->origin->point)) <= on;
+            sum = sum + h->origin->point;
+            ++n;
+            h = h->next;
+        } while (h != f.outerLoop->halfEdge);
+        const bool along = std::abs(topo::loopNormal(&f).normalized().z) < 0.5;
+        if (onIt && along) worst = std::max(worst, off(sum * (1.0 / n)));
+    }
+    return worst;
+}
+
+}  // namespace
+
+// Ruling 17: a face with a NURBS carrier is an import's, and the bridge cuts it as the import's
+// own bridge (facetCurved) does: at 32 a turn, the same facets, corner for corner, a curved face
+// that is no rectangle of its surface (a band between two rims, as Solid Edge and Alibre write a
+// cylinder's side) and a flat face included. Where it was refused, a part made of an import and
+// a primitive had no copy to draw.
+TEST(FacetExact, AFaceWithACarrierIsCutAsTheImportsBridgeCutsIt) {
+    const struct {
+        const char* what;
+        std::string text;
+    } imports[] = {
+        {"OpenCASCADE's cylinder", hz::step_text::externalStyleCylinder()},
+        {"a band between two rims", hz::step_text::bandCylinder()},
+        {"a cylinder cut on a slant", hz::step_text::slantCylinder(1.0, 2.0, 0.3)},
+        {"Alibre's tube", hz::step_text::alibreTube()},
+        {"a block with a ball out of it", hz::step_text::blockWithABall()},
+        {"a block", hz::step_text::block(false)},
+    };
+    for (const auto& i : imports) {
+        SCOPED_TRACE(i.what);
+        const auto solid = readOne(i.text);
+        ASSERT_NE(solid, nullptr);
+        const auto imported = facetCurved(*solid);
+        ASSERT_NE(imported.solid, nullptr) << imported.error;
+        const auto bridge = facetExact(*solid, FacetResolution{32, 0.0});
+        ASSERT_NE(bridge.solid, nullptr) << bridge.error;
+        EXPECT_FALSE(bridge.copied) << "an import's faces are sewn as its bridge sews them";
+        EXPECT_EQ(facetsOf(*bridge.solid), facetsOf(*imported.solid));
+        EXPECT_EQ(bridge.outlined, imported.outlined);
+        EXPECT_TRUE(bridge.solid->isValid()) << bridge.solid->validationReport();
+    }
+}
+
+// With a chord tolerance an import's faces are cut finer, to keep within it, as a drawing's copy
+// needs (0.01 mm on paper): the rims, and the lines and triangles across the side, each with its
+// corners on the cylinder, sag no more than it, on a band between two rims and on a side cut
+// within its trim (a cylinder cut on a slant). At 32 a turn alone they sag four times as much.
+TEST(FacetExact, AnImportsFacesAreCutWithinAChordTolerance) {
+    const struct {
+        const char* what;
+        std::string text;
+        double volume;
+    } imports[] = {
+        {"a band between two rims", hz::step_text::bandCylinder(), 2.0 * kPi},
+        {"a cylinder cut on a slant", hz::step_text::slantCylinder(1.0, 2.0, 0.3), 2.0 * kPi},
+    };
+    constexpr double kTolerance = 1e-3;
+    for (const auto& i : imports) {
+        SCOPED_TRACE(i.what);
+        const auto solid = readOne(i.text);
+        ASSERT_NE(solid, nullptr);
+        const auto coarse = facetExact(*solid, FacetResolution{32, 0.0});
+        ASSERT_NE(coarse.solid, nullptr) << coarse.error;
+        EXPECT_GT(sagInside(*coarse.solid, {}, 1.0, 1e-9), 4.0 * kTolerance);
+        const auto fine = facetExact(*solid, FacetResolution{32, kTolerance});
+        ASSERT_NE(fine.solid, nullptr) << fine.error;
+        EXPECT_TRUE(fine.solid->isValid()) << fine.solid->validationReport();
+        EXPECT_TRUE(fine.outlined.empty());
+        EXPECT_GT(fine.solid->vertexCount(), coarse.solid->vertexCount());
+        EXPECT_LE(sagInside(*fine.solid, {}, 1.0, 1e-9), kTolerance);
+        const double volume = MassPropertiesCalculator::compute(*fine.solid).volume;
+        EXPECT_NEAR(volume, i.volume, i.volume * 2.0 * kTolerance) << "within its sag";
+    }
+}
+
+// A part of an import and a primitive, as its exact part gathers them (Ruling 17): the import's
+// faces are cut as its bridge cuts them and the primitive's from their exact fields, each as it is
+// cut alone, in one copy.
+TEST(FacetExact, AnImportBesideABodyBuiltExactlyIsCutEachItsOwnWay) {
+    const auto band = readOne(hz::step_text::bandCylinder());
+    ASSERT_NE(band, nullptr);
+    const auto cylinder = exact::makeCylinder(geo::Frame::fromAxis({5, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    ASSERT_NE(cylinder, nullptr);
+    nameEdgesLogically(*cylinder);
+    topo::Solid both;
+    Pattern::append(both, *band, Mat4::identity());
+    Pattern::append(both, *cylinder, Mat4::identity());
+
+    const auto bridge = facetExact(both, FacetResolution{32, 0.0});
+    ASSERT_NE(bridge.solid, nullptr) << bridge.error;
+    EXPECT_TRUE(bridge.solid->isValid()) << bridge.solid->validationReport();
+    const auto imported = facetCurved(*band);
+    ASSERT_NE(imported.solid, nullptr) << imported.error;
+    const auto built = facetExact(*cylinder, FacetResolution{32, 0.0});
+    ASSERT_NE(built.solid, nullptr) << built.error;
+    auto expected = facetsOf(*imported.solid);
+    const auto own = facetsOf(*built.solid);
+    expected.insert(expected.end(), own.begin(), own.end());
+    std::sort(expected.begin(), expected.end());
+    EXPECT_EQ(facetsOf(*bridge.solid), expected);
 }
