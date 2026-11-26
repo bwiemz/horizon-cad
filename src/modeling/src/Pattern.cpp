@@ -965,6 +965,18 @@ bool exactWithoutCarriers(const Shell& shell) {
     return exact;
 }
 
+/// Whether every face of @p shell carries an exact surface, a NURBS carrier or not: an import's
+/// body as read, or a part built exactly.
+bool exactThroughout(const Shell& shell) {
+    bool any = false;
+    for (const Face* f : shell.faces) {
+        if (f == nullptr || !f->alive) continue;
+        if (!f->exactSurface) return false;
+        any = true;
+    }
+    return any;
+}
+
 /// The box round @p shell's exact geometry: its corners, points along its edges' exact curves
 /// (topo::kLoopSamples on each), and over each curved face its surface at a grid of as many
 /// points each way across the rectangle its outer loop spans in (u, v), unwrapped as the exact
@@ -1057,10 +1069,20 @@ std::vector<std::vector<const topo::Shell*>> Pattern::bodyShells(const topo::Sol
     auto measures = measureShells(solid);
     // A shell of a part built exactly by its exact faces: its signed volume integrated on them
     // (coarse: its sign is what tells a body from a cavity), its box round its exact geometry.
-    // Where they cannot be integrated, it is measured by its corners, as well as can be.
+    // Where they cannot be integrated, it is measured by its corners, as well as can be. Where
+    // any shell has no carriers, facetCurved may refuse the whole solid (a curved face with none
+    // it cannot cut), leaving every shell measured by its corners: so each shell whose faces are
+    // all exact is measured on them, an import's beside a part built exactly (a void's one face,
+    // whose corners span nothing, among them).
+    bool withoutCarriers = false;
+    for (const auto& shell : solid.shells()) {
+        withoutCarriers = withoutCarriers || exactWithoutCarriers(shell);
+    }
     std::vector<bool> exact;
     exact.reserve(solid.shells().size());
-    for (const auto& shell : solid.shells()) exact.push_back(exactWithoutCarriers(shell));
+    for (const auto& shell : solid.shells()) {
+        exact.push_back(withoutCarriers && exactThroughout(shell));
+    }
     if (std::find(exact.begin(), exact.end(), true) != exact.end()) {
         const auto measured = detail::measureShellVolumes(solid, true, nullptr, exact);
         if (measured.problem.empty() && measured.volumes.size() == measures.size()) {

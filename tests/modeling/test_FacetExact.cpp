@@ -18,9 +18,12 @@
 #include <utility>
 #include <vector>
 
+#include "StepTestText.h"
+#include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/Curve3.h"
 #include "horizon/math/Mat4.h"
+#include "horizon/math/Units.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/ExactPrimitives.h"
@@ -476,6 +479,37 @@ TEST(FacetExact, AnExactBodyWithAVoidIsMeasured) {
         ASSERT_TRUE(props.valid) << props.problem;
         const double volume = 1000.0 - v.volume;
         EXPECT_NEAR(props.volume, volume, 1e-9 * volume);
+    }
+}
+
+// A part built exactly beside an import (stage 3): the import's faces carry NURBS carriers, the
+// constructed body's do not, so facetCurved refuses the whole solid and measureShells is left with
+// corners. The import is a block with a ball out of it, its void one face bounded by its seam,
+// whose corners (the ball's two poles) span nothing: measured so, the void was taken for a body
+// of its own. Every shell whose faces are all exact is measured on them where any shell lacks
+// carriers, so the void stays with its block and the sphere is a body of its own.
+TEST(FacetExact, AnImportsVoidBesideABodyBuiltExactlyStaysWithItsBlock) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto read = hz::io::StepFormat::fromString(hz::step_text::blockWithABall(), nullptr, nullptr,
+                                               inMillimetres);
+    ASSERT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    const auto sphere = exact::makeSphere(geo::Frame::fromAxis({10, 2, 2}, {0, 0, 1}), 1.5);
+    ASSERT_NE(sphere, nullptr);
+    topo::Solid both;
+    Pattern::append(both, *read.front(), Mat4::identity());
+    Pattern::append(both, *sphere, Mat4::identity());
+    ASSERT_EQ(both.shells().size(), 3u);
+
+    const auto bodies = Pattern::bodyShells(both);
+    ASSERT_EQ(bodies.size(), 2u) << "the block with its void, and the sphere";
+    std::multiset<std::size_t> sizes;
+    for (const auto& body : bodies) sizes.insert(body.size());
+    EXPECT_EQ(sizes, (std::multiset<std::size_t>{1u, 2u}));
+    for (const auto& body : bodies) {
+        if (body.size() != 2u) continue;
+        EXPECT_EQ(body[0], &both.shells()[0]) << "the block's outer shell first";
+        EXPECT_EQ(body[1], &both.shells()[1]) << "then its void";
     }
 }
 
