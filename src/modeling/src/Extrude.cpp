@@ -4,7 +4,6 @@
 #include <array>
 #include <cassert>
 #include <cmath>
-#include <exception>
 #include <iomanip>
 #include <locale>
 #include <optional>
@@ -26,6 +25,7 @@
 #include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/math/ModelTolerance.h"
 #include "horizon/modeling/BooleanOp.h"
+#include "horizon/modeling/ExactBuild.h"
 #include "horizon/modeling/Faceting.h"
 #include "horizon/modeling/ProfileValidator.h"
 #include "horizon/topology/EulerOps.h"
@@ -889,47 +889,39 @@ private:
 
 namespace {
 
-/// The exact extrusion of the regions @p found (which master builds) along @p offset, or null
-/// with "could not be built exactly: <why>".
+/// The exact extrusion of the regions @p found (which master builds) along @p offset, or null with
+/// why it cannot be built exactly in @p why (buildExactly gives the reason).
 std::unique_ptr<topo::Solid> extrudeExactly(const ProfileRegions& found,
                                             const draft::SketchPlane& plane, const Vec3& offset,
-                                            const std::string& featureID, std::string* reason) {
-    const auto notExactly = [reason](const std::string& why) -> std::unique_ptr<topo::Solid> {
-        if (reason) *reason = "could not be built exactly: " + why;
+                                            const std::string& featureID, std::string& why) {
+    if (!std::isfinite(offset.length())) {
+        why = "its direction is not a finite vector";
         return nullptr;
-    };
-    if (!std::isfinite(offset.length())) return notExactly("its direction is not a finite vector");
-    try {
-        auto solid = std::make_unique<topo::Solid>();
-        ExactExtrusion build(*solid, plane, offset);
-        // Named as master named the faceted extrusion's: the first region for the feature, the
-        // others `<feature>~region<r>`, and each hole's sides `<feature>~hole<k>`, counted
-        // through the regions.
-        int holeCount = 0;
-        for (size_t r = 0; r < found.regions.size(); ++r) {
-            std::string why;
-            const auto region = exact::regionOf(found.regions[r], &why);
-            if (!region) return notExactly(why);
-            std::vector<std::string> holeSources;
-            holeSources.reserve(region->holes.size());
-            for (size_t k = 0; k < region->holes.size(); ++k) {
-                holeSources.push_back(featureID + "~hole" + std::to_string(holeCount++));
-            }
-            // A single loop's caps start where master's prism's did; a Boolean made the rest.
-            const CapStarts starts =
-                found.isSingleLoop()
-                    ? mastersCapStarts(region->outer, offset.dot(plane.normal()) > 0.0)
-                    : CapStarts{};
-            build.addRegion(*region, r == 0 ? featureID : featureID + "~region" + std::to_string(r),
-                            holeSources, starts);
-        }
-        std::string why;
-        if (!build.coverGaps(&why)) return notExactly(why);
-        nameEdgesLogically(*solid);
-        return solid;
-    } catch (const std::exception& e) {
-        return notExactly(e.what());
     }
+    auto solid = std::make_unique<topo::Solid>();
+    ExactExtrusion build(*solid, plane, offset);
+    // Named as master named the faceted extrusion's: the first region for the feature, the
+    // others `<feature>~region<r>`, and each hole's sides `<feature>~hole<k>`, counted through
+    // the regions.
+    int holeCount = 0;
+    for (size_t r = 0; r < found.regions.size(); ++r) {
+        const auto region = exact::regionOf(found.regions[r], &why);
+        if (!region) return nullptr;
+        std::vector<std::string> holeSources;
+        holeSources.reserve(region->holes.size());
+        for (size_t k = 0; k < region->holes.size(); ++k) {
+            holeSources.push_back(featureID + "~hole" + std::to_string(holeCount++));
+        }
+        // A single loop's caps start where master's prism's did; a Boolean made the rest.
+        const CapStarts starts =
+            found.isSingleLoop() ? mastersCapStarts(region->outer, offset.dot(plane.normal()) > 0.0)
+                                 : CapStarts{};
+        build.addRegion(*region, r == 0 ? featureID : featureID + "~region" + std::to_string(r),
+                        holeSources, starts);
+    }
+    if (!build.coverGaps(&why)) return nullptr;
+    nameEdgesLogically(*solid);
+    return solid;
 }
 
 /// Master's faceted extrude of the single loop @p loop as it named what it made (Ruling 21): its
@@ -982,39 +974,26 @@ MastersFacets mastersPrism(const ProfileValidationResult& loop, const draft::Ske
 }
 
 /// The exact extrusion of @p found (which master builds) and its bridge copy at {@p segments,
-/// @p chordTolerance}, named as nameBridgeEdges names it and, for a single loop, as master's
-/// prism named the same places (nameAsMasters); master made a profile of several loops by
-/// Booleans, whose names are their own.
-Extrude::ExactAndBridge buildExactAndBridge(const ProfileRegions& found,
-                                            const draft::SketchPlane& plane, const Vec3& direction,
-                                            double distance, const std::string& featureID,
-                                            int segments, double chordTolerance,
-                                            std::string* reason) {
-    Extrude::ExactAndBridge out;
-    auto exact = extrudeExactly(found, plane, direction * distance, featureID, reason);
-    if (!exact) return out;
+/// @p chordTolerance} (buildWithBridge), numbered, for a single loop, as master's prism numbered
+/// the same places; master made a profile of several loops by Booleans, whose names are their own.
+ExactAndBridge buildExactAndBridge(const ProfileRegions& found, const draft::SketchPlane& plane,
+                                   const Vec3& direction, double distance,
+                                   const std::string& featureID, int segments,
+                                   double chordTolerance, std::string* reason) {
+    const Vec3 offset = direction * distance;
     FacetResolution resolution;
     resolution.segmentsPerTurn = segments;
     resolution.chordTolerance = chordTolerance;
-    FacetedSolid bridge;
-    try {
-        bridge = facetExact(*exact, resolution);
-    } catch (const std::exception& e) {
-        bridge.error = e.what();
-    }
-    if (!bridge.solid) {
-        if (reason) *reason = "its exact form could not be cut into facets: " + bridge.error;
-        return out;
-    }
-    if (!bridge.copied) nameBridgeEdges(*bridge.solid, *exact);
+    MastersConstruction masters;
     if (found.isSingleLoop()) {
-        nameAsMasters(*bridge.solid, *exact,
-                      mastersPrism(found.regions.front().outer, plane, direction * distance,
-                                   featureID, segments, chordTolerance));
+        masters = [&] {
+            return mastersPrism(found.regions.front().outer, plane, offset, featureID, segments,
+                                chordTolerance);
+        };
     }
-    out.exact = std::move(exact);
-    out.faceted = std::move(bridge.solid);
-    return out;
+    return buildWithBridge(
+        [&](std::string& why) { return extrudeExactly(found, plane, offset, featureID, why); },
+        resolution, masters, reason);
 }
 
 }  // namespace
@@ -1045,7 +1024,11 @@ std::unique_ptr<topo::Solid> Extrude::exact(
         if (reason) *reason = std::move(*refused);
         return nullptr;
     }
-    return extrudeExactly(found, plane, direction * distance, featureID, reason);
+    return buildExactly(
+        [&](std::string& why) {
+            return extrudeExactly(found, plane, direction * distance, featureID, why);
+        },
+        reason);
 }
 
 std::unique_ptr<topo::Solid> Extrude::execute(

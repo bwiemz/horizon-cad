@@ -7,6 +7,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/ExactBuild.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
@@ -91,15 +92,12 @@ public:
         const std::string& featureID, std::string* reason = nullptr);
 
     /// exact()'s solid and its bridge copy, what Extrude::execute gives under Stable naming.
-    struct ExactAndBridge {
-        std::unique_ptr<topo::Solid> exact;
-        std::unique_ptr<topo::Solid> faceted;
-    };
+    using ExactAndBridge = model::ExactAndBridge;
 
-    /// The extrusion built exactly and its bridge copy (model::facetExact at {segments,
-    /// chordTolerance}), its edges named by model::nameBridgeEdges. A profile of one loop, which
-    /// master's faceted prism built, has its facets, chords and seams named as that prism named
-    /// the same places, numbers and all, so a saved name binds where it bound
+    /// The extrusion built exactly and its bridge copy (model::buildWithBridge: model::facetExact
+    /// at {segments, chordTolerance}, its edges named by model::nameBridgeEdges). A profile of one
+    /// loop, which master's faceted prism built, has its facets, chords and seams named as that
+    /// prism named the same places, numbers and all, so a saved name binds where it bound
     /// (model::nameAsMasters, Ruling 21); an exact seam (a circle's line at its start) is renamed
     /// with them. Master made a profile of several loops with Booleans, whose numbers are theirs.
     /// Both null, with @p reason as exact() and execute() give it, where either cannot be made.

@@ -27,6 +27,7 @@
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
 #include "horizon/modeling/EdgeProjection.h"
+#include "horizon/modeling/ExactBuild.h"
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FacePlane.h"
@@ -1355,11 +1356,11 @@ FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/
     // Built in the frame master's placement moves its primitive to: the seam along that frame's
     // x, where master's ring starts, so the bridge's vertices are master's.
     const geo::Frame frame = isPlaced() ? geo::Frame{}.transformed(placement()) : geo::Frame{};
-    std::unique_ptr<topo::Solid> exact;
-    std::string why =
-        "these dimensions do not make a solid: they must be positive (a cone may have one zero "
-        "radius)";
-    try {
+    const auto build = [&](std::string& why) {
+        why =
+            "these dimensions do not make a solid: they must be positive (a cone may have one "
+            "zero radius)";
+        std::unique_ptr<topo::Solid> exact;
         switch (m_kind) {
             case Kind::Box:
                 exact = exactBox(frame, m_p0, m_p1, m_p2);
@@ -1377,55 +1378,44 @@ FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/
                 exact = model::exact::makeTorus(frame, m_p0, m_p1);
                 break;
         }
-    } catch (const std::exception& e) {
-        why = e.what();
-    }
-    if (!exact) {
-        if (reason) *reason = "could not be built exactly: " + why;
-        return out;
-    }
-    // This feature's names (`<featureID>/side`), its edges after the faces they part.
-    model::scopeToFeature(*exact, featureID());
-    model::nameEdgesLogically(*exact);
-    auto bridge = model::facetExact(*exact, facetResolution());
-    if (!bridge.solid) {
-        if (reason) *reason = "its exact form could not be cut into facets: " + bridge.error;
-        return out;
-    }
-    if (!bridge.copied) model::nameBridgeEdges(*bridge.solid, *exact);
+        if (!exact) return exact;
+        // This feature's names (`<featureID>/side`), its edges after the faces they part.
+        model::scopeToFeature(*exact, featureID());
+        model::nameEdgesLogically(*exact);
+        return exact;
+    };
     // Numbered as master's faceted primitive numbered the same places (Ruling 21): a box names
     // nothing by number.
-    std::vector<model::SolidSewer::InputFace> soup;
-    const char* curvedSide = "side";
-    const int n = segments();
-    switch (m_kind) {
-        case Kind::Box:
-            break;
-        case Kind::Cylinder:
-            soup = model::PrimitiveFactory::cylinderFaces(m_p0, m_p1, n);
-            curvedSide = "cylinder/side";
-            break;
-        case Kind::Sphere:
-            soup = model::PrimitiveFactory::sphereFaces(m_p0, n);
-            curvedSide = "sphere/band";
-            break;
-        case Kind::Cone:
-            soup = model::PrimitiveFactory::coneFaces(m_p0, m_p1, m_p2, n);
-            curvedSide = "cone/side";
-            break;
-        case Kind::Torus:
-            soup = model::PrimitiveFactory::torusFaces(m_p0, m_p1, n);
-            curvedSide = "torus/patch";
-            break;
-    }
-    if (!soup.empty()) {
-        model::nameAsMasters(
-            *bridge.solid, *exact,
-            model::mastersFacets(soup, curvedSide, featureID(),
-                                 isPlaced() ? placement() : math::Mat4::identity()));
-    }
-    out.faceted = std::move(bridge.solid);
-    out.exact = std::move(exact);
+    const auto masters = [&] {
+        std::vector<model::SolidSewer::InputFace> soup;
+        const char* curvedSide = "side";
+        const int n = segments();
+        switch (m_kind) {
+            case Kind::Box:
+                break;
+            case Kind::Cylinder:
+                soup = model::PrimitiveFactory::cylinderFaces(m_p0, m_p1, n);
+                curvedSide = "cylinder/side";
+                break;
+            case Kind::Sphere:
+                soup = model::PrimitiveFactory::sphereFaces(m_p0, n);
+                curvedSide = "sphere/band";
+                break;
+            case Kind::Cone:
+                soup = model::PrimitiveFactory::coneFaces(m_p0, m_p1, m_p2, n);
+                curvedSide = "cone/side";
+                break;
+            case Kind::Torus:
+                soup = model::PrimitiveFactory::torusFaces(m_p0, m_p1, n);
+                curvedSide = "torus/patch";
+                break;
+        }
+        return model::mastersFacets(soup, curvedSide, featureID(),
+                                    isPlaced() ? placement() : math::Mat4::identity());
+    };
+    auto built = model::buildWithBridge(build, facetResolution(), masters, reason);
+    out.faceted = std::move(built.faceted);
+    out.exact = std::move(built.exact);
     return out;
 }
 

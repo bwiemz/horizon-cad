@@ -31,6 +31,7 @@ add_library(hz_modeling STATIC
     src/Pattern.cpp
     src/Naming.cpp
     src/Faceting.cpp
+    src/ExactBuild.cpp
     src/ReferenceGeometry.cpp
     src/InterferenceChecker.cpp
     src/MassProperties.cpp
