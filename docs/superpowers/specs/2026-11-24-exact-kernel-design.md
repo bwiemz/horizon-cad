@@ -560,14 +560,14 @@ a user can see. Each is several PRs.
      what master built and stage 3 does not, each with its reason (anti-goal
      "failures nobody tracks"). Master is the commit just before stage 3,
      `6e822892` (Ruling 42). The regression set, run on both:
-     - every test: master's 2,897 against the branch's 3,096. None of
+     - every test: master's 2,897 against the branch's 3,107. None of
        master's was dropped or changed for a refusal. The four it no longer
        has were renamed for what stage 3 now builds or migrates;
      - the samples. Each builds as on master. The bracket and the plate are
-       faceted after their fillet and holes, with master's counts and
-       volumes. The pin is exact: 3 faces and 848.230016 (270π), where its 32
+       faceted after their fillet and holes: master's counts, volumes and
+       names. The pin is exact: 3 faces and 848.230016 (270π), where its 32
        facets enclose 842.790191. The assembly is placed by its mates, and
-       the sheet is drawn;
+       the sheet is drawn as master drew it;
      - the STEP corpus: the manifest is unchanged, and every file reads as
        it says;
      - `test_AdversarialModels`: unchanged, 9 of 9. Its kinds of operand (a
@@ -623,41 +623,42 @@ a user can see. Each is several PRs.
        exact counterpart is dropped with why. A cone's apex and a lemon's
        tip still mesh. Carried with cusp meshing.
 
-     Changed, not refused. An old part says so when it opens, wherever a
-     reference of its depends on one of these (Rulings 23, 25, 28 and 40):
-     - *Faceted copies that are not master's.* Each is the bridge's own, and
-       its volume is master's unless given here:
-       - a partial revolve's flat faces are one face each (Ruling 25): a
-         rectangle turned 90° has 20 faces, where master had 34;
-       - an extrude or revolve of several loops (holes, islands, regions) is
-         its exact solid's facets, numbered its own way (Ruling 23), not
-         master's Boolean of its loops. A plate with two holes has 70 faces
-         (master 72). A washer turned 90° encloses 80.399405, the facets' own
-         volume; master's Boolean cut 5e-5 of it more (80.395175);
-       - a sheet-metal bend other than 90° is cut in proportion to its
-         sweep, `bendSegments` a quarter turn, where master cut every bend
-         into `bendSegments` chords. A 60° bend has 6 chords (691.39981, where
-         master gave 691.45782), and a 120° bend 11 (648.11323, master
-         647.83294). Sheet-metal names are new (Ruling 28);
-       - the grid lines inside a curved face are numbered past the exact
-         edges' names (Ruling 18), so the seams inside spheres, tori and
-         revolves are renumbered. Nothing refers to a smooth grid line.
-     - *Open, for a ruling: the names a later operation numbers.* A Boolean,
-       shell or pattern after a converted feature numbers the pieces of a
-       face it splits (`<face>/piece:<n>`), and the chords and seams it
-       renames, in the order it meets the bridge copy's faces. The bridge
-       stores, starts and winds its faces otherwise than master's
-       construction did, so the numbers can differ, silently.
-       - A box drilled through off its middle has its bottom's two pieces
-         the other way round. A sheet's length saved on master on
-         `…/edge:bottom/piece:0|front` reads 6 here, where master read 14.
-       - The bracket sample's foot and the plate sample's bottom have the
-         same swap.
-       - A cylinder's rim chords are renumbered after a hole in its top.
+     *The faceted copy is master's own construction* wherever master's
+     construction of the body was one construction (Ruling 44). That holds for
+     primitives, a single loop's extrude and revolve, a hole's tool and a
+     sheet's flange. Its faces, loops and edges are in master's order and
+     winding, named as the bridge cut from the exact form names the same
+     places. So what an operation after it numbers by the order it meets
+     them is master's:
+     - the pieces of a face a Boolean splits (`<face>/piece:<n>`);
+     - the chords and seams that a Boolean, shell or pattern names again.
 
-       Fillets and chamfers on such edges fail on master and here alike.
-       Where it can show is a sheet's lengths, edge mates and sketch edges
-       projected from the part.
+     The regression set found that the bridge, stored otherwise, moved those
+     numbers silently. A sheet's length saved on master on a drilled box's
+     `…/edge:bottom/piece:0|front` read 6 where master read 14. The set's
+     downstream cases are now named as master named them at the same places
+     (`DownstreamNumbering`, tables recorded at `6e822892`): a join, a cut, a
+     shell, a pattern, an extrude with arcs, a revolve and a hole. So are
+     the bracket and plate samples, sheet and all. A partial turn's flat
+     faces are master's quads again, and every bend is cut into its
+     `bendSegments` chords, whatever its angle.
+
+     Changed, not refused. An old part says so when it opens, wherever a
+     reference of its depends on one of these (Rulings 23, 28 and 40):
+     - *Faceted copies that are not master's:* an extrude or revolve of
+       several loops (holes, islands, regions). It is its exact solid's
+       facets, numbered its own way (Ruling 23), not master's Boolean of its
+       loops. A plate with two holes has 70 faces (master 72). A washer
+       turned 90° encloses 80.399405, the facets' own volume; master's
+       Boolean cut 5e-5 of it more (80.395175). Its pieces, regions, chords
+       and seams, and the pieces an operation after it makes, are reported
+       when an old part opens. A facet named by master's Boolean may stand
+       for a part of the bridge's facet of that name, the same facet uncut.
+     - *Names that are new:* sheet metal's (Ruling 28). So are the chords of
+       an exact seam (a sphere's meridian, a torus's circles), which are
+       named after the seam (Ruling 18), and the grid lines inside a curved
+       face, numbered past the exact edges' names. Nothing refers to a
+       smooth grid line.
      - A part file of format 31 or older has its cached mesh, master's
        facets, left unread: an assembly reads and builds the part instead.
      - A primitive whose dimensions master refused is refused as before,
