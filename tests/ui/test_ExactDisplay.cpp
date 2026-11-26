@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QApplication>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFile>
@@ -110,6 +111,34 @@ void importInto(MainWindow& w, const QString& path) {
     settle(w);
     ASSERT_NE(w.activeDocument(), nullptr);
     ASSERT_NE(w.activeDocument()->solid(), nullptr) << w.activeDocument()->lastBuildMessage();
+}
+
+/// A cylinder of radius 5 and height 10, made with the Cylinder command: Stable, so exact (stage
+/// 3).
+void cylinderPrimitive(MainWindow& w) {
+    {
+        FormFiller filler(QStringLiteral("Cylinder"), FormAnswers()
+                                                          .number(QStringLiteral("size0"), 5.0)
+                                                          .number(QStringLiteral("size1"), 10.0));
+        trigger(w, "action_cylinder");
+        ASSERT_TRUE(filler.seen());
+    }
+    settle(w);
+    ASSERT_NE(w.activeDocument(), nullptr);
+    ASSERT_NE(w.activeDocument()->exactSolid(), nullptr) << w.activeDocument()->exactNote();
+}
+
+/// The Mass Properties box open now, not blocking (measured on a worker).
+QMessageBox* openMassBox() {
+    for (QWidget* widget : QApplication::topLevelWidgets()) {
+        auto* box = qobject_cast<QMessageBox*>(widget);
+        // By its name, not its title: macOS drops a message box's title.
+        if (box != nullptr && box->isVisible() &&
+            box->objectName() == QStringLiteral("massPropertiesBox")) {
+            return box;
+        }
+    }
+    return nullptr;
 }
 
 /// The mesh the window draws the part with.
@@ -539,4 +568,92 @@ TEST(ExactDisplay, TheNoteIsTranslatable) {
     EXPECT_FALSE(note->isHidden());
     EXPECT_EQ(note->text(), MarkingCatalog::marked("Shown from facets"));
     EXPECT_EQ(note->toolTip().toStdString(), w.activeDocument()->exactNote());
+}
+
+// Task 10 (the Stable path, the default since stage 3): a cylinder made with the Cylinder command
+// is exact, and Mass Properties integrates its exact faces, here on the window's thread: 25 pi 10
+// and 150 pi, said as exact, and as integrated on its exact faces, not "as they were imported".
+TEST(ExactDisplay, MassPropertiesOfAPrimitiveIsExact) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Never);
+    cylinderPrimitive(w);
+
+    DialogResponder answer(QMessageBox::Ok, QStringLiteral("Mass Properties"));
+    FormFiller filler(
+        QStringLiteral("Mass Properties"),
+        FormAnswers().choose(QStringLiteral("material"), QStringLiteral("None (volume only)")));
+    trigger(w, "action_mass_properties");
+    ASSERT_TRUE(filler.seen());
+    ASSERT_TRUE(answer.seen());
+    const std::string text = answer.text().toStdString();
+    EXPECT_NE(text.find("Exact (integrated on its exact faces):"), std::string::npos) << text;
+    EXPECT_NE(text.find("Volume: 785.3982 "), std::string::npos) << "25 pi 10: " << text;
+    EXPECT_NE(text.find("Surface area: 471.2389 "), std::string::npos) << "150 pi: " << text;
+    EXPECT_EQ(text.find("imported"), std::string::npos) << "a primitive, built: " << text;
+    EXPECT_EQ(text.find("As modelled"), std::string::npos) << text;
+}
+
+// Task 10: an exact part is measured on a worker under the faceted path's rule (Always; Auto with
+// kWorkerIdealFaces or more curved faces): the box opens at once, not blocking, and the exact
+// measure comes into it through the task.
+TEST(ExactDisplay, ExactMassRunsOnAWorkerWhenAsked) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    cylinderPrimitive(w);
+
+    FormFiller filler(QStringLiteral("Mass Properties"),
+                      FormAnswers().choose(QStringLiteral("material"), QStringLiteral("Steel")));
+    trigger(w, "action_mass_properties");
+    QMessageBox* box = openMassBox();
+    ASSERT_NE(box, nullptr) << "open while it is measured";
+    EXPECT_TRUE(box->text().contains(QStringLiteral("Measuring..."))) << box->text().toStdString();
+    EXPECT_FALSE(box->text().contains(QStringLiteral("Volume:"))) << box->text().toStdString();
+    EXPECT_TRUE(w.backgroundWorkRunning());
+    settle(w);
+    ASSERT_FALSE(w.backgroundWorkRunning());
+    const std::string text = box->text().toStdString();
+    EXPECT_NE(text.find("Exact (integrated on its exact faces):"), std::string::npos) << text;
+    EXPECT_NE(text.find("Volume: 785.3982 "), std::string::npos) << text;
+    EXPECT_NE(text.find("Mass: 6.165376 g"), std::string::npos) << "7.85 g/cm3: " << text;
+    EXPECT_NE(text.find("density 7.85 g/cm"), std::string::npos) << text;
+    EXPECT_EQ(text.find("Measuring..."), std::string::npos) << text;
+    box->accept();
+}
+
+// Task 10 (Task 13's floor note): a part whose estimate stops short of the tolerance asked for,
+// with every face taken as far as the integration goes, is said to be exact to within it, not
+// plainly "Exact", even where the estimate is under a billionth: a coin a thousandth as thick as
+// it is wide, its axis along (1, 1, 0), 1e-3 by 10 in radius.
+TEST(ExactDisplay, MassPropertiesSaysWhereAThinPartsEstimateStops) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    Document coin;
+    coin.setType(hz::doc::DocumentType::Part);
+    auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(10.0, 1e-3);
+    ASSERT_TRUE(cylinder->setVector("axisDirection", Vec3(1, 1, 0)));
+    coin.featureTree().addFeature(std::move(cylinder));
+    const QString path = dir.filePath(QStringLiteral("coin.hzpart"));
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), coin, &error)) << error;
+
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Never);
+    ASSERT_TRUE(w.openPath(path));
+    settle(w);
+    ASSERT_NE(w.activeDocument()->exactSolid(), nullptr) << w.activeDocument()->exactNote();
+    const auto measured =
+        hz::model::MassPropertiesCalculator::computeIdeal(*w.activeDocument()->exactSolid());
+    ASSERT_FALSE(measured.note.empty()) << "its estimate stops short: " << measured.estimatedError;
+
+    DialogResponder answer(QMessageBox::Ok, QStringLiteral("Mass Properties"));
+    FormFiller filler(
+        QStringLiteral("Mass Properties"),
+        FormAnswers().choose(QStringLiteral("material"), QStringLiteral("None (volume only)")));
+    trigger(w, "action_mass_properties");
+    ASSERT_TRUE(answer.seen());
+    const std::string text = answer.text().toStdString();
+    EXPECT_NE(text.find("Exact (integrated on its exact faces; its volume and area to within "),
+              std::string::npos)
+        << text;
+    EXPECT_NE(text.find("Volume: 0.3141593 "), std::string::npos) << "pi 100 1e-3: " << text;
 }

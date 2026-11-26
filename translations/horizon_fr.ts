@@ -3553,7 +3553,7 @@ commencer à construire votre pièce.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+467"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+485"/>
         <source>&amp;File</source>
         <translation>&amp;Fichier</translation>
     </message>
@@ -3589,12 +3589,12 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">une face courbe de %1 facettes, autour de %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-294"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-311"/>
         <source>Close %1</source>
         <translation type="unfinished">Fermer %1</translation>
     </message>
     <message>
-        <location line="+908"/>
+        <location line="+925"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -5025,15 +5025,30 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished">Rien de sélectionné pour zoomer : Tout afficher (F) montre tout</translation>
     </message>
     <message>
-        <location line="+614"/>
+        <location line="+603"/>
         <source>The part&apos;s mass properties could not be worked out: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+60"/>
+        <location line="+68"/>
+        <location line="+21"/>
+        <source>Exact (integrated on its exact faces):
+</source>
+        <translation type="unfinished">Exacte (intégrée sur ses faces exactes) :
+</translation>
+    </message>
+    <message>
+        <location line="-13"/>
         <source>Exact to %1 %2, as its file gives its edges (integrated on its faces as they were imported; its volume and area to within %3):
 </source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Exact to %1 %2, as its file gives its edges (integrated on its exact faces; its volume and area to within %3):
+</source>
+        <translation type="unfinished">Exacte à %1 %2 près, comme son fichier en donne les arêtes (intégrée sur ses faces exactes ; volume et aire à %3 près) :
+</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -5042,7 +5057,8 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="-15"/>
+        <location line="+21"/>
         <source>Exact (integrated on its faces as they were imported):
 </source>
         <translation type="unfinished"></translation>
@@ -5053,7 +5069,7 @@ commencer à construire votre pièce.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+64"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -5099,7 +5115,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.</translation>
     </message>
     <message>
-        <location line="-2727"/>
+        <location line="-2765"/>
         <source>Radial</source>
         <translation type="unfinished">Radiale</translation>
     </message>
@@ -5332,14 +5348,14 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <location line="+10"/>
         <location line="+1095"/>
         <location line="+502"/>
-        <location line="+977"/>
+        <location line="+1021"/>
         <location line="+600"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-3265"/>
+        <location line="-3309"/>
         <source>Cancel</source>
         <translation type="unfinished">Annuler</translation>
     </message>
@@ -5360,12 +5376,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2905"/>
+        <location line="+2949"/>
         <source>None</source>
         <translation type="unfinished">Aucun</translation>
     </message>
     <message>
-        <location line="-2899"/>
+        <location line="-2943"/>
         <source>%1 selected</source>
         <translation>%1 sélectionné(s)</translation>
     </message>
@@ -5946,7 +5962,14 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">X : %1  Y : %2</translation>
     </message>
     <message>
-        <location line="+803"/>
+        <location line="+399"/>
+        <source>Exact (integrated on its exact faces; its volume and area to within %1):
+</source>
+        <translation type="unfinished">Exacte (intégrée sur ses faces exactes ; volume et aire à %1 près) :
+</translation>
+    </message>
+    <message>
+        <location line="+448"/>
         <source>y:</source>
         <translation type="unfinished">y :</translation>
     </message>
@@ -5956,7 +5979,7 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">z :</translation>
     </message>
     <message>
-        <location line="-779"/>
+        <location line="-823"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">Un assemblage n&apos;a pas d&apos;esquisses : esquissez dans une pièce</translation>
     </message>
@@ -6202,12 +6225,12 @@ Son erreur n&apos;est pas estimée : il a été mesuré une fois, sans affinage.
         <translation type="unfinished">Matériau :</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+10"/>
         <source>The part&apos;s mass properties could not be worked out</source>
         <translation type="unfinished">Les propriétés de masse de la pièce n&apos;ont pas pu être calculées</translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+23"/>
         <source>Volume: %1 %2
 Surface area: %3 %4
 Centre of mass: %5 %6</source>
@@ -6239,7 +6262,7 @@ Masse : %1 g</translation>
 %9  %10  %11</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>%1: density %2 g/%3
 
 </source>
@@ -6248,7 +6271,7 @@ Masse : %1 g</translation>
 </translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+93"/>
         <source>
 
 Every face is flat, so the part is exactly as modelled.
@@ -6290,17 +6313,17 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">idéal</translation>
     </message>
     <message>
-        <location line="-3623"/>
+        <location line="-3661"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">Le calcul n&apos;a pas abouti.</translation>
     </message>
     <message>
-        <location line="+3636"/>
+        <location line="+3682"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">Les propriétés de masse sont déjà en cours de mesure</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+12"/>
         <source>Measuring...</source>
         <translation type="unfinished">Mesure en cours...</translation>
     </message>
@@ -6471,7 +6494,7 @@ Idéal (sur les surfaces courbes qu&apos;approchent les facettes) :
         <translation type="unfinished">Reconstruction annulée : le modèle est tel qu&apos;il était avant la dernière modification.</translation>
     </message>
     <message>
-        <location line="-3281"/>
+        <location line="-3325"/>
         <source>0 selected</source>
         <translation>0 sélectionné</translation>
     </message>

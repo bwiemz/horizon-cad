@@ -173,6 +173,10 @@ public:
     /// beside solid(), their faceted copy, while only bodies built exactly
     /// have made the part. Null when it has none.
     const topo::Solid* exactSolid() const;
+    /// exactSolid(), shared: for a reader on another thread (a measurement on
+    /// a worker), which keeps it while the part is rebuilt or closed. It is
+    /// never changed once made. Null with exactSolid().
+    std::shared_ptr<const topo::Solid> sharedExactSolid() const;
     /// Its mesh, made once by its build at its display tolerance
     /// (model::SolidTessellator::displayTolerance), as the display draws it:
     /// what the display draws, and anything else that shows the part, without

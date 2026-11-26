@@ -376,6 +376,16 @@ private:
     /// it; and in the recent files.
     void showOpened(std::shared_ptr<doc::Document> document, const QString& fileName,
                     const QString& fallbackTitle, io::ImportReport report);
+    /// The Mass Properties box's text, given the measure (null: none yet, or
+    /// none, for the reason given).
+    using MassText = std::function<QString(const model::IdealMassProperties*, const QString&)>;
+    /// Measure @p solid ideally on a worker, as Mass Properties (@p verb)
+    /// asked: its box shown at once in @p text's words while it is measured,
+    /// and the measure filled in when it comes. @p solid is not changed while
+    /// it is measured: a copy, or the part's exact counterpart. Refused, and
+    /// said, while another is measured.
+    void measureOnWorker(const QString& verb, std::shared_ptr<const topo::Solid> solid,
+                         const std::optional<model::Material>& material, MassText text);
     void onMassPropertiesFinished();
 
     /// The window's size and position and where its docks are, kept across
@@ -587,7 +597,7 @@ private:
     QPointer<QMessageBox> m_massBox;
     QPointer<HelpWindow> m_help;
     QPointer<GettingStartedTour> m_tour;
-    std::function<QString(const model::IdealMassProperties*, const QString&)> m_massText;
+    MassText m_massText;
 
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;

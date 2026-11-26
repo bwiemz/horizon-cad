@@ -3531,7 +3531,7 @@ begin building your part.</source>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+467"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+485"/>
         <source>&amp;File</source>
         <translation>ファイル(&amp;F)</translation>
     </message>
@@ -3567,12 +3567,12 @@ begin building your part.</source>
         <translation type="unfinished">%1 個のファセットからなる曲面 (中心 %2)</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-294"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-311"/>
         <source>Close %1</source>
         <translation type="unfinished">%1 を閉じる</translation>
     </message>
     <message>
-        <location line="+908"/>
+        <location line="+925"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -5002,15 +5002,30 @@ begin building your part.</source>
         <translation type="unfinished">ズームする対象が選択されていません。全体表示 (F) ですべてを表示します</translation>
     </message>
     <message>
-        <location line="+614"/>
+        <location line="+603"/>
         <source>The part&apos;s mass properties could not be worked out: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+60"/>
+        <location line="+68"/>
+        <location line="+21"/>
+        <source>Exact (integrated on its exact faces):
+</source>
+        <translation type="unfinished">厳密 (厳密な面上で積分):
+</translation>
+    </message>
+    <message>
+        <location line="-13"/>
         <source>Exact to %1 %2, as its file gives its edges (integrated on its faces as they were imported; its volume and area to within %3):
 </source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Exact to %1 %2, as its file gives its edges (integrated on its exact faces; its volume and area to within %3):
+</source>
+        <translation type="unfinished">ファイルが示すエッジのとおり %1 %2 まで厳密 (厳密な面上で積分。体積と面積の誤差は %3 以内):
+</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -5019,7 +5034,8 @@ begin building your part.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="-15"/>
+        <location line="+21"/>
         <source>Exact (integrated on its faces as they were imported):
 </source>
         <translation type="unfinished"></translation>
@@ -5030,7 +5046,7 @@ begin building your part.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+64"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -5074,7 +5090,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 誤差は推定されていません: 細分化せず一度だけ測定しました。</translation>
     </message>
     <message>
-        <location line="-2727"/>
+        <location line="-2765"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -5307,14 +5323,14 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+10"/>
         <location line="+1095"/>
         <location line="+502"/>
-        <location line="+977"/>
+        <location line="+1021"/>
         <location line="+600"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-3265"/>
+        <location line="-3309"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -5335,12 +5351,12 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2905"/>
+        <location line="+2949"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-2899"/>
+        <location line="-2943"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
@@ -5919,7 +5935,14 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+803"/>
+        <location line="+399"/>
+        <source>Exact (integrated on its exact faces; its volume and area to within %1):
+</source>
+        <translation type="unfinished">厳密 (厳密な面上で積分。体積と面積の誤差は %1 以内):
+</translation>
+    </message>
+    <message>
+        <location line="+448"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
@@ -5929,7 +5952,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-779"/>
+        <location line="-823"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">アセンブリにはスケッチがありません。部品でスケッチしてください</translation>
     </message>
@@ -6172,12 +6195,12 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">材質:</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+10"/>
         <source>The part&apos;s mass properties could not be worked out</source>
         <translation type="unfinished">部品の質量特性を計算できませんでした</translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+23"/>
         <source>Volume: %1 %2
 Surface area: %3 %4
 Centre of mass: %5 %6</source>
@@ -6209,7 +6232,7 @@ Mass: %1 g</source>
 %9  %10  %11</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>%1: density %2 g/%3
 
 </source>
@@ -6218,7 +6241,7 @@ Mass: %1 g</source>
 </translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+93"/>
         <source>
 
 Every face is flat, so the part is exactly as modelled.
@@ -6260,17 +6283,17 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">理想形状</translation>
     </message>
     <message>
-        <location line="-3623"/>
+        <location line="-3661"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">計算できませんでした。</translation>
     </message>
     <message>
-        <location line="+3636"/>
+        <location line="+3682"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">質量特性は既に計測中です</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+12"/>
         <source>Measuring...</source>
         <translation type="unfinished">計測しています...</translation>
     </message>
@@ -6441,7 +6464,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-3281"/>
+        <location line="-3325"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>

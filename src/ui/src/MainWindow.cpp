@@ -67,6 +67,7 @@
 #include "horizon/fileio/StlExport.h"
 #include "horizon/fileio/SvgExport.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Expression.h"
 #include "horizon/math/Mat4.h"
@@ -175,6 +176,23 @@ void nameCloseButton(QTabBar& bar, int index) {
             button->setAccessibleName(MainWindow::tr("Close %1").arg(bar.tabText(index)));
         }
     }
+}
+
+/// Whether every body of @p part is an import (ImportedBodyFeature), its features that make no
+/// body (datums) aside: its exact counterpart's faces are as its files gave them, not built.
+bool madeOfImportsAlone(const doc::Document& part) {
+    const doc::FeatureTree& tree = part.featureTree();
+    const int rollback = tree.rollbackIndex();
+    bool any = false;
+    for (std::size_t i = 0; i < tree.featureCount(); ++i) {
+        if (rollback >= 0 && static_cast<int>(i) > rollback) break;
+        const doc::Feature* feature = tree.feature(i);
+        if (feature == nullptr || feature->isSuppressed()) continue;
+        if (dynamic_cast<const doc::DatumFeature*>(feature) != nullptr) continue;
+        if (dynamic_cast<const doc::ImportedBodyFeature*>(feature) == nullptr) return false;
+        any = true;
+    }
+    return any;
 }
 
 /// Mass Properties' word for an ideal that could not be measured: with why, where that is known.
@@ -3654,24 +3672,12 @@ void MainWindow::onMassProperties() {
     const QString& materialName = chosen.first;
     const std::optional<model::Material>& material = chosen.second;
     const model::Material* density = material ? &*material : nullptr;
-    // An imported part's exact counterpart is measured, integrated on its
-    // faces as read, once, with the integration's estimate of its error; any
-    // other part as modelled, and ideally below.
-    const topo::Solid* exact = m_document->exactSolid();
-    model::IdealMassProperties exactMeasure;
-    if (exact != nullptr) {
-        exactMeasure = model::MassPropertiesCalculator::computeIdeal(*exact, density);
-    }
-    const model::MassProperties modelled =
-        exact != nullptr ? exactMeasure.properties
-                         : model::MassPropertiesCalculator::compute(*solid, density);
-    if (!modelled.valid) {
-        statusBar()->showMessage(modelled.problem.empty()
+    const auto refused = [this](const model::MassProperties& props) {
+        statusBar()->showMessage(props.problem.empty()
                                      ? tr("The part's mass properties could not be worked out")
                                      : tr("The part's mass properties could not be worked out: %1")
-                                           .arg(QString::fromStdString(modelled.problem)));
-        return;
-    }
+                                           .arg(QString::fromStdString(props.problem)));
+    };
 
     const auto n = [](double v) { return QString::number(v, 'g', 7); };
     // In the document's unit (Phase 154). Superscripts by code point: the
@@ -3712,35 +3718,85 @@ void MainWindow::onMassProperties() {
             .arg(n(I.at(2, 1) * scale), n(I.at(2, 2) * scale));
     };
     const QString header =
-        weighed ? tr("%1: density %2 g/%3\n\n").arg(materialName, n(modelled.density / 1000.0), cm3)
-                : QString();
-    if (exact) {
+        weighed
+            ? tr("%1: density %2 g/%3\n\n").arg(materialName, n(material->density / 1000.0), cm3)
+            : QString();
+    // The part's exact counterpart (an import's bodies as read, a primitive's
+    // exact form) is measured, integrated on its exact faces, once, with the
+    // integration's estimate of its error; any other part as modelled, and
+    // ideally below.
+    if (const topo::Solid* exact = m_document->exactSolid()) {
         // Exact to what its file gives its edges, and said so (goal 6): how far
         // its edges were let stand off its faces, where that is past the
         // model's resolution, and the integration's estimate of its error,
-        // which counts them, where that is past a billionth.
+        // which counts them, where that is past a billionth or short of the
+        // tolerance asked for (its note says so). An import's faces are
+        // integrated as they were imported; a part built, or partly built, on
+        // its exact faces.
         double standOff = 0.0;
         for (const auto& edge : exact->edges()) {
             if (edge.alive) standOff = std::max(standOff, edge.tolerance);
         }
         const bool tolerant = standOff > topo::exactTolerance(*exact).linear;
-        const QString within =
-            QString::number(100.0 * exactMeasure.estimatedError, 'g', 2) + QLatin1Char('%');
-        QString said;
-        if (tolerant) {
-            said = tr("Exact to %1 %2, as its file gives its edges (integrated on its faces as "
-                      "they were imported; its volume and area to within %3):\n")
-                       .arg(n(standOff / per), u, within);
-        } else if (exactMeasure.estimatedError > 1e-9) {
-            said = tr("Exact (integrated on its faces as they were imported; its volume and area "
-                      "to within %1):\n")
-                       .arg(within);
-        } else {
-            said = tr("Exact (integrated on its faces as they were imported):\n");
+        const bool imported = madeOfImportsAlone(*m_document);
+        MassText wording = [=](const model::IdealMassProperties* measured, const QString& why) {
+            if (measured == nullptr) {
+                return header +
+                       (imported ? tr("Exact (integrated on its faces as they were imported):\n")
+                                 : tr("Exact (integrated on its exact faces):\n")) +
+                       why;
+            }
+            const QString within =
+                QString::number(100.0 * measured->estimatedError, 'g', 2) + QLatin1Char('%');
+            QString said;
+            if (tolerant) {
+                said = imported
+                           ? tr("Exact to %1 %2, as its file gives its edges (integrated on its "
+                                "faces as they were imported; its volume and area to within %3):\n")
+                           : tr("Exact to %1 %2, as its file gives its edges (integrated on its "
+                                "exact faces; its volume and area to within %3):\n");
+                said = said.arg(n(standOff / per), u, within);
+            } else if (measured->estimatedError > 1e-9 || !measured->note.empty()) {
+                said = imported ? tr("Exact (integrated on its faces as they were imported; its "
+                                     "volume and area to within %1):\n")
+                                : tr("Exact (integrated on its exact faces; its volume and area "
+                                     "to within %1):\n");
+                said = said.arg(within);
+            } else {
+                said = imported ? tr("Exact (integrated on its faces as they were imported):\n")
+                                : tr("Exact (integrated on its exact faces):\n");
+            }
+            return header + said + measures(measured->properties) + QStringLiteral("\n\n") +
+                   inertia(measured->properties, tr("exact"));
+        };
+        // On a worker by the faceted path's rule: always, or in Auto, for a
+        // part with many curved faces.
+        std::size_t curved = 0;
+        for (const auto& face : exact->faces()) {
+            curved += face.alive && face.exactSurface &&
+                              face.exactSurface->kind() != geo::SurfaceKind::Plane
+                          ? 1
+                          : 0;
         }
-        QMessageBox::information(this, verb,
-                                 header + said + measures(modelled) + QStringLiteral("\n\n") +
-                                     inertia(modelled, tr("exact")));
+        const bool onWorker = m_rebuildMode == RebuildMode::Always ||
+                              (m_rebuildMode == RebuildMode::Auto && curved >= kWorkerIdealFaces);
+        if (onWorker) {
+            // Shared, not copied: the counterpart is never changed once made.
+            measureOnWorker(verb, m_document->sharedExactSolid(), material, std::move(wording));
+            return;
+        }
+        const auto measured = model::MassPropertiesCalculator::computeIdeal(*exact, density);
+        if (!measured.properties.valid) {
+            refused(measured.properties);
+            return;
+        }
+        QMessageBox::information(this, verb, wording(&measured, {}));
+        return;
+    }
+    const model::MassProperties modelled =
+        model::MassPropertiesCalculator::compute(*solid, density);
+    if (!modelled.valid) {
+        refused(modelled);
         return;
     }
 
@@ -3764,7 +3820,7 @@ void MainWindow::onMassProperties() {
     // As modelled, the facets (what Booleans and export use); ideally, the
     // surfaces they approximate. The ideal is null while it is measured, or
     // not there, for @p why.
-    m_massText = [=](const model::IdealMassProperties* ideal, const QString& why) {
+    MassText wording = [=](const model::IdealMassProperties* ideal, const QString& why) {
         QString text = header + tr("As modelled (its facets, which Booleans and export use):\n") +
                        measures(modelled) +
                        tr("\n\nIdeal (on the curved surfaces the facets approximate):\n");
@@ -3811,22 +3867,28 @@ void MainWindow::onMassProperties() {
                           (m_rebuildMode == RebuildMode::Auto && curved >= kWorkerIdealFaces);
     if (!onWorker) {
         const auto ideal = model::MassPropertiesCalculator::computeIdeal(*solid, density);
-        QMessageBox::information(this, verb,
-                                 ideal.properties.valid ? m_massText(&ideal, {})
-                                                        : m_massText(nullptr, notWorkedOut(ideal)));
-        return;
-    }
-    if (m_massTask) {
-        statusBar()->showMessage(tr("Mass properties are already being measured"));
+        QMessageBox::information(
+            this, verb,
+            ideal.properties.valid ? wording(&ideal, {}) : wording(nullptr, notWorkedOut(ideal)));
         return;
     }
     // A copy: the part can be edited, or its tab closed, while it is measured.
-    std::shared_ptr<const topo::Solid> copy =
-        model::Pattern::transformed(*solid, math::Mat4::identity());
+    measureOnWorker(verb, model::Pattern::transformed(*solid, math::Mat4::identity()), material,
+                    std::move(wording));
+}
+
+void MainWindow::measureOnWorker(const QString& verb, std::shared_ptr<const topo::Solid> solid,
+                                 const std::optional<model::Material>& material, MassText text) {
+    if (m_massTask) {
+        // The box open is the measuring's, in its own words.
+        statusBar()->showMessage(tr("Mass properties are already being measured"));
+        return;
+    }
+    m_massText = std::move(text);
     m_massTask = std::make_unique<BackgroundTask<model::IdealMassProperties>>(
-        [copy, material](const std::atomic<bool>& cancelled) {
+        [solid = std::move(solid), material](const std::atomic<bool>& cancelled) {
             return model::MassPropertiesCalculator::computeIdeal(
-                *copy, material ? &*material : nullptr, 1e-10, &cancelled);
+                *solid, material ? &*material : nullptr, 1e-10, &cancelled);
         });
     // Shown now, and the ideal filled in when it is measured; closing it
     // stops the measuring.

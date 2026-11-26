@@ -139,6 +139,10 @@ const topo::Solid* Document::exactSolid() const {
     return m_exact ? m_exact->solid.get() : nullptr;
 }
 
+std::shared_ptr<const topo::Solid> Document::sharedExactSolid() const {
+    return m_exact ? m_exact->solid : nullptr;
+}
+
 std::shared_ptr<const geo::MeshData> Document::exactMesh() const {
     return m_exact ? m_exact->mesh : nullptr;
 }
