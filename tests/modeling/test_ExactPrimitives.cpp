@@ -680,11 +680,11 @@ TEST(ExactPrimitives, AHornTorusIsAnAppleWithOnePole) {
 }
 
 // Ruling 9: the read point refuses a cusp at a pole at once, with why, deciding it from the
-// pole's geometry before any triangle is made: within half a second (in Debug; under a
-// sanitizer, which runs code 3-15 times slower, within five, still well short of the 12 s it
-// once refined for).
+// pole's geometry before any triangle is made: within half a second (in Debug, 30 ms; times
+// HZ_UNOPTIMIZED_SLOWDOWN on MSVC's; under a sanitizer, which runs code 3-15 times slower, within
+// five, still well short of the 12 s it once refined for).
 TEST(ExactPrimitives, TheReadPointRefusesACuspAtOnce) {
-    const double limit = HZ_TIME_LIMITS ? 0.5 : 5.0;
+    const double limit = (HZ_TIME_LIMITS ? 0.5 : 5.0) * HZ_UNOPTIMIZED_SLOWDOWN;
     for (const double major : {2.0, 1.9}) {  // a horn, and a spindle within 5% of one
         SCOPED_TRACE(major);
         const auto apple = model::exact::makeTorus(placements().back(), major, 2.0);

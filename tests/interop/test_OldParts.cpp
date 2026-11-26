@@ -15,6 +15,7 @@
 #include <string>
 #include <utility>
 
+#include "../TimeLimits.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/ImportReport.h"
@@ -79,6 +80,19 @@ constexpr double kVolumeWithin = 2e-4;
 /// Seconds since @p start.
 double secondsSince(std::chrono::steady_clock::time_point start) {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+}
+
+/// Expects @p seconds under @p limit, a bound for an unoptimized GCC or Clang build, times
+/// HZ_UNOPTIMIZED_SLOWDOWN (MSVC's Debug build); nothing under a sanitizer, where a limit means
+/// nothing (tests/TimeLimits.h). @p what says what took that long, and what it takes in Debug.
+void expectWithin(double seconds, double limit, const std::string& what) {
+#if HZ_TIME_LIMITS
+    EXPECT_LT(seconds, limit * HZ_UNOPTIMIZED_SLOWDOWN) << what;
+#else
+    (void)seconds;
+    (void)limit;
+    (void)what;
+#endif
 }
 
 /// @p text with @p from replaced by @p to, which it must hold once.
@@ -151,7 +165,8 @@ TEST(OldPartFile, ABodyKeptAsItWasIsTheFilesUntouchedByTheExactPass) {
 
         const auto start = std::chrono::steady_clock::now();
         ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
-        EXPECT_LT(secondsSince(start), 10.0) << "built in moments (0.4 s, Debug)";
+        // 0.42 s in Debug; the faceting's own seam gone wrong took 13.5 s, and 90 s on macOS.
+        expectWithin(secondsSince(start), 5.0, "built in moments (0.42 s, Debug)");
         EXPECT_EQ(part.failedFeatureIndex(), -1) << part.lastBuildMessage();
         ASSERT_NE(part.solid(), nullptr);
         EXPECT_GE(part.solid()->faceCount(), kFewestFaces);
@@ -177,12 +192,17 @@ TEST(OldPartFile, ABodyWhoseRimsReadTheWrongWayRoundOpensExact) {
         const char* source;
         double volume;
         std::size_t faces;  // its faceted copy's
+        /// Its build's bound in Debug: about seven times what it takes (Solid Edge 0.17 s, Onshape
+        /// 2.8 s, which meshes and integrates its counterpart), so a gcov build two or three times
+        /// slower passes, and a build that runs away (an exact face's mesh or mass, or a faceted
+        /// copy's grid, ten times over and more) does not.
+        double seconds;
     };
     const Case cases[] = {
         {"solidedge_ercf_knife_holder.body.step", "solidedge_ercf_knife_holder.step", 684.683543,
-         1652},
+         1652, 1.5},
         {"onshape_rocketsmith_upper_airframe.body.step", "onshape_rocketsmith_upper_airframe.step",
-         712990.962654, 10229},
+         712990.962654, 10229, 20.0},
     };
     for (const Case& c : cases) {
         SCOPED_TRACE(c.file);
@@ -192,7 +212,7 @@ TEST(OldPartFile, ABodyWhoseRimsReadTheWrongWayRoundOpensExact) {
         EXPECT_EQ(imported->note(), "") << "exact, nothing to say";
         const auto start = std::chrono::steady_clock::now();
         ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
-        EXPECT_LT(secondsSince(start), 10.0) << "built in moments";
+        expectWithin(secondsSince(start), c.seconds, "built in moments");
         EXPECT_EQ(part.failedFeatureIndex(), -1) << part.lastBuildMessage();
         EXPECT_EQ(part.exactNote(), "");
         ASSERT_NE(part.exactSolid(), nullptr);
@@ -252,7 +272,8 @@ TEST(OldPartFile, ItsFacetedCopyIsTheSameSizeWhereverItsLastBitsFall) {
         ASSERT_NE(faceted.solid, nullptr) << "moved by " << d << ": " << faceted.error;
         EXPECT_GE(faceted.solid->faceCount(), kFewest) << "moved by " << d;
         EXPECT_LE(faceted.solid->faceCount(), kMost) << "moved by " << d;
-        EXPECT_LT(seconds, 5.0) << "moved by " << d << " (0.16 s, Debug)";
+        // 0.16 s in Debug; the regression this guards took up to 13.5 s here, 90 s on macOS.
+        expectWithin(seconds, 5.0, "moved by " + std::to_string(d) + " (0.16 s, Debug)");
         EXPECT_NEAR(hz::model::MassPropertiesCalculator::compute(*faceted.solid).volume,
                     kKeptVolume, kKeptWithin * kKeptVolume)
             << "moved by " << d;

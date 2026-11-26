@@ -2192,7 +2192,7 @@ TEST(TrimmedFaceMesher, ACuspAtAPoleIsRefusedAtOnceAndAnApexOrATipStillMeshes) {
         options.chordTolerance = 1e-3 * topo::exactExtent(solid);
         return TrimmedFaceMesher::meshSolid(solid, options);
     };
-    const double limit = HZ_TIME_LIMITS ? 0.5 : 5.0;
+    const double limit = (HZ_TIME_LIMITS ? 0.5 : 5.0) * HZ_UNOPTIMIZED_SLOWDOWN;
     for (const double major : {2.0, 1.9, 1.74}) {
         SCOPED_TRACE(major);
         const auto apple = model::exact::makeTorus(geo::Frame{}, major, 2.0);
