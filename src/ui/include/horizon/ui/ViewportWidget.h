@@ -4,6 +4,7 @@
 #include <QPoint>
 #include <QPointF>
 #include <QWidget>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -243,6 +244,25 @@ public:
     void setModelHover(const std::optional<ModelPick>& pick);
     const std::optional<ModelPick>& modelHover() const { return m_modelHover; }
 
+    /// What a face pick (or a whole component's, its tag empty) is drawn
+    /// highlighted with, chosen or hovered: the triangles of each face of it,
+    /// in world coordinates (x, y, z a corner, three corners a triangle), and
+    /// those faces by name (none for a whole component's). On an exact part
+    /// (its node drawing Document::exactMesh), a face is drawn from the
+    /// faceted copy (Document::solid()): each face of it whose logical name is
+    /// the pick's, flat, so a coarse part shows the facets a command on the
+    /// face acts on (owner, A1). Otherwise from the meshes drawn for its owner.
+    struct FaceHighlight {
+        std::vector<float> triangles;
+        std::vector<std::string> faces;
+        /// How far toward the eye it is drawn, in model units: on an exact
+        /// part, past how far the faceted copy's faces stand inside the round
+        /// faces drawn (twice it, and the display's tolerance), so that it is
+        /// seen over them; 0 for a highlight drawn from the meshes drawn.
+        double lift = 0.0;
+    };
+    FaceHighlight faceHighlight(const ModelPick& pick) const;
+
 signals:
     /// Emitted when the mouse moves.  Carries the world-space position on the XY plane.
     void mouseMoved(const hz::math::Vec2& worldPos);
@@ -338,6 +358,18 @@ private:
     render::SceneGraph m_sceneGraph;
     std::vector<ModelPick> m_modelSelection;
     std::optional<ModelPick> m_modelHover;
+    /// The faceted copy's highlights of an exact part's faces, in its own
+    /// coordinates, by face (faceHighlight): its facets found by name,
+    /// triangulated and measured against the exact face once, not on every
+    /// paint. Kept for the build they were made from (the document's serial
+    /// and build count), a few at a time.
+    struct FacetedHighlight {
+        std::uint64_t serial = 0;
+        std::uint64_t builds = 0;
+        std::string tag;
+        FaceHighlight highlight;
+    };
+    mutable std::vector<FacetedHighlight> m_facetedHighlights;
     bool m_orthographic = false;
     render::DisplayMode m_displayMode = render::DisplayMode::ShadedWithEdges;
     std::optional<math::Vec4> m_sectionPlane;

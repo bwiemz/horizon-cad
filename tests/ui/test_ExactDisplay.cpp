@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QTemporaryDir>
 #include <QTranslator>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -715,4 +716,75 @@ TEST(ExactDisplay, StlExportReusesTheKeptMesh) {
     }
     EXPECT_EQ(w.tessellations(), faceted + 1) << "meshed for the export";
     EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("faceted.stl"))));
+}
+
+// Owner amendment A1 (Task 10): on an exact part, a chosen or hovered face is highlighted from its
+// faceted copy (Document::solid()), every face of it whose logical name is the pick's, not from
+// the exact mesh drawn, so a coarse part shows the facets a command on the face acts on. A
+// cylinder primitive cut in 6 round its axis: its side is drawn round, and highlighted as the
+// faceted copy's 6 flat facets, two triangles each, every corner one of theirs; drawn toward the
+// eye by more than the facets stand inside the round side (r (1 - cos 30 degrees)), so that they
+// are seen over it.
+TEST(ExactDisplay, AFaceHighlightIsDrawnFromTheFacetedCopy) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    Document coarse;
+    coarse.setType(hz::doc::DocumentType::Part);
+    auto made = hz::doc::PrimitiveFeature::makeCylinder(kRadius, kHeight);
+    ASSERT_TRUE(made->setParameter("segments", 6.0));
+    coarse.featureTree().addFeature(std::move(made));
+    const QString path = dir.filePath(QStringLiteral("coarse.hzpart"));
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), coarse, &error)) << error;
+
+    MainWindow w;
+    ASSERT_TRUE(w.openPath(path));
+    settle(w);
+    const Document& part = *w.activeDocument();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    const auto mesh = shownMesh(w);
+    ASSERT_NE(mesh, nullptr);
+    ASSERT_EQ(mesh, part.exactMesh()) << "drawn round";
+
+    // A click from +x, halfway up: the side.
+    const auto hit = hz::render::MeshPicker::pickFace(
+        *mesh, hz::math::Mat4::identity(), Vec3(5 * kRadius, 0.0, kHeight / 2), Vec3(-1, 0, 0));
+    ASSERT_TRUE(hit.has_value());
+    ASSERT_GE(hit->face, 0);
+    const std::string side =
+        hz::model::logicalFace(mesh->faceTags[static_cast<std::size_t>(hit->face)]);
+    std::size_t drawn = 0;
+    for (const std::uint32_t face : mesh->triangleFaces) {
+        drawn += hz::model::logicalFace(mesh->faceTags[face]) == side ? 1 : 0;
+    }
+    EXPECT_GT(drawn, 12u) << "the side drawn round, in more triangles than its facets'";
+
+    // The faceted copy's side: 6 facets, and their corners.
+    std::set<std::string> facets;
+    std::vector<Vec3> corners;
+    for (const auto& face : part.solid()->faces()) {
+        if (!face.alive || hz::model::logicalFace(face.topoId.tag()) != side) continue;
+        facets.insert(face.topoId.tag());
+        const hz::topo::HalfEdge* he = face.outerLoop->halfEdge;
+        do {
+            corners.push_back(he->origin->point);
+            he = he->next;
+        } while (he != face.outerLoop->halfEdge);
+    }
+    ASSERT_EQ(facets.size(), 6u);
+
+    auto* view = w.findChild<hz::ui::ViewportWidget*>();
+    ASSERT_NE(view, nullptr);
+    const auto highlight = view->faceHighlight({0, side, false});
+    EXPECT_EQ(distinct(highlight.faces), facets);
+    ASSERT_EQ(highlight.triangles.size(), 6u * 2u * 9u) << "two triangles a facet";
+    for (std::size_t i = 0; i + 2 < highlight.triangles.size(); i += 3) {
+        const Vec3 p(highlight.triangles[i], highlight.triangles[i + 1],
+                     highlight.triangles[i + 2]);
+        const bool atAFacetsCorner =
+            std::any_of(corners.begin(), corners.end(),
+                        [&p](const Vec3& c) { return (c - p).length() < 1e-4; });
+        EXPECT_TRUE(atAFacetsCorner) << "(" << p.x << ", " << p.y << ", " << p.z << ")";
+    }
+    EXPECT_GT(highlight.lift, kRadius * (1.0 - std::cos(kPi / 6.0)));
 }

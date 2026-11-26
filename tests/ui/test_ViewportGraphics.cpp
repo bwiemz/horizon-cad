@@ -8,14 +8,20 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QMessageBox>
+#include <QTemporaryDir>
+#include <cmath>
 #include <memory>
+#include <string>
 
 #include "UiTestSupport.h"
 #include "horizon/document/Commands.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/FeatureTree.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftText.h"
+#include "horizon/fileio/NativeFormat.h"
+#include "horizon/math/Constants.h"
 #include "horizon/render/Camera.h"
 #include "horizon/ui/MainWindow.h"
 #include "horizon/ui/ViewportWidget.h"
@@ -185,4 +191,61 @@ TEST(ViewportGraphicsTest, TheSolidIsDrawnAndDrawnAgainFromTheSameMesh) {
     frame = viewport.grabFramebuffer();
     EXPECT_TRUE(near(frame, viewport.projectToScreen(hz::math::Vec3(5, 5, 5)), shaded))
         << "drawn again from the same mesh";
+}
+
+// Owner amendment A1 (Task 10) on a real OpenGL: an exact part's face is highlighted from its
+// faceted copy, whose flat facets lie inside the round side drawn (by r (1 - cos 30 degrees) for
+// a cylinder cut in 6), and so behind it; the highlight is drawn toward the eye past that
+// (ViewportWidget::FaceHighlight::lift), and is seen. Looked at square on one facet's middle,
+// where it lies deepest, the hovered side is lighter and bluer there than it is unhovered.
+TEST(ViewportGraphicsTest, AnExactPartsFacetHighlightIsSeenOverItsRoundSide) {
+    if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
+        GTEST_SKIP() << "no OpenGL on the offscreen platform: set QT_QPA_PLATFORM to run it";
+    }
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    hz::doc::Document coarse;
+    coarse.setType(hz::doc::DocumentType::Part);
+    auto made = hz::doc::PrimitiveFeature::makeCylinder(10.0, 20.0);
+    ASSERT_TRUE(made->setParameter("segments", 6.0));
+    const std::string side = made->featureID() + "/side";
+    coarse.featureTree().addFeature(std::move(made));
+    const QString path = dir.filePath(QStringLiteral("coarse.hzpart"));
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), coarse, &error)) << error;
+
+    hz::ui::MainWindow w;
+    w.resize(640, 480);
+    w.show();
+    ASSERT_TRUE(w.openPath(path));
+    QElapsedTimer waited;
+    waited.start();
+    while (w.backgroundWorkRunning() && waited.elapsed() < 30'000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    ASSERT_NE(w.activeDocument()->exactSolid(), nullptr) << w.activeDocument()->exactNote();
+    auto& viewport = *w.findChild<hz::ui::ViewportWidget*>();
+    waited.restart();
+    while (!viewport.isValid() && waited.elapsed() < 5000) QCoreApplication::processEvents();
+    // Square on the facet between the corners at 0 and 60 degrees: its middle, at 30 degrees, lies
+    // r cos 30 from the axis, the round side drawn in front of it at r.
+    const double at = hz::math::kPi / 6.0;
+    const hz::math::Vec3 middle(8.66 * std::cos(at), 8.66 * std::sin(at), 10.0);
+    viewport.camera().lookAt(hz::math::Vec3(60 * std::cos(at), 60 * std::sin(at), 10.0), middle,
+                             hz::math::Vec3(0, 0, 1));
+    const QImage plain = viewport.grabFramebuffer();
+    if (!viewport.isValid() || !viewport.graphicsProblem().isEmpty()) {
+        GTEST_SKIP() << "no OpenGL here";
+    }
+    viewport.setModelHover(hz::ui::ViewportWidget::ModelPick{0, side, false});
+    const QImage hovered = viewport.grabFramebuffer();
+    const QPointF centre = viewport.projectToScreen(middle);
+    const double ratio = plain.devicePixelRatio();
+    const QPoint pixel(qRound(centre.x() * ratio), qRound(centre.y() * ratio));
+    const QColor before = plain.pixelColor(pixel);
+    const QColor after = hovered.pixelColor(pixel);
+    // The hover's colour (0.35, 0.75, 1.0) at 0.3 over the part's blue-grey: bluer and lighter.
+    EXPECT_GT(after.blue() + after.green(), before.blue() + before.green() + 20)
+        << "unhovered " << before.name().toStdString() << ", hovered "
+        << after.name().toStdString();
 }
