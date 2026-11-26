@@ -5,6 +5,7 @@
 #include <QtGlobal>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -69,6 +70,10 @@ public:
     /// A STEP file this big or more is read on a worker in Auto; a STEP
     /// assembly is, whatever its size.
     static constexpr qint64 kWorkerImportBytes = 1'000'000;
+
+    /// How many times an export (STL, glTF) has meshed a part, rather than
+    /// write the mesh its build kept (for tests).
+    std::uint64_t tessellations() const { return m_tessellations; }
 
     /// A STEP import, or a drawing's, is running on a worker.
     bool busy() const { return m_importTask != nullptr || m_drawingTask != nullptr; }
@@ -168,6 +173,7 @@ private:
     QString m_drawingFile;                         ///< what m_drawingTask reads
     QString m_drawingVerb;                         ///< its undo step's name
     std::weak_ptr<doc::Document> m_drawingTarget;  ///< what it goes into
+    std::uint64_t m_tessellations = 0;             ///< tessellations()
 };
 
 }  // namespace hz::ui

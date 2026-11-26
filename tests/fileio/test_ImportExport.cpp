@@ -25,6 +25,7 @@
 #include "horizon/fileio/StlExport.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/Solid.h"
 
 using hz::io::ImportReport;
@@ -318,6 +319,26 @@ TEST(StlExportTest, ABoxIsTwelveTrianglesWithUnitNormals) {
         volume += a.dot(b.cross(c)) / 6.0;
     }
     EXPECT_NEAR(volume, 6.0, 1e-5);
+}
+
+// Task 10: a mesh already made (an exact part's kept mesh) is written as it is: the same file as
+// its solid meshed at STL's tolerance, and a triangle naming a corner the mesh has not is left
+// out, not read past the end.
+TEST(StlExportTest, AMeshIsWrittenAsItIs) {
+    auto box = hz::model::PrimitiveFactory::makeBox(1, 2, 3);
+    const hz::geo::MeshData mesh =
+        hz::model::SolidTessellator::tessellate(*box, hz::io::StlExport::kTolerance);
+    EXPECT_EQ(hz::io::StlExport::toBinary(mesh), hz::io::StlExport::toBinary(*box));
+
+    hz::geo::MeshData broken = mesh;
+    const auto corners = static_cast<uint32_t>(broken.positions.size() / 3);
+    broken.indices.insert(broken.indices.end(), {0, 1, corners});
+    const std::string stl = hz::io::StlExport::toBinary(broken);
+    uint32_t count = 0;
+    ASSERT_GE(stl.size(), 84u);
+    std::memcpy(&count, stl.data() + 80, sizeof count);
+    EXPECT_EQ(count, mesh.indices.size() / 3);
+    EXPECT_EQ(stl.size(), 84u + 50u * count);
 }
 
 TEST(ImportedBodyTest, AnImportedBodyTravelsWithThePartAndTakesACut) {

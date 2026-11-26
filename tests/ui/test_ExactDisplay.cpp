@@ -11,11 +11,14 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QLabel>
 #include <QMessageBox>
 #include <QTemporaryDir>
 #include <QTranslator>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -34,12 +37,14 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/fileio/StlExport.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Units.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/render/MeshPicker.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
@@ -656,4 +661,58 @@ TEST(ExactDisplay, MassPropertiesSaysWhereAThinPartsEstimateStops) {
               std::string::npos)
         << text;
     EXPECT_NE(text.find("Volume: 0.3141593 "), std::string::npos) << "pi 100 1e-3: " << text;
+}
+
+// Task 10: File > Export > STL and glTF write the mesh the part's build kept (Document::exactMesh)
+// where it was made at the export's tolerance (the part's display tolerance,
+// SolidTessellator::displayTolerance, compared exactly; STL's is 0.1, a 5 mm cylinder's): not
+// meshed again, so the window's count of tessellations does not move, and the STL's triangles are
+// the kept mesh's. A part with no exact counterpart is meshed for the export, and counted.
+TEST(ExactDisplay, StlExportReusesTheKeptMesh) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    MainWindow w;
+    cylinderPrimitive(w);
+    Document& part = *w.activeDocument();
+    ASSERT_NE(part.exactMesh(), nullptr);
+    ASSERT_EQ(hz::model::SolidTessellator::displayTolerance(*part.exactSolid()),
+              hz::io::StlExport::kTolerance);
+    const auto before = w.tessellations();
+
+    const QString stl = dir.filePath(QStringLiteral("part.stl"));
+    {
+        FilePicker picker(stl);
+        trigger(w, "export_stl");
+    }
+    EXPECT_EQ(w.tessellations(), before) << "the kept mesh, not meshed again";
+    QFile file(stl);
+    ASSERT_TRUE(file.open(QIODevice::ReadOnly));
+    const QByteArray bytes = file.readAll();
+    ASSERT_GE(bytes.size(), 84);
+    std::uint32_t triangles = 0;
+    std::memcpy(&triangles, bytes.constData() + 80, sizeof triangles);
+    EXPECT_EQ(triangles, part.exactMesh()->indices.size() / 3);
+    EXPECT_EQ(static_cast<std::size_t>(bytes.size()), 84 + 50 * std::size_t{triangles});
+
+    const QString glb = dir.filePath(QStringLiteral("part.glb"));
+    {
+        FilePicker picker(glb);
+        trigger(w, "export_gltf");
+    }
+    EXPECT_GT(QFileInfo(glb).size(), 0);
+    EXPECT_EQ(w.tessellations(), before) << "glTF writes it too";
+
+    // Named by position, as a part saved before persistent naming: no exact counterpart, so its
+    // facets are meshed for the export, and counted.
+    part.featureTree().feature(0)->setNaming(hz::model::NamingScheme::Positional);
+    part.featureTree().markChanged();
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_EQ(part.exactSolid(), nullptr);
+    const auto faceted = w.tessellations();
+    {
+        FilePicker picker(dir.filePath(QStringLiteral("faceted.stl")));
+        trigger(w, "export_stl");
+    }
+    EXPECT_EQ(w.tessellations(), faceted + 1) << "meshed for the export";
+    EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("faceted.stl"))));
 }

@@ -27,8 +27,18 @@ void putFloat(std::string& out, double value) {
 }  // namespace
 
 std::string StlExport::toBinary(const topo::Solid& solid, double tolerance, std::string* problem) {
-    const geo::MeshData mesh = model::SolidTessellator::tessellate(solid, tolerance, problem);
-    const size_t triangles = mesh.indices.size() / 3;
+    return toBinary(model::SolidTessellator::tessellate(solid, tolerance, problem));
+}
+
+std::string StlExport::toBinary(const geo::MeshData& mesh) {
+    // Only whole triangles whose corners the mesh has.
+    const size_t corners = mesh.positions.size() / 3;
+    const auto whole = [&mesh, corners](size_t t) {
+        return mesh.indices[t * 3] < corners && mesh.indices[t * 3 + 1] < corners &&
+               mesh.indices[t * 3 + 2] < corners;
+    };
+    size_t triangles = 0;
+    for (size_t t = 0; t < mesh.indices.size() / 3; ++t) triangles += whole(t) ? 1 : 0;
 
     std::string out;
     out.reserve(84 + triangles * 50);
@@ -45,7 +55,8 @@ std::string StlExport::toBinary(const topo::Solid& solid, double tolerance, std:
         const size_t at = static_cast<size_t>(i) * 3;
         return math::Vec3(mesh.positions[at], mesh.positions[at + 1], mesh.positions[at + 2]);
     };
-    for (size_t t = 0; t < triangles; ++t) {
+    for (size_t t = 0; t < mesh.indices.size() / 3; ++t) {
+        if (!whole(t)) continue;
         const math::Vec3 a = vertex(mesh.indices[t * 3]);
         const math::Vec3 b = vertex(mesh.indices[t * 3 + 1]);
         const math::Vec3 c = vertex(mesh.indices[t * 3 + 2]);
@@ -65,11 +76,16 @@ std::string StlExport::toBinary(const topo::Solid& solid, double tolerance, std:
 
 bool StlExport::save(const std::string& path, const topo::Solid& solid, std::string* error) {
     std::string problem;
-    const std::string bytes = toBinary(solid, 0.1, &problem);
+    const geo::MeshData mesh = model::SolidTessellator::tessellate(solid, kTolerance, &problem);
     if (!problem.empty()) {
         if (error) *error = "a face of the part could not be meshed: " + problem;
         return false;
     }
+    return save(path, mesh, error);
+}
+
+bool StlExport::save(const std::string& path, const geo::MeshData& mesh, std::string* error) {
+    const std::string bytes = toBinary(mesh);
     if (bytes.size() <= 84) {
         if (error) *error = "the part has no surface to write";
         return false;

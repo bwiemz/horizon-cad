@@ -224,14 +224,21 @@ bool GltfExport::save(const std::string& path, const std::vector<Item>& items) {
 bool GltfExport::saveSolid(const std::string& path, const topo::Solid& solid,
                            const render::Material& material, const std::string& name,
                            std::string* error) {
-    Item item;
     std::string problem;
-    item.mesh = model::SolidTessellator::tessellate(
+    const geo::MeshData mesh = model::SolidTessellator::tessellate(
         solid, model::SolidTessellator::displayTolerance(solid), &problem);
     if (!problem.empty()) {
         if (error) *error = "a face of the part could not be meshed: " + problem;
         return false;
     }
+    return saveMesh(path, mesh, material, name, error);
+}
+
+bool GltfExport::saveMesh(const std::string& path, const geo::MeshData& mesh,
+                          const render::Material& material, const std::string& name,
+                          std::string* error) {
+    Item item;
+    item.mesh = mesh;
     item.material = material;
     item.name = name;
     if (save(path, {item})) return true;

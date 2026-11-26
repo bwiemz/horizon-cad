@@ -115,8 +115,10 @@ public:
     /// built): Auto builds it on a worker, as a slow one.
     static constexpr qint64 kBuildTimeUnknown = -1;
 
-    /// How many times a model has been tessellated for the view (for tests).
-    std::uint64_t tessellations() const { return m_tessellations; }
+    /// How many times a model has been tessellated for the view or for an
+    /// export (ExchangeCommands::tessellations), rather than drawn or written
+    /// with a mesh already made (for tests).
+    std::uint64_t tessellations() const;
 
     /// The status line's words for a part's @p kind of exact note
     /// (Document::exactNoteKind), translated; empty for None. The note's

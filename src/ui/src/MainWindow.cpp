@@ -1631,6 +1631,10 @@ void MainWindow::rebuildScene() {
     m_viewport->update();
 }
 
+std::uint64_t MainWindow::tessellations() const {
+    return m_tessellations + (m_exchange ? m_exchange->tessellations() : 0);
+}
+
 QString MainWindow::exactNoteText(doc::ExactNoteKind kind) {
     switch (kind) {
         case doc::ExactNoteKind::ShownFromFacets:

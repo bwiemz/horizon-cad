@@ -258,6 +258,43 @@ TEST(GltfExportTest, ALargePartGoesOutAsItIsDrawn) {
     EXPECT_LT(indices, SolidTessellator::tessellate(*cylinder, 0.1).indices.size());
 }
 
+// Task 10: a mesh already made (an exact part's kept mesh) goes out as it is, the same file its
+// solid meshed as the display draws it would make; one with no triangles is refused, with why.
+TEST(GltfExportTest, SaveMeshWritesTheMeshAsItIs) {
+    const auto cylinder =
+        hz::model::exact::makeCylinder(hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 5.0, 10.0);
+    ASSERT_NE(cylinder, nullptr);
+    const auto stem =
+        std::filesystem::temp_directory_path() / ("hz_gltf_mesh_" + std::to_string(
+#ifdef _WIN32
+                                                                        ::GetCurrentProcessId()
+#else
+                                                                        ::getpid()
+#endif
+                                                                            ));
+    const auto read = [](const std::filesystem::path& path) {
+        std::vector<uint8_t> bytes(static_cast<size_t>(std::filesystem::file_size(path)));
+        std::ifstream in(path, std::ios::binary);
+        in.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        return bytes;
+    };
+    const auto material = hz::render::MaterialLibrary::find("Wood");
+    const auto fromMesh = stem.string() + "_mesh.glb";
+    const auto fromSolid = stem.string() + "_solid.glb";
+    std::string error;
+    ASSERT_TRUE(GltfExport::saveMesh(fromMesh, SolidTessellator::tessellate(*cylinder), material,
+                                     "part", &error))
+        << error;
+    ASSERT_TRUE(GltfExport::saveSolid(fromSolid, *cylinder, material, "part", &error)) << error;
+    EXPECT_EQ(read(fromMesh), read(fromSolid));
+    std::filesystem::remove(fromMesh);
+    std::filesystem::remove(fromSolid);
+
+    EXPECT_FALSE(GltfExport::saveMesh(stem.string() + "_empty.glb", {}, material, "part", &error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_FALSE(std::filesystem::exists(stem.string() + "_empty.glb"));
+}
+
 TEST(GltfExportTest, EmptyInputFails) {
     EXPECT_TRUE(GltfExport::toGlb({}).empty());
     GltfExport::Item empty;
