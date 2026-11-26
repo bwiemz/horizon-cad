@@ -961,12 +961,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+10"/>
-        <location line="+167"/>
+        <location line="+172"/>
         <source>Ready</source>
         <translation type="unfinished">就绪</translation>
     </message>
     <message>
-        <location line="-165"/>
+        <location line="-170"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">已取消干涉检查</translation>
     </message>
@@ -981,12 +981,12 @@ Details are in the log:
         <translation type="unfinished">重叠 %1</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+5"/>
         <source>overlap could not be measured</source>
         <translation type="unfinished">无法测量重叠量</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>%1 and %2: %3</source>
         <translation type="unfinished">%1 与 %2：%3</translation>
     </message>
@@ -1134,7 +1134,12 @@ Details are in the log:
         <translation type="unfinished">%1: %2 和 %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-547"/>
+        <location line="-571"/>
+        <source>overlap not measured: %1</source>
+        <translation type="unfinished">未测量重叠量：%1</translation>
+    </message>
+    <message>
+        <location line="+24"/>
         <source>Motion Study</source>
         <translation type="unfinished">运动算例</translation>
     </message>

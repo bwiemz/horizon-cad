@@ -136,6 +136,11 @@ struct ComponentInterference {
     uint64_t componentB = 0;
     double volume = 0.0;          ///< Shared material, in model units cubed.
     bool volumeResolved = false;  ///< False if the overlap could not be measured.
+    /// Why the pair could not be worked out, when it could not, as the
+    /// checker said it (model::InterferencePair::problem): a face of either
+    /// that the read point cannot mesh, which face and why. Empty otherwise,
+    /// and for an overlap the Boolean could not resolve.
+    std::string problem;
 };
 
 /// Result of an assembly interference check.

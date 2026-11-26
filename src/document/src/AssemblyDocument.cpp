@@ -236,7 +236,8 @@ InterferenceReport AssemblyDocument::measureInterference(const InterferenceInput
         ci.componentB = input.ids[pair.indexB];
         ci.volume = pair.volume;
         ci.volumeResolved = pair.volumeResolved;
-        report.pairs.push_back(ci);
+        ci.problem = pair.problem;
+        report.pairs.push_back(std::move(ci));
     }
     return report;
 }

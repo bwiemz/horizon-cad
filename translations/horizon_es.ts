@@ -967,12 +967,12 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+10"/>
-        <location line="+167"/>
+        <location line="+172"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-165"/>
+        <location line="-170"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">Comprobación de interferencias cancelada</translation>
     </message>
@@ -987,12 +987,12 @@ Los detalles están en el registro:
         <translation type="unfinished">%1 en común</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+5"/>
         <source>overlap could not be measured</source>
         <translation type="unfinished">no se pudo medir la superposición</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>%1 and %2: %3</source>
         <translation type="unfinished">%1 y %2: %3</translation>
     </message>
@@ -1141,7 +1141,12 @@ Los detalles están en el registro:
         <translation type="unfinished">%1: %2 y %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-547"/>
+        <location line="-571"/>
+        <source>overlap not measured: %1</source>
+        <translation type="unfinished">superposición no medida: %1</translation>
+    </message>
+    <message>
+        <location line="+24"/>
         <source>Motion Study</source>
         <translation type="unfinished">Estudio de movimiento</translation>
     </message>

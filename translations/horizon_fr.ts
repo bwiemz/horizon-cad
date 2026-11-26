@@ -967,12 +967,12 @@ Les détails figurent dans le journal :
     </message>
     <message>
         <location line="+10"/>
-        <location line="+167"/>
+        <location line="+172"/>
         <source>Ready</source>
         <translation type="unfinished">Prêt</translation>
     </message>
     <message>
-        <location line="-165"/>
+        <location line="-170"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">Vérification des interférences annulée</translation>
     </message>
@@ -987,12 +987,12 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 en commun</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+5"/>
         <source>overlap could not be measured</source>
         <translation type="unfinished">le chevauchement n&apos;a pas pu être mesuré</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>%1 and %2: %3</source>
         <translation type="unfinished">%1 et %2 : %3</translation>
     </message>
@@ -1141,7 +1141,12 @@ Les détails figurent dans le journal :
         <translation type="unfinished">%1 : %2 et %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-547"/>
+        <location line="-571"/>
+        <source>overlap not measured: %1</source>
+        <translation type="unfinished">chevauchement non mesuré : %1</translation>
+    </message>
+    <message>
+        <location line="+24"/>
         <source>Motion Study</source>
         <translation type="unfinished">Étude de mouvement</translation>
     </message>

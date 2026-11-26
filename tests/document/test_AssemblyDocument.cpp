@@ -13,10 +13,14 @@
 #include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/geometry/Frame.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/EdgeProjection.h"
+#include "horizon/modeling/ExactPrimitives.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/ReferenceGeometry.h"
 #include "horizon/modeling/SolidTessellator.h"
+#include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
@@ -325,6 +329,39 @@ TEST(AssemblyDocumentTest, InterferenceIsMeasuredFromCopiesTheAssemblyCanChangeU
     ASSERT_EQ(report.pairs.size(), 1u);
     EXPECT_NEAR(report.pairs.front().volume, 200.0, 1e-9);
     EXPECT_TRUE(asmDoc.findInterference().pairs.empty()) << "and the assembly as it is now";
+}
+
+// Task 10: a pair the checker found but could not work out says why, as the
+// checker said it (InterferencePair::problem): here an exact cylinder whose
+// side the read point cannot mesh (a half-edge of it with no pcurve), placed
+// across a box. Reported, with no volume, never passed as clear.
+TEST(AssemblyDocument, AnInterferenceSaysWhyItWasNotMeasured) {
+    auto cylinder =
+        hz::model::exact::makeCylinder(hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 2.0, 4.0);
+    std::string side;
+    for (auto& face : cylinder->faces()) {
+        if (face.topoId.tag().find("side") == std::string::npos) continue;
+        face.outerLoop->halfEdge->pcurve = nullptr;
+        side = face.topoId.tag();
+    }
+    ASSERT_FALSE(side.empty());
+    // The broad phase boxes a solid by its vertices: the cylinder's two lie on its seam, x = 2,
+    // y = 0, at z = 0 and 4. The box straddles that line.
+    AssemblyDocument::InterferenceInput input;
+    input.placed.push_back(std::move(cylinder));
+    input.placed.push_back(hz::model::PrimitiveFactory::makeBox(2, 2, 2));
+    for (auto& vertex : input.placed.back()->vertices()) {
+        vertex.point = vertex.point + Vec3(1, -1, 1);
+    }
+    input.ids = {7, 9};
+
+    const InterferenceReport report = AssemblyDocument::measureInterference(input);
+    ASSERT_EQ(report.pairs.size(), 1u);
+    const ComponentInterference& pair = report.pairs.front();
+    EXPECT_EQ(std::min(pair.componentA, pair.componentB), 7u);
+    EXPECT_EQ(std::max(pair.componentA, pair.componentB), 9u);
+    EXPECT_FALSE(pair.volumeResolved);
+    EXPECT_EQ(pair.problem.rfind(side + ": ", 0), 0u) << pair.problem;
 }
 
 // An assembly drawn is its components as one solid: each part placed, its

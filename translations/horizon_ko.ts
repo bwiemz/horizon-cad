@@ -961,12 +961,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+10"/>
-        <location line="+167"/>
+        <location line="+172"/>
         <source>Ready</source>
         <translation type="unfinished">준비</translation>
     </message>
     <message>
-        <location line="-165"/>
+        <location line="-170"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">간섭 검사가 취소되었습니다</translation>
     </message>
@@ -981,12 +981,12 @@ Details are in the log:
         <translation type="unfinished">공유 체적 %1</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+5"/>
         <source>overlap could not be measured</source>
         <translation type="unfinished">겹침을 측정할 수 없음</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>%1 and %2: %3</source>
         <translation type="unfinished">%1 및 %2: %3</translation>
     </message>
@@ -1134,7 +1134,12 @@ Details are in the log:
         <translation type="unfinished">%1: %2 및 %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-547"/>
+        <location line="-571"/>
+        <source>overlap not measured: %1</source>
+        <translation type="unfinished">겹침을 측정하지 않음: %1</translation>
+    </message>
+    <message>
+        <location line="+24"/>
         <source>Motion Study</source>
         <translation type="unfinished">모션 스터디</translation>
     </message>
