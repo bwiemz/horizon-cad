@@ -398,7 +398,10 @@ struct Checker {
     /// True when two (u, v) points are the same point of the surface within @p allowance
     /// (a distance): each parameter difference, taken modulo the period on a periodic axis,
     /// times the surface's derivative magnitude along it. Where that derivative vanishes (a
-    /// pole) every value of the parameter is the same point.
+    /// pole) every value of the parameter is the same point. Where the surface comes to a point
+    /// between them (a pole or an apex, a pcurve ending on it or a hair off it, where the
+    /// derivative at one end alone would part them), the run from one to the other is measured
+    /// along the way, as unwrapLoop measures it (runsAlongPoint).
     static bool sameUv(const geo::Surface& s, const Vec2& a, const Vec2& b, double allowance) {
         const auto d = s.derivatives(a.x, a.y);
         const auto close = [&](double x, double y, double speed, bool periodic, geo::Interval r) {
@@ -410,8 +413,11 @@ struct Checker {
             }
             return speed <= 0.0 || diff * speed <= allowance;
         };
-        return close(a.x, b.x, d.du.length(), s.periodicU(), s.uRange()) &&
-               close(a.y, b.y, d.dv.length(), s.periodicV(), s.vRange());
+        if (close(a.x, b.x, d.du.length(), s.periodicU(), s.uRange()) &&
+            close(a.y, b.y, d.dv.length(), s.periodicV(), s.vRange())) {
+            return true;
+        }
+        return runsAlongPoint(s, a, b, allowance);
     }
 
     LoopInfo checkLoop(const Face& f, const Wire* w, bool outer) {
@@ -446,7 +452,8 @@ struct Checker {
         // The loop as chords of its pcurves' own (u, v) values, unwrapped so that it is
         // continuous: a periodic surface's seam must not collapse the rectangle, and a loop
         // written inside [0, 2 pi) must not break where it crosses the seam.
-        if (!unwrapLoop(ring, kSamples, s, uPeriod(s), vPeriod(s), allowances, info.poly)) {
+        if (!unwrapLoop(ring, kSamples, s, uPeriod(s), vPeriod(s), allowances, info.poly,
+                        loopSense(f, outer))) {
             report(ExactIssueKind::LoopNotClosed, &f, w->halfEdge->edge,
                    "loop closes only after winding round the surface");
             return info;

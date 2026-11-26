@@ -230,7 +230,7 @@ void EdgeSampler::planFace(const Face& f) {
     }
     topo::LoopPolygon poly;
     if (!topo::unwrapLoop(ring, topo::kLoopSamples, s, topo::uPeriod(s), topo::vPeriod(s),
-                          allowances, poly) ||
+                          allowances, poly, topo::loopSense(f, true)) ||
         poly.empty()) {
         return;
     }

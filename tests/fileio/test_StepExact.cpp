@@ -50,6 +50,7 @@ using hz::step_text::cone;
 using hz::step_text::Data;
 using hz::step_text::drillPoint;
 using hz::step_text::externalStyleCylinder;
+using hz::step_text::lune;
 using hz::step_text::real;
 using hz::step_text::seamedCap;
 using hz::step_text::seamedHemisphere;
@@ -785,6 +786,28 @@ TEST(StepExact, AFaceWhoseSurfaceFacesInIsTurnedByItsLoops) {
     }
     EXPECT_EQ(turned, 1) << "the front face alone";
     EXPECT_EQ(firstIssue(*solids[0]), "");
+}
+
+// A lune's loop runs round each pole between its two meridians with no seam: the meridians bound
+// two lunes, and the face's sense picks one. With its sphere's seam inside the lune, its pcurves
+// read into [0, 2 pi) lie either side of the seam, and laid straight across they ran round the
+// poles the other way, against the face's .T.: the solid was left out ("its loops run against
+// its same_sense"). Its runs round the poles are the face's sense's, and it reads exact, a
+// quarter of the ball.
+TEST(StepExact, ALuneWhoseSpheresSeamLiesInsideItReadsExact) {
+    const auto solids = StepFormat::fromString(lune(), nullptr, nullptr, inMillimetres());
+    ASSERT_EQ(solids.size(), 1u) << StepFormat::lastError();
+    const topo::Solid& solid = *solids.front();
+    EXPECT_EQ(exactFaces(solid).size(), 3u);
+    EXPECT_EQ(firstIssue(solid), "");
+    for (const topo::Face* f : exactFaces(solid)) EXPECT_FALSE(f->reversed);
+    const auto props = hz::model::MassPropertiesCalculator::compute(solid);
+    ASSERT_TRUE(props.valid) << props.problem;
+    EXPECT_NEAR(props.volume, hz::math::kPi * 9.0, 1e-9 * hz::math::kPi * 9.0);
+    std::string problem;
+    hz::model::BoundaryMesh::extractFacePolygons(
+        solid, hz::model::BoundaryMesh::defaultChordTolerance(solid), &problem);
+    EXPECT_EQ(problem, "");
 }
 
 // ---------------------------------------------------------------------------

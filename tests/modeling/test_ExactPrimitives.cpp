@@ -2,8 +2,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <limits>
+#include <map>
 #include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "PoleSolids.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/AnalyticCurves.h"
 #include "horizon/geometry/curves/Curve2D.h"
@@ -12,8 +20,14 @@
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/ModelTolerance.h"
+#include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/ExactPrimitives.h"
+#include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
+#include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/TrimmedFaceMesher.h"
+#include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/Solid.h"
 
@@ -403,6 +417,381 @@ TEST(ExactPrimitives, ANonSimilarityLeavesAnAppendedCopyFaceted) {
                 EXPECT_EQ(h->pcurveStart, 0.0);
                 EXPECT_EQ(h->pcurveEnd, 0.0);
             }
+        }
+    }
+}
+
+// ---- Stage 3: every primitive exact, and faces that meet at poles between meridians ----
+
+namespace {
+
+constexpr double kPi = math::kPi;
+
+/// The frames each primitive is built in: the world's, and one turned and moved off it.
+std::vector<geo::Frame> placements() {
+    return {geo::Frame{}, geo::Frame::fromAxis({3, -2, 7}, Vec3{1, 2, 2} * (1.0 / 3.0), {0, 0, 1})};
+}
+
+/// The volume of the apple a spindle torus (R < r) makes, by Pappus: the part of its tube's disc
+/// on the outer side of the axis, turned about it. The disc's part beyond the axis is a segment
+/// of half-chord c = sqrt(r^2 - R^2), area r^2 acos(R / r) - R c, whose centroid lies 2 c^3 / (3
+/// area) from the disc's centre; what is left has the moment pi r^2 R less that segment's about
+/// the axis, R A_major + 2 c^3 / 3.
+double appleVolume(double major, double minor) {
+    const double c = std::sqrt(minor * minor - major * major);
+    const double cut = minor * minor * std::acos(major / minor) - major * c;
+    const double kept = kPi * minor * minor - cut;
+    return math::kTwoPi * (kept * major + 2.0 * c * c * c / 3.0);
+}
+
+/// A primitive as built, what it should be: its face count and closed-form volume.
+struct Expected {
+    std::string what;
+    std::function<std::unique_ptr<topo::Solid>(const geo::Frame&)> make;
+    std::size_t faces;
+    double volume;
+};
+
+std::vector<Expected> eachPrimitive() {
+    return {
+        {"box 2x3x4", [](const geo::Frame& f) { return model::exact::makeBox(f, 2, 3, 4); }, 6,
+         24.0},
+        {"sphere r = 3", [](const geo::Frame& f) { return model::exact::makeSphere(f, 3); }, 1,
+         4.0 / 3.0 * kPi * 27.0},
+        {"frustum (2, 1, 4)",
+         [](const geo::Frame& f) { return model::exact::makeCone(f, 2, 1, 4); }, 3,
+         kPi * 4.0 / 3.0 * (4.0 + 2.0 + 1.0)},
+        {"apex cone (2, 0, 4)",
+         [](const geo::Frame& f) { return model::exact::makeCone(f, 2, 0, 4); }, 2,
+         kPi * 4.0 * 4.0 / 3.0},
+        {"torus (5, 1)", [](const geo::Frame& f) { return model::exact::makeTorus(f, 5, 1); }, 1,
+         2.0 * kPi * kPi * 5.0},
+        {"spindle (1, 2)", [](const geo::Frame& f) { return model::exact::makeTorus(f, 1, 2); }, 1,
+         appleVolume(1.0, 2.0)},
+    };
+}
+
+/// @p solid validates, meshes at the read point with no problem, and measures @p volume to 1e-9.
+void expectValidMeshedAndExact(const topo::Solid& solid, double volume) {
+    const auto issues = topo::validateExact(solid, topo::exactTolerance(solid));
+    EXPECT_TRUE(issues.empty()) << issues.size() << " issues, the first: "
+                                << (issues.empty() ? "" : issues.front().detail);
+    std::string problem;
+    const auto polygons = model::BoundaryMesh::extractFacePolygons(
+        solid, model::BoundaryMesh::defaultChordTolerance(solid), &problem);
+    EXPECT_TRUE(problem.empty()) << problem;
+    EXPECT_FALSE(polygons.empty());
+    const model::MassProperties props = model::MassPropertiesCalculator::compute(solid);
+    ASSERT_TRUE(props.valid) << props.problem;
+    EXPECT_NEAR(props.volume, volume, 1e-9 * volume);
+}
+
+/// The set of @p solid's live face tags.
+std::set<std::string> faceTags(const std::unique_ptr<topo::Solid>& solid) {
+    std::set<std::string> tags;
+    if (solid == nullptr) {
+        ADD_FAILURE() << "the exact builder made nothing";
+        return tags;
+    }
+    for (const auto& f : solid->faces()) {
+        if (f.alive) tags.insert(f.topoId.tag());
+    }
+    return tags;
+}
+
+/// The logical faces of a faceted primitive of master's: its facets named as the Stable scheme
+/// names them, each read back as the face it is of.
+std::set<std::string> logicalTags(std::unique_ptr<topo::Solid> faceted) {
+    std::set<std::string> tags;
+    if (faceted == nullptr) {
+        ADD_FAILURE() << "master's factory made nothing";
+        return tags;
+    }
+    model::nameFacetsLogically(*faceted);
+    for (const auto& f : faceted->faces()) {
+        if (f.alive) tags.insert(model::logicalFace(f.topoId.tag()));
+    }
+    return tags;
+}
+
+}  // namespace
+
+TEST(ExactPrimitives, EachIsValidAndExact) {
+    for (const geo::Frame& frame : placements()) {
+        for (const Expected& e : eachPrimitive()) {
+            SCOPED_TRACE(e.what);
+            const auto solid = e.make(frame);
+            ASSERT_NE(solid, nullptr);
+            EXPECT_TRUE(solid->isValid()) << solid->validationReport();
+            EXPECT_EQ(solid->faceCount(), e.faces);
+            for (const auto& f : solid->faces()) {
+                EXPECT_NE(f.exactSurface, nullptr);
+                EXPECT_EQ(f.surface, nullptr) << "a constructed face has no NURBS carrier";
+            }
+            expectGeometryMeetsTopology(*solid);
+            expectValidMeshedAndExact(*solid, e.volume);
+        }
+    }
+}
+
+// A box spans its frame's own axes from its origin, a left-handed frame's y included: its faces
+// still face out, their loops counter-clockwise about them.
+TEST(ExactPrimitives, ABoxSpansItsFramesAxes) {
+    for (const geo::Frame& right : placements()) {
+        geo::Frame left = right;
+        left.y = right.y * -1.0;
+        for (const geo::Frame& frame : {right, left}) {
+            const auto box = model::exact::makeBox(frame, 2, 3, 4);
+            ASSERT_NE(box, nullptr);
+            EXPECT_TRUE(box->isValid()) << box->validationReport();
+            expectGeometryMeetsTopology(*box);
+            expectValidMeshedAndExact(*box, 24.0);
+            const Vec3 far = frame.origin + frame.x * 2.0 + frame.y * 3.0 + frame.z * 4.0;
+            const auto& vs = box->vertices();
+            EXPECT_TRUE(std::any_of(vs.begin(), vs.end(), [&far](const topo::Vertex& v) {
+                return v.point.distanceTo(far) < 1e-12;
+            }));
+            for (const auto& f : box->faces()) {
+                if (f.topoId.tag() != "box/back") continue;
+                const auto* plane = dynamic_cast<const geo::Plane*>(f.exactSurface.get());
+                ASSERT_NE(plane, nullptr);
+                EXPECT_NEAR(plane->frame().z.dot(frame.y), 1.0, 1e-12) << "back faces +y";
+            }
+        }
+    }
+}
+
+TEST(ExactPrimitives, NamesAreMastersLogicalNames) {
+    const geo::Frame f;
+    using model::PrimitiveFactory;
+    EXPECT_EQ(faceTags(model::exact::makeBox(f, 2, 3, 4)),
+              logicalTags(PrimitiveFactory::makeBox(2, 3, 4)));
+    EXPECT_EQ(faceTags(model::exact::makeCylinder(f, 5, 10)),
+              logicalTags(PrimitiveFactory::makeCylinder(5, 10)));
+    EXPECT_EQ(faceTags(model::exact::makeSphere(f, 3)),
+              logicalTags(PrimitiveFactory::makeSphere(3)));
+    EXPECT_EQ(faceTags(model::exact::makeCone(f, 2, 1, 4)),
+              logicalTags(PrimitiveFactory::makeCone(2, 1, 4)));
+    EXPECT_EQ(faceTags(model::exact::makeCone(f, 2, 0, 4)),
+              logicalTags(PrimitiveFactory::makeCone(2, 0, 4)));
+    EXPECT_EQ(faceTags(model::exact::makeCone(f, 0, 2, 4)),
+              logicalTags(PrimitiveFactory::makeCone(0, 2, 4)));
+    EXPECT_EQ(faceTags(model::exact::makeCone(f, 2, 2, 4)),
+              logicalTags(PrimitiveFactory::makeCone(2, 2, 4)));
+    EXPECT_EQ(faceTags(model::exact::makeTorus(f, 5, 1)),
+              logicalTags(PrimitiveFactory::makeTorus(5, 1)));
+    // Master makes no spindle (it refuses R <= r): the apple is named as the torus it stands for.
+    EXPECT_EQ(faceTags(model::exact::makeTorus(f, 1, 2)),
+              logicalTags(PrimitiveFactory::makeTorus(5, 1)));
+}
+
+// A cone whose radii are alike is a cylinder, as master tags its side; a frustum narrowing upward
+// opens downward (its half-angle positive, its normal out), a widening one upward.
+TEST(ExactPrimitives, ConeSidesAreTheSurfacesMasterTagsThem) {
+    const geo::Frame f;
+    const auto kindOfSide = [](const topo::Solid& s) {
+        for (const auto& face : s.faces()) {
+            if (face.topoId.tag() == "cone/side") return face.exactSurface->kind();
+        }
+        return geo::SurfaceKind::Nurbs;
+    };
+    const auto alike = model::exact::makeCone(f, 2, 2, 4);
+    ASSERT_NE(alike, nullptr);
+    EXPECT_EQ(kindOfSide(*alike), geo::SurfaceKind::Cylinder);
+    for (const auto& radii :
+         {std::pair{2.0, 1.0}, std::pair{1.0, 2.0}, std::pair{2.0, 0.0}, std::pair{0.0, 2.0}}) {
+        const auto cone = model::exact::makeCone(f, radii.first, radii.second, 4);
+        ASSERT_NE(cone, nullptr);
+        EXPECT_EQ(kindOfSide(*cone), geo::SurfaceKind::Cone);
+        for (const auto& face : cone->faces()) {
+            if (const auto* c = dynamic_cast<const geo::Cone*>(face.exactSurface.get())) {
+                EXPECT_GT(c->halfAngle(), 0.0);
+                EXPECT_GE(c->radius(), 0.0);
+            }
+        }
+        expectValidMeshedAndExact(*cone,
+                                  kPi * 4.0 / 3.0 *
+                                      (radii.first * radii.first + radii.first * radii.second +
+                                       radii.second * radii.second));
+    }
+}
+
+// The surfaces of revolution seam at u = 0 along the frame's x, where master's rings start, and a
+// left-handed frame builds the right-handed one's solid.
+TEST(ExactPrimitives, TurnedPrimitivesSeamAlongTheFramesX) {
+    for (const geo::Frame& right : placements()) {
+        geo::Frame left = right;
+        left.y = right.y * -1.0;
+        for (const geo::Frame& frame : {right, left}) {
+            for (const auto& solid :
+                 {model::exact::makeSphere(frame, 3), model::exact::makeCone(frame, 2, 1, 4),
+                  model::exact::makeCone(frame, 2, 0, 4), model::exact::makeTorus(frame, 5, 1),
+                  model::exact::makeTorus(frame, 1, 2)}) {
+                ASSERT_NE(solid, nullptr);
+                for (const auto& f : solid->faces()) {
+                    if (f.exactSurface->kind() == geo::SurfaceKind::Plane) continue;
+                    // The seam's middle (u = 0) lies in the half-plane of the frame's x.
+                    const topo::HalfEdge* he = f.outerLoop->halfEdge;
+                    bool seen = false;
+                    do {
+                        const math::Vec2 a = he->pcurve->evaluate(he->pcurveStart);
+                        const math::Vec2 b = he->pcurve->evaluate(he->pcurveEnd);
+                        if (a.x == 0.0 && b.x == 0.0) {
+                            seen = true;
+                            const math::Vec2 mid =
+                                he->pcurve->evaluate(0.5 * (he->pcurveStart + he->pcurveEnd));
+                            const Vec3 q = f.exactSurface->evaluate(mid.x, mid.y) - frame.origin;
+                            EXPECT_NEAR(q.dot(right.y), 0.0, 1e-12) << f.topoId.tag();
+                            EXPECT_GT(q.dot(right.x), 0.0) << f.topoId.tag();
+                        }
+                        he = he->next;
+                    } while (he != f.outerLoop->halfEdge);
+                    EXPECT_TRUE(seen) << f.topoId.tag();
+                }
+            }
+        }
+    }
+}
+
+// A horn torus (R = r) is the apple of a tube that touches the axis: its two poles are one
+// vertex, and its volume is the ring torus's, 2 pi^2 R r^2. Its pole is a cusp (its arc meets the
+// axis along it), which the read point's mesher does not mesh: it refines toward the cusp until a
+// triangle's sides are below the model's resolution, and says so (as for a spindle within some 5%
+// of a horn). Tracked in stage 3's list; it is valid and measures exactly.
+TEST(ExactPrimitives, AHornTorusIsAnAppleWithOnePole) {
+    for (const geo::Frame& frame : placements()) {
+        const auto horn = model::exact::makeTorus(frame, 2, 2);
+        ASSERT_NE(horn, nullptr);
+        EXPECT_EQ(horn->faceCount(), 1u);
+        EXPECT_EQ(horn->edgeCount(), 1u);
+        EXPECT_EQ(horn->vertexCount(), 1u);
+        EXPECT_NEAR(horn->vertices().front().point.distanceTo(frame.origin), 0.0, 1e-12);
+        expectGeometryMeetsTopology(*horn);
+        const auto issues = topo::validateExact(*horn, topo::exactTolerance(*horn));
+        EXPECT_TRUE(issues.empty()) << issues.front().detail;
+        const model::MassProperties props = model::MassPropertiesCalculator::compute(*horn);
+        ASSERT_TRUE(props.valid) << props.problem;
+        const double volume = 2.0 * kPi * kPi * 2.0 * 4.0;
+        EXPECT_NEAR(props.volume, volume, 1e-9 * volume);
+    }
+}
+
+TEST(ExactPrimitives, ASphereSectorIsValidAndExact) {
+    const double r = 3.0;
+    for (const geo::Frame& frame : placements()) {
+        for (const double angle : {kPi / 2.0, 0.01, math::kTwoPi - 0.01}) {
+            SCOPED_TRACE(angle);
+            const auto sector = model::exact::makeSphereSector(frame, r, angle);
+            ASSERT_NE(sector, nullptr);
+            EXPECT_TRUE(sector->isValid()) << sector->validationReport();
+            EXPECT_TRUE(sector->checkEulerFormula());
+            EXPECT_EQ(sector->faceCount(), 3u);
+            expectGeometryMeetsTopology(*sector);
+            // A lune of the angle's share of the ball: pi r^3 / 3 at a quarter turn.
+            expectValidMeshedAndExact(*sector, 2.0 / 3.0 * angle * r * r * r);
+        }
+    }
+}
+
+TEST(ExactPrimitives, EveryEdgeIsNamed) {
+    const geo::Frame f = placements().back();
+    std::vector<std::unique_ptr<topo::Solid>> solids;
+    for (const Expected& e : eachPrimitive()) solids.push_back(e.make(f));
+    solids.push_back(model::exact::makeCylinder(f, 5, 10));
+    solids.push_back(model::exact::makeCone(f, 0, 2, 4));
+    solids.push_back(model::exact::makeSphereSector(f, 3, kPi / 2.0));
+    for (auto& solid : solids) {
+        ASSERT_NE(solid, nullptr);
+        model::nameEdgesLogically(*solid);
+        std::set<std::string> tags;
+        for (const auto& e : solid->edges()) {
+            const std::string& tag = e.topoId.tag();
+            EXPECT_FALSE(tag.empty());
+            EXPECT_TRUE(tags.insert(tag).second) << tag << " names two edges";
+        }
+    }
+}
+
+TEST(ExactPrimitives, DegeneratePrimitivesGiveNothing) {
+    const geo::Frame f;
+    const double inf = std::numeric_limits<double>::infinity();
+    EXPECT_EQ(model::exact::makeBox(f, 0, 3, 4), nullptr);
+    EXPECT_EQ(model::exact::makeBox(f, 2, -3, 4), nullptr);
+    EXPECT_EQ(model::exact::makeBox(f, 2, 3, inf), nullptr);
+    EXPECT_EQ(model::exact::makeSphere(f, 0), nullptr);
+    EXPECT_EQ(model::exact::makeSphere(f, -1), nullptr);
+    EXPECT_EQ(model::exact::makeCone(f, 0, 0, 4), nullptr);
+    EXPECT_EQ(model::exact::makeCone(f, -1, 2, 4), nullptr);
+    EXPECT_EQ(model::exact::makeCone(f, 2, 1, 0), nullptr);
+    EXPECT_EQ(model::exact::makeCone(f, std::nan(""), 1, 4), nullptr);
+    EXPECT_EQ(model::exact::makeTorus(f, 0, 1), nullptr);
+    EXPECT_EQ(model::exact::makeTorus(f, 5, 0), nullptr);
+    EXPECT_EQ(model::exact::makeSphereSector(f, 3, 0), nullptr);
+    EXPECT_EQ(model::exact::makeSphereSector(f, 3, math::kTwoPi), nullptr);
+    EXPECT_EQ(model::exact::makeSphereSector(f, 0, 1), nullptr);
+}
+
+namespace {
+
+/// The area of each face of @p solid's mesh at the read point's chord tolerance, by its tag.
+std::map<std::string, double> meshedAreas(const topo::Solid& solid) {
+    model::MeshOptions options;
+    options.chordTolerance = model::BoundaryMesh::defaultChordTolerance(solid);
+    std::map<std::string, double> areas;
+    for (const model::FaceMesh& m : model::TrimmedFaceMesher::meshSolid(solid, options)) {
+        EXPECT_TRUE(m.problem.empty()) << m.problem;
+        double& area = areas[m.face->topoId.tag()];
+        for (const auto& t : m.triangles) {
+            const Vec3& a = m.points[t[0]];
+            area += 0.5 * (m.points[t[1]] - a).cross(m.points[t[2]] - a).length();
+        }
+    }
+    return areas;
+}
+
+}  // namespace
+
+// The spec's regression class "a ball split into two faces by two meridians": a lune whose
+// sphere's seam lies inside it, its meridians' pcurves written within [0, 2 pi), and a ball cut
+// in two along two meridians, each face's pcurves within [0, 2 pi). Laid straight across the
+// window they are written in, their loops ran round the poles the wrong way: the validator and
+// the mass said the loop ran against the face's sense, and the mesher meshed the other lune (a
+// quarter lune's band came out three quarters of the sphere). Each runs round its poles the way
+// its face's sense says, and is valid, meshed as itself and exact.
+TEST(ExactPrimitives, LunesWhereverTheirSpheresSeamLiesAreValidAndExact) {
+    const double r = 3.0;
+    for (const geo::Frame& frame : placements()) {
+        for (const double angle : {kPi / 2.0, 1.5 * kPi, 0.01, math::kTwoPi - 0.01}) {
+            SCOPED_TRACE(angle);
+            const auto lune = pole_solids::luneAcrossTheSeam(frame, r, angle);
+            expectValidMeshedAndExact(*lune, 2.0 / 3.0 * angle * r * r * r);
+            const double band = 2.0 * angle * r * r;
+            EXPECT_NEAR(meshedAreas(*lune)["sphere/band"], band, 1e-3 * band);
+        }
+        for (const double split : {kPi / 2.0, 1.5 * kPi}) {
+            SCOPED_TRACE(split);
+            const auto ball = pole_solids::ballSplitByMeridians(frame, r, split);
+            expectValidMeshedAndExact(*ball, 4.0 / 3.0 * kPi * r * r * r);
+            auto areas = meshedAreas(*ball);
+            EXPECT_NEAR(areas["sphere/a"], 2.0 * split * r * r, 1e-3 * 4.0 * kPi * r * r);
+            EXPECT_NEAR(areas["sphere/b"], 2.0 * (math::kTwoPi - split) * r * r,
+                        1e-3 * 4.0 * kPi * r * r);
+        }
+    }
+}
+
+// A cone sector to its apex: the side's loop runs along the apex from one generator to the
+// other, a run of the sector's angle, not a whole turn.
+TEST(ExactPrimitives, AConeSectorToItsApexIsValidAndExact) {
+    const double r = 2.0;
+    const double h = 4.0;
+    for (const geo::Frame& frame : placements()) {
+        for (const double angle : {kPi / 2.0, 0.01, math::kTwoPi - 0.01}) {
+            SCOPED_TRACE(angle);
+            const auto sector = pole_solids::coneSector(frame, r, h, angle);
+            EXPECT_TRUE(sector->isValid()) << sector->validationReport();
+            expectGeometryMeetsTopology(*sector);
+            expectValidMeshedAndExact(*sector, angle * r * r * h / 6.0);
         }
     }
 }

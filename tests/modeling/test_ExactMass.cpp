@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "PoleSolids.h"
 #include "StepTestText.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
@@ -197,6 +198,52 @@ TEST(ExactMass, AConeToItsApexIsExact) {
     expectRelative(props.volume, kPi * 4.0 * 3.0 / 3.0, 1e-9, "its volume");
     expectRelative(props.surfaceArea, kPi * 4.0 + kPi * 2.0 * std::sqrt(13.0), 1e-9, "its area");
     EXPECT_NEAR((props.centerOfMass - Vec3{0, 0, 0.75}).length(), 0.0, 1e-9);
+}
+
+// Faces that meet at a pole between two meridians and nothing else: a sphere's sector (a quarter
+// and three quarters of a turn), the same with its sphere's seam inside the lune and its pcurves
+// either side of it (once "its outer loop runs against its sense"), a ball cut in two along two
+// meridians, and a cone's sector to its apex. Volume, area and centre within 1e-9 of the closed
+// forms: a ball's wedge of angle a has its centre on its bisector 3 pi r sin(a / 2) / (8 a) from
+// the axis; a cone's, r sin(a / 2) / a from it and three quarters of the way up from its apex.
+TEST(ExactMass, FacesMeetingAtPolesBetweenMeridiansAreExact) {
+    const geo::Frame frame =
+        geo::Frame::fromAxis({3, -2, 7}, Vec3{1, 2, 2} * (1.0 / 3.0), {0, 0, 1});
+    const double r = 3.0;
+    for (const double angle : {0.5 * kPi, 1.5 * kPi}) {
+        SCOPED_TRACE(angle);
+        const Vec3 bisector = frame.x * std::cos(angle / 2.0) + frame.y * std::sin(angle / 2.0);
+        const Vec3 centre =
+            frame.origin + bisector * (3.0 * kPi * r * std::sin(angle / 2.0) / (8.0 * angle));
+        for (const auto& lune : {hz::model::exact::makeSphereSector(frame, r, angle),
+                                 hz::pole_solids::luneAcrossTheSeam(frame, r, angle)}) {
+            ASSERT_NE(lune, nullptr);
+            const MassProperties props = MassPropertiesCalculator::compute(*lune);
+            ASSERT_TRUE(props.valid) << props.problem;
+            expectRelative(props.volume, 2.0 / 3.0 * angle * r * r * r, 1e-9, "its volume");
+            expectRelative(props.surfaceArea, 2.0 * angle * r * r + kPi * r * r, 1e-9, "its area");
+            EXPECT_NEAR((props.centerOfMass - centre).length(), 0.0, 1e-9 * r);
+        }
+        const auto ball = hz::pole_solids::ballSplitByMeridians(frame, r, angle);
+        const MassProperties whole = MassPropertiesCalculator::compute(*ball);
+        ASSERT_TRUE(whole.valid) << whole.problem;
+        expectRelative(whole.volume, 4.0 / 3.0 * kPi * r * r * r, 1e-9, "the ball's volume");
+        expectRelative(whole.surfaceArea, 4.0 * kPi * r * r, 1e-9, "the ball's area");
+        EXPECT_NEAR((whole.centerOfMass - frame.origin).length(), 0.0, 1e-9 * r);
+
+        const double h = 4.0;
+        const double cr = 2.0;
+        const auto sector = hz::pole_solids::coneSector(frame, cr, h, angle);
+        const MassProperties cone = MassPropertiesCalculator::compute(*sector);
+        ASSERT_TRUE(cone.valid) << cone.problem;
+        expectRelative(cone.volume, angle * cr * cr * h / 6.0, 1e-9, "the cone sector's volume");
+        const double slant = std::hypot(cr, h);
+        expectRelative(cone.surfaceArea, angle * cr * slant / 2.0 + angle * cr * cr / 2.0 + cr * h,
+                       1e-9, "the cone sector's area");
+        const Vec3 coneCentre =
+            frame.origin + frame.z * (0.75 * h) + bisector * (cr * std::sin(angle / 2.0) / angle);
+        EXPECT_NEAR((cone.centerOfMass - coneCentre).length(), 0.0, 1e-9 * h);
+    }
 }
 
 // A mirror image turns every face round (Pattern::transformed reverses its loops and its faces'

@@ -4328,18 +4328,20 @@ std::vector<topo::HalfEdge*> ringOf(const topo::Wire& wire, std::size_t limit) {
 constexpr const char* kWindsRound = "loop closes only after winding round the surface";
 
 /// The signed area in (u, v) of the loop @p ring of a face on @p s, unwrapped as the exact
-/// validator unwraps it; nullopt where it cannot be (a loop that winds round the surface). An
+/// validator unwraps it (with @p sense, its runs round a pole laid as that sense says, where the
+/// loop leaves them free); nullopt where it cannot be (a loop that winds round the surface). An
 /// area within rounding of none (the box round the loop's samples times 1e-12) is 0: it says
 /// nothing of which way the loop runs.
 std::optional<double> loopArea(const std::vector<topo::HalfEdge*>& ring, const geo::Surface& s,
-                               const math::ModelTolerance& tolerance) {
+                               const math::ModelTolerance& tolerance,
+                               topo::LoopSense sense = topo::LoopSense::Either) {
     const std::vector<const topo::HalfEdge*> walk(ring.begin(), ring.end());
     std::vector<double> allowances;
     allowances.reserve(walk.size());
     for (const topo::HalfEdge* h : walk) allowances.push_back(topo::joinAllowance(*h, tolerance));
     topo::LoopPolygon poly;
     if (walk.empty() || !topo::unwrapLoop(walk, topo::kLoopSamples, s, topo::uPeriod(s),
-                                          topo::vPeriod(s), allowances, poly)) {
+                                          topo::vPeriod(s), allowances, poly, sense)) {
         return std::nullopt;
     }
     math::Vec2 lo = poly.front().a;
@@ -4425,8 +4427,10 @@ bool loopsDetermineRegion(const geo::Surface& s, double near) {
 /// skin round a flat), which holds a pole or wraps the surface and this stage cannot represent,
 /// or its file's same_sense is wrong: which, it cannot tell, so it says both. A loop whose area
 /// says nothing (a seam joined only at poles, laid out next) leaves the face as its file says.
-/// (A loop that runs along a pole without a seam does not fix its region here: which way round
-/// the pole it runs is the next pcurve's window's, not the file's; stage 3's pole topology.)
+/// A loop that runs round a pole between two pcurves without a seam (a lune between two
+/// meridians) does not fix its region: which way round the pole it runs is the file's sense's,
+/// not the window its next pcurve is written in, so its area is taken again with its runs laid
+/// as that sense says (topo::unwrapLoop) before the face is refused.
 ///
 /// An outer loop with no seam that closes only after winding round the surface (a band) says so
 /// in the validator's words, kWindsRound, and leaves the face as it was: finishExact gives it its
@@ -4453,6 +4457,10 @@ std::string faceSense(topo::Face& face, const math::ModelTolerance& tolerance, s
         return {};
     }
     if (loopsSayReversed == face.reversed) return {};
+    const auto laid =
+        loopArea(ring, *face.exactSurface, tolerance,
+                 face.reversed ? topo::LoopSense::Clockwise : topo::LoopSense::CounterClockwise);
+    if (laid && std::isfinite(*laid) && *laid != 0.0 && (*laid < 0.0) == face.reversed) return {};
     return "its loops run against its same_sense: either the face is the surface outside its "
            "loop (it holds a pole or wraps the surface), which this stage cannot represent, or "
            "the file's same_sense is wrong";

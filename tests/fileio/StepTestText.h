@@ -191,6 +191,60 @@ inline std::string sphere() {
 )");
 }
 
+/// A lune of a ball of radius 3 about the origin, a quarter turn from the half-plane y = 0
+/// (x > 0) round to x = 0 (y > 0), with its two half-disc caps, as a partial revolve of a
+/// semicircle makes it: its sphere bounded by the two meridians, each from pole to pole, with no
+/// seam. Its sphere is placed with its seam at 45 degrees, inside the lune, as another system may
+/// place it: read into [0, 2 pi), its meridians' pcurves lie either side of the seam, and only
+/// the face's sense says which way round the poles its loop runs.
+inline std::string lune() {
+    return stepFile(R"(#1 = CARTESIAN_POINT('',(0.,0.,0.));
+#2 = CARTESIAN_POINT('',(0.,0.,-3.));
+#3 = VERTEX_POINT('',#2);
+#4 = CARTESIAN_POINT('',(0.,0.,3.));
+#5 = VERTEX_POINT('',#4);
+#6 = DIRECTION('',(0.,-1.,0.));
+#7 = DIRECTION('',(0.,0.,-1.));
+#8 = AXIS2_PLACEMENT_3D('',#1,#6,#7);
+#9 = CIRCLE('',#8,3.);
+#10 = EDGE_CURVE('',#3,#5,#9,.T.);
+#11 = DIRECTION('',(1.,0.,0.));
+#12 = AXIS2_PLACEMENT_3D('',#1,#11,#7);
+#13 = CIRCLE('',#12,3.);
+#14 = EDGE_CURVE('',#3,#5,#13,.T.);
+#15 = DIRECTION('',(0.,0.,1.));
+#16 = VECTOR('',#15,1.);
+#17 = LINE('',#2,#16);
+#18 = EDGE_CURVE('',#3,#5,#17,.T.);
+#19 = ORIENTED_EDGE('',*,*,#14,.T.);
+#20 = ORIENTED_EDGE('',*,*,#10,.F.);
+#21 = EDGE_LOOP('',(#19,#20));
+#22 = FACE_OUTER_BOUND('',#21,.T.);
+#23 = DIRECTION('',(0.7071067811865476,0.7071067811865475,0.));
+#24 = AXIS2_PLACEMENT_3D('',#1,#15,#23);
+#25 = SPHERICAL_SURFACE('',#24,3.);
+#26 = ADVANCED_FACE('',(#22),#25,.T.);
+#27 = ORIENTED_EDGE('',*,*,#10,.T.);
+#28 = ORIENTED_EDGE('',*,*,#18,.F.);
+#29 = EDGE_LOOP('',(#27,#28));
+#30 = FACE_OUTER_BOUND('',#29,.T.);
+#31 = AXIS2_PLACEMENT_3D('',#1,#6,#11);
+#32 = PLANE('',#31);
+#33 = ADVANCED_FACE('',(#30),#32,.T.);
+#34 = ORIENTED_EDGE('',*,*,#14,.F.);
+#35 = ORIENTED_EDGE('',*,*,#18,.T.);
+#36 = EDGE_LOOP('',(#34,#35));
+#37 = FACE_OUTER_BOUND('',#36,.T.);
+#38 = DIRECTION('',(-1.,0.,0.));
+#39 = DIRECTION('',(0.,1.,0.));
+#40 = AXIS2_PLACEMENT_3D('',#1,#38,#39);
+#41 = PLANE('',#40);
+#42 = ADVANCED_FACE('',(#37),#41,.T.);
+#43 = CLOSED_SHELL('',(#26,#33,#42));
+#44 = MANIFOLD_SOLID_BREP('lune',#43);
+)");
+}
+
 /// A cone of radius 2.5 and height 10, its apex at the origin and its base below, as Unigraphics
 /// writes one (the Moon buggy's face #32800): its CONICAL_SURFACE of radius 0 placed at the apex,
 /// along -z; its side bounded by the base's circle and a VERTEX_LOOP at the apex; a flat base.

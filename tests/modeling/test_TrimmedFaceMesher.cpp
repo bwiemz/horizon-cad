@@ -20,6 +20,7 @@
 
 #include "../TimeLimits.h"
 #include "MeshEdgeSampler.h"  // the tolerance the mesher lays loops out with
+#include "PoleSolids.h"
 #include "StepTestText.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
@@ -2111,6 +2112,68 @@ TEST(TrimmedFaceMesher, ASliceOfACapMeetsThePoleBetweenTwoMeridians) {
             // area, and a little more.
             EXPECT_NEAR(sum.area.at("open/face"), area, 4.0 * area * options.chordTolerance)
                 << relative;
+        }
+    }
+}
+
+// Faces that meet at a pole between two meridians and nothing else, as a partial revolve of a
+// semicircle makes them (model::exact::makeSphereSector) and as a file may write them: the lune
+// with its sphere's seam inside it, its pcurves either side of the seam, and a ball cut in two
+// along two meridians; and a cone sector, its side meeting its apex between two generators. Each
+// meshes watertight at a hundredth, a thousandth and a ten-thousandth of its size, each pole one
+// vertex of each curved face's mesh with its triangles fanned to it (a flat cap only has a corner
+// there), and its volume converges. The lune across the seam once meshed as the other lune,
+// three quarters of the sphere, with no problem said.
+TEST(TrimmedFaceMesher, FacesMeetAtPolesBetweenTwoMeridians) {
+    const double kPi = math::kPi;
+    const geo::Frame frame = geo::Frame::fromAxis({2, -1, 3}, {0.3, -1, 0.4}, {1, 0, 0});
+    const Vec3 south = frame.origin - frame.z * 3.0;
+    const Vec3 north = frame.origin + frame.z * 3.0;
+    for (const double angle : {0.5 * kPi, 1.5 * kPi}) {
+        SCOPED_TRACE(angle);
+        const double lune = 2.0 / 3.0 * angle * 27.0;
+        const struct {
+            const char* name;
+            std::unique_ptr<topo::Solid> solid;
+            double volume;
+            std::vector<Vec3> poles;
+        } cases[] = {
+            {"a sphere's sector",
+             model::exact::makeSphereSector(frame, 3.0, angle),
+             lune,
+             {south, north}},
+            {"a lune across its sphere's seam",
+             pole_solids::luneAcrossTheSeam(frame, 3.0, angle),
+             lune,
+             {south, north}},
+            {"a ball split by two meridians",
+             pole_solids::ballSplitByMeridians(frame, 3.0, angle),
+             4.0 / 3.0 * kPi * 27.0,
+             {south, north}},
+            {"a cone's sector",
+             pole_solids::coneSector(frame, 2.0, 4.0, angle),
+             angle * 4.0 * 4.0 / 6.0,
+             {frame.origin}},
+        };
+        for (const auto& c : cases) {
+            SCOPED_TRACE(c.name);
+            ASSERT_NE(c.solid, nullptr);
+            EXPECT_TRUE(topo::validateExact(*c.solid, topo::exactTolerance(*c.solid)).empty());
+            const double size = topo::exactExtent(*c.solid);
+            for (const double relative : {1e-2, 1e-3, 1e-4}) {
+                MeshOptions options;
+                options.chordTolerance = relative * size;
+                const auto meshes = TrimmedFaceMesher::meshSolid(*c.solid, options);
+                const Summary sum = checkMeshes(*c.solid, meshes, options, slackFor(size));
+                std::vector<FaceMesh> curved;
+                for (const FaceMesh& m : meshes) {
+                    if (m.face->exactSurface->kind() != geo::SurfaceKind::Plane)
+                        curved.push_back(m);
+                }
+                expectPolesFanned(curved, c.poles, size);
+                EXPECT_NEAR(sum.volume, c.volume, totalArea(sum) * options.chordTolerance)
+                    << relative;
+            }
         }
     }
 }

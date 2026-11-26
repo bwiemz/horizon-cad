@@ -496,12 +496,13 @@ TEST(ExactValidator, AnAnnulusWhoseInnerCircleReallyCrossesTheOuterIsLoopsCross)
 
 namespace {
 
-/// A lune of the unit-scaled sphere of radius r (u in [0, pi]) whose two meridians meet at the
-/// poles; each meridian's pcurve stops @p shortBy (a distance on the sphere) before a pole,
-/// while the vertices sit exactly at the poles.
+/// A lune of the unit-scaled sphere of radius r (u in [0, pi], or with @p up and @p down the
+/// lune up the meridian at @p up and down the one at @p down, each pcurve written at that u)
+/// whose two meridians meet at the poles; each meridian's pcurve stops @p shortBy (a distance on
+/// the sphere) before a pole, while the vertices sit exactly at the poles.
 struct SphereLune {
     topo::Solid solid;
-    SphereLune(double r, double shortBy) {
+    SphereLune(double r, double shortBy, double up = math::kPi, double down = 0.0) {
         const geo::Frame frame = geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1});
         topo::Face* f = solid.allocFace();
         f->exactSurface = std::make_shared<geo::Sphere>(frame, r);
@@ -516,7 +517,7 @@ struct SphereLune {
         // Counter-clockwise in (u, v): up the meridian u = pi, along the north pole, down u = 0.
         topo::HalfEdge* he[2] = {solid.allocHalfEdge(), solid.allocHalfEdge()};
         for (int i = 0; i < 2; ++i) {
-            const double u = i == 0 ? math::kPi : 0.0;
+            const double u = i == 0 ? up : down;
             const double sign = i == 0 ? 1.0 : -1.0;
             topo::HalfEdge* tw = solid.allocHalfEdge();
             topo::Edge* e = solid.allocEdge();
@@ -555,12 +556,46 @@ TEST(ExactValidator, ASphereLuneWhoseMeridiansMeetAtThePolesIsClean) {
     EXPECT_TRUE(topo::validateExact(lune.solid, kTol).empty());
 }
 
+// Each pcurve may stop as far short of its pole as its vertex's tolerance. The join from one
+// meridian's end to the next one's start at the pole runs along the pole: measured by the
+// derivative at the end off the pole alone (a parallel's radius times the turn between the two
+// longitudes, here a half turn), 0.9 of the tolerance short read as 2.8 tolerances, past the
+// join's allowance of 2, and the join was refused; it is measured along the way. A lune of three
+// quarters of a turn so short of its pole had its pole run taken for a wrap round the seam, a
+// whole period off, and ran against its sense.
 TEST(ExactValidator, ALuneWhosePcurvesStopShortOfThePolesWithinToleranceIsClean) {
     for (const double r : {1.0, 1000.0}) {
         const auto tol = math::ModelTolerance::forExtent(2.0 * r);
-        SphereLune lune(r, 0.3 * tol.linear);
-        EXPECT_TRUE(topo::validateExact(lune.solid, tol).empty()) << r;
+        for (const double shortBy : {0.3, 0.9}) {
+            for (const double up : {math::kPi, 1.5 * math::kPi}) {
+                SphereLune lune(r, shortBy * tol.linear, up);
+                const auto issues = topo::validateExact(lune.solid, tol);
+                EXPECT_TRUE(issues.empty()) << r << " " << shortBy << " " << up << ": "
+                                            << (issues.empty() ? "" : issues.front().detail);
+            }
+        }
     }
+}
+
+// A lune does not fix which way round the poles its loop runs: its two meridians bound two lunes,
+// and its face's sense picks one. Written within [0, 2 pi) with the sphere's seam inside it (up
+// the meridian at pi / 2, down the one at 3 pi / 2), it is the lune through u = 0, and is clean;
+// so is the lune the other way round, the same loop on the face reversed. Its pole runs are laid
+// round the poles as the sense says; a loop with one pole run (an apex cone's side, its rim fixing
+// its region) still runs against a flipped face.
+TEST(ExactValidator, ALuneIsCleanWhicheverWayRoundItsSpheresSeamLies) {
+    for (const bool reversed : {false, true}) {
+        SphereLune lune(1.0, 0.0, 0.5 * math::kPi, 1.5 * math::kPi);
+        lune.solid.faces()[0].reversed = reversed;
+        const auto issues = topo::validateExact(lune.solid, kTol);
+        EXPECT_TRUE(issues.empty())
+            << reversed << ": " << (issues.empty() ? "" : issues.front().detail);
+    }
+    auto cone = model::exact::makeCone(geo::Frame{}, 2.0, 0.0, 4.0);
+    for (auto& f : cone->faces()) {
+        if (f.topoId.tag() == "cone/side") f.reversed = !f.reversed;
+    }
+    expectKinds(*cone, ExactIssueKind::LoopWrongOrientation);
 }
 
 TEST(ExactValidator, TwoCrossingHolesAreFoundBesideABrokenOuterLoop) {

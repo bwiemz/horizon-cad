@@ -396,7 +396,8 @@ private:
                 allowances.push_back(topo::joinAllowance(*h, srcTolerance_));
             }
             topo::LoopPolygon poly;
-            if (!topo::unwrapLoop(ring, topo::kLoopSamples, s, pu, pv, allowances, poly)) {
+            if (!topo::unwrapLoop(ring, topo::kLoopSamples, s, pu, pv, allowances, poly,
+                                  topo::loopSense(f, w == f.outerLoop))) {
                 fail("a loop of a face closes only after winding round its surface");
                 return std::nullopt;
             }
