@@ -1,17 +1,23 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
@@ -310,4 +316,96 @@ TEST(SolidTessellatorTest, AFaceThatCannotBeMeshedIsSaidNotThrown) {
     std::string none = "not cleared";
     (void)SolidTessellator::tessellate(*exactCylinder(), 0.01, &none);
     EXPECT_TRUE(none.empty()) << none;
+}
+
+// -- The display's density -------------------------------------------------------
+
+namespace {
+
+/// How many distinct points of @p mesh lie on the circle of radius @p r about the z axis in the
+/// plane z = @p z: a rim as drawn, a point for each of its segments.
+std::size_t rimPoints(const hz::geo::MeshData& mesh, double r, double z) {
+    std::set<std::array<float, 3>> points;
+    for (std::size_t i = 0; i < mesh.positions.size() / 3; ++i) {
+        const Vec3 p = positionOf(mesh, i);
+        if (std::abs(p.z - z) <= 1e-4 * r && std::abs(std::hypot(p.x, p.y) - r) <= 1e-4 * r) {
+            points.insert(
+                {mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]});
+        }
+    }
+    return points.size();
+}
+
+/// An exact cylinder of radius @p r and height @p h, its bottom rim at z = 0.
+std::unique_ptr<hz::topo::Solid> exactCylinder(double r, double h) {
+    return hz::model::exact::makeCylinder(hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), r, h);
+}
+
+}  // namespace
+
+// An exact part is drawn at the display's angle, coarser than the read point's at the same
+// tolerance: a small cylinder, whose rims the angle samples (the tolerance would allow fewer
+// chords), is drawn with fewer triangles than the read point gives it, and each rim with chords
+// that turn by up to half the display's angle (26 a turn, where the read point's makes 36).
+TEST(SolidTessellatorTest, AnExactPartIsDrawnAtTheDisplaysAngle) {
+    const auto cylinder = exactCylinder(2.0, 4.0);
+    ASSERT_NE(cylinder, nullptr);
+    const auto mesh = SolidTessellator::tessellate(*cylinder);
+    const auto read =
+        BoundaryMesh::extractFacePolygons(*cylinder, SolidTessellator::kDisplayTolerance);
+    EXPECT_LT(mesh.indices.size() / 3, read.size());
+    const auto segments = static_cast<std::size_t>(
+        std::ceil(2.0 * hz::math::kPi / (0.5 * SolidTessellator::kDisplayMaxAngle)));
+    EXPECT_EQ(rimPoints(mesh, 2.0, 0.0), segments);
+    EXPECT_EQ(rimPoints(mesh, 2.0, 4.0), segments);
+}
+
+// However coarse the display's angle, a large round is drawn round: a cylinder of radius 50 has
+// at least 13 segments round each rim, and so has one of radius 5.
+TEST(SolidTessellatorTest, ALargeCylinderIsDrawnRound) {
+    for (const double r : {5.0, 50.0}) {
+        SCOPED_TRACE(r);
+        const auto cylinder = exactCylinder(r, 20.0);
+        ASSERT_NE(cylinder, nullptr);
+        std::string problem;
+        const auto mesh =
+            SolidTessellator::tessellate(*cylinder, SolidTessellator::kDisplayTolerance, &problem);
+        EXPECT_TRUE(problem.empty()) << problem;
+        EXPECT_GE(rimPoints(mesh, r, 0.0), 13u);
+        EXPECT_GE(rimPoints(mesh, r, 20.0), 13u);
+    }
+}
+
+// The display's mesh of an exact part is watertight across the faces' shared edges: each side of
+// a triangle, by its corners' positions, is met once the other way round by another (an edge's
+// samples are both its faces'), along a seam too. A plate with a round hole, and a cylinder.
+TEST(SolidTessellatorTest, AnExactPartsMeshIsWatertight) {
+    std::vector<std::unique_ptr<hz::topo::Solid>> parts;
+    parts.push_back(hz::model::exact::makePlateWithHole({0, 0, 0}, {40, 30, 5}, {20, 15}, 4.0));
+    parts.push_back(exactCylinder(50.0, 20.0));
+    for (const auto& part : parts) {
+        ASSERT_NE(part, nullptr);
+        std::string problem;
+        const auto mesh =
+            SolidTessellator::tessellate(*part, SolidTessellator::kDisplayTolerance, &problem);
+        ASSERT_TRUE(problem.empty()) << problem;
+        ASSERT_FALSE(mesh.indices.empty());
+        using Corner = std::array<float, 3>;
+        const auto corner = [&mesh](std::uint32_t i) {
+            return Corner{mesh.positions[3 * i], mesh.positions[3 * i + 1],
+                          mesh.positions[3 * i + 2]};
+        };
+        std::map<std::pair<Corner, Corner>, int> sides;
+        for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) {
+            for (std::size_t k = 0; k < 3; ++k) {
+                ++sides[{corner(mesh.indices[t + k]), corner(mesh.indices[t + (k + 1) % 3])}];
+            }
+        }
+        std::size_t open = 0;
+        for (const auto& [side, uses] : sides) {
+            const auto back = sides.find({side.second, side.first});
+            open += uses == 1 && back != sides.end() && back->second == 1 ? 0 : 1;
+        }
+        EXPECT_EQ(open, 0u) << "sides not met once the other way round, of " << sides.size();
+    }
 }

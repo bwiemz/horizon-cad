@@ -99,10 +99,15 @@ TEST(StepFidelityTest, AFaceWithARoundHoleIsDrawnWithTheHole) {
     const auto& plate = *solids[0];
     EXPECT_TRUE(plate.isValid()) << plate.validationReport();
     // The hole's two arcs are followed, not cut across: the faces are drawn
-    // without it, to within the arcs' sampling.
+    // without it, to within the arcs' sampling. Its radius of 2 is sampled by
+    // the display's angle, each chord turning by at most half of it: the
+    // polygon falls short of the circle's area, pi r^2, by at most
+    // pi r^2 (1 - sin(a) / a) for chords that turn by a.
     const double face = 100.0 - hz::math::kPi * 4.0;
-    EXPECT_NEAR(drawnArea(plate, 2.0), face, 0.1);
-    EXPECT_NEAR(drawnArea(plate, 0.0), face, 0.1);
+    const double turn = 0.5 * hz::model::SolidTessellator::kDisplayMaxAngle;
+    const double sampling = hz::math::kPi * 4.0 * (1.0 - std::sin(turn) / turn);
+    EXPECT_NEAR(drawnArea(plate, 2.0), face, sampling);
+    EXPECT_NEAR(drawnArea(plate, 0.0), face, sampling);
 }
 
 TEST(StepFidelityTest, APlateWithAHoleRoundTripsAndTakesABoolean) {

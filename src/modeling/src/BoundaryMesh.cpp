@@ -493,6 +493,15 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
                                                                double chordTolerance,
                                                                std::string* problem,
                                                                const std::atomic<bool>* cancelled) {
+    MeshOptions options;
+    options.chordTolerance = chordTolerance;
+    options.cancelled = cancelled;
+    return extractFacePolygons(solid, options, problem);
+}
+
+std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid& solid,
+                                                               const MeshOptions& options,
+                                                               std::string* problem) {
     if (problem != nullptr) problem->clear();
     std::vector<BoundaryPolygon> polygons;
     polygons.reserve(solid.faceCount());
@@ -501,9 +510,6 @@ std::vector<BoundaryPolygon> BoundaryMesh::extractFacePolygons(const topo::Solid
     std::unordered_map<const topo::Face*, FaceMesh> meshes;
     std::string firstProblem;
     if (topo::hasExactFaces(solid)) {
-        MeshOptions options;
-        options.chordTolerance = chordTolerance;
-        options.cancelled = cancelled;
         for (auto& mesh : TrimmedFaceMesher::meshSolid(solid, options)) {
             if (mesh.face == nullptr || !mesh.face->exactSurface) continue;
             if (!mesh.problem.empty() && firstProblem.empty()) {
