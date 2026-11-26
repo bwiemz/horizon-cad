@@ -25,8 +25,10 @@ struct Pcurve {
     double deviation = 0.0;
     /// How far the curve itself stands off the surface: the largest distance measured from a
     /// point of it to the surface (for a closed form, its deviation; on the general path, its
-    /// samples' gaps). No pcurve can come nearer the curve than this; a problem whose stand-off
-    /// is above the tolerance is the curve's, not the fit's. Infinite when nothing was built.
+    /// samples' gaps and their peaks between them, peakOfGap's search, where a peak could pass the
+    /// tolerance), never above the deviation. No pcurve can come nearer the curve than this; a
+    /// problem whose stand-off is above the tolerance is the curve's, not the fit's. Infinite when
+    /// nothing was built.
     double standOff = 0.0;
     /// Empty when the pcurve lies within the tolerance; otherwise says why it does not.
     std::string problem;
@@ -69,7 +71,9 @@ struct Pcurve {
 /// or not finite, nothing beyond the tolerance is. A curve measured to stand off by a gap g
 /// within it is fitted to min(@p standOffLimit, 2 g + @p tolerance) rather than to
 /// @p tolerance: no pcurve comes nearer the curve than its gap, so the gap is measured, not
-/// chased (the factor 2 covers a gap that peaks between the samples that measured it). A
+/// chased (the factor 2 covers a gap that peaks between the samples that measured it; the peak
+/// found between them is allowed for too when the fit is taken, and a curve whose gap peaks past
+/// the limit between its samples comes back with its problem). A
 /// closed form, whose deviation is its stand-off, is taken where that deviation is within the
 /// limit.
 Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t1, double tolerance,
@@ -83,12 +87,15 @@ Pcurve pcurveOn(const Surface& surface, const Curve3& curve, double t0, double t
 /// each, and @p gapAt gives the gap at any parameter between them. Between each sample and its
 /// neighbours where the gap rises to it (it is no lower than either; an end sample, than the one
 /// beside it), the peak is searched for by golden section until it is pinned to @p rounding (the
-/// rounding of what the gap is computed from), far finer than the 1% of its height (how far it
-/// rises above the lower of the samples about it) that is asked of it. The searches go highest
-/// first. One whose peak could not rise past the largest gap found, nor past @p within (a peak
-/// that cannot pass it changes nothing its caller decides), is not made: a peak is taken to rise
-/// at most its height again above its sample, three times what a smooth one can. A peak narrower
-/// than the samples' spacing, between two samples it does not lift, is not seen.
+/// rounding of what the gap is computed from), far finer than the 1% of its height that is asked
+/// of it. Its height is how far it rises above the lower of its neighbours, or for an end sample
+/// of the two samples on its inner side (the one beside it alone bounds nothing of a peak near the
+/// far side of the end interval). The searches go highest first. One whose peak could not rise
+/// past the largest gap found, nor past @p within (a peak that cannot pass it changes nothing its
+/// caller decides), is not made: a peak is taken to rise at most its height again above its
+/// sample, four times what a smooth one can above an inner sample and eight above an end one. A
+/// gap that is not a number is passed over, and a sample beside one is not searched about. A peak
+/// narrower than the samples' spacing, between two samples it does not lift, is not seen.
 double peakOfGap(const std::vector<double>& at, const std::vector<double>& gaps,
                  const std::function<double(double)>& gapAt, double rounding, double within);
 

@@ -108,16 +108,23 @@ std::vector<Peak> searchPeaks(const std::vector<double>& at, const std::vector<d
     struct Rising {
         size_t i;
         double height;  ///< how far it rises above the lower of the samples about it
-        double reach;   ///< the most its peak may come to: its height again above it
+        double reach;   ///< the most its peak may come to: its height again above it (a smooth
+                        ///< peak rises at most a quarter of it above an inner sample, an eighth
+                        ///< above an end one)
     };
     std::vector<Rising> rising;
     for (size_t i = 0; i < n; ++i) {
         const double g = gaps[i];
         if (!std::isfinite(g)) continue;
         if ((i > 0 && !(g >= gaps[i - 1])) || (i + 1 < n && !(g >= gaps[i + 1]))) continue;
+        // Its height over the samples about it: an inner sample's two neighbours; an end
+        // sample's two on its inner side, for the one beside it alone bounds nothing of a peak
+        // near the far side of the end interval (its rise there can be all but nothing).
         double low = g;
         if (i > 0) low = std::min(low, gaps[i - 1]);
         if (i + 1 < n) low = std::min(low, gaps[i + 1]);
+        if (i == 0 && n > 2) low = std::min(low, gaps[2]);
+        if (i + 1 == n && n > 2) low = std::min(low, gaps[n - 3]);
         const double height = g - low;
         // A rise within rounding has no peak to pin beyond it.
         if (height > rounding) rising.push_back({i, height, g + height});
@@ -132,8 +139,9 @@ std::vector<Peak> searchPeaks(const std::vector<double>& at, const std::vector<d
         double c = at[r.i];
         double fc = gaps[r.i];
         // A smooth peak falls off as the square of the way from it: once the bracket is this
-        // narrow, its best point is within rounding of the peak (8 bounds the curvature its
-        // height gives it, wherever between its samples it lies).
+        // narrow, its best point is within rounding of the peak (its height bounds its curvature,
+        // to 4 times its height over the bracket's width squared about an inner sample and 1/2
+        // at an end, wherever between the samples it lies; 8 covers both).
         const double settled = (b - a) * std::sqrt(rounding / (8.0 * r.height));
         for (int probe = 0; probe < kMostPeakProbes && b - a > settled; ++probe) {
             const double x = b - c > c - a ? c + kGolden * (b - c) : c - kGolden * (c - a);
@@ -1214,6 +1222,31 @@ void rechain(const Inverter& inv, std::vector<Sample>& samples) {
 /// The most fit-and-measure rounds the general method takes.
 constexpr int kMaxRounds = 64;
 
+/// How far the curve stands off the surface: the largest of the samples' gaps, and of their peaks
+/// between them (peakOfGap's search, each point between placed on the surface from the sample
+/// before it). A peak that could not pass @p within (a gap within it needs nothing) is not
+/// searched for.
+double standOffOf(const Inverter& inv, const std::vector<Sample>& samples, double within) {
+    std::vector<double> ts;
+    std::vector<double> gaps;
+    ts.reserve(samples.size());
+    gaps.reserve(samples.size());
+    double most = 0.0;
+    double reach = 0.0;
+    for (const Sample& smp : samples) {
+        ts.push_back(smp.t);
+        gaps.push_back(smp.gap);
+        most = std::max(most, smp.gap);
+        reach = std::max(reach, smp.point.length());
+    }
+    if (samples.size() < 2) return most;
+    const auto gapAt = [&](double t) { return inv.at(t, &samples[bracketOf(ts, t)]).gap; };
+    for (const Peak& p : searchPeaks(ts, gaps, gapAt, peakRounding(reach), 0.0, within)) {
+        most = std::max(most, p.gap);
+    }
+    return most;
+}
+
 Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, double tolerance,
                      double limit) {
     const Inverter inv(s, c);
@@ -1318,12 +1351,17 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
                 s, c, samples, line->params,
                 [&line](double sp) { return line->curve->evaluate(sp); }, true, target, &atSamples);
             allow(lm.maxGap);
-            if (!(lm.maxGap > target) && std::max(lm.fitDeviation, lm.maxGap) <= target) {
+            // The curve's stand-off at its peaks between the samples too, which no pcurve comes
+            // nearer than: allowed for as the samples' gaps are, and counted in the deviation.
+            const double standOff = std::max(standOffOf(inv, samples, tolerance), baseGap);
+            allow(standOff);
+            if (!(lm.maxGap > target) &&
+                std::max({lm.fitDeviation, lm.maxGap, standOff}) <= target) {
                 out.curve = line->curve;
                 out.start = 0.0;
                 out.end = 1.0;
-                out.deviation = std::max({lm.fitDeviation, lm.maxGap, baseGap});
-                out.standOff = std::max(lm.maxGap, baseGap);
+                out.deviation = std::max({lm.fitDeviation, lm.maxGap, standOff});
+                out.standOff = std::max(lm.maxGap, standOff);
                 return out;
             }
         }
@@ -1394,11 +1432,17 @@ Pcurve generalPcurve(const Surface& s, const Curve3& c, double t0, double t1, do
         allow(m.maxGap);
     }
 
+    // The curve's stand-off at its peaks between the samples too, which no pcurve comes nearer
+    // than: allowed for as the samples' gaps are (the fit was held to them; a gap that peaks
+    // higher between them is the curve's, not the fit's), and counted in the deviation, so that a
+    // curve standing off past the limit between its samples says so.
+    const double standOff = std::max({standOffOf(inv, samples, tolerance), m.maxGap, baseGap});
+    allow(standOff);
     out.curve = fit.curve();
     out.start = out.curve->tMin();
     out.end = out.curve->tMax();
-    out.deviation = std::max({m.fitDeviation, m.maxGap, baseGap});
-    out.standOff = std::max(m.maxGap, baseGap);
+    out.deviation = std::max({m.fitDeviation, m.maxGap, baseGap, standOff});
+    out.standOff = standOff;
     if (out.deviation > target) {
         out.problem = describe(out.deviation, target, samples.size(), out.standOff);
     }
