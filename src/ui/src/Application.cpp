@@ -100,6 +100,8 @@ QSurfaceFormat Application::surfaceFormat() {
     format.setVersion(3, 3);
     format.setProfile(QSurfaceFormat::CoreProfile);
     format.setDepthBufferSize(24);
+    // An exact part's face highlight is drawn through a stencil (ViewportWidget, Ruling 39).
+    format.setStencilBufferSize(8);
     format.setSamples(4);
     return format;
 }

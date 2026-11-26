@@ -245,21 +245,22 @@ public:
     const std::optional<ModelPick>& modelHover() const { return m_modelHover; }
 
     /// What a face pick (or a whole component's, its tag empty) is drawn
-    /// highlighted with, chosen or hovered: the triangles of each face of it,
-    /// in world coordinates (x, y, z a corner, three corners a triangle), and
-    /// those faces by name (none for a whole component's). On an exact part
-    /// (its node drawing Document::exactMesh), a face is drawn from the
-    /// faceted copy (Document::solid()): each face of it whose logical name is
-    /// the pick's, flat, so a coarse part shows the facets a command on the
-    /// face acts on (owner, A1). Otherwise from the meshes drawn for its owner.
+    /// highlighted with, chosen or hovered: the triangles filled, in world
+    /// coordinates (x, y, z a corner, three corners a triangle), and their
+    /// faces by name (none for a whole component's). On an exact part (its
+    /// node drawing Document::exactMesh), a face is filled from the faceted
+    /// copy (Document::solid()): each face of it whose logical name is the
+    /// pick's, flat, so a coarse part shows the facets a command on the face
+    /// acts on (owner, A1). Otherwise from the meshes drawn for its owner.
     struct FaceHighlight {
         std::vector<float> triangles;
         std::vector<std::string> faces;
-        /// How far toward the eye it is drawn, in model units: on an exact
-        /// part, past how far the faceted copy's faces stand inside the round
-        /// faces drawn (twice it, and the display's tolerance), so that it is
-        /// seen over them; 0 for a highlight drawn from the meshes drawn.
-        double lift = 0.0;
+        /// On an exact part, the face as it is drawn (its triangles in the
+        /// exact mesh), which says where the face is seen: by the depth test,
+        /// into the stencil, and the facets, which lie inside it, filled
+        /// there alone, whatever their depth (Ruling 39). Empty otherwise: the
+        /// triangles are filled where they pass the depth test.
+        std::vector<float> mask;
     };
     FaceHighlight faceHighlight(const ModelPick& pick) const;
 
@@ -376,6 +377,9 @@ private:
 
     /// Draw the chosen and hovered faces and edges over the solids.
     void drawModelHighlights(QOpenGLExtraFunctions* gl);
+    /// Whether the framebuffer drawn into has a stencil, which an exact
+    /// part's face highlight is drawn through (FaceHighlight::mask).
+    bool hasStencil(QOpenGLExtraFunctions* gl) const;
     /// Draw the part's datum planes, axes and points (construction
     /// geometry, not the solid).
     void drawDatums(QOpenGLExtraFunctions* gl);

@@ -20,13 +20,11 @@
 #include <vector>
 
 #include "horizon/document/Document.h"
-#include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec4.h"
 #include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/Naming.h"
-#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/render/GLRenderer.h"
 #include "horizon/render/Grid.h"
 #include "horizon/render/MeshPicker.h"
@@ -417,49 +415,43 @@ namespace {
 /// the faces chosen and the one hovered, and a few hovered before.
 constexpr std::size_t kFacetedHighlightsKept = 16;
 
-/// How far @p points' polygon, a face of an exact part's faceted copy, stands inside @p surface,
-/// its exact face's: the distance from the surface of its middle and of its longest side's
-/// middle, where a polygon inscribed in a curved surface stands furthest off it (its corners lie
-/// on it). 0 where that cannot be measured.
-double standsInside(const geo::Surface& surface, const std::vector<math::Vec3>& points) {
-    math::Vec3 middle;
-    math::Vec3 longestMiddle = points.front();
-    double longest = -1.0;
-    for (std::size_t i = 0; i < points.size(); ++i) {
-        const math::Vec3& a = points[i];
-        const math::Vec3& b = points[(i + 1) % points.size()];
-        middle = middle + a;
-        if ((b - a).length() > longest) {
-            longest = (b - a).length();
-            longestMiddle = (a + b) * 0.5;
+/// The triangles of @p mesh's faces whose logical name is @p tag (all of them with @p whole), moved
+/// by @p model, after @p triangles (x, y, z a corner); each face's name after @p faces, when given.
+/// False when the mesh has none.
+bool appendFace(const render::MeshData& mesh, const math::Mat4& model, const std::string& tag,
+                bool whole, std::vector<float>& triangles, std::vector<std::string>* faces) {
+    if (!whole && !mesh.hasFaces()) return false;
+    // Every facet of the face picked.
+    std::vector<bool> picked(mesh.faceTags.size(), false);
+    bool any = whole;
+    for (size_t f = 0; f < mesh.faceTags.size() && !whole; ++f) {
+        picked[f] = model::logicalFace(mesh.faceTags[f]) == tag;
+        if (picked[f] && faces != nullptr) faces->push_back(mesh.faceTags[f]);
+        any = any || picked[f];
+    }
+    if (!any) return false;
+    for (size_t t = 0; t < mesh.indices.size() / 3; ++t) {
+        if (!whole && (t >= mesh.triangleFaces.size() || mesh.triangleFaces[t] >= picked.size() ||
+                       !picked[mesh.triangleFaces[t]])) {
+            continue;
+        }
+        for (size_t c = 0; c < 3; ++c) {
+            const size_t v = static_cast<size_t>(mesh.indices[t * 3 + c]) * 3;
+            if (v + 2 >= mesh.positions.size()) continue;
+            const math::Vec3 q = model.transformPoint(
+                math::Vec3(mesh.positions[v], mesh.positions[v + 1], mesh.positions[v + 2]));
+            triangles.insert(triangles.end(), {static_cast<float>(q.x), static_cast<float>(q.y),
+                                               static_cast<float>(q.z)});
         }
     }
-    middle = middle / static_cast<double>(points.size());
-    double most = 0.0;
-    for (const math::Vec3& at : {middle, longestMiddle}) {
-        const math::Vec2 uv = surface.invert(at);
-        const double off = (surface.evaluate(uv.x, uv.y) - at).length();
-        if (std::isfinite(off)) most = std::max(most, off);
-    }
-    return most;
+    return true;
 }
 
 /// The highlight of @p part's face @p tag (a logical face) drawn from its faceted copy, in the
 /// part's coordinates: each face of solid() of that logical name, triangulated as the faceted part
-/// is drawn (BoundaryMesh: its holes bridged in), and lifted toward the eye by twice the most any
-/// of them stands inside the exact face (exactSolid()'s face of that name), and the display's
-/// tolerance, past which the round faces drawn lie in front of them.
+/// is drawn (BoundaryMesh: its holes bridged in).
 ViewportWidget::FaceHighlight facetedHighlight(const doc::Document& part, const std::string& tag) {
     ViewportWidget::FaceHighlight out;
-    const topo::Solid* exact = part.exactSolid();
-    const geo::Surface* surface = nullptr;
-    for (const auto& face : exact->faces()) {
-        if (face.alive && face.exactSurface && face.topoId.tag() == tag) {
-            surface = face.exactSurface.get();
-            break;
-        }
-    }
-    double inside = 0.0;
     for (const auto& face : part.solid()->faces()) {
         if (!face.alive || model::logicalFace(face.topoId.tag()) != tag) continue;
         std::vector<math::Vec3> points;
@@ -485,9 +477,7 @@ ViewportWidget::FaceHighlight facetedHighlight(const doc::Document& part, const 
             }
         }
         out.faces.push_back(face.topoId.tag());
-        if (surface != nullptr) inside = std::max(inside, standsInside(*surface, points));
     }
-    out.lift = 2.0 * inside + model::SolidTessellator::displayTolerance(*exact);
     return out;
 }
 
@@ -500,99 +490,96 @@ ViewportWidget::FaceHighlight ViewportWidget::faceHighlight(const ModelPick& pic
         if (node->ownerId() != pick.owner) continue;
         const render::MeshData& mesh = node->mesh();
         const math::Mat4 model = node->worldTransform();
-        // The part drawn exactly (its build's kept mesh): a face from its faceted copy, which
-        // the commands on it act on (A1).
+        // A pick with no face is the whole component (chosen in the assembly tree): every
+        // triangle of it.
+        const bool whole = pick.tag.empty();
+        // The part drawn exactly (its build's kept mesh): a face filled from its faceted copy,
+        // which the commands on it act on (A1), where the face drawn is seen.
         const bool exactPart = pick.owner == 0 && m_document != nullptr &&
                                m_document->solid() != nullptr &&
                                m_document->exactSolid() != nullptr && node->sharedMesh() &&
                                node->sharedMesh() == m_document->exactMesh();
-        if (exactPart && !pick.tag.empty()) {
-            const std::uint64_t serial = m_document->serial();
-            const std::uint64_t builds = m_document->builds();
-            std::erase_if(m_facetedHighlights, [serial, builds](const FacetedHighlight& kept) {
-                return kept.serial != serial || kept.builds != builds;
-            });
-            auto found = std::find_if(
-                m_facetedHighlights.begin(), m_facetedHighlights.end(),
-                [&pick](const FacetedHighlight& kept) { return kept.tag == pick.tag; });
-            if (found == m_facetedHighlights.end()) {
-                if (m_facetedHighlights.size() >= kFacetedHighlightsKept) {
-                    m_facetedHighlights.erase(m_facetedHighlights.begin());
-                }
-                m_facetedHighlights.push_back(
-                    {serial, builds, pick.tag, facetedHighlight(*m_document, pick.tag)});
-                found = std::prev(m_facetedHighlights.end());
-            }
-            const FaceHighlight& faceted = found->highlight;
-            for (std::size_t i = 0; i + 2 < faceted.triangles.size(); i += 3) {
-                const math::Vec3 q = model.transformPoint(math::Vec3(
-                    faceted.triangles[i], faceted.triangles[i + 1], faceted.triangles[i + 2]));
-                out.triangles.insert(
-                    out.triangles.end(),
-                    {static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z)});
-            }
-            out.faces.insert(out.faces.end(), faceted.faces.begin(), faceted.faces.end());
-            out.lift = std::max(out.lift, faceted.lift);
+        if (!exactPart || whole) {
+            appendFace(mesh, model, pick.tag, whole, out.triangles, &out.faces);
             continue;
         }
-        // A pick with no face is the whole component (chosen in the
-        // assembly tree): every triangle of it.
-        const bool whole = pick.tag.empty();
-        if (!whole && !mesh.hasFaces()) continue;
-        // Every facet of the face picked.
-        std::vector<bool> picked(mesh.faceTags.size(), false);
-        bool any = whole;
-        for (size_t f = 0; f < mesh.faceTags.size() && !whole; ++f) {
-            picked[f] = model::logicalFace(mesh.faceTags[f]) == pick.tag;
-            if (picked[f]) out.faces.push_back(mesh.faceTags[f]);
-            any = any || picked[f];
-        }
-        if (!any) continue;
-        for (size_t t = 0; t < mesh.indices.size() / 3; ++t) {
-            if (!whole &&
-                (t >= mesh.triangleFaces.size() || mesh.triangleFaces[t] >= picked.size() ||
-                 !picked[mesh.triangleFaces[t]])) {
-                continue;
+        if (!appendFace(mesh, model, pick.tag, false, out.mask, nullptr)) continue;
+        const std::uint64_t serial = m_document->serial();
+        const std::uint64_t builds = m_document->builds();
+        std::erase_if(m_facetedHighlights, [serial, builds](const FacetedHighlight& kept) {
+            return kept.serial != serial || kept.builds != builds;
+        });
+        auto found =
+            std::find_if(m_facetedHighlights.begin(), m_facetedHighlights.end(),
+                         [&pick](const FacetedHighlight& kept) { return kept.tag == pick.tag; });
+        if (found == m_facetedHighlights.end()) {
+            if (m_facetedHighlights.size() >= kFacetedHighlightsKept) {
+                m_facetedHighlights.erase(m_facetedHighlights.begin());
             }
-            for (size_t c = 0; c < 3; ++c) {
-                const size_t v = static_cast<size_t>(mesh.indices[t * 3 + c]) * 3;
-                if (v + 2 >= mesh.positions.size()) continue;
-                const math::Vec3 q = model.transformPoint(
-                    math::Vec3(mesh.positions[v], mesh.positions[v + 1], mesh.positions[v + 2]));
-                out.triangles.insert(
-                    out.triangles.end(),
-                    {static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z)});
-            }
+            m_facetedHighlights.push_back(
+                {serial, builds, pick.tag, facetedHighlight(*m_document, pick.tag)});
+            found = std::prev(m_facetedHighlights.end());
         }
+        const FaceHighlight& faceted = found->highlight;
+        for (std::size_t i = 0; i + 2 < faceted.triangles.size(); i += 3) {
+            const math::Vec3 q = model.transformPoint(math::Vec3(
+                faceted.triangles[i], faceted.triangles[i + 1], faceted.triangles[i + 2]));
+            out.triangles.insert(
+                out.triangles.end(),
+                {static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z)});
+        }
+        out.faces.insert(out.faces.end(), faceted.faces.begin(), faceted.faces.end());
     }
     return out;
+}
+
+bool ViewportWidget::hasStencil(QOpenGLExtraFunctions* gl) const {
+    // The framebuffer the view draws into (QOpenGLWidget's own): a stencil attached, and bits in
+    // it.
+    GLint type = GL_NONE;
+    gl->glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
+                                              GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type);
+    if (type == GL_NONE) return false;
+    GLint bits = 0;
+    gl->glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
+                                              GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &bits);
+    return bits > 0;
 }
 
 void ViewportWidget::drawModelHighlights(QOpenGLExtraFunctions* gl) {
     if (m_modelSelection.empty() && !m_modelHover) return;
     const auto draw = [&](const ModelPick& pick, const math::Vec3& colour, float alpha) {
         if (!pick.edge) {
-            FaceHighlight face = faceHighlight(pick);
-            if (face.lift > 0.0) {
-                // Each corner moved toward the eye along its line of sight, where it is still
-                // drawn, so that it passes the depth test over the round faces in front of it.
-                const bool orthographic =
-                    m_camera.projectionType() == render::ProjectionType::Orthographic;
-                const math::Vec3 back = m_camera.eye() - m_camera.target();
-                for (std::size_t i = 0; i + 2 < face.triangles.size(); i += 3) {
-                    const math::Vec3 p(face.triangles[i], face.triangles[i + 1],
-                                       face.triangles[i + 2]);
-                    const math::Vec3 sight = orthographic ? back : m_camera.eye() - p;
-                    const double length = sight.length();
-                    if (!(length > 0.0)) continue;
-                    const double by = orthographic ? face.lift : std::min(face.lift, 0.5 * length);
-                    const math::Vec3 q = p + sight * (by / length);
-                    face.triangles[i] = static_cast<float>(q.x);
-                    face.triangles[i + 1] = static_cast<float>(q.y);
-                    face.triangles[i + 2] = static_cast<float>(q.z);
-                }
+            const FaceHighlight face = faceHighlight(pick);
+            if (face.mask.empty()) {
+                m_renderer->drawTriangles(gl, m_camera, face.triangles, math::Vec4(colour, alpha));
+                return;
             }
+            if (!hasStencil(gl)) {
+                // No stencil to draw the facets through: the face as it is drawn, round.
+                m_renderer->drawTriangles(gl, m_camera, face.mask, math::Vec4(colour, alpha));
+                return;
+            }
+            // Ruling 39. Where the face drawn is seen, by the depth test as it is drawn: the
+            // stencil, and nothing drawn. Then its faceted copy's facets, filled there alone,
+            // whatever their depth (they lie inside the round face, behind it), each pixel once
+            // (front and back facets overlap on the screen): seen where the face is, hidden where
+            // anything stands in front of it, at any angle.
+            gl->glEnable(GL_STENCIL_TEST);
+            gl->glStencilMask(0xFF);
+            gl->glClearStencil(0);
+            gl->glClear(GL_STENCIL_BUFFER_BIT);
+            gl->glStencilFunc(GL_ALWAYS, 1, 0xFF);
+            gl->glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+            gl->glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+            m_renderer->drawTriangles(gl, m_camera, face.mask, math::Vec4(colour, alpha));
+            gl->glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+            gl->glStencilFunc(GL_EQUAL, 1, 0xFF);
+            gl->glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+            gl->glDisable(GL_DEPTH_TEST);
             m_renderer->drawTriangles(gl, m_camera, face.triangles, math::Vec4(colour, alpha));
+            gl->glEnable(GL_DEPTH_TEST);
+            gl->glDisable(GL_STENCIL_TEST);
             return;
         }
         for (const render::SceneNode* node : m_sceneGraph.collectVisibleMeshNodes()) {

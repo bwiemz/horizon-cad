@@ -722,9 +722,8 @@ TEST(ExactDisplay, StlExportReusesTheKeptMesh) {
 // faceted copy (Document::solid()), every face of it whose logical name is the pick's, not from
 // the exact mesh drawn, so a coarse part shows the facets a command on the face acts on. A
 // cylinder primitive cut in 6 round its axis: its side is drawn round, and highlighted as the
-// faceted copy's 6 flat facets, two triangles each, every corner one of theirs; drawn toward the
-// eye by more than the facets stand inside the round side (r (1 - cos 30 degrees)), so that they
-// are seen over it.
+// faceted copy's 6 flat facets, two triangles each, every corner one of theirs, filled where the
+// round side drawn is seen (its mask, a stencil: Ruling 39), as they lie inside it.
 TEST(ExactDisplay, AFaceHighlightIsDrawnFromTheFacetedCopy) {
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());
@@ -786,5 +785,10 @@ TEST(ExactDisplay, AFaceHighlightIsDrawnFromTheFacetedCopy) {
                         [&p](const Vec3& c) { return (c - p).length() < 1e-4; });
         EXPECT_TRUE(atAFacetsCorner) << "(" << p.x << ", " << p.y << ", " << p.z << ")";
     }
-    EXPECT_GT(highlight.lift, kRadius * (1.0 - std::cos(kPi / 6.0)));
+    // Filled where the side drawn is seen (Ruling 39): its mask is the round side as drawn, the
+    // exact mesh's triangles of it, every corner on the cylinder.
+    ASSERT_EQ(highlight.mask.size(), drawn * 9u);
+    for (std::size_t i = 0; i + 2 < highlight.mask.size(); i += 3) {
+        EXPECT_NEAR(std::hypot(highlight.mask[i], highlight.mask[i + 1]), kRadius, 1e-4);
+    }
 }

@@ -11,7 +11,9 @@
 #include <QTemporaryDir>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "UiTestSupport.h"
 #include "horizon/document/Commands.h"
@@ -193,29 +195,32 @@ TEST(ViewportGraphicsTest, TheSolidIsDrawnAndDrawnAgainFromTheSameMesh) {
         << "drawn again from the same mesh";
 }
 
-// Owner amendment A1 (Task 10) on a real OpenGL: an exact part's face is highlighted from its
-// faceted copy, whose flat facets lie inside the round side drawn (by r (1 - cos 30 degrees) for
-// a cylinder cut in 6), and so behind it; the highlight is drawn toward the eye past that
-// (ViewportWidget::FaceHighlight::lift), and is seen. Looked at square on one facet's middle,
-// where it lies deepest, the hovered side is lighter and bluer there than it is unhovered.
-TEST(ViewportGraphicsTest, AnExactPartsFacetHighlightIsSeenOverItsRoundSide) {
-    if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
-        GTEST_SKIP() << "no OpenGL on the offscreen platform: set QT_QPA_PLATFORM to run it";
-    }
-    QTemporaryDir dir;
-    ASSERT_TRUE(dir.isValid());
+namespace {
+
+using hz::math::Vec3;
+
+/// A cylinder primitive of radius 10 and height 20 about +z from the origin, cut in 6 round its
+/// axis (its corners at 0, 60, ... degrees): Stable, so exact, drawn round, and its faceted copy a
+/// hexagonal prism. With @p box, a box of that size standing at that corner beside it, a body of
+/// its own. Opened in @p w, shown and built; its side's name in @p side.
+void openCoarseCylinder(hz::ui::MainWindow& w, const QTemporaryDir& dir, std::string& side,
+                        const std::optional<std::pair<Vec3, Vec3>>& box = std::nullopt) {
     hz::doc::Document coarse;
     coarse.setType(hz::doc::DocumentType::Part);
     auto made = hz::doc::PrimitiveFeature::makeCylinder(10.0, 20.0);
     ASSERT_TRUE(made->setParameter("segments", 6.0));
-    const std::string side = made->featureID() + "/side";
+    side = made->featureID() + "/side";
     coarse.featureTree().addFeature(std::move(made));
+    if (box) {
+        auto beside = hz::doc::PrimitiveFeature::makeBox(box->first.x, box->first.y, box->first.z);
+        beside->setOperation(hz::doc::BodyOperation::NewBody);
+        ASSERT_TRUE(beside->setVector("basePoint", box->second));
+        coarse.featureTree().addFeature(std::move(beside));
+    }
     const QString path = dir.filePath(QStringLiteral("coarse.hzpart"));
     std::string error;
     ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), coarse, &error)) << error;
-
-    hz::ui::MainWindow w;
-    w.resize(640, 480);
+    w.resize(1400, 900);
     w.show();
     ASSERT_TRUE(w.openPath(path));
     QElapsedTimer waited;
@@ -227,25 +232,120 @@ TEST(ViewportGraphicsTest, AnExactPartsFacetHighlightIsSeenOverItsRoundSide) {
     auto& viewport = *w.findChild<hz::ui::ViewportWidget*>();
     waited.restart();
     while (!viewport.isValid() && waited.elapsed() < 5000) QCoreApplication::processEvents();
+}
+
+/// The colour drawn at @p world in @p frame.
+QColor colourAt(const QImage& frame, const hz::ui::ViewportWidget& viewport, const Vec3& world) {
+    const QPointF at = viewport.projectToScreen(world);
+    const double ratio = frame.devicePixelRatio();
+    return frame.pixelColor(qRound(at.x() * ratio), qRound(at.y() * ratio));
+}
+
+/// The hover's colour (0.35, 0.75, 1.0) at 0.3 over the part's blue-grey: bluer and lighter.
+bool highlighted(const QColor& before, const QColor& after) {
+    return after.blue() + after.green() > before.blue() + before.green() + 20;
+}
+
+std::string colours(const QColor& before, const QColor& after) {
+    return "unhovered " + before.name().toStdString() + ", hovered " + after.name().toStdString();
+}
+
+}  // namespace
+
+// Owner amendment A1 (Task 10) on a real OpenGL: an exact part's face is highlighted from its
+// faceted copy, whose flat facets lie inside the round side drawn (by r (1 - cos 30 degrees) for
+// a cylinder cut in 6), and so behind it; they are drawn where the face drawn is seen (a stencil
+// of it, Ruling 39), whatever their depth, and are seen. Looked at square on one facet's middle,
+// where it lies deepest, the hovered side is lighter and bluer there than it is unhovered.
+TEST(ViewportGraphicsTest, AnExactPartsFacetHighlightIsSeenOverItsRoundSide) {
+    if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
+        GTEST_SKIP() << "no OpenGL on the offscreen platform: set QT_QPA_PLATFORM to run it";
+    }
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    hz::ui::MainWindow w;
+    std::string side;
+    openCoarseCylinder(w, dir, side);
+    if (HasFatalFailure()) return;
+    auto& viewport = *w.findChild<hz::ui::ViewportWidget*>();
     // Square on the facet between the corners at 0 and 60 degrees: its middle, at 30 degrees, lies
     // r cos 30 from the axis, the round side drawn in front of it at r.
     const double at = hz::math::kPi / 6.0;
-    const hz::math::Vec3 middle(8.66 * std::cos(at), 8.66 * std::sin(at), 10.0);
-    viewport.camera().lookAt(hz::math::Vec3(60 * std::cos(at), 60 * std::sin(at), 10.0), middle,
-                             hz::math::Vec3(0, 0, 1));
+    const Vec3 middle(8.66 * std::cos(at), 8.66 * std::sin(at), 10.0);
+    viewport.camera().lookAt(Vec3(60 * std::cos(at), 60 * std::sin(at), 10.0), middle,
+                             Vec3(0, 0, 1));
     const QImage plain = viewport.grabFramebuffer();
     if (!viewport.isValid() || !viewport.graphicsProblem().isEmpty()) {
         GTEST_SKIP() << "no OpenGL here";
     }
     viewport.setModelHover(hz::ui::ViewportWidget::ModelPick{0, side, false});
     const QImage hovered = viewport.grabFramebuffer();
-    const QPointF centre = viewport.projectToScreen(middle);
-    const double ratio = plain.devicePixelRatio();
-    const QPoint pixel(qRound(centre.x() * ratio), qRound(centre.y() * ratio));
-    const QColor before = plain.pixelColor(pixel);
-    const QColor after = hovered.pixelColor(pixel);
-    // The hover's colour (0.35, 0.75, 1.0) at 0.3 over the part's blue-grey: bluer and lighter.
-    EXPECT_GT(after.blue() + after.green(), before.blue() + before.green() + 20)
-        << "unhovered " << before.name().toStdString() << ", hovered "
-        << after.name().toStdString();
+    const QColor before = colourAt(plain, viewport, middle);
+    const QColor after = colourAt(hovered, viewport, middle);
+    EXPECT_TRUE(highlighted(before, after)) << colours(before, after);
+}
+
+// Ruling 39: what stands in front of the face hides its highlight there, however near it stands. A
+// thin box 0.3 to 1 in front of the round side, across the middle of the facet facing +y: seen
+// from +y, the box is drawn as it is, unhovered or hovered; the facet beside it is highlighted.
+TEST(ViewportGraphicsTest, AnExactPartsFacetHighlightIsHiddenBehindWhatStandsInFront) {
+    if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
+        GTEST_SKIP() << "no OpenGL on the offscreen platform: set QT_QPA_PLATFORM to run it";
+    }
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    hz::ui::MainWindow w;
+    std::string side;
+    openCoarseCylinder(w, dir, side, std::pair{Vec3(3.0, 0.7, 3.0), Vec3(-1.5, 10.3, 8.5)});
+    if (HasFatalFailure()) return;
+    auto& viewport = *w.findChild<hz::ui::ViewportWidget*>();
+    // The facet between the corners at 60 and 120 degrees: in the plane y = r cos 30.
+    const Vec3 middle(0.0, 8.66, 10.0);
+    viewport.camera().lookAt(Vec3(0.0, 60.0, 10.0), middle, Vec3(0, 0, 1));
+    const QImage plain = viewport.grabFramebuffer();
+    if (!viewport.isValid() || !viewport.graphicsProblem().isEmpty()) {
+        GTEST_SKIP() << "no OpenGL here";
+    }
+    viewport.setModelHover(hz::ui::ViewportWidget::ModelPick{0, side, false});
+    const QImage hovered = viewport.grabFramebuffer();
+    const QColor onTheBox = colourAt(plain, viewport, middle);
+    const QColor onTheBoxHovered = colourAt(hovered, viewport, middle);
+    EXPECT_EQ(onTheBox, onTheBoxHovered)
+        << "the box in front: " << colours(onTheBox, onTheBoxHovered);
+    const Vec3 beside(-3.5, 8.66, 15.0);
+    const QColor before = colourAt(plain, viewport, beside);
+    const QColor after = colourAt(hovered, viewport, beside);
+    EXPECT_TRUE(highlighted(before, after)) << "the facet beside it: " << colours(before, after);
+}
+
+// Ruling 39: a facet seen almost edge on is highlighted wherever the round side over it is seen,
+// however far in front of it the side stands along the line of sight. Seen from 110 degrees round
+// the axis, the facet between the corners at 0 and 60 degrees, at a third of its way, lies some 5
+// behind the round side along the line of sight, and is highlighted.
+TEST(ViewportGraphicsTest, AnExactPartsFacetHighlightIsSeenAtAGrazingAngle) {
+    if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
+        GTEST_SKIP() << "no OpenGL on the offscreen platform: set QT_QPA_PLATFORM to run it";
+    }
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    hz::ui::MainWindow w;
+    std::string side;
+    openCoarseCylinder(w, dir, side);
+    if (HasFatalFailure()) return;
+    auto& viewport = *w.findChild<hz::ui::ViewportWidget*>();
+    const double from = 110.0 * hz::math::kPi / 180.0;
+    viewport.camera().lookAt(Vec3(60 * std::cos(from), 60 * std::sin(from), 10.0), Vec3(0, 0, 10.0),
+                             Vec3(0, 0, 1));
+    const QImage plain = viewport.grabFramebuffer();
+    if (!viewport.isValid() || !viewport.graphicsProblem().isEmpty()) {
+        GTEST_SKIP() << "no OpenGL here";
+    }
+    viewport.setModelHover(hz::ui::ViewportWidget::ModelPick{0, side, false});
+    const QImage hovered = viewport.grabFramebuffer();
+    const Vec3 a(10.0, 0.0, 10.0);
+    const Vec3 b(5.0, 8.66, 10.0);
+    const Vec3 onTheFacet = a + (b - a) * 0.35;
+    const QColor before = colourAt(plain, viewport, onTheFacet);
+    const QColor after = colourAt(hovered, viewport, onTheFacet);
+    EXPECT_TRUE(highlighted(before, after)) << colours(before, after);
 }
