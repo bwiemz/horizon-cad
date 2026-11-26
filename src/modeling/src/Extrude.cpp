@@ -777,24 +777,6 @@ private:
         return out;
     }
 
-    /// How far the curves of @p loop meeting at its corner @p j miss it: an arc's own end may.
-    static double gapAt(const exact::Loop& loop, size_t j) {
-        const size_t m = loop.curves.size();
-        const exact::LoopCurve& leaving = loop.curves[j];
-        const exact::LoopCurve& reaching = loop.curves[(j + m - 1) % m];
-        const Vec2 corner = leaving.start;
-        double gap = 0.0;
-        if (leaving.curved()) {
-            const Vec2 own = leaving.forward ? leaving.ownStartPoint() : leaving.ownEndPoint();
-            gap = std::max(gap, (own - corner).length());
-        }
-        if (reaching.curved()) {
-            const Vec2 own = reaching.forward ? reaching.ownEndPoint() : reaching.ownStartPoint();
-            gap = std::max(gap, (own - corner).length());
-        }
-        return gap;
-    }
-
     void addLoop(const exact::Loop& loop, const std::string& source, topo::Shell* shell,
                  Face* bottomCap, Face* topCap, bool outer, const CapStarts& starts) {
         const size_t m = loop.curves.size();
@@ -870,7 +852,7 @@ private:
         for (size_t j = 0; j < m; ++j) {
             Edge* e = edge(rising[j], falling[j],
                            {std::make_shared<geo::LineCurve>(b[j]->point, along_), 0.0, length_});
-            const double gap = gapAt(loop, j);
+            const double gap = exact::cornerGap(loop, j);
             if (gap > 0.0) gaps_.push_back({b[j], t[j], e, gap, loop.curves[j].start});
         }
     }

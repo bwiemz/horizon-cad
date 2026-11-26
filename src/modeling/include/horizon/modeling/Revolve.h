@@ -73,6 +73,41 @@ public:
         const math::Vec3& axisDirection, double angle, const std::string& featureID,
         int segments = kDefaultSegments, double chordTolerance = 0.0, std::string* reason = nullptr,
         NamingScheme naming = NamingScheme::Positional);
+
+    /// The revolve built exactly (stage 3), from whole faces carrying exact geometry
+    /// (topo::Face::exactSurface, pcurves, topo::Edge::exactCurve) and no NURBS carrier. Each
+    /// curve of the profile (ExactProfile's loops) sweeps one face about the axis: a line square
+    /// to it a plane (a disc or a ring through a whole turn, a sector of one through part), a line
+    /// along it a cylinder, a line on it nothing, any other line a cone to the apex where it
+    /// meets the axis; an arc centred on the axis a sphere, an arc whose circle clears the axis a
+    /// torus, and one whose circle reaches it a NURBS surface of revolution (Ruling 2). Where the
+    /// profile meets the axis there is no edge: a face comes to a pole or an apex there, its loop
+    /// jumping along it in (u, v). Through a whole turn each curved face has a seam where the
+    /// profile lies, at u = 0 along the profile's side of the axis (where master's ring starts);
+    /// through part of one the profile caps it at each end, and the caps meet along the axis
+    /// where the profile ran along it. A hole in the profile is a cavity (a shell of its own)
+    /// through a whole turn, and an inner loop of each cap through part of one; each region is a
+    /// shell of its own. Nothing is a Boolean.
+    ///
+    /// Its faces have master's Stable logical names: `<featureID>/revolved:<entity>`
+    /// (ProfileValidationResult's edgeSources), `<featureID>/cap_start` and `/cap_end`, a hole's
+    /// faces `<featureID>~hole<k>/...` (k counted through the regions) and the faces of a region
+    /// after the first `<featureID>~region<r>/...`. Its edges are named after them
+    /// (model::nameEdgesLogically). Its vertices are where master's faceted revolve put each
+    /// loop's corners, at u = 0 and turned by the angle; where the sketch's curves miss a corner
+    /// (by no more than the profile's join tolerance), its vertices and the rim it traces carry
+    /// the gap as their tolerance.
+    ///
+    /// @return nullptr, with @p reason, where master refuses the profile, the angle or the axis
+    ///         (in master's words, as Revolve::execute gives them), or with "could not be built
+    ///         exactly: <why>" where only the exact construction cannot build it (an arc that
+    ///         reaches the axis between its ends, a horn's cusp; regions on both sides of the
+    ///         axis).
+    static std::unique_ptr<topo::Solid> exact(
+        const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+        const draft::SketchPlane& plane, const math::Vec3& axisPoint,
+        const math::Vec3& axisDirection, double angle, const std::string& featureID,
+        std::string* reason = nullptr);
 };
 
 }  // namespace hz::model

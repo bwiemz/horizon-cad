@@ -3,6 +3,7 @@
 // A sketch profile's loops as exact curves (stage 3): what the exact extrude builds its faces on.
 // Private to the modeling library.
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -81,6 +82,14 @@ struct Region {
     Loop outer;
     std::vector<Loop> holes;
 };
+
+/// @p loop run the other way round: its curves in the other order, each from its end to its start
+/// (an arc's or a circle's `forward` flipped), and `againstChain` flipped.
+void reverse(Loop& loop);
+
+/// How far the curves of @p loop that meet at its corner @p j miss it: an arc's or a circle's own
+/// end may, by as much as the sketch's ends missed each other (a line runs corner to corner).
+double cornerGap(const Loop& loop, std::size_t j);
 
 /// @p region's loops as exact curves, each oriented (Loop). The corners are where master's
 /// faceted extrude put its vertices (ringstack::sampleProfile): the first curve's start, then
