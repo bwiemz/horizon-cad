@@ -127,7 +127,9 @@ public:
     using ExactAndBridge = model::ExactAndBridge;
 
     /// The revolve built exactly and its bridge copy (model::buildWithBridge: model::facetExact at
-    /// {segments, chordTolerance}, its edges named by model::nameBridgeEdges), numbered as master's
+    /// {segments, chordTolerance} and @p segments round the axis, master's one count for every
+    /// rim and every face turned about it, at master's angles (FacetResolution::aroundAxis, Ruling
+    /// 24), its edges named by model::nameBridgeEdges), numbered as master's
     /// faceted revolve numbered the same places, facets, chords and seams (model::nameAsMasters,
     /// Ruling 21): described from the polygons master's Stable revolve sewed, each region's outer
     /// loop's and each hole's cutter's. A profile of several loops was then master's Booleans:

@@ -413,6 +413,13 @@ model::FacetResolution RevolveFeature::facetResolution() const {
     model::FacetResolution resolution;
     resolution.segmentsPerTurn = segments();
     resolution.chordTolerance = m_chordTolerance;
+    // Round its axis, as its sketch places it, segments() for every rim (Ruling 24).
+    resolution.aroundAxis = segments();
+    if (m_sketch) {
+        const math::Mat4 placement = m_sketch->placement();
+        resolution.axisPoint = placement.transformPoint(m_axisPoint);
+        resolution.axisDirection = placement.transformDirection(m_axisDir);
+    }
     return resolution;
 }
 
@@ -2257,6 +2264,9 @@ void HoleFeature::restoreFeatureID(const std::string& id) {
 model::FacetResolution HoleFeature::facetResolution() const {
     model::FacetResolution resolution;
     resolution.segmentsPerTurn = m_segments;
+    // Round its axis its segments (Ruling 24). The axis is where its face puts it, known only as
+    // it is built against the part: its build (Revolve::exactAndBridge) passes it.
+    resolution.aroundAxis = m_segments;
     return resolution;
 }
 

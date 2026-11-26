@@ -394,7 +394,8 @@ public:
     /// count whose error grows with the radius.  0 means the count is used as
     /// given.  Setting the count explicitly returns to count mode.
     double chordTolerance() const { return m_chordTolerance; }
-    /// {segments(), chordTolerance()}: its profile's resolution, and its turn's.
+    /// {segments(), chordTolerance()}: its profile's resolution; and round its axis (as its
+    /// sketch places it) segments(), master's one count for every rim (Ruling 24).
     model::FacetResolution facetResolution() const override;
     void restoreFeatureID(const std::string& id) override;
 
@@ -824,7 +825,8 @@ public:
     FeatureOutput executeWithExact(const BuildContext& context,
                                    std::unique_ptr<topo::Solid> inputSolid,
                                    std::string* reason = nullptr) const override;
-    /// {segments, 0}: the steps round its axis, as its revolve's resolution was.
+    /// {segments, 0}, and segments round its axis (Ruling 24): its revolve's resolution. Its axis
+    /// is where its face puts it, passed as it is built.
     model::FacetResolution facetResolution() const override;
 
     /// "type" and "extent" (choices), "diameter", "depth", "boreDiameter",

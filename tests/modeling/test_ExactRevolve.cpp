@@ -107,6 +107,16 @@ Profile poleAndApex() {
 }
 const double kPoleAndApexVolume = 30.0 * kPi;
 
+/// The part of a circle of radius 2 about (1, 0) on the axis's near side, from where it meets the
+/// axis below round to where it meets it above, and the axis between: an apple, its circle reaching
+/// past the axis (its "major radius" 1 below its minor 2).
+Profile apple() {
+    auto round = std::make_shared<DraftArc>(Vec2(1, 0), 2, -2.0 * kPi / 3.0, 2.0 * kPi / 3.0);
+    const Vec2 from = round->startPoint();
+    const Vec2 to = round->endPoint();
+    return {round, line(to, from)};
+}
+
 /// A tangent ogive, 4 high on a base of radius 2: an arc of radius 5 about (-3, 0), across the
 /// axis, from the base's rim to the tip on the axis, a NURBS surface of revolution with one pole.
 Profile ogive() {
@@ -733,10 +743,13 @@ TEST(ExactRevolve, TheBridgeIsMastersFacets) {
     cases.push_back({"a pole and an apex on a tilted sketch", poleAndApex(), kTwoPi, 288, 544, 258,
                      inclined()});
     cases.push_back({"a washer", washer(), kTwoPi, 66, 192, 128, SketchPlane()});
-    // A NURBS surface of revolution from a rim to a pole: its columns follow the rim's, so its
-    // facets are master's (its 160 and the base; master's Stable counts, its FromGeometry
-    // construction fanning the base from its centre).
+    // NURBS surfaces of revolution (Ruling 2), their points inside their first meridian turned to
+    // master's angles (Ruling 24): from a rim to a pole (an ogive: its 160 facets and the base,
+    // master's Stable counts, its FromGeometry construction fanning the base from its centre), and
+    // from pole to pole, a lemon and an apple (recorded at 9314271e).
     cases.push_back({"an ogive", ogive(), kTwoPi, 161, 320, 161, SketchPlane()});
+    cases.push_back({"a lemon", lemon(), kTwoPi, 352, 672, 322, SketchPlane()});
+    cases.push_back({"an apple", apple(), kTwoPi, 704, 1376, 674, SketchPlane()});
     for (const Case& c : cases) {
         SCOPED_TRACE(c.what);
         const auto exact = revolved(c.profile, c.angle, c.plane);
@@ -828,43 +841,14 @@ TEST(ExactRevolve, OnlyStableNamingBuildsExactly) {
     EXPECT_EQ(why, "a revolve needs at least 3 steps per turn");
 }
 
-// Not master's: a NURBS surface of revolution that comes to the axis at both ends (a lemon) has no
-// side to take its columns from, and facetExact cuts it at equal steps of its u, which between the
-// quarter turns of its rational arcs is no angle. Its counts are master's (352, 672, 322 at 32
-// segments), and each facet lies on it, but its vertices between the quarter turns miss master's,
-// by as much as 1.6% of its radius: tracked in the task's report, not fixed here.
-TEST(ExactRevolve, ALemonsBridgeIsCutEvenlyInItsU) {
-    const Profile p = lemon();
-    const auto exact = revolved(p, kTwoPi);
-    const auto bridge = faceted(p, kTwoPi);
-    const auto masters = faceted(p, kTwoPi, SketchPlane(), NamingScheme::FromGeometry);
-    ASSERT_NE(exact, nullptr);
-    ASSERT_NE(bridge, nullptr);
-    ASSERT_NE(masters, nullptr);
-    EXPECT_EQ(bridge->faceCount(), 352u);
-    EXPECT_EQ(bridge->edges().size(), 672u);
-    EXPECT_EQ(bridge->vertices().size(), 322u);
-    expectOnTheExactFaces(*bridge, *exact, 1e-9 * sizeOf(*bridge));
-    double worst = 0.0;
-    for (const auto& v : bridge->vertices()) {
-        double nearest = 1e300;
-        for (const auto& w : masters->vertices()) {
-            nearest = std::min(nearest, (v.point - w.point).length());
-        }
-        worst = std::max(worst, nearest);
-    }
-    EXPECT_GT(worst, 1e-3);
-    EXPECT_LT(worst, 0.02);
-}
-
-// Not master's: with a chord tolerance, master turned every point of its profile through as many
-// steps as its widest radius needed (Revolve::segmentsForTolerance at profileRadius, the feature's
-// segments()), where the bridge cuts each rim by its own radius (FacetResolution::stepsFor), as
-// it cuts every circle. A washer of radii 2 and 4 at 0.01: master's 45 steps round both rims (92
-// faces, 270 edges, 180 vertices under Stable naming), the bridge's 45 round the outer and 32 round
-// the inner (79, 231 and 154). Tracked in the task's report, not fixed here: the bridge would need
-// a count for the circles round the revolve's axis that FacetResolution does not carry.
-TEST(ExactRevolve, AChordToleranceCutsEachRimByItsOwnRadius) {
+// With a chord tolerance, master turned every point of its profile through as many steps as its
+// widest radius needed (Revolve::segmentsForTolerance at profileRadius, the feature's segments()),
+// every rim alike; so does the bridge (Ruling 24: FacetResolution::aroundAxis), whatever the chord
+// tolerance would give each rim's own radius. A washer of radii 2 and 4 at 0.01 is turned through
+// 45 steps round both rims, master's 92 faces, 270 edges and 180 vertices under Stable naming
+// (where each rim by its own radius was 45 round the outer and 32 round the inner), at master's
+// vertices.
+TEST(ExactRevolve, AChordToleranceTurnsEveryRimThroughMastersOneCount) {
     const Profile p = washer();
     const double radius = Revolve::profileRadius(p, SketchPlane(), Vec3(), Vec3(0, 1, 0));
     const int segments = Revolve::segmentsForTolerance(radius, 0.01);
@@ -873,8 +857,19 @@ TEST(ExactRevolve, AChordToleranceCutsEachRimByItsOwnRadius) {
     const auto bridge = Revolve::execute(p, SketchPlane(), Vec3(), Vec3(0, 1, 0), kTwoPi, "x",
                                          segments, 0.01, &why, NamingScheme::Stable);
     ASSERT_NE(bridge, nullptr) << why;
-    EXPECT_EQ(bridge->faceCount(), 79u);
-    EXPECT_EQ(bridge->edges().size(), 231u);
-    EXPECT_EQ(bridge->vertices().size(), 154u);
+    EXPECT_EQ(bridge->faceCount(), 92u);
+    EXPECT_EQ(bridge->edges().size(), 270u);
+    EXPECT_EQ(bridge->vertices().size(), 180u);
     EXPECT_TRUE(bridge->isValid()) << bridge->validationReport();
+    const auto masters = Revolve::execute(p, SketchPlane(), Vec3(), Vec3(0, 1, 0), kTwoPi, "x",
+                                          segments, 0.01, &why, NamingScheme::FromGeometry);
+    ASSERT_NE(masters, nullptr) << why;
+    const double size = sizeOf(*masters);
+    for (const auto& v : bridge->vertices()) {
+        double nearest = 1e300;
+        for (const auto& w : masters->vertices()) {
+            nearest = std::min(nearest, (v.point - w.point).length());
+        }
+        EXPECT_LT(nearest, 1e-12 * size);
+    }
 }

@@ -1729,7 +1729,7 @@ std::optional<double> turnAbout(const geo::Surface& s, double u0, double u1, dou
         const Vec3 rel = p - origin;
         return rel - axis * rel.dot(axis);
     };
-    constexpr int kSamples = 64;  // each step of a whole turn well under half of one
+    constexpr int kSamples = 16;  // each step of a whole turn well under half of one
     std::optional<double> sweep;
     for (const double f : {0.5, 0.25, 0.75}) {
         const double v = v0 + (v1 - v0) * f;
@@ -2617,9 +2617,16 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         const geo::Surface& s = *face.exactSurface;
         const auto nu = static_cast<std::size_t>(plan.steps[0]);
         const auto nv = static_cast<std::size_t>(plan.steps[1]);
+        // A face turned about a revolve's axis (Ruling 24) has its points inside on its first
+        // meridian (its u0 side) turned to master's angles, not spread in (u, v).
+        const auto& turn = plan.turn;
+        const bool turned = turn.has_value() && !r.pole[kLeft];
+        const Vec3 axis =
+            resolution.turnsAboutAnAxis() ? resolution.axisDirection.normalized() : Vec3();
         // A side's points in order along it, each where it is in (u, v): its half-edges' points,
         // each found on the surface (its coordinate along the side; the other is the side's own),
-        // a period round to lie between its half-edge's ends.
+        // a period round to lie between its half-edge's ends. Where the face is turned, nothing
+        // inside reads (u, v), and each point is ordered where it lies along its half-edge.
         const auto pointsOn = [&](Side side) {
             const int running = side == kBottom || side == kTop ? 0 : 1;
             const double period = running == 0 ? topo::uPeriod(s) : topo::vPeriod(s);
@@ -2639,6 +2646,10 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
                     if (k != 0 && k != n) {
                         const double f = static_cast<double>(k) / static_cast<double>(n);
                         const math::Vec2 between = start + (finish - start) * f;
+                        if (turned) {
+                            out.push_back({points[k], between});
+                            continue;
+                        }
                         const math::Vec2 found = s.invert(points[k]);
                         double c = running == 0 ? found.x : found.y;
                         const double want = running == 0 ? between.x : between.y;
@@ -2707,12 +2718,7 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         const auto& L = sides[kLeft];
         const auto& R = sides[kRight];
         // A Coons patch in (u, v) from its sides, each point inside on the surface: uniform in
-        // (u, v) where its sides are. A face turned about a revolve's axis (Ruling 24) has its
-        // points inside on its first meridian (its u0 side) turned to master's angles instead.
-        const auto& turn = plan.turn;
-        const bool turned = turn.has_value() && !r.pole[kLeft];
-        const Vec3 axis =
-            resolution.turnsAboutAnAxis() ? resolution.axisDirection.normalized() : Vec3();
+        // (u, v) where its sides are; or, turned, its first meridian turned.
         std::vector<std::vector<Vec3>> grid(nu + 1, std::vector<Vec3>(nv + 1));
         for (std::size_t i = 0; i <= nu; ++i) {
             for (std::size_t j = 0; j <= nv; ++j) {

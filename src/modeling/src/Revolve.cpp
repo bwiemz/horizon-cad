@@ -1433,8 +1433,9 @@ MastersFacets mastersRevolve(const ProfileRegions& found, const draft::SketchPla
 }
 
 /// The exact revolve of @p found (which master turns) and its bridge copy at {@p segments,
-/// @p chordTolerance} (buildWithBridge), numbered as master's revolve numbered the same places
-/// (mastersRevolve). @p axisDir is a unit vector.
+/// @p chordTolerance}, @p segments round the axis (buildWithBridge; FacetResolution::aroundAxis),
+/// numbered as master's revolve numbered the same places (mastersRevolve). @p axisDir is a unit
+/// vector.
 ExactAndBridge buildExactAndBridge(const ProfileRegions& found, const draft::SketchPlane& plane,
                                    const Vec3& axisPoint, const Vec3& axisDir, double angle,
                                    const std::string& featureID, int segments,
@@ -1442,6 +1443,11 @@ ExactAndBridge buildExactAndBridge(const ProfileRegions& found, const draft::Ske
     FacetResolution resolution;
     resolution.segmentsPerTurn = segments;
     resolution.chordTolerance = chordTolerance;
+    // Master turned every point of the profile through its segments at equal angles, whatever
+    // the chord tolerance (Ruling 24): so is every circle and face about the axis cut.
+    resolution.aroundAxis = segments;
+    resolution.axisPoint = axisPoint;
+    resolution.axisDirection = axisDir;
     const MastersConstruction masters = [&] {
         return mastersRevolve(found, plane, axisPoint, axisDir, angle, featureID, segments,
                               chordTolerance);
