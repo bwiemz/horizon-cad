@@ -351,6 +351,11 @@ private:
 
     DocTab* activeTab();
     bool saveActiveDocument();
+    /// The active part's first exact build, if it is migrated and that build is still to come (on
+    /// a worker, or not yet started): made here, now, so that what it fails on is left out of the
+    /// part (Document::applyBuild) before Save or Save As decides where it is written, and the
+    /// file it was read from is not written over unasked (owner amendment A2).
+    void settleFirstBuild();
 
     /// File ▸ Open Recent, rebuilt each time it opens.
     void rebuildRecentMenu();

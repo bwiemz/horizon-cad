@@ -2657,14 +2657,7 @@ bool MainWindow::saveActiveDocument() {
         return false;
     }
 
-    // A migrated part's first exact build, while it runs on a worker, is made here first: what it
-    // fails on is left out of the part (Document::applyBuild) before where it is written is
-    // decided, so that the file it was read from is not written over unasked (owner A2).
-    if (m_document->firstBuildPending()) {
-        const std::size_t before = m_document->leftOut().size();
-        m_document->rebuildModel();
-        noteBuildLeftOut(*m_document, before);
-    }
+    settleFirstBuild();
     // Nor over a DWG file, which Horizon CAD reads but does not write.
     const auto readFromDwg = [this] {
         return DwgImport::isDwg(QString::fromStdString(m_document->filePath()));
@@ -2748,7 +2741,18 @@ void MainWindow::onSaveFile() {
     saveActiveDocument();
 }
 
+void MainWindow::settleFirstBuild() {
+    if (m_assembly || !m_document->firstBuildPending()) return;
+    const std::size_t before = m_document->leftOut().size();
+    m_document->rebuildModel();
+    noteBuildLeftOut(*m_document, before);
+}
+
 void MainWindow::onSaveFileAs() {
+    // Before anything is decided of where it goes (a new file, the file it was read from asked
+    // about) or what it lacks is set aside: a build that finds it read in part, after them, made
+    // the decisions wrong, and was undone with them (owner A2).
+    settleFirstBuild();
     QString filter;
     const bool sheet = !m_assembly && m_drawings->isSheet(m_document.get());
     if (m_assembly) {

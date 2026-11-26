@@ -13,6 +13,7 @@
 #include <QStatusBar>
 #include <QTabBar>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <fstream>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -579,10 +580,11 @@ void writeOldPartWithAPositionalReference(const QString& path) {
 
 /// A part of format @p version at @p path, its features Stable: a square extruded, and, with
 /// @p filleted, a fillet on an edge named as such an extrusion names one,
-/// `<extrude>/edge:cap_top|side:e0`, which its sketch has no entity to make. Of format 31, its
+/// `<extrude>/edge:cap_top|side:e0`, which its sketch has no entity to make; with @p copies, a
+/// pattern of that many of the square between them. Of format 31, its
 /// migration carries the name over as it is (a Stable name means what it meant), and its first
 /// build, its first exact one, fails on it: a reference found gone only when the part is built.
-void writeSquarePart(const QString& path, int version, bool filleted) {
+void writeSquarePart(const QString& path, int version, bool filleted, int copies = 1) {
     hz::doc::Document part;
     part.setType(hz::doc::DocumentType::Part);
     auto sketch = squareSketch();
@@ -590,6 +592,11 @@ void writeSquarePart(const QString& path, int version, bool filleted) {
     auto extrude = std::make_unique<hz::doc::ExtrudeFeature>(sketch, hz::math::Vec3(0, 0, 1), 5.0);
     const std::string gone = extrude->featureID() + "/edge:cap_top|side:e0";
     part.featureTree().addFeature(std::move(extrude));
+    if (copies > 1) {
+        // Copies of it in a row, 15 apart: a slower build, which a Cancel can stop.
+        part.featureTree().addFeature(
+            hz::doc::PatternFeature::makeLinear(hz::math::Vec3(1, 0, 0), 15.0, copies));
+    }
     if (filleted) {
         part.featureTree().addFeature(std::make_unique<hz::doc::FilletFeature>(
             std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::fromTag(gone)}, 1.0));
@@ -785,6 +792,66 @@ TEST(ImportExport, AMigratedPartSavedWhileItsFirstBuildRunsIsBuiltFirst) {
     EXPECT_TRUE(report.detailedText().contains(QStringLiteral("after the exact rebuild")))
         << report.detailedText().toStdString();
     settle(w);
+}
+
+// Save As while a migrated part's first build is still to come builds it first, before it asks
+// anything: the part, which that build finds read in part, is saved as a new file, and the file it
+// was read from, chosen, is asked about; Cancel (the default) writes nothing, and the part stays
+// read in part, so a later Save still asks (owner amendment A2). It built the part only once it
+// had decided where to write it, as the file it was read from, and a Cancel of the second "Save
+// As a New File" this opened put back what the part had left out before the build: read whole,
+// it was written over its file at the next Save (review of Task 12, finding 1). Its build on a
+// worker is cancelled first, so that it cannot be applied while the file dialog is open.
+TEST(ImportExport, AMigratedPartSavedAsBeforeItsFirstBuildIsBuiltFirst) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("old.hzpart"));
+    writeSquarePart(path, 31, /*filleted=*/true, /*copies=*/24);
+    const QByteArray before = contents(path);
+
+    MainWindow w;  // read here, and built on a worker: its build time is not known
+    {
+        FilePicker picker(path);
+        menuAction(w, QStringLiteral("&Open..."))->trigger();
+    }
+    ASSERT_TRUE(w.rebuildRunning());
+    w.findChild<QToolButton*>(QStringLiteral("cancelRebuild"))->click();
+    settle(w);
+    hz::doc::Document& part = *w.activeDocument();
+    // Under load the worker can finish before Cancel is clicked, and its build is applied.
+    if (!part.firstBuildPending()) GTEST_SKIP() << "the first build ended before Cancel";
+    ASSERT_FALSE(part.readInPart()) << "nothing left out until it is built";
+
+    DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"), 30'000);
+    const QString title = QStringLiteral("Replace the File It Was Read From?");
+    {
+        DialogResponder exists(QMessageBox::Yes);  // the file dialog's own question
+        DialogResponder keep(QMessageBox::Cancel, title);
+        FilePicker picker(path);
+        menuAction(w, QStringLiteral("Save &As..."))->trigger();
+        EXPECT_TRUE(keep.seen()) << "the file it was read from is asked about";
+        EXPECT_EQ(keep.defaultButton(), QMessageBox::Cancel);
+    }
+    EXPECT_EQ(contents(path), before) << "Cancel writes nothing";
+    EXPECT_FALSE(part.firstBuildPending()) << "built before anything was asked";
+    EXPECT_EQ(part.filePath(), path.toStdString());
+    ASSERT_EQ(part.leftOut().size(), 1u);
+    EXPECT_EQ(part.leftOut()[0].rfind("after the exact rebuild: ", 0), 0u) << part.leftOut()[0];
+    EXPECT_TRUE(part.readInPart());
+    report.waitForDialog(30'000);
+    EXPECT_TRUE(report.seen());
+    settle(w);
+    EXPECT_TRUE(activeTabText(w).contains(QStringLiteral("(incomplete)")))
+        << activeTabText(w).toStdString();
+
+    // Saved again, it still asks where.
+    const QString copy = dir.filePath(QStringLiteral("copy.hzpart"));
+    {
+        FilePicker picker(copy);
+        action(w, "action_save")->trigger();
+    }
+    EXPECT_EQ(contents(path), before) << "not written over unasked";
+    EXPECT_TRUE(QFileInfo::exists(copy));
 }
 
 // A DXF read in part is not written over by an export either: exporting it
