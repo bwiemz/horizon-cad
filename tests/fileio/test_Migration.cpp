@@ -11,6 +11,7 @@
 #include <fstream>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -390,9 +391,11 @@ TEST(Migration, AHoledProfilesPiecesChordsAndSeamsAreReported) {
     EXPECT_EQ(hole->face(), id + "/cap_top") << "a whole face stays";
 }
 
-// Ruling 25: through part of a turn, a face square to the axis was a quad a step on master, and is
-// one face now; the seams between its quads are gone. A seam of a curved face is as it was.
-TEST(Migration, APartTurnsFlatFacesSeamsAreReported) {
+// Through part of a turn, a face square to the axis was a quad a step on master, and is again
+// (Ruling 44: the revolve's faceted copy is master's own revolve), so the seams between its quads
+// are kept, as a seam of a curved face is (re-baselined: under Ruling 25 the face was one face, its
+// seams gone, and a reference to one reported).
+TEST(Migration, APartTurnsFlatFacesSeamsAreKept) {
     Document doc;
     doc.setType(DocumentType::Part);
     auto ring = lines({{2, 0}, {4, 0}, {4, 3}, {2, 3}});
@@ -406,13 +409,25 @@ TEST(Migration, APartTurnsFlatFacesSeamsAreReported) {
         std::vector<TopologyID>{TopologyID::fromTag(flat), TopologyID::fromTag(curved)}, 0.1));
 
     Opened opened = openText(asFormat(doc, 31));
-    EXPECT_EQ(opened.report.skipped,
-              std::vector<std::string>{notCarried("feature 2 (Fillet)", flat, "an edge it rounds",
-                                                  "a flat face is now one face")})
-        << joined(opened.report.skipped);
+    EXPECT_TRUE(opened.report.skipped.empty()) << joined(opened.report.skipped);
     const auto* fillet = dynamic_cast<const FilletFeature*>(opened.doc->featureTree().feature(1));
     ASSERT_NE(fillet, nullptr);
-    EXPECT_EQ(tagsOf(fillet->edgeIds()), std::vector<std::string>{curved});
+    EXPECT_EQ(tagsOf(fillet->edgeIds()), (std::vector<std::string>{flat, curved}));
+    // Both are the part's, as they were master's.
+    ASSERT_NE(opened.doc->featureTree().feature(0), nullptr);
+    Document built;
+    built.setType(DocumentType::Part);
+    auto copy = lines({{2, 0}, {4, 0}, {4, 3}, {2, 3}});
+    built.addSketch(copy);
+    auto turnedAgain =
+        std::make_unique<RevolveFeature>(copy, Vec3(0, 0, 0), Vec3(0, 1, 0), kPi / 2.0);
+    turnedAgain->restoreFeatureID(id);
+    built.featureTree().addFeature(std::move(turnedAgain));
+    ASSERT_TRUE(built.rebuildModel()) << built.lastBuildMessage();
+    std::set<std::string> edges;
+    for (const auto& e : built.solid()->edges()) edges.insert(e.topoId.tag());
+    EXPECT_EQ(edges.count(id + "/revolved:" + entity(*copy, 0) + "/seam:2"), 1u);
+    EXPECT_EQ(edges.count(id + "/revolved:" + entity(*copy, 1) + "/seam:2"), 1u);
 
     // A whole turn's flat faces were one face on master too: nothing about them is said.
     Document whole;

@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <exception>
 #include <map>
 #include <memory>
 #include <optional>
@@ -17,12 +16,10 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftCircle.h"
 #include "horizon/drafting/DraftEntity.h"
-#include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/FacetResolution.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/ProfileValidator.h"
-#include "horizon/modeling/Revolve.h"
 #include "horizon/topology/Solid.h"
 
 namespace hz::io {
@@ -36,7 +33,6 @@ using doc::StoredReference;
 constexpr const char* kSheetNamedAnew = "a sheet's faces are named anew";  // Ruling 28
 constexpr const char* kNamedTheOldWay = "named the old way";
 constexpr const char* kBuiltFromPieces = "built from pieces before";  // Ruling 23
-constexpr const char* kOneFlatFace = "a flat face is now one face";   // Ruling 25
 
 /// Chords a turn from which a curve drawn with them looked round; a count under it looked like
 /// intent (spec: Migration).
@@ -88,7 +84,6 @@ struct Maker {
     bool old = false;     ///< named Positional or FromGeometry
     bool sheet = false;   ///< a sheet (Ruling 28)
     bool pieces = false;  ///< an extrusion or revolve of several loops: master's Booleans
-    const doc::RevolveFeature* partTurn = nullptr;  ///< a revolve through part of a turn
 };
 
 /// Judges each name kept against the features that made the names it holds.
@@ -100,15 +95,10 @@ public:
     const char* lost(const std::string& name);
 
 private:
-    /// The faces square to the axis of the revolve feature @p index is (through part of a turn):
-    /// one face each in its exact build, where master cut a quad a step.
-    const std::set<std::string>& flatFacesOf(std::size_t index);
-
     std::vector<Maker> m_makers;
     /// The features each part of a name may be the source of: a feature's id, and an old
     /// primitive's (or prism shell's) shared source.
     std::map<std::string, std::vector<std::size_t>> m_byPart;
-    std::map<std::size_t, std::set<std::string>> m_flatFaces;
 };
 
 Judge::Judge(const doc::FeatureTree& tree) {
@@ -135,8 +125,6 @@ Judge::Judge(const doc::FeatureTree& tree) {
         }
         if (const auto* revolve = dynamic_cast<const doc::RevolveFeature*>(&feature)) {
             profile = revolve->sketch();
-            // A whole turn is one within 1e-9 of it, as model::Revolve has it.
-            if (std::abs(revolve->angle() - math::kTwoPi) > 1e-9) maker.partTurn = revolve;
         }
         if (profile) {
             const model::ProfileRegions found =
@@ -176,48 +164,7 @@ const char* Judge::lost(const std::string& name) {
                    holds(name, "/seam:"))) {
         return kBuiltFromPieces;
     }
-    const std::size_t seam = name.find("/seam:");
-    if (seam != std::string::npos) {
-        const std::string face = name.substr(0, seam);
-        for (const std::size_t i : makers) {
-            if (m_makers[i].partTurn == nullptr) continue;
-            for (const std::string& flat : flatFacesOf(i)) {
-                if (face == flat || face.rfind(flat + "/", 0) == 0) return kOneFlatFace;
-            }
-        }
-    }
     return nullptr;
-}
-
-const std::set<std::string>& Judge::flatFacesOf(std::size_t index) {
-    const auto known = m_flatFaces.find(index);
-    if (known != m_flatFaces.end()) return known->second;
-    std::set<std::string>& flats = m_flatFaces[index];
-    const doc::RevolveFeature* revolve = m_makers[index].partTurn;
-    if (revolve == nullptr || !revolve->sketch()) return flats;
-    const doc::Sketch& sketch = *revolve->sketch();
-    try {
-        // As drawn: the axis as it is kept, on the plane the sketch was drawn on. A face it is
-        // placed on moves both alike, and a face's flatness with them.
-        std::string why;
-        const auto exact =
-            model::Revolve::exact(sketch.entities(), sketch.drawnPlane(), revolve->axisPoint(),
-                                  revolve->axisDir(), revolve->angle(), revolve->featureID(), &why);
-        if (!exact) return flats;
-        for (const auto& face : exact->faces()) {
-            // A face one of the profile's lines sweeps, square to the axis (the caps at its ends
-            // were one face on master too).
-            if (face.alive && face.exactSurface != nullptr &&
-                face.exactSurface->kind() == geo::SurfaceKind::Plane &&
-                holds(face.topoId.tag(), "/revolved:")) {
-                flats.insert(face.topoId.tag());
-            }
-        }
-    } catch (const std::exception&) {
-        // A revolve its exact build cannot make has no faces to refer to: none is judged flat.
-        flats.clear();
-    }
-    return flats;
 }
 
 /// What converted @p feature, drawn with fewer than kRoundFrom chords a turn before, was, in

@@ -33,12 +33,12 @@ inline constexpr int kLastFacetedFormat = 31;
 ///     carries (its id, or an old primitive's shared source: `box/top`);
 ///   - "built from pieces before": a piece, a region, a chord or a seam of an extrusion or a
 ///     revolve of a profile with holes or of several regions, which master built by Booleans
-///     whose names the exact build has not (Ruling 23);
-///   - "a flat face is now one face": a seam of a face square to the axis of a revolve through
-///     part of a turn, which master cut into a quad a step and is one face now (Ruling 25).
-///   Every other reference is kept as it is: the bridge numbers facets and chords as master did
-///   (Ruling 21), so a facet's or a chord's name means the facet or the chord it meant, and is
-///   not widened to its face or edge (Ruling 40).
+///     whose names the exact build has not (Ruling 23).
+///   Every other reference is kept as it is: a feature whose master construction was one
+///   construction has that construction as its faceted copy, named as master named it (Rulings
+///   21 and 44: a partial turn's flat face is master's facets again), so a facet's or a chord's
+///   name means the facet or the chord it meant, and is not widened to its face or edge (Ruling
+///   40), and what an operation after it numbers is numbered as on master.
 /// - Each converted feature (a curved primitive, an extrusion with arcs, a revolve, a hole, a
 ///   sheet) drawn with fewer than 12 chords a turn is reported in `approximated`, which reads
 ///   the part whole: "<owner>: drawn as a 6-sided prism before; round now", in words for what it
