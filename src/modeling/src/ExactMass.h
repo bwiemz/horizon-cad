@@ -6,6 +6,7 @@
 // through it.
 
 #include <atomic>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -61,12 +62,19 @@ struct ExactMeasure {
 /// A face that cannot be integrated (no loop, a half-edge with no pcurve, a loop that winds round
 /// its surface or runs against the face's sense, a value that is not finite, an integral that
 /// does not settle within its budget of evaluations, stretches or subdivisions: four million
-/// evaluations of its surface for a face of up to 64 knot spans, and proportionally more for a
-/// B-spline face of more, whose every integral crosses its knots) leaves the result
+/// evaluations of its surface for a face of up to 64 knot spans, proportionally more for a
+/// B-spline face of more, whose every integral crosses its knots, and never more than a hundred
+/// million, faceEvaluationBudget) leaves the result
 /// not valid, its problem "<face>: <why>"; so do sums that are not finite. Nothing throws.
 /// @p cancelled, when set, stops it between faces and within one, and the result is not valid.
 ExactMeasure measureExact(const topo::Solid& solid, const Material* material,
                           const std::atomic<bool>* cancelled, double tolerance = 1e-10);
+
+/// The evaluations of its surface one face whose surface has @p spans knot spans (u spans times v
+/// spans; 1 for an analytic surface) may make before its integral is said not to settle: four
+/// million for up to 64 spans, in proportion beyond, and never more than a hundred million, which
+/// bounds the work one untrusted face can ask for however many spans its file gives it.
+std::size_t faceEvaluationBudget(double spans);
 
 /// What measureShellVolumes gives: each shell's signed volume and the estimate of its error, in
 /// the solid's shell order, or why there are none.

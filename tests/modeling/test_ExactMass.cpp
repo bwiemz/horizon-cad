@@ -8,12 +8,14 @@
 
 #include <atomic>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "ExactMass.h"
 #include "PoleSolids.h"
 #include "StepTestText.h"
 #include "horizon/fileio/StepFormat.h"
@@ -902,4 +904,21 @@ TEST(ExactMass, AThinPartSaysWhereItsEstimateStops) {
         MassPropertiesCalculator::computeIdeal(*thicker, nullptr, 1e-12);
     EXPECT_FALSE(finer.withinTolerance) << finer.estimatedError;
     says(finer);
+}
+
+// A face's budget of evaluations is in proportion to its knot spans, under a ceiling: four million
+// for up to 64 spans, six and a quarter million for 100, and never more than a hundred million,
+// which bounds the work one untrusted face can ask for however many spans its file gives it (a
+// face of 150 by 150 spans would be given 1.4 billion in proportion; it needs far fewer, and
+// settles beneath the ceiling, as ADenseSplineFaceSettles shows).
+TEST(ExactMass, AFacesBudgetIsCappedHoweverDenseItIs) {
+    using hz::model::detail::faceEvaluationBudget;
+    EXPECT_EQ(faceEvaluationBudget(1.0), 4'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(64.0), 4'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(100.0), 6'250'000u);
+    EXPECT_EQ(faceEvaluationBudget(1600.0), 100'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(150.0 * 150.0), 100'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(16384.0 * 16384.0), 100'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(std::numeric_limits<double>::infinity()), 100'000'000u);
+    EXPECT_EQ(faceEvaluationBudget(std::numeric_limits<double>::quiet_NaN()), 4'000'000u);
 }
