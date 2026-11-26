@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <vector>
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -13,6 +15,8 @@
 #endif
 
 #include "horizon/fileio/GltfExport.h"
+#include "horizon/geometry/Frame.h"
+#include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/render/MaterialLibrary.h"
@@ -217,6 +221,40 @@ TEST(GltfExportTest, SaveSolidWritesFile) {
         GltfExport::saveSolid(path.string(), *box, hz::render::MaterialLibrary::find("Wood")));
     EXPECT_GT(std::filesystem::file_size(path), 500u);
     std::filesystem::remove(path);
+}
+
+// A part goes out as the display draws it (SolidTessellator::displayTolerance): one above about
+// 667 across to 1.5e-4 of its diagonal, not to 0.1. A cylinder of radius 1000 and height 2000,
+// 2000 sqrt 3 across, goes out with the display's triangles, fewer than 0.1 would give it.
+TEST(GltfExportTest, ALargePartGoesOutAsItIsDrawn) {
+    const auto cylinder = hz::model::exact::makeCylinder(
+        hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 1000.0, 2000.0);
+    ASSERT_NE(cylinder, nullptr);
+    const auto path = std::filesystem::temp_directory_path() / ("hz_gltf_large_" +
+                                                                std::to_string(
+#ifdef _WIN32
+                                                                    ::GetCurrentProcessId()
+#else
+                                                                    ::getpid()
+#endif
+                                                                        ) +
+                                                                ".glb");
+    ASSERT_TRUE(
+        GltfExport::saveSolid(path.string(), *cylinder, hz::render::MaterialLibrary::find("Wood")));
+    std::vector<uint8_t> glb(static_cast<size_t>(std::filesystem::file_size(path)));
+    {
+        std::ifstream in(path, std::ios::binary);
+        in.read(reinterpret_cast<char*>(glb.data()), static_cast<std::streamsize>(glb.size()));
+    }
+    std::filesystem::remove(path);
+
+    json root;
+    size_t binLength = 0;
+    parseGlb(glb, root, binLength);
+    const auto& prim = root["meshes"][0]["primitives"][0];
+    const auto indices = root["accessors"][prim["indices"].get<int>()]["count"].get<size_t>();
+    EXPECT_EQ(indices, SolidTessellator::tessellate(*cylinder).indices.size());
+    EXPECT_LT(indices, SolidTessellator::tessellate(*cylinder, 0.1).indices.size());
 }
 
 TEST(GltfExportTest, EmptyInputFails) {

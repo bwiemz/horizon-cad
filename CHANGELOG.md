@@ -28,11 +28,13 @@ work, not "post-1.0".
   surface back as it came. Features still work on its faceted copy. A solid
   that cannot be made exact yet is left out and the import says why: two of
   the interop corpus's 64 solids are, and the spec lists them with every
-  other shape this stage leaves out. Among them is STEP that Horizon CAD
-  exported before this stage, wherever a round face is large beside its part,
-  a plain cylinder, frustum or tube included: the old writer sized each flat
-  face to its facets, and the face's true round rim stands off it. Part files
-  saved before this stage still open, each imported body as it was. Design:
+  other shape this stage leaves out, STEP that Horizon CAD exported before
+  this stage among them (below). Part files saved before this stage still
+  open, each imported body as it was. Parts are drawn lighter: an exact
+  part's faces at 0.5 rad between neighbouring triangles, and a part above
+  about 667 across to 1.5e-4 of its diagonal rather than 0.1. Part-file
+  caches and glTF exports shrink with them (the Moon buggy's cache from
+  26.5 MB to 3.9 MB); STL keeps 0.1. Design:
   [the exact kernel spec](docs/superpowers/specs/2026-11-24-exact-kernel-design.md).
 
 - **STEP that Horizon CAD exported before the exact kernel may not import.**

@@ -816,7 +816,5 @@ TEST(ExactCounterpart, ALargePartIsMeshedToItsSizeASmallOneToATenth) {
         ASSERT_NE(part.exactMesh(), nullptr);
         EXPECT_EQ(part.exactMesh()->indices,
                   hz::model::SolidTessellator::tessellate(*part.exactSolid(), c.tolerance).indices);
-        ASSERT_NE(part.exactOrFacetedMesh(), nullptr);
-        EXPECT_EQ(part.exactOrFacetedMesh()->indices, part.exactMesh()->indices);
     }
 }

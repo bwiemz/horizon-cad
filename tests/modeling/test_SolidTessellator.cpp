@@ -361,9 +361,14 @@ TEST(SolidTessellatorTest, AnExactPartIsDrawnAtTheDisplaysAngle) {
     EXPECT_EQ(rimPoints(mesh, 2.0, 4.0), segments);
 }
 
-// However coarse the display's angle, a large round is drawn round: a cylinder of radius 50 has
-// at least 13 segments round each rim, and so has one of radius 5.
+// A round is drawn as finely as the display's angle asks, and so with at least the 13 segments a
+// turn the owner asked for: each rim of a cylinder of radius 5 (where the angle sets its chords)
+// and of radius 50 (where the tolerance does, finer) has at least 2 pi over half the angle, 26 at
+// 0.5 rad.
 TEST(SolidTessellatorTest, ALargeCylinderIsDrawnRound) {
+    const auto byAngle = static_cast<std::size_t>(
+        std::ceil(2.0 * hz::math::kPi / (0.5 * SolidTessellator::kDisplayMaxAngle)));
+    const std::size_t least = std::max<std::size_t>(13, byAngle);
     for (const double r : {5.0, 50.0}) {
         SCOPED_TRACE(r);
         const auto cylinder = exactCylinder(r, 20.0);
@@ -372,8 +377,8 @@ TEST(SolidTessellatorTest, ALargeCylinderIsDrawnRound) {
         const auto mesh =
             SolidTessellator::tessellate(*cylinder, SolidTessellator::kDisplayTolerance, &problem);
         EXPECT_TRUE(problem.empty()) << problem;
-        EXPECT_GE(rimPoints(mesh, r, 0.0), 13u);
-        EXPECT_GE(rimPoints(mesh, r, 20.0), 13u);
+        EXPECT_GE(rimPoints(mesh, r, 0.0), least);
+        EXPECT_GE(rimPoints(mesh, r, 20.0), least);
     }
 }
 
