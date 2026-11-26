@@ -173,9 +173,11 @@ public:
     static constexpr double kChordOnPaper = 0.01;
 
     /// The largest scale (paper ÷ model) a sheet of @p spec draws its views at, of a part whose
-    /// faceted solid is @p faceted: its views' largest, a detail's included; with none, its scale
-    /// where it is set, else the one its standard layout chooses for @p faceted above @p room, as
-    /// before (DrawingGenerator::sheetLayout); a version 1 sheet's views are at 1:1.
+    /// faceted solid is @p faceted, which its copy is cut for: its views' largest but its details'
+    /// (Ruling 35); with none, its scale where it is set, else the one its standard layout
+    /// chooses for @p faceted above @p room, as before (DrawingGenerator::sheetLayout); a version
+    /// 1 sheet's views are at 1:1. A detail is cut from its view as drawn, so its chords sag up
+    /// to 0.01 × its scale ÷ its view's mm on paper (0.1 mm for a 10:1 detail of a 1:1 view).
     static double sheetScale(const DrawingDocumentSpec& spec, const topo::Solid& faceted,
                              const model::TitleBlock& room);
 

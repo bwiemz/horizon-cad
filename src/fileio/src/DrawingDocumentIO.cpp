@@ -726,8 +726,11 @@ double DrawingDocumentIO::sheetScale(const DrawingDocumentSpec& spec, const topo
                                      const model::TitleBlock& room) {
     if (spec.version < 2) return 1.0;
     if (!spec.views.empty()) {
+        // A detail is cut from its view as drawn, the copy cut for the views it is cut from
+        // (Ruling 35): at 10:1 it would cut the whole part ten times finer.
         double largest = 0.0;
         for (const DrawingViewSpec& v : spec.views) {
+            if (v.role == model::ViewRole::Detail) continue;
             if (usableScale(v.scale)) largest = std::max(largest, v.scale);
         }
         return largest > 0.0 ? largest : 1.0;

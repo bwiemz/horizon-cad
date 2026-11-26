@@ -485,3 +485,37 @@ TEST(DrawingExact, ADimensionOnAnOutlineHoldsAtItsScaleAndIsLostAtAnother) {
     EXPECT_TRUE(atTwo.views[0].dimensions.empty());
     EXPECT_EQ(lost, std::vector<std::string>{"view 1: a length"});
 }
+
+// Ruling 35: the copy is cut for the sheet's views but its details, each cut from its view as
+// drawn: a 10:1 detail of a 1:1 front view leaves the copy cut for 1:1 (the right view's outline
+// 0.0099 mm inside, as at 1:1 alone), not ten times finer, and the detail is drawn from it.
+TEST(DrawingExact, ADetailIsCutFromTheCopyOfItsView) {
+    const TempFolder folder("detail");
+    Document part;
+    part.featureTree().addFeature(cylinder());
+    savePart(folder.file("cylinder.hzpart"), part);
+    const Drawing atOne = loadSheet(folder, folder.file("cylinder.hzpart"), standardSheet(1.0));
+    const double alone = silhouetteInside(viewOf(atOne, StandardView::Right), 0.0, 50.0).first;
+    EXPECT_GT(alone, kOnPaper / 2.0);
+
+    DrawingDocumentSpec spec;
+    spec.views = DrawingDocumentIO::viewsOf(atOne);
+    DrawingViewSpec detail;
+    detail.role = hz::model::ViewRole::Detail;
+    detail.label = "B";
+    detail.source = 0;
+    detail.kind = spec.views[0].kind;
+    detail.projection = spec.views[0].projection;
+    detail.detailCenter = {-50.0, 20.0};  // on the front view's outline at -x
+    detail.detailRadius = 5.0;
+    detail.scale = 10.0;
+    detail.placement = {300, 200};
+    spec.views.push_back(detail);
+    EXPECT_DOUBLE_EQ(DrawingDocumentIO::sheetScale(spec, *part.solid(), spec.titleBlock), 1.0);
+    const Drawing drawing = loadSheet(folder, folder.file("cylinder.hzpart"), spec);
+    ASSERT_EQ(drawing.views.size(), 5u);
+    EXPECT_DOUBLE_EQ(silhouetteInside(viewOf(drawing, StandardView::Right), 0.0, 50.0).first,
+                     alone);
+    EXPECT_EQ(drawing.views[4].role, hz::model::ViewRole::Detail);
+    EXPECT_FALSE(drawing.views[4].edges.empty());
+}
