@@ -169,16 +169,30 @@ void nameBridgeEdges(topo::Solid& faceted, const topo::Solid& exact) {
     for (const auto& edge : exact.edges()) {
         if (edge.topoId.isValid()) exactNames.insert(edge.topoId.tag());
     }
-    std::map<std::string, int> next;  // by face: the number its next seam may take
+    std::unordered_map<std::string, int> next;  // by face: the number its next seam may take
+    // Each face's logical face, once: a face's grid lines are many.
+    std::unordered_map<const topo::Face*, std::string> logical;
+    const auto logicalOf = [&logical](const topo::Face* f) -> const std::string& {
+        auto found = logical.find(f);
+        if (found == logical.end()) found = logical.emplace(f, logicalFace(f->topoId.tag())).first;
+        return found->second;
+    };
     for (auto& edge : faceted.edges()) {
-        if (edge.topoId.isValid() && (exactNames.count(edge.topoId.tag()) != 0 ||
-                                      exactNames.count(logicalEdge(edge.topoId.tag())) != 0)) {
-            continue;  // a chord of an exact edge
+        if (edge.topoId.isValid()) {
+            const std::string& tag = edge.topoId.tag();
+            if (exactNames.count(tag) != 0 || (tag.find("/chord:") != std::string::npos &&
+                                               exactNames.count(logicalEdge(tag)) != 0)) {
+                continue;  // a chord of an exact edge
+            }
         }
-        const auto [a, b] = facePair(edge);
-        if (a.empty()) continue;
-        const std::string face = logicalFace(a);
-        if (logicalFace(b) != face) continue;  // not inside one face
+        const topo::HalfEdge* he = edge.halfEdge;
+        if (he == nullptr || he->twin == nullptr || he->face == nullptr ||
+            he->twin->face == nullptr || !he->face->topoId.isValid() ||
+            !he->twin->face->topoId.isValid()) {
+            continue;
+        }
+        const std::string& face = logicalOf(he->face);
+        if (logicalOf(he->twin->face) != face) continue;  // not inside one face
         int& n = next[face];
         std::string name = face + "/seam:" + std::to_string(n++);
         while (exactNames.count(name) != 0) name = face + "/seam:" + std::to_string(n++);
@@ -207,7 +221,7 @@ std::pair<std::string, bool> logicalBase(std::string a, std::string b) {
 class PointIndex {
 public:
     PointIndex(const std::vector<math::Vec3>& points, double within)
-        : points_(points), within_(within), cell_(std::max(within, 1e-300) * 4.0) {
+        : points_(points), within_(within), cell_(std::max(within, 1e-300) * 64.0) {
         for (std::size_t i = 0; i < points.size(); ++i) {
             if (finite(points[i])) grid_[keyOf(points[i])].push_back(i);
         }
@@ -220,9 +234,21 @@ public:
         const Key k = keyOf(p);
         std::optional<std::size_t> best;
         double nearest = within_;
-        for (std::int64_t dx = -1; dx <= 1; ++dx) {
-            for (std::int64_t dy = -1; dy <= 1; ++dy) {
-                for (std::int64_t dz = -1; dz <= 1; ++dz) {
+        // The cells a ball of the distance given about @p p reaches: its own, and a neighbour only
+        // along an axis where it comes that near the cell's side (twice that, for the rounding of
+        // where the side is).
+        const auto reach = [this](double x, std::int64_t cell) {
+            const double below = x - static_cast<double>(cell) * cell_;
+            const double near = 2.0 * within_;
+            return std::pair<std::int64_t, std::int64_t>{below <= near ? -1 : 0,
+                                                         cell_ - below <= near ? 1 : 0};
+        };
+        const auto rx = reach(p.x, std::get<0>(k));
+        const auto ry = reach(p.y, std::get<1>(k));
+        const auto rz = reach(p.z, std::get<2>(k));
+        for (std::int64_t dx = rx.first; dx <= rx.second; ++dx) {
+            for (std::int64_t dy = ry.first; dy <= ry.second; ++dy) {
+                for (std::int64_t dz = rz.first; dz <= rz.second; ++dz) {
                     const auto found =
                         grid_.find({std::get<0>(k) + dx, std::get<1>(k) + dy, std::get<2>(k) + dz});
                     if (found == grid_.end()) continue;
@@ -270,44 +296,79 @@ PointPair unordered(std::size_t a, std::size_t b) {
     return a < b ? PointPair{a, b} : PointPair{b, a};
 }
 
+struct PointPairHash {
+    std::size_t operator()(const PointPair& p) const {
+        return std::hash<std::size_t>{}(p.first) * 1000003u ^ std::hash<std::size_t>{}(p.second);
+    }
+};
+
 /// Each of @p masters' edges' name, as nameEdgesLogically gave it: by the two faces it parts,
 /// numbered in the order master made the edges.
-std::map<PointPair, std::string> mastersEdgeNames(const MastersFacets& masters) {
-    std::map<PointPair, std::vector<std::size_t>> facesOf;
+std::unordered_map<PointPair, std::string, PointPairHash> mastersEdgeNames(
+    const MastersFacets& masters) {
+    /// The faces an edge parts: the first two, and how many.
+    struct Parted {
+        std::size_t first = 0;
+        std::size_t second = 0;
+        std::size_t count = 0;
+    };
+    std::unordered_map<PointPair, Parted, PointPairHash> facesOf;
     std::vector<PointPair> order;
-    for (std::size_t f = 0; f < masters.faces.size(); ++f) {
-        const auto& loop = masters.faces[f];
+    const auto walk = [&](const std::vector<std::size_t>& loop, std::size_t f) {
         for (std::size_t i = 0; i < loop.size(); ++i) {
             const PointPair e = unordered(loop[i], loop[(i + 1) % loop.size()]);
-            auto& faces = facesOf[e];
-            if (faces.empty() && masters.edges.empty()) order.push_back(e);
-            faces.push_back(f);
+            Parted& faces = facesOf[e];
+            if (faces.count == 0 && masters.edges.empty()) order.push_back(e);
+            if (faces.count == 0) faces.first = f;
+            if (faces.count == 1) faces.second = f;
+            ++faces.count;
         }
-    }
+    };
+    for (std::size_t f = 0; f < masters.faces.size(); ++f) walk(masters.faces[f], f);
     if (!masters.edges.empty()) {
         for (const auto& e : masters.edges) order.push_back(unordered(e.first, e.second));
     }
-    std::vector<std::pair<std::string, bool>> base(order.size());
-    std::map<std::string, int> count;
+    // Each edge's base (logicalBase), how many edges share it, and the number the next takes: had
+    // once for each pair of faces (a curve's chords part the same two), and kept by name (a
+    // face's seams part many pairs of its facets).
+    struct Base {
+        std::string name;
+        bool seam = false;
+        int count = 0;
+        int next = 0;
+    };
+    std::vector<Base> bases;
+    std::unordered_map<std::string, std::size_t> baseNamed;
+    std::unordered_map<PointPair, std::size_t, PointPairHash> pairBase;
+    constexpr std::size_t kNoBase = static_cast<std::size_t>(-1);
+    std::vector<std::size_t> baseOf(order.size(), kNoBase);
     for (std::size_t i = 0; i < order.size(); ++i) {
         const auto found = facesOf.find(order[i]);
-        if (found == facesOf.end() || found->second.size() != 2) continue;
-        base[i] =
-            logicalBase(masters.faceNames[found->second[0]], masters.faceNames[found->second[1]]);
-        ++count[base[i].first];
+        if (found == facesOf.end() || found->second.count != 2) continue;
+        const std::size_t a = found->second.first;
+        const std::size_t b = found->second.second;
+        auto known = pairBase.find(unordered(a, b));
+        if (known == pairBase.end()) {
+            auto made = logicalBase(masters.faceNames[a], masters.faceNames[b]);
+            const auto named = baseNamed.emplace(made.first, bases.size());
+            if (named.second) bases.push_back({std::move(made.first), made.second});
+            known = pairBase.emplace(unordered(a, b), named.first->second).first;
+        }
+        baseOf[i] = known->second;
+        ++bases[baseOf[i]].count;
     }
-    std::map<PointPair, std::string> names;
-    std::map<std::string, int> next;
+    std::unordered_map<PointPair, std::string, PointPairHash> names;
+    names.reserve(order.size());
     for (std::size_t i = 0; i < order.size(); ++i) {
-        const std::string& name = base[i].first;
-        if (name.empty()) continue;
-        if (!base[i].second && count[name] == 1) {
-            names[order[i]] = name;
+        if (baseOf[i] == kNoBase) continue;
+        Base& base = bases[baseOf[i]];
+        if (!base.seam && base.count == 1) {
+            names[order[i]] = base.name;
             continue;
         }
-        const int k = next[name]++;
-        names[order[i]] =
-            base[i].second ? name + ":" + std::to_string(k) : name + "/chord:" + std::to_string(k);
+        const int k = base.next++;
+        names[order[i]] = base.seam ? base.name + ":" + std::to_string(k)
+                                    : base.name + "/chord:" + std::to_string(k);
     }
     return names;
 }
@@ -413,13 +474,22 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
     };
 
     // Facets: master's face with the same corners.
-    std::map<std::vector<std::size_t>, std::size_t> faceAt;
+    struct CornersHash {
+        std::size_t operator()(const std::vector<std::size_t>& corners) const {
+            std::size_t h = corners.size();
+            for (const std::size_t c : corners) h = h * 1000003u ^ std::hash<std::size_t>{}(c);
+            return h;
+        }
+    };
+    std::unordered_map<std::vector<std::size_t>, std::size_t, CornersHash> faceAt;
+    faceAt.reserve(masters.faces.size());
     for (std::size_t f = 0; f < masters.faces.size(); ++f) {
         std::vector<std::size_t> corners = masters.faces[f];
         std::sort(corners.begin(), corners.end());
         faceAt.emplace(std::move(corners), f);
     }
-    std::set<std::string> taken;  // the names given, which nothing else may keep
+    // The names given, which nothing else may keep: gathered only where something is renumbered.
+    std::vector<const topo::TopologyID*> given;
     std::vector<topo::Face*> unmatchedFaces;
     for (auto& face : bridge.faces()) {
         if (!face.alive || face.outerLoop == nullptr || !face.innerLoops.empty()) continue;
@@ -437,28 +507,28 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
         } while (he != face.outerLoop->halfEdge);
         std::sort(corners.begin(), corners.end());
         const auto found = all ? faceAt.find(corners) : faceAt.end();
-        const std::string& name =
-            found == faceAt.end() ? std::string() : masters.faceNames[found->second];
-        if (found == faceAt.end() || logicalFace(name) != logicalFace(face.topoId.tag())) {
+        if (found == faceAt.end() ||
+            logicalFace(masters.faceNames[found->second]) != logicalFace(face.topoId.tag())) {
             unmatchedFaces.push_back(&face);
             continue;
         }
-        face.topoId = topo::TopologyID::fromTag(name);
-        taken.insert(name);
+        face.topoId = topo::TopologyID::fromTag(masters.faceNames[found->second]);
+        given.push_back(&face.topoId);
     }
 
     // Edges: master's edge between the same points.
     const auto names = mastersEdgeNames(masters);
-    const auto mastersName = [&](const topo::Edge& e) -> std::string {
+    static const std::string kNone;
+    const auto mastersName = [&](const topo::Edge& e) -> const std::string& {
         const topo::HalfEdge* he = e.halfEdge;
-        if (he == nullptr || he->twin == nullptr) return {};
+        if (he == nullptr || he->twin == nullptr) return kNone;
         const auto a = pointOf(he->origin);
         const auto b = pointOf(he->twin->origin);
-        if (!a || !b) return {};
+        if (!a || !b) return kNone;
         const auto found = names.find(unordered(*a, *b));
-        return found == names.end() ? std::string() : found->second;
+        return found == names.end() ? kNone : found->second;
     };
-    std::map<std::string, topo::Edge*> exactByName;
+    std::unordered_map<std::string, topo::Edge*> exactByName;
     for (auto& e : exact.edges()) {
         if (e.alive && e.topoId.isValid()) exactByName[e.topoId.tag()] = &e;
     }
@@ -477,7 +547,9 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
         if (!e.alive || !e.topoId.isValid()) continue;
         // An exact edge's one chord has its name; each of several, `<its name>/chord:<k>`.
         auto found = exactByName.find(e.topoId.tag());
-        if (found == exactByName.end()) found = exactByName.find(logicalEdge(e.topoId.tag()));
+        if (found == exactByName.end() && e.topoId.tag().find("/chord:") != std::string::npos) {
+            found = exactByName.find(logicalEdge(e.topoId.tag()));
+        }
         if (found != exactByName.end()) {
             chordsOf[exactOrder.at(found->second)].push_back(&e);
         } else {
@@ -485,9 +557,9 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
         }
     }
     std::vector<topo::Edge*> unmatchedEdges;
-    const auto rename = [&taken](topo::Edge& e, const std::string& name) {
+    const auto rename = [&given](topo::Edge& e, const std::string& name) {
         e.topoId = topo::TopologyID::fromTag(name);
-        taken.insert(name);
+        given.push_back(&e.topoId);
     };
     for (std::size_t x = 0; x < exactEdges.size(); ++x) {
         const std::vector<topo::Edge*>& chords = chordsOf[x];
@@ -503,10 +575,10 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
             // An edge of one chord between two faces: where two or more part the same faces
             // (`<edge>/chord:<k>`, a half disc's lines along the offset), master numbered them
             // as it made them, and the exact edge takes its chord's number.
-            const std::string given = mastersName(*chords.front());
-            if (!given.empty() && logicalEdge(given) == logicalEdge(name)) {
-                exactEdge.topoId = topo::TopologyID::fromTag(given);
-                rename(*chords.front(), given);
+            const std::string& theirs = mastersName(*chords.front());
+            if (!theirs.empty() && logicalEdge(theirs) == logicalEdge(name)) {
+                exactEdge.topoId = topo::TopologyID::fromTag(theirs);
+                rename(*chords.front(), theirs);
             } else {
                 unmatchedEdges.push_back(chords.front());
             }
@@ -515,9 +587,9 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
         if (!seam) {
             // A curve between two faces: master numbered its chords as it made them.
             for (topo::Edge* chord : chords) {
-                const std::string given = mastersName(*chord);
-                if (!given.empty() && logicalEdge(given) == name) {
-                    rename(*chord, given);
+                const std::string& theirs = mastersName(*chord);
+                if (!theirs.empty() && logicalEdge(theirs) == name) {
+                    rename(*chord, theirs);
                 } else {
                     unmatchedEdges.push_back(chord);
                 }
@@ -531,31 +603,36 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
                 first = chord;
             }
         }
-        const std::string given = mastersName(*first);
-        if (given.empty()) {
-            for (topo::Edge* chord : chords) taken.insert(chord->topoId.tag());
+        const std::string theirs = mastersName(*first);
+        if (theirs.empty()) {
+            for (topo::Edge* chord : chords) given.push_back(&chord->topoId);
             continue;
         }
-        exactEdge.topoId = topo::TopologyID::fromTag(given);
+        exactEdge.topoId = topo::TopologyID::fromTag(theirs);
         for (topo::Edge* chord : chords) {
             const std::string& tag = chord->topoId.tag();
-            rename(*chord, tag.size() > name.size() ? given + tag.substr(name.size()) : given);
+            rename(*chord, tag.size() > name.size() ? theirs + tag.substr(name.size()) : theirs);
         }
     }
-    std::set<std::string> exactNames;  // as they are now, a seam renamed
+    std::unordered_set<std::string> exactNames;  // as they are now, a seam renamed
     for (const topo::Edge* e : exactEdges) exactNames.insert(e->topoId.tag());
     for (topo::Edge* line : lines) {
-        const std::string given = mastersName(*line);
-        if (given.empty() || exactNames.count(given) != 0) {
+        const std::string& theirs = mastersName(*line);
+        if (theirs.empty() || exactNames.count(theirs) != 0) {
             unmatchedEdges.push_back(line);
         } else {
-            rename(*line, given);
+            rename(*line, theirs);
         }
     }
 
-    // What has no place in master's construction keeps its name, renumbered past those taken.
-    taken.insert(exactNames.begin(), exactNames.end());
-    const auto renumber = [&taken](topo::TopologyID& id) {
+    // What has no place in master's construction keeps its name, renumbered past those taken: the
+    // least number not taken. As names are only ever taken, that number never falls, and each
+    // prefix's search goes on from where it stopped.
+    if (unmatchedFaces.empty() && unmatchedEdges.empty()) return;
+    std::unordered_set<std::string> taken(exactNames.begin(), exactNames.end());
+    for (const topo::TopologyID* id : given) taken.insert(id->tag());
+    std::unordered_map<std::string, int> from;
+    const auto renumber = [&taken, &from](topo::TopologyID& id) {
         const std::string tag = id.tag();
         if (taken.count(tag) == 0) {
             taken.insert(tag);
@@ -563,7 +640,7 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
         }
         const auto prefix = numberedPrefix(tag);
         if (!prefix) return;
-        int n = 0;
+        int& n = from[*prefix];
         std::string name = *prefix + std::to_string(n);
         while (taken.count(name) != 0) name = *prefix + std::to_string(++n);
         id = topo::TopologyID::fromTag(name);
