@@ -42,12 +42,13 @@ std::unique_ptr<topo::Solid> buildExactly(const ExactBuilder& build, std::string
 /// 21). Both null, with @p reason, where either cannot be made.
 ///
 /// Where @p own is given (a feature whose master construction is one construction: a primitive,
-/// a single loop's extrude or revolve, a hole's tool, a sheet's flange), the faceted body is
-/// master's own construction itself, named as the bridge copy names the same places
-/// (nameAfterBridge, Ruling 44): its faces, loops and edges in master's order and master's
-/// winding, so an operation after it numbers what it makes as on master; the bridge copy cut
-/// from the exact solid is made only to name it (and the exact solid: nameAsMasters). "its
-/// faceted copy could not be built as master built it: <why>" where @p own makes none.
+/// a single loop's extrude or revolve, a hole's tool), the faceted body is master's own
+/// construction itself, as master's Stable pass named it, and no copy is cut from the exact form
+/// (Rulings 44 and 45): its faces, loops and edges in master's order and master's winding, so an
+/// operation after it numbers what it makes as on master; the exact solid's seams and the chords
+/// along them are named after it as the bridge's were (nameAsMastersNamed). @p resolution and
+/// @p masters are then not read. "its faceted copy could not be built as master built it: <why>"
+/// where @p own makes none.
 ExactAndBridge buildWithBridge(const ExactBuilder& build, const FacetResolution& resolution,
                                const MastersConstruction& masters, std::string* reason,
                                const MastersSolid& own = {});

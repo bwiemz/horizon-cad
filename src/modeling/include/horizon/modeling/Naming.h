@@ -123,17 +123,25 @@ MastersFacets mastersFacets(const std::vector<SolidSewer::InputFace>& soup,
 /// Nothing is renamed when @p masters has no points.
 void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets& masters);
 
-/// Name @p own, master's own faceted construction of a converted feature's body, as @p bridge,
-/// that body's bridge copy cut from its exact form and named (nameBridgeEdges, nameAsMasters),
-/// names the same places (Ruling 44): each face whose corners, its holes' included, are a face
-/// of the bridge's, and each edge between two of the bridge's points, takes the bridge's name
-/// for it. What the bridge has no place for (a partial turn's flat face, cut by master into a
-/// facet a step, which the bridge cuts as one) keeps the name master's construction gave it,
-/// renumbered past every name taken where the bridge gave that name elsewhere. @p own's storage
-/// order, its loops' starts and their winding are master's, so what an operation after the
-/// feature numbers by the order it meets them (a Boolean's pieces of a face it splits) is
-/// numbered as on master.
-void nameAfterBridge(topo::Solid& own, const topo::Solid& bridge);
+/// Name @p exact, and @p own, master's own faceted construction of the same body as master's
+/// Stable pass named it (a converted feature whose master construction was one construction,
+/// Ruling 44), as the bridge copy cut from @p exact named both (nameBridgeEdges, nameAsMasters),
+/// with no copy cut (Ruling 45). Each exact seam (an edge between two facets of one face: a
+/// cylinder's line at u = 0, a sphere's meridian) is named after master's edge where its first
+/// chord lies, from its half-edge's origin, and its chords, where it has several,
+/// `<that name>/chord:<k>` from there (Ruling 18); an exact edge of one chord between two faces
+/// takes that chord's name where master numbered several between the same faces. Any other edge
+/// of @p own named as an exact seam, or as one of its chords, is a line inside a face: it is
+/// numbered past every name taken, so none masquerades as the seam. @p own's storage order,
+/// loops' starts and winding stay master's, so what an operation after it numbers by the order it
+/// meets them is numbered as on master.
+void nameAsMastersNamed(topo::Solid& own, topo::Solid& exact);
+
+/// Name the edges of @p own, master's own faceted construction of a sheet's flange with its faces
+/// named after the sketch (Ruling 28), as the bridge copy cut from @p exact named them (Ruling 45):
+/// each chord of an exact edge `<edge>/chord:<k>` from the edge's half-edge's origin (its name
+/// where it is one chord), and the line between a face's facets k and k + 1 `<face>/seam:<k>`.
+void nameChordsAsTheBridge(topo::Solid& own, const topo::Solid& exact);
 
 /// Name @p solid's edges as @p naming does: logically (Stable), after their
 /// faces (FromGeometry). Positional names are an operation's own; they are

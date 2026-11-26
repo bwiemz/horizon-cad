@@ -22,13 +22,15 @@
 #include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/DraftPolyline.h"
+#include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/MathUtils.h"
-#include "horizon/modeling/ExactBuild.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FacetResolution.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/SheetMetal.h"
 #include "horizon/modeling/SheetMetalSolid.h"
+#include "horizon/topology/HalfEdge.h"
+#include "horizon/topology/Solid.h"
 #include "horizon/topology/TopologyID.h"
 
 namespace hz::doc {
@@ -176,6 +178,70 @@ ExactOutline exactOutline(const std::vector<std::shared_ptr<draft::DraftEntity>>
         std::reverse(laid.roles.begin(), laid.roles.end() - 1);
     }
     return laid;
+}
+
+/// Each bend's facets of @p made, master's own flange with its faces named after the sketch,
+/// numbered as the bridge cut from @p exact numbered them (Ruling 45): along the u of the bend's
+/// exact face, from where the face starts (after the widest gap between its corners' u round the
+/// cylinder), `<bend>/facet:<k>`.
+void numberBendFacets(topo::Solid& made, const topo::Solid& exact) {
+    for (const auto& face : exact.faces()) {
+        if (!face.alive || face.exactSurface == nullptr || !face.exactSurface->periodicU() ||
+            face.outerLoop == nullptr || face.outerLoop->halfEdge == nullptr) {
+            continue;
+        }
+        const geo::Surface& surface = *face.exactSurface;
+        const geo::Interval range = surface.uRange();
+        const double period = range.max - range.min;
+        if (!(period > 0.0)) continue;
+        const auto uOf = [&surface, &range, period](const math::Vec3& p) {
+            const double u = std::fmod(surface.invert(p).x - range.min, period);
+            return u < 0.0 ? u + period : u;
+        };
+        const std::string prefix = face.topoId.tag() + "/facet:";
+        std::vector<topo::Face*> facets;
+        for (auto& f : made.faces()) {
+            if (f.alive && f.topoId.tag().compare(0, prefix.size(), prefix) == 0)
+                facets.push_back(&f);
+        }
+        if (facets.size() < 2) continue;
+        // Where the face starts round the cylinder: after the widest gap between its corners.
+        std::vector<double> corners;
+        const topo::HalfEdge* he = face.outerLoop->halfEdge;
+        do {
+            corners.push_back(uOf(he->origin->point));
+            he = he->next;
+        } while (he != nullptr && he != face.outerLoop->halfEdge);
+        std::sort(corners.begin(), corners.end());
+        double start = corners.front();
+        double widest = corners.front() + period - corners.back();
+        for (std::size_t i = 1; i < corners.size(); ++i) {
+            if (corners[i] - corners[i - 1] > widest) {
+                widest = corners[i] - corners[i - 1];
+                start = corners[i];
+            }
+        }
+        std::vector<std::pair<double, topo::Face*>> along;
+        along.reserve(facets.size());
+        for (topo::Face* f : facets) {
+            math::Vec3 sum;
+            int n = 0;
+            const topo::HalfEdge* at = f->outerLoop->halfEdge;
+            do {
+                sum = sum + at->origin->point;
+                ++n;
+                at = at->next;
+            } while (at != nullptr && at != f->outerLoop->halfEdge);
+            const double off = std::fmod(uOf(sum * (1.0 / n)) - start + period, period);
+            along.emplace_back(off, f);
+        }
+        std::sort(along.begin(), along.end(), [](const auto& a, const auto& b) {
+            return a.first < b.first || (!(b.first < a.first) && a.second->id < b.second->id);
+        });
+        for (std::size_t k = 0; k < along.size(); ++k) {
+            along[k].second->topoId = topo::TopologyID::fromTag(prefix + std::to_string(k));
+        }
+    }
 }
 
 /// @p sketch's lines in order, end to end (SheetMetalFeature::profile), and, in @p sources where
@@ -459,36 +525,31 @@ FeatureOutput SheetMetalFeature::executeWithExact(const BuildContext& /*context*
     model::nameEdgesLogically(*exact);
     // The faceted flange is master's own: its cross-section's polygon extruded as master's Stable
     // path built it, every bend in master's chords, its faces named after the sketch as the exact
-    // flange's are (Ruling 28), then as the bridge names the same places (Ruling 44).
-    const auto own = [&](std::string& ownWhy) -> std::unique_ptr<topo::Solid> {
-        auto made =
-            model::Extrude::mastersSolid(outline, plane, plane.normal(), m_width, m_featureID,
-                                         model::Extrude::kDefaultSegments, 0.0, &ownWhy);
-        if (!made) return made;
-        std::unordered_map<std::string, std::string> lineRole;
-        for (std::size_t k = 0; k < outline.size(); ++k) {
-            lineRole.emplace("e" + std::to_string(outline[k]->id()), bent.lineRoles[k]);
-        }
-        for (auto& face : made->faces()) {
-            const std::string tag = face.topoId.tag();
-            if (tag.compare(0, sideOf.size(), sideOf) != 0) continue;
-            const auto found = lineRole.find(tag.substr(sideOf.size()));
-            if (found == lineRole.end() || found->second.empty()) {
-                ownWhy = "its face " + tag + " is no line of its sheet's cross-section";
-                return nullptr;
-            }
-            face.topoId = topo::TopologyID::make(m_featureID, found->second);
-        }
-        model::nameEdgesLogically(*made);
-        return made;
-    };
-    auto built = model::buildWithBridge([&exact](std::string& /*why*/) { return std::move(exact); },
-                                        facetResolution(), {}, &why, own);
-    if (!built.faceted || !built.exact) {
-        return fail(why.empty() ? "the sheet could not be made" : why);
+    // flange's are (Ruling 28) and its edges as the bridge cut from the exact flange named them,
+    // with no copy cut for its names (Rulings 44 and 45).
+    std::string ownWhy;
+    auto made = model::Extrude::mastersSolid(outline, plane, plane.normal(), m_width, m_featureID,
+                                             model::Extrude::kDefaultSegments, 0.0, &ownWhy);
+    if (!made) return fail("its faceted copy could not be built as master built it: " + ownWhy);
+    std::unordered_map<std::string, std::string> lineRole;
+    for (std::size_t k = 0; k < outline.size(); ++k) {
+        lineRole.emplace("e" + std::to_string(outline[k]->id()), bent.lineRoles[k]);
     }
-    out.faceted = std::move(built.faceted);
-    out.exact = std::move(built.exact);
+    for (auto& face : made->faces()) {
+        const std::string tag = face.topoId.tag();
+        if (tag.compare(0, sideOf.size(), sideOf) != 0) continue;
+        const auto found = lineRole.find(tag.substr(sideOf.size()));
+        if (found == lineRole.end() || found->second.empty()) {
+            return fail("its faceted copy could not be built as master built it: its face " + tag +
+                        " is no line of its sheet's cross-section");
+        }
+        face.topoId = topo::TopologyID::make(m_featureID, found->second);
+    }
+    numberBendFacets(*made, *exact);
+    model::nameEdgesLogically(*made);
+    model::nameChordsAsTheBridge(*made, *exact);
+    out.faceted = std::move(made);
+    out.exact = std::move(exact);
     return out;
 }
 

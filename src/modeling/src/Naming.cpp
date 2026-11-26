@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -16,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "horizon/geometry/curves/Curve3.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/TopologyID.h"
 
@@ -655,139 +657,282 @@ void nameAsMasters(topo::Solid& bridge, topo::Solid& exact, const MastersFacets&
     for (topo::Edge* edge : unmatchedEdges) renumber(edge->topoId);
 }
 
-void nameAfterBridge(topo::Solid& own, const topo::Solid& bridge) {
-    // The bridge's vertices, found again near where master's are: master's vertices to the
-    // rounding of the curves they were evaluated on (Rulings 21 and 24).
-    std::vector<math::Vec3> points;
-    points.reserve(bridge.vertices().size());
-    std::unordered_map<const topo::Vertex*, std::size_t> bridgeIndex;
-    double size = 0.0;
-    for (const auto& v : bridge.vertices()) {
-        if (!v.alive) continue;
-        if (!std::isfinite(v.point.x) || !std::isfinite(v.point.y) || !std::isfinite(v.point.z)) {
-            return;  // nothing to match against: master's own names stand
-        }
-        bridgeIndex.emplace(&v, points.size());
-        points.push_back(v.point);
-        size = std::max(size, v.point.length());
-    }
-    if (points.empty()) return;
-    math::Vec3 lo = points.front();
-    math::Vec3 hi = points.front();
-    for (const math::Vec3& p : points) {
-        lo = math::Vec3(std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z));
-        hi = math::Vec3(std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z));
-    }
-    size = std::max(size, (hi - lo).length());
-    const PointIndex index(points, 1e-9 * std::max(size, 1e-300));
-    std::unordered_map<const topo::Vertex*, std::size_t> at;
-    at.reserve(own.vertices().size());
-    for (const auto& v : own.vertices()) {
-        if (!v.alive) continue;
-        const std::optional<std::size_t> i = index.find(v.point);
-        if (i.has_value()) at.emplace(&v, i.value());
-    }
+namespace {
 
-    // A face's corners, its holes' too, as the bridge's points; empty where one has none.
-    const auto cornersOf = [](const topo::Face& face, const auto& pointOf) {
-        std::vector<std::size_t> corners;
-        std::vector<const topo::Wire*> loops{face.outerLoop};
-        loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
-        for (const topo::Wire* loop : loops) {
-            if (loop == nullptr || loop->halfEdge == nullptr) return std::vector<std::size_t>{};
-            const topo::HalfEdge* he = loop->halfEdge;
-            do {
-                const std::optional<std::size_t> p = pointOf(he->origin);
-                if (!p.has_value()) return std::vector<std::size_t>{};
-                corners.push_back(p.value());
-                he = he->next;
-            } while (he != nullptr && he != loop->halfEdge);
+/// Master's own construction of a body (Ruling 44), its vertices found by place and its edges
+/// by the vertices they join: what an exact edge's chords are found along.
+class OwnIndex {
+public:
+    OwnIndex(const OwnIndex&) = delete;  // its finder reads its points where they are
+    OwnIndex& operator=(const OwnIndex&) = delete;
+    explicit OwnIndex(topo::Solid& own) {
+        double size = 0.0;
+        for (auto& v : own.vertices()) {
+            if (!v.alive) continue;
+            index_.emplace(&v, vertices_.size());
+            vertices_.push_back(&v);
+            points_.push_back(v.point);
+            size = std::max(size, v.point.length());
         }
-        std::sort(corners.begin(), corners.end());
-        return corners;
-    };
-    const auto bridgePoint = [&bridgeIndex](const topo::Vertex* v) -> std::optional<std::size_t> {
-        const auto found = bridgeIndex.find(v);
-        if (found == bridgeIndex.end()) return std::nullopt;
-        return found->second;
-    };
-    const auto ownPoint = [&at](const topo::Vertex* v) -> std::optional<std::size_t> {
-        const auto found = at.find(v);
-        if (found == at.end()) return std::nullopt;
-        return found->second;
-    };
-    struct CornersHash {
-        std::size_t operator()(const std::vector<std::size_t>& corners) const {
-            std::size_t h = corners.size();
-            for (const std::size_t c : corners) h = h * 1000003u ^ std::hash<std::size_t>{}(c);
-            return h;
+        if (!points_.empty()) {
+            math::Vec3 lo = points_.front();
+            math::Vec3 hi = points_.front();
+            for (const math::Vec3& p : points_) {
+                lo = math::Vec3(std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z));
+                hi = math::Vec3(std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z));
+            }
+            size = std::max(size, (hi - lo).length());
         }
-    };
-    std::unordered_map<std::vector<std::size_t>, const topo::TopologyID*, CornersHash> faceAt;
-    faceAt.reserve(bridge.faces().size());
-    for (const auto& face : bridge.faces()) {
-        if (!face.alive) continue;
-        auto corners = cornersOf(face, bridgePoint);
-        if (!corners.empty()) faceAt.emplace(std::move(corners), &face.topoId);
-    }
-    std::unordered_map<PointPair, const topo::TopologyID*, PointPairHash> edgeAt;
-    edgeAt.reserve(bridge.edges().size());
-    for (const auto& edge : bridge.edges()) {
-        if (!edge.alive || edge.halfEdge == nullptr || edge.halfEdge->twin == nullptr) continue;
-        const std::optional<std::size_t> a = bridgePoint(edge.halfEdge->origin);
-        const std::optional<std::size_t> b = bridgePoint(edge.halfEdge->twin->origin);
-        if (a.has_value() && b.has_value()) {
-            edgeAt.emplace(unordered(a.value(), b.value()), &edge.topoId);
+        size_ = std::max(size, 1e-300);
+        finder_ = std::make_unique<PointIndex>(points_, 1e-9 * size_);
+        // Vertices at one place are one point (a revolve's axis point where two cones meet is a
+        // vertex of each): each is its place's first.
+        for (std::size_t i = 0; i < vertices_.size(); ++i) {
+            const std::optional<std::size_t> there = finder_->find(points_[i]);
+            place_.push_back(there.has_value() ? there.value() : i);
+        }
+        around_.resize(vertices_.size());
+        for (auto& e : own.edges()) {
+            if (!e.alive || e.halfEdge == nullptr || e.halfEdge->twin == nullptr) continue;
+            const auto a = index_.find(e.halfEdge->origin);
+            const auto b = index_.find(e.halfEdge->twin->origin);
+            if (a == index_.end() || b == index_.end()) continue;
+            const std::size_t pa = place_[a->second];
+            const std::size_t pb = place_[b->second];
+            around_[pa].push_back({&e, pb});
+            around_[pb].push_back({&e, pa});
         }
     }
 
-    // Each face and edge of master's construction takes the bridge's name for the same place;
-    // what the bridge has no place for (a partial turn's flat face, which the bridge cuts as one)
-    // keeps master's.
-    std::unordered_set<std::string> given;
-    std::vector<topo::TopologyID*> kept;
-    for (auto& face : own.faces()) {
-        if (!face.alive) continue;
-        const auto found = faceAt.find(cornersOf(face, ownPoint));
-        if (found != faceAt.end() && found->second->isValid()) {
-            face.topoId = *found->second;
-            given.insert(face.topoId.tag());
-        } else if (face.topoId.isValid()) {
-            kept.push_back(&face.topoId);
-        }
+    /// The place of master's construction's vertices at @p p; none where it has none there.
+    std::optional<std::size_t> at(const math::Vec3& p) const {
+        const std::optional<std::size_t> found = finder_->find(p);
+        if (!found.has_value()) return std::nullopt;
+        return place_[found.value()];
     }
-    for (auto& edge : own.edges()) {
-        if (!edge.alive) continue;
+
+    /// The edge joining vertices @p a and @p b; null where none does.
+    topo::Edge* between(std::size_t a, std::size_t b) const {
+        for (const Step& s : around_[a]) {
+            if (s.to == b) return s.edge;
+        }
+        return nullptr;
+    }
+
+    /// The chords of @p exact's edge @p edge in master's construction, from the edge's half-edge's
+    /// origin to its end, as the bridge cut them (from that origin: Faceting's chords): each step
+    /// the edge on to the next vertex along the edge's curve. Empty where its ends are not
+    /// vertices of the construction, or the curve is left before its end.
+    std::vector<topo::Edge*> chordsAlong(const topo::Edge& edge) const {
+        std::vector<topo::Edge*> chords;
         const topo::HalfEdge* he = edge.halfEdge;
-        auto found = edgeAt.end();
-        if (he != nullptr && he->twin != nullptr) {
-            const std::optional<std::size_t> a = ownPoint(he->origin);
-            const std::optional<std::size_t> b = ownPoint(he->twin->origin);
-            if (a.has_value() && b.has_value())
-                found = edgeAt.find(unordered(a.value(), b.value()));
+        if (he == nullptr || he->twin == nullptr || he->origin == nullptr ||
+            he->twin->origin == nullptr) {
+            return chords;
         }
-        if (found != edgeAt.end() && found->second->isValid()) {
-            edge.topoId = *found->second;
-            given.insert(edge.topoId.tag());
-        } else if (edge.topoId.isValid()) {
-            kept.push_back(&edge.topoId);
+        const std::optional<std::size_t> start = at(he->origin->point);
+        const std::optional<std::size_t> end = at(he->twin->origin->point);
+        if (!start.has_value() || !end.has_value()) return chords;
+        if (!edge.exactCurve) {
+            if (topo::Edge* only = between(start.value(), end.value())) chords.push_back(only);
+            return chords;
+        }
+        const geo::Curve3& curve = *edge.exactCurve;
+        const double from = edge.curveStart;
+        const double span = edge.curveEnd - edge.curveStart;
+        if (!(std::abs(span) > 0.0)) return chords;
+        const geo::Interval range = curve.range();
+        const double period = curve.periodic() ? range.max - range.min : 0.0;
+        const double lo = std::min(edge.curveStart, edge.curveEnd);
+        const double hi = std::max(edge.curveStart, edge.curveEnd);
+        const double within = 1e-8 * size_;
+        // How far along the edge the vertex @p v is, 0 at its origin and 1 at its end; none for
+        // a vertex off its curve.
+        const auto along = [&](std::size_t v) -> std::optional<double> {
+            const math::Vec3& p = points_[v];
+            double t = curve.closestParameter(p);
+            if ((curve.evaluate(t) - p).length() > within) return std::nullopt;
+            if (period > 0.0) {
+                const double slack = 1e-9 * period;
+                while (t < lo - slack) t += period;
+                while (t > hi + slack) t -= period;
+            }
+            return (t - from) / span;
+        };
+        std::size_t current = start.value();
+        double reached = 0.0;
+        const std::size_t most = edgesCount();
+        while (chords.size() <= most) {
+            topo::Edge* best = nullptr;
+            std::size_t next = 0;
+            double nearest = std::numeric_limits<double>::infinity();
+            for (const Step& s : around_[current]) {
+                if (!chords.empty() && s.edge == chords.back()) continue;
+                double f = 0.0;
+                if (s.to == end.value() && (start.value() != end.value() || !chords.empty())) {
+                    f = 1.0;  // its end (a closed edge's after a step)
+                } else {
+                    const std::optional<double> found = along(s.to);
+                    if (!found.has_value()) continue;
+                    f = found.value();
+                    if (s.to == start.value()) continue;  // a closed edge's origin: its end
+                }
+                if (f > reached + 1e-12 && f < nearest) {
+                    nearest = f;
+                    best = s.edge;
+                    next = s.to;
+                }
+            }
+            if (best == nullptr) return {};
+            chords.push_back(best);
+            if (next == end.value() && nearest >= 1.0) return chords;
+            current = next;
+            reached = nearest;
+        }
+        return {};
+    }
+
+private:
+    struct Step {
+        topo::Edge* edge = nullptr;
+        std::size_t to = 0;
+    };
+    std::size_t edgesCount() const {
+        std::size_t n = 0;
+        for (const auto& steps : around_) n += steps.size();
+        return n / 2;
+    }
+    std::vector<topo::Vertex*> vertices_;
+    std::vector<math::Vec3> points_;
+    std::unordered_map<const topo::Vertex*, std::size_t> index_;
+    std::vector<std::size_t> place_;      ///< each vertex's place: the first vertex there
+    std::unique_ptr<PointIndex> finder_;  ///< made in the constructor, always
+    std::vector<std::vector<Step>> around_;
+    double size_ = 1.0;
+};
+
+/// Whether @p edge parts two facets of one logical face: a seam of it.
+bool isSeam(const topo::Edge& edge) {
+    const topo::HalfEdge* he = edge.halfEdge;
+    return he != nullptr && he->twin != nullptr && he->face != nullptr &&
+           he->twin->face != nullptr &&
+           logicalFace(he->face->topoId.tag()) == logicalFace(he->twin->face->topoId.tag());
+}
+
+/// Renames each edge of @p own whose name an exact edge has, or whose curve's name it takes
+/// (`<name>/chord:<k>`), but which is not that edge's (@p chords): a grid line inside a face
+/// named as an exact seam is numbered past every name taken, so none masquerades as one (Ruling
+/// 18).
+void keepExactNamesTheirs(topo::Solid& own, const std::unordered_set<std::string>& exactNames,
+                          const std::unordered_set<const topo::Edge*>& chords) {
+    std::vector<topo::Edge*> clashing;
+    std::unordered_set<std::string> taken(exactNames.begin(), exactNames.end());
+    for (auto& e : own.edges()) {
+        if (!e.alive || !e.topoId.isValid()) continue;
+        taken.insert(e.topoId.tag());
+        if (chords.count(&e) != 0) continue;
+        const std::string& tag = e.topoId.tag();
+        if (exactNames.count(tag) != 0 ||
+            (tag.find("/chord:") != std::string::npos && exactNames.count(logicalEdge(tag)) != 0)) {
+            clashing.push_back(&e);
         }
     }
-    // A name master's construction keeps that the bridge gave elsewhere is renumbered past every
-    // name taken, as nameAsMasters renumbers what has no place: no name names two places.
-    std::unordered_set<std::string> taken = given;
     std::unordered_map<std::string, int> from;
-    for (topo::TopologyID* id : kept) {
-        if (taken.insert(id->tag()).second) continue;
-        const std::optional<std::string> prefix = numberedPrefix(id->tag());
-        if (!prefix.has_value()) continue;
-        const std::string& stem = prefix.value();
+    for (topo::Edge* e : clashing) {
+        const std::optional<std::string> prefix = numberedPrefix(e->topoId.tag());
+        const std::string stem = prefix.has_value() ? prefix.value() : e->topoId.tag() + "/line:";
         int& n = from[stem];
         std::string name = stem + std::to_string(n);
         while (taken.count(name) != 0) name = stem + std::to_string(++n);
-        *id = topo::TopologyID::fromTag(name);
+        e->topoId = topo::TopologyID::fromTag(name);
         taken.insert(name);
     }
+}
+
+}  // namespace
+
+void nameAsMastersNamed(topo::Solid& own, topo::Solid& exact) {
+    const OwnIndex index(own);
+    std::unordered_set<const topo::Edge*> chords;
+    for (auto& e : exact.edges()) {
+        if (!e.alive || !e.topoId.isValid()) continue;
+        if (isSeam(e)) {
+            // A seam: named after master's edge where its first chord lies, its chords after it.
+            const std::vector<topo::Edge*> along = index.chordsAlong(e);
+            if (along.empty() || !along.front()->topoId.isValid()) continue;
+            const std::string theirs = along.front()->topoId.tag();
+            e.topoId = topo::TopologyID::fromTag(theirs);
+            for (std::size_t k = 0; k < along.size(); ++k) {
+                chords.insert(along[k]);
+                if (along.size() > 1) {
+                    along[k]->topoId =
+                        topo::TopologyID::fromTag(theirs + "/chord:" + std::to_string(k));
+                }
+            }
+            continue;
+        }
+        // An edge of one chord between two faces: where master numbered several between the same
+        // faces (a half disc's lines along the offset), it takes its chord's number.
+        const topo::HalfEdge* he = e.halfEdge;
+        if (he == nullptr || he->twin == nullptr) continue;
+        const std::optional<std::size_t> a = index.at(he->origin->point);
+        const std::optional<std::size_t> b = index.at(he->twin->origin->point);
+        if (!a.has_value() || !b.has_value() || a.value() == b.value()) continue;
+        topo::Edge* only = index.between(a.value(), b.value());
+        if (only == nullptr || !only->topoId.isValid()) continue;
+        if (logicalEdge(only->topoId.tag()) == logicalEdge(e.topoId.tag())) {
+            e.topoId = only->topoId;
+            chords.insert(only);
+        }
+    }
+    std::unordered_set<std::string> exactNames;
+    for (const auto& e : exact.edges()) {
+        if (e.alive && e.topoId.isValid() && isSeam(e)) exactNames.insert(e.topoId.tag());
+    }
+    keepExactNamesTheirs(own, exactNames, chords);
+}
+
+void nameChordsAsTheBridge(topo::Solid& own, const topo::Solid& exact) {
+    const OwnIndex index(own);
+    std::unordered_set<const topo::Edge*> chords;
+    std::unordered_set<std::string> exactNames;
+    for (const auto& e : exact.edges()) {
+        if (!e.alive || !e.topoId.isValid()) continue;
+        exactNames.insert(e.topoId.tag());
+        const std::vector<topo::Edge*> along = index.chordsAlong(e);
+        const std::string& name = e.topoId.tag();
+        for (std::size_t k = 0; k < along.size(); ++k) {
+            chords.insert(along[k]);
+            along[k]->topoId = topo::TopologyID::fromTag(
+                along.size() > 1 ? name + "/chord:" + std::to_string(k) : name);
+        }
+    }
+    // A line between a face's facets k and k + 1 is its seam k.
+    const auto facetOf = [](const std::string& tag) -> std::optional<std::pair<std::string, int>> {
+        const std::size_t at = tag.rfind("/facet:");
+        if (at == std::string::npos) return std::nullopt;
+        const std::string number = tag.substr(at + 7);
+        if (number.empty() || !std::all_of(number.begin(), number.end(),
+                                           [](unsigned char c) { return std::isdigit(c) != 0; })) {
+            return std::nullopt;
+        }
+        return std::make_pair(tag.substr(0, at), std::stoi(number));
+    };
+    for (auto& e : own.edges()) {
+        if (!e.alive || chords.count(&e) != 0 || !isSeam(e)) continue;
+        const std::optional<std::pair<std::string, int>> a =
+            facetOf(e.halfEdge->face->topoId.tag());
+        const std::optional<std::pair<std::string, int>> b =
+            facetOf(e.halfEdge->twin->face->topoId.tag());
+        if (!a.has_value() || !b.has_value() || a.value().first != b.value().first ||
+            std::abs(a.value().second - b.value().second) != 1) {
+            continue;
+        }
+        e.topoId =
+            topo::TopologyID::fromTag(a.value().first + "/seam:" +
+                                      std::to_string(std::min(a.value().second, b.value().second)));
+    }
+    keepExactNamesTheirs(own, exactNames, chords);
 }
 
 void nameEdges(topo::Solid& solid, NamingScheme naming) {
