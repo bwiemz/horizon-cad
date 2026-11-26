@@ -556,12 +556,118 @@ a user can see. Each is several PRs.
    without facets. *Seen:* exact volumes, a cylinder of three faces, smooth
    silhouettes in drawings at any zoom. (A part with a Boolean is still
    faceted after it until stage 5.)
-   - *Regression list (in progress):*
-     - *A horn torus, and a spindle near one:* its cusp pole is refused by the
-       read point at once, with why; cusp meshing is carried to a later stage
-       (Ruling 9). A pole whose surface opens from it at under 30 degrees and
-       wider further out (an apple's, R/r above about 0.866) is the cusp; a
-       cone's apex and a lemon's tip still mesh.
+   - *Regression list,* 3 shape classes refused and 1 shown from its facets:
+     what master built and stage 3 does not, each with its reason (anti-goal
+     "failures nobody tracks"). Master is the commit just before stage 3,
+     `6e822892` (Ruling 42). The regression set, run on both:
+     - every test: master's 2,897 against the branch's 3,096. None of
+       master's was dropped or changed for a refusal. The four it no longer
+       has were renamed for what stage 3 now builds or migrates;
+     - the samples. Each builds as on master. The bracket and the plate are
+       faceted after their fillet and holes, with master's counts and
+       volumes. The pin is exact: 3 faces and 848.230016 (270π), where its 32
+       facets enclose 842.790191. The assembly is placed by its mates, and
+       the sheet is drawn;
+     - the STEP corpus: the manifest is unchanged, and every file reads as
+       it says;
+     - `test_AdversarialModels`: unchanged, 9 of 9. Its kinds of operand (a
+       box, an L-shaped extrude), built as features, are exact, with master's
+       faceted copies;
+     - the beta tasks in `docs/BETA.md`, scripted through the document API,
+       come out as on master:
+       - task 1: a part with a hole and a fillet, edited, measured, saved and
+         reopened;
+       - task 2: two of it in an assembly with a coincident and a concentric
+         mate, saved, reopened, and following the part when it changes;
+       - task 3: a sheet with a length, saved, reopened and written as DXF.
+
+       What a person does with the mouse, and opening the exports in other
+       programs, was not scripted;
+     - 124 probe models, built as a user builds them: primitives, extrudes,
+       revolves, holes, sheet metal, and operations after them.
+
+     Each refused or shown class is pinned in
+     `tests/document/test_RegressionSet.cpp`, or in the test named with it.
+
+     Refused. The feature fails with `could not be built exactly: <why>`, and
+     master's construction never runs in its place (decision 1b):
+     - *A revolve whose profile has an arc reaching the axis between its
+       ends:* a circle touching the axis (a horn torus), an arc through the
+       axis, or a ring whose inner side bulges to it. The reason is "an arc
+       of the profile about (x, y) reaches the axis between its ends". Its
+       surface pinches to a cusp on the axis inside the face. The exact faces
+       have no topology for a pole there, and the read point would not mesh
+       it. A torus primitive whose tube reaches its axis is refused as master
+       refused it (Ruling 2). Carried with cusp meshing (Ruling 9).
+     - *A revolve whose profile has regions on both sides of the axis.* The
+       reason is "its regions lie on both sides of the axis". Master turned
+       each region and joined them with its Boolean. Two regions turned from
+       both sides of one axis give shells that meet or overlap, which needs
+       an exact Boolean: stage 5.
+     - *A sketch whose curves meet within the profile's join tolerance
+       (1e-6) but miss by more than a thousandth of the part's size,*
+       extruded or revolved. Only parts under about a micrometre are
+       affected; the test is a slot 0.3 µm across missing by 0.9 nm. The
+       reason is "the profile's curves miss each other at (x, y) by g, more
+       than its exact form can take at its size". The limit is the tolerance
+       model's (`topo::ToleranceGrowth`), the same for imports. No stage moves
+       it (`ExactConstruction.AFailedExactExtrudeFailsTheFeature`).
+
+     Built, but shown and measured from its facets as master showed it, with
+     a "shown from facets" note:
+     - *A revolve whose face comes to a cusp at a pole:* its surface opens
+       from the pole at under 30 degrees and wider further out. Two shapes
+       do this: an apple (the part of a circle outside the axis it crosses,
+       R/r above about 0.866), and an arc meeting the axis tangentially at
+       its end. The read point refuses the pole at once (Ruling 9), and the
+       exact counterpart is dropped with why. A cone's apex and a lemon's
+       tip still mesh. Carried with cusp meshing.
+
+     Changed, not refused. An old part says so when it opens, wherever a
+     reference of its depends on one of these (Rulings 23, 25, 28 and 40):
+     - *Faceted copies that are not master's.* Each is the bridge's own, and
+       its volume is master's unless given here:
+       - a partial revolve's flat faces are one face each (Ruling 25): a
+         rectangle turned 90° has 20 faces, where master had 34;
+       - an extrude or revolve of several loops (holes, islands, regions) is
+         its exact solid's facets, numbered its own way (Ruling 23), not
+         master's Boolean of its loops. A plate with two holes has 70 faces
+         (master 72). A washer turned 90° encloses 80.399405, the facets' own
+         volume; master's Boolean cut 5e-5 of it more (80.395175);
+       - a sheet-metal bend other than 90° is cut in proportion to its
+         sweep, `bendSegments` a quarter turn, where master cut every bend
+         into `bendSegments` chords. A 60° bend has 6 chords (691.39981, where
+         master gave 691.45782), and a 120° bend 11 (648.11323, master
+         647.83294). Sheet-metal names are new (Ruling 28);
+       - the grid lines inside a curved face are numbered past the exact
+         edges' names (Ruling 18), so the seams inside spheres, tori and
+         revolves are renumbered. Nothing refers to a smooth grid line.
+     - *Open, for a ruling: the names a later operation numbers.* A Boolean,
+       shell or pattern after a converted feature numbers the pieces of a
+       face it splits (`<face>/piece:<n>`), and the chords and seams it
+       renames, in the order it meets the bridge copy's faces. The bridge
+       stores, starts and winds its faces otherwise than master's
+       construction did, so the numbers can differ, silently.
+       - A box drilled through off its middle has its bottom's two pieces
+         the other way round. A sheet's length saved on master on
+         `…/edge:bottom/piece:0|front` reads 6 here, where master read 14.
+       - The bracket sample's foot and the plate sample's bottom have the
+         same swap.
+       - A cylinder's rim chords are renumbered after a hole in its top.
+
+       Fillets and chamfers on such edges fail on master and here alike.
+       Where it can show is a sheet's lengths, edge mates and sketch edges
+       projected from the part.
+     - A part file of format 31 or older has its cached mesh, master's
+       facets, left unread: an assembly reads and builds the part instead.
+     - A primitive whose dimensions master refused is refused as before,
+       now in the exact build's words ("could not be built exactly: these
+       dimensions do not make a solid ...").
+
+     Imports keep stage 2's list (above), now shorter: two of the corpus's 64
+     old-part bodies open from their facets, the Moon buggy's body 15 ("its
+     seam would cross where its surface closes") and the emblem. Onshape's
+     and Solid Edge's bands now open exact.
 4. **Exact intersection.** The intersection library, analytic pairs first,
    then NURBS marching with tangencies and overlaps; property tests and
    fuzzing. Library only.

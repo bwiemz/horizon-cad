@@ -20,6 +20,7 @@ add_executable(hz_document_tests
     test_ExactCounterpart.cpp
     test_ExactConstruction.cpp
     test_BridgeNumbering.cpp
+    test_RegressionSet.cpp
 )
 
 target_link_libraries(hz_document_tests
