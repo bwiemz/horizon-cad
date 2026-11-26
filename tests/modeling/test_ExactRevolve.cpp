@@ -744,9 +744,10 @@ TEST(ExactRevolve, TheBridgeIsMastersFacets) {
                      inclined()});
     cases.push_back({"a washer", washer(), kTwoPi, 66, 192, 128, SketchPlane()});
     // NURBS surfaces of revolution (Ruling 2), their points inside their first meridian turned to
-    // master's angles (Ruling 24): from a rim to a pole (an ogive: its 160 facets and the base,
-    // master's Stable counts, its FromGeometry construction fanning the base from its centre), and
-    // from pole to pole, a lemon and an apple (recorded at 9314271e).
+    // master's angles (Ruling 24): from a rim to a pole, an ogive (its 160 facets and its base, one
+    // disc; recorded through master's own Stable revolve, re-enabled on this branch, its geometry
+    // pinned in BridgeNumbering.AnOgiveIsNumberedAsMastersWas), and from pole to pole, a lemon
+    // (recorded at 9314271e) and an apple (recorded as the ogive).
     cases.push_back({"an ogive", ogive(), kTwoPi, 161, 320, 161, SketchPlane()});
     cases.push_back({"a lemon", lemon(), kTwoPi, 352, 672, 322, SketchPlane()});
     cases.push_back({"an apple", apple(), kTwoPi, 704, 1376, 674, SketchPlane()});

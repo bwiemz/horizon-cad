@@ -12,8 +12,9 @@
 // for a profile of several loops), at 8 segments a turn: each face's name with the centroid of its
 // outer loop, each edge's with its midpoint. "{k}" in a name is the k-th entity of the profile
 // ("e<id>" in the tag). Every revolve turns its profile, drawn at x >= 0, about the sketch's y
-// axis through its origin; a lemon and an apple are recorded at 12 segments too (master's code
-// path, re-enabled on this branch for the recording, reproduced its 8-segment lemon exactly). The
+// axis through its origin; a lemon, an apple and an ogive are recorded at 12 segments too
+// (master's code path, re-enabled on this branch for the recording, reproduced its 8-segment
+// lemon exactly). The
 // hole tools are each type of hole 5 across and 6 deep into the top of a 20 x 20 x 10 box at its
 // middle (a counterbore 9 across and 3 deep, a countersink 10 across at 90 degrees), as HoleFeature
 // built its tool to cut.
@@ -2735,6 +2736,82 @@ const Place kTurnedApple12[] = {
     {"F x/revolved:{0}/facet:7.9", 0.166666666667, 1.91068360252, 0.622008467928},
 };
 
+const Place kTurnedOgive12[] = {
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:0", 1.86602540378, 0, -0.5},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:1", 1.36602540378, 0, -1.36602540378},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:10", 1.36602540378, 0, 1.36602540378},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:11", 1.86602540378, 0, 0.5},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:2", 0.5, 0, -1.86602540378},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:3", -0.5, 0, -1.86602540378},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:4", -1.36602540378, 0, -1.36602540378},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:5", -1.86602540378, 0, -0.5},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:6", -1.86602540378, 0, 0.5},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:7", -1.36602540378, 0, 1.36602540378},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:8", -0.5, 0, 1.86602540378},
+    {"E x/edge:revolved:{0}|revolved:{2}/chord:9", 0.5, 0, 1.86602540378},
+    {"E x/revolved:{0}/seam:0", 1.50347897121, 1.11803398875, -0.86803398875},
+    {"E x/revolved:{0}/seam:1", 1.37352154493, 2.2360679775, -0.36803398875},
+    {"E x/revolved:{0}/seam:10", 2.67115769555e-16, 3.11803398875, -0.7360679775},
+    {"E x/revolved:{0}/seam:11", -0.86803398875, 1.11803398875, -1.50347897121},
+    {"E x/revolved:{0}/seam:12", -0.36803398875, 2.2360679775, -1.37352154493},
+    {"E x/revolved:{0}/seam:13", -0.36803398875, 3.11803398875, -0.637453567427},
+    {"E x/revolved:{0}/seam:14", -1.50347897121, 1.11803398875, -0.86803398875},
+    {"E x/revolved:{0}/seam:15", -1.00548755618, 2.2360679775, -1.00548755618},
+    {"E x/revolved:{0}/seam:16", -0.637453567427, 3.11803398875, -0.36803398875},
+    {"E x/revolved:{0}/seam:17", -1.7360679775, 1.11803398875, -2.12607009175e-16},
+    {"E x/revolved:{0}/seam:18", -1.37352154493, 2.2360679775, -0.36803398875},
+    {"E x/revolved:{0}/seam:19", -0.7360679775, 3.11803398875, -9.014232926e-17},
+    {"E x/revolved:{0}/seam:2", 1.7360679775, 1.11803398875, 0},
+    {"E x/revolved:{0}/seam:20", -1.50347897121, 1.11803398875, 0.86803398875},
+    {"E x/revolved:{0}/seam:21", -1.37352154493, 2.2360679775, 0.36803398875},
+    {"E x/revolved:{0}/seam:22", -0.637453567427, 3.11803398875, 0.36803398875},
+    {"E x/revolved:{0}/seam:23", -0.86803398875, 1.11803398875, 1.50347897121},
+    {"E x/revolved:{0}/seam:24", -1.00548755618, 2.2360679775, 1.00548755618},
+    {"E x/revolved:{0}/seam:25", -0.36803398875, 3.11803398875, 0.637453567427},
+    {"E x/revolved:{0}/seam:26", -3.18910513762e-16, 1.11803398875, 1.7360679775},
+    {"E x/revolved:{0}/seam:27", -0.36803398875, 2.2360679775, 1.37352154493},
+    {"E x/revolved:{0}/seam:28", 8.6831111035e-17, 3.11803398875, 0.7360679775},
+    {"E x/revolved:{0}/seam:29", 0.86803398875, 1.11803398875, 1.50347897121},
+    {"E x/revolved:{0}/seam:3", 0.637453567427, 3.11803398875, -0.36803398875},
+    {"E x/revolved:{0}/seam:30", 0.36803398875, 2.2360679775, 1.37352154493},
+    {"E x/revolved:{0}/seam:31", 0.36803398875, 3.11803398875, 0.637453567427},
+    {"E x/revolved:{0}/seam:32", 1.50347897121, 1.11803398875, 0.86803398875},
+    {"E x/revolved:{0}/seam:33", 1.00548755618, 2.2360679775, 1.00548755618},
+    {"E x/revolved:{0}/seam:34", 0.637453567427, 3.11803398875, 0.36803398875},
+    {"E x/revolved:{0}/seam:35", 1.37352154493, 2.2360679775, 0.36803398875},
+    {"E x/revolved:{0}/seam:4", 0.7360679775, 3.11803398875, 0},
+    {"E x/revolved:{0}/seam:5", 0.86803398875, 1.11803398875, -1.50347897121},
+    {"E x/revolved:{0}/seam:6", 1.00548755618, 2.2360679775, -1.00548755618},
+    {"E x/revolved:{0}/seam:7", 0.36803398875, 3.11803398875, -0.637453567427},
+    {"E x/revolved:{0}/seam:8", 1.06303504587e-16, 1.11803398875, -1.7360679775},
+    {"E x/revolved:{0}/seam:9", 0.36803398875, 2.2360679775, -1.37352154493},
+    {"F x/revolved:{0}/facet:0.0", 1.6322525882, 1.06137626649, -0.437360762851},
+    {"F x/revolved:{0}/facet:0.1", 1.19489182535, 1.06137626649, -1.19489182535},
+    {"F x/revolved:{0}/facet:0.10", 1.19489182535, 1.06137626649, 1.19489182535},
+    {"F x/revolved:{0}/facet:0.11", 1.6322525882, 1.06137626649, 0.437360762851},
+    {"F x/revolved:{0}/facet:0.2", 0.437360762851, 1.06137626649, -1.6322525882},
+    {"F x/revolved:{0}/facet:0.3", -0.437360762851, 1.06137626649, -1.6322525882},
+    {"F x/revolved:{0}/facet:0.4", -1.19489182535, 1.06137626649, -1.19489182535},
+    {"F x/revolved:{0}/facet:0.5", -1.6322525882, 1.06137626649, -0.437360762851},
+    {"F x/revolved:{0}/facet:0.6", -1.6322525882, 1.06137626649, 0.437360762851},
+    {"F x/revolved:{0}/facet:0.7", -1.19489182535, 1.06137626649, 1.19489182535},
+    {"F x/revolved:{0}/facet:0.8", -0.437360762851, 1.06137626649, 1.6322525882},
+    {"F x/revolved:{0}/facet:0.9", 0.437360762851, 1.06137626649, 1.6322525882},
+    {"F x/revolved:{0}/facet:1.0", 0.915681029951, 2.82404531833, -0.2453559925},
+    {"F x/revolved:{0}/facet:1.1", 0.670325037451, 2.82404531833, -0.670325037451},
+    {"F x/revolved:{0}/facet:1.10", 0.670325037451, 2.82404531833, 0.670325037451},
+    {"F x/revolved:{0}/facet:1.11", 0.915681029951, 2.82404531833, 0.2453559925},
+    {"F x/revolved:{0}/facet:1.2", 0.2453559925, 2.82404531833, -0.915681029951},
+    {"F x/revolved:{0}/facet:1.3", -0.2453559925, 2.82404531833, -0.915681029951},
+    {"F x/revolved:{0}/facet:1.4", -0.670325037451, 2.82404531833, -0.670325037451},
+    {"F x/revolved:{0}/facet:1.5", -0.915681029951, 2.82404531833, -0.2453559925},
+    {"F x/revolved:{0}/facet:1.6", -0.915681029951, 2.82404531833, 0.2453559925},
+    {"F x/revolved:{0}/facet:1.7", -0.670325037451, 2.82404531833, 0.670325037451},
+    {"F x/revolved:{0}/facet:1.8", -0.2453559925, 2.82404531833, 0.915681029951},
+    {"F x/revolved:{0}/facet:1.9", 0.2453559925, 2.82404531833, 0.915681029951},
+    {"F x/revolved:{2}", -3.23815048849e-17, 0, 6.29482353029e-17},
+};
+
 // clang-format on
 
 /// The centroid of @p face's outer loop, by area: what a face is, whatever corners stand in its
@@ -2963,6 +3040,14 @@ Profile apple() {
     const Vec2 from = round->startPoint();
     const Vec2 to = round->endPoint();
     return {round, line(to, from)};
+}
+
+/// A tangent ogive, 4 high on a base of radius 2: an arc of radius 5 about (-3, 0), across the
+/// axis, from the base's rim to the tip on the axis, then down the axis and out along the base.
+Profile ogive() {
+    auto nose = std::make_shared<hz::draft::DraftArc>(Vec2(-3, 0), 5, 0.0, std::atan2(4.0, 3.0));
+    const Vec2 tip = nose->endPoint();
+    return {nose, line(tip, {0, 0}), line({0, 0}, {2, 0})};
 }
 
 Profile poleAndApex() {
@@ -3299,6 +3384,30 @@ TEST(BridgeNumbering, ALemonAndAnAppleAreNumberedAsMastersWere) {
         expectNumberedAsMasters(*out.faceted, c.table, c.size, &c.profile, gone);
         expectChordsOnTheirEdges(*out.faceted, *out.exact);
     }
+}
+
+// A NURBS surface of revolution from a rim to a pole, an ogive's nose, at 12 segments (Ruling 24:
+// its points inside its first meridian turned to master's angles), and its flat base, one disc as
+// master's whole turn made it: every place is master's. Its seam (the arc at u = 0, two chords)
+// is named after master's edge at its first chord: master's names of its two chords are gone.
+TEST(BridgeNumbering, AnOgiveIsNumberedAsMastersWas) {
+    const Profile p = ogive();
+    const auto out = revolved(p, 2 * kPi, 12);
+    ASSERT_NE(out.faceted, nullptr);
+    ASSERT_NE(out.exact, nullptr);
+    const auto places = placesOf(*out.faceted);
+    std::set<std::string> gone;
+    for (const Place& place : kTurnedOgive12) {
+        const std::string tag = place.tag;
+        if (tag.rfind("E ", 0) == 0 && tag.find("/seam:") != std::string::npos &&
+            places.count(canonical(named(tag, &p))) == 0) {
+            gone.insert(tag);
+            EXPECT_LT(std::abs(place.z), 1e-9) << tag << ": on the profile's plane, at u = 0";
+        }
+    }
+    EXPECT_EQ(gone.size(), 2u);
+    expectNumberedAsMasters(*out.faceted, kTurnedOgive12, &p, gone);
+    expectChordsOnTheirEdges(*out.faceted, *out.exact);
 }
 
 // Through part of a turn a flat face of a revolve is one face, a sector of a disc or a ring, as
