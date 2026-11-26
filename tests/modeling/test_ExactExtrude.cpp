@@ -5,9 +5,11 @@
 // hole among them, is its own shell: nothing is a Boolean. Faces are named with master's Stable
 // logical names, edges after them (model::nameEdgesLogically).
 //
-// Master's logical face names below were recorded from master's faceted extrude
-// (Extrude::execute, Stable naming, 32 segments) at 1709c556, before the extrude was exact; "{k}"
-// in a recorded name is the k-th entity of the profile ("e<id>" in the tag).
+// Under Stable naming Extrude::execute gives the exact extrusion's bridge copy
+// (model::facetExact at its segments and chord tolerance), which has master's facets, vertex for
+// vertex. Master's counts and logical face names below were recorded from master's faceted
+// extrude (Extrude::execute, Stable naming, 32 segments) at 1709c556, before the extrude was
+// exact; "{k}" in a recorded name is the k-th entity of the profile ("e<id>" in the tag).
 
 #include <gtest/gtest.h>
 
@@ -147,6 +149,30 @@ std::set<std::string> faceNames(const hz::topo::Solid& solid) {
     return names;
 }
 
+/// The logical faces of @p solid's faces (model::logicalFace).
+std::set<std::string> logicalFaces(const hz::topo::Solid& solid) {
+    std::set<std::string> names;
+    for (const auto& face : solid.faces()) {
+        if (face.alive) names.insert(hz::model::logicalFace(face.topoId.tag()));
+    }
+    return names;
+}
+
+/// The logical edges of @p solid's edges that part two logical faces (model::logicalEdge).
+std::set<std::string> logicalEdges(const hz::topo::Solid& solid) {
+    std::set<std::string> names;
+    for (const auto& edge : solid.edges()) {
+        const hz::topo::HalfEdge* he = edge.halfEdge;
+        if (!edge.alive || he == nullptr || he->twin == nullptr) continue;
+        if (hz::model::logicalFace(he->face->topoId.tag()) ==
+            hz::model::logicalFace(he->twin->face->topoId.tag())) {
+            continue;
+        }
+        names.insert(hz::model::logicalEdge(edge.topoId.tag()));
+    }
+    return names;
+}
+
 double volumeOf(const hz::topo::Solid& solid) {
     const auto props = hz::model::MassPropertiesCalculator::compute(solid);
     EXPECT_TRUE(props.valid) << props.problem;
@@ -176,6 +202,75 @@ std::unique_ptr<hz::topo::Solid> exactly(const Profile& profile, const SketchPla
     return solid;
 }
 
+/// Extrude::execute under @p naming, at 32 segments a turn, which must build: under Stable the
+/// exact extrusion's bridge copy, under FromGeometry master's faceted construction.
+std::unique_ptr<hz::topo::Solid> faceted(const Profile& profile, const SketchPlane& plane,
+                                         const Vec3& direction, double distance,
+                                         NamingScheme naming = NamingScheme::Stable) {
+    std::string why;
+    auto solid = Extrude::execute(profile, plane, direction, distance, "x", 32, 0.0, &why, naming);
+    EXPECT_NE(solid, nullptr) << why;
+    return solid;
+}
+
+/// The size of @p solid: its vertices' box's diagonal.
+double sizeOf(const hz::topo::Solid& solid) {
+    Vec3 lo(1e300, 1e300, 1e300);
+    Vec3 hi(-1e300, -1e300, -1e300);
+    for (const auto& v : solid.vertices()) {
+        lo = Vec3(std::min(lo.x, v.point.x), std::min(lo.y, v.point.y), std::min(lo.z, v.point.z));
+        hi = Vec3(std::max(hi.x, v.point.x), std::max(hi.y, v.point.y), std::max(hi.z, v.point.z));
+    }
+    return (hi - lo).length();
+}
+
+/// Every vertex of @p bridge is one of master's faceted construction's (FromGeometry naming, the
+/// same construction as master's Stable one), within 1e-12 of the size.
+void expectMastersVertices(const hz::topo::Solid& bridge, const Profile& profile,
+                           const SketchPlane& plane, const Vec3& direction, double distance) {
+    const auto masters = faceted(profile, plane, direction, distance, NamingScheme::FromGeometry);
+    ASSERT_NE(masters, nullptr);
+    ASSERT_EQ(bridge.vertices().size(), masters->vertices().size());
+    const double size = sizeOf(*masters);
+    for (const auto& v : bridge.vertices()) {
+        double nearest = 1e300;
+        for (const auto& w : masters->vertices()) {
+            nearest = std::min(nearest, (v.point - w.point).length());
+        }
+        EXPECT_LT(nearest, 1e-12 * size) << v.point.x << " " << v.point.y << " " << v.point.z;
+    }
+}
+
+/// Each vertex of each face of @p bridge lies on the exact face it is a facet of, within
+/// @p within.
+void expectOnTheExactFaces(const hz::topo::Solid& bridge, const hz::topo::Solid& exact,
+                           double within) {
+    std::map<std::string, const hz::topo::Face*> byName;
+    for (const auto& face : exact.faces()) byName[face.topoId.tag()] = &face;
+    for (const auto& face : bridge.faces()) {
+        const auto found = byName.find(hz::model::logicalFace(face.topoId.tag()));
+        ASSERT_NE(found, byName.end()) << face.topoId.tag();
+        const hz::geo::Surface& s = *found->second->exactSurface;
+        std::vector<const hz::topo::Wire*> loops{face.outerLoop};
+        loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+        for (const hz::topo::Wire* w : loops) {
+            const hz::topo::HalfEdge* he = w->halfEdge;
+            do {
+                const Vec3& p = he->origin->point;
+                const Vec2 uv = s.invert(p);
+                EXPECT_LT((s.evaluate(uv.x, uv.y) - p).length(), within) << face.topoId.tag();
+                he = he->next;
+            } while (he != w->halfEdge);
+        }
+    }
+}
+
+/// The exact solid named as its bridge copy is: the same logical faces and logical edges.
+void expectNamedAsItsFacets(const hz::topo::Solid& exact, const hz::topo::Solid& bridge) {
+    EXPECT_EQ(faceNames(exact), logicalFaces(bridge));
+    EXPECT_EQ(logicalEdges(exact), logicalEdges(bridge));
+}
+
 /// How many of @p solid's faces lie on each kind of surface.
 std::map<SurfaceKind, int> surfaceKinds(const hz::topo::Solid& solid) {
     std::map<SurfaceKind, int> kinds;
@@ -195,7 +290,7 @@ const hz::topo::Face* faceNamed(const hz::topo::Solid& solid, const std::string&
 
 }  // namespace
 
-// A rectangle is a block: six planes and its exact volume, either way up.
+// A rectangle is a block: six planes, its exact volume, and the bridge is master's box.
 TEST(ExactExtrude, ARectangleIsABlock) {
     const Profile profile = rectangle();
     for (const double distance : {3.0, -3.0}) {
@@ -208,10 +303,20 @@ TEST(ExactExtrude, ARectangleIsABlock) {
         EXPECT_EQ(solid->shellCount(), 1u);
         EXPECT_EQ(surfaceKinds(*solid), (std::map<SurfaceKind, int>{{SurfaceKind::Plane, 6}}));
         expectValidAndExact(*solid, 600.0);
+
+        // Master's: 6 faces, 12 edges, 8 vertices, recorded (either way up).
+        const auto bridge = faceted(profile, SketchPlane(), Vec3(0, 0, 1), distance);
+        ASSERT_NE(bridge, nullptr);
+        EXPECT_EQ(bridge->faceCount(), 6u);
+        EXPECT_EQ(bridge->edges().size(), 12u);
+        EXPECT_EQ(bridge->vertices().size(), 8u);
+        expectMastersVertices(*bridge, profile, SketchPlane(), Vec3(0, 0, 1), distance);
+        expectNamedAsItsFacets(*solid, *bridge);
     }
 }
 
-// A slot: two planes, two half cylinders and two caps, (20 x 10 + 25 pi) x 3 to 1e-9.
+// A slot: two planes, two half cylinders and two caps, (20 x 10 + 25 pi) x 3 to 1e-9. Its
+// bridge is master's 36 faces, 102 edges and 68 vertices.
 TEST(ExactExtrude, ASlotIsExact) {
     const Profile profile = slot();
     const auto solid = exactly(profile, SketchPlane(), Vec3(0, 0, 1), 3.0);
@@ -220,13 +325,24 @@ TEST(ExactExtrude, ASlotIsExact) {
     EXPECT_EQ(surfaceKinds(*solid),
               (std::map<SurfaceKind, int>{{SurfaceKind::Plane, 4}, {SurfaceKind::Cylinder, 2}}));
     expectValidAndExact(*solid, kSlotArea * 3.0);
+
+    const auto bridge = faceted(profile, SketchPlane(), Vec3(0, 0, 1), 3.0);
+    ASSERT_NE(bridge, nullptr);
+    EXPECT_EQ(bridge->faceCount(), 36u);
+    EXPECT_EQ(bridge->edges().size(), 102u);
+    EXPECT_EQ(bridge->vertices().size(), 68u);
+    expectMastersVertices(*bridge, profile, SketchPlane(), Vec3(0, 0, 1), 3.0);
+    expectNamedAsItsFacets(*solid, *bridge);
 }
 
 // A plate with two holes is one shell whose caps each have the holes as two inner loops, its
-// walls reversed cylinders; its volume is exact. Master cut each hole from the plate with a
-// Boolean, which split each cap in two (`x/cap_top/piece:0` and `/piece:1`, recorded below); its
-// caps are one face each, and the hole walls keep master's logical names,
-// `x~hole<k>/side:<circle>`.
+// walls reversed cylinders; its volume is exact.
+//
+// Its bridge differs from master's on purpose: master cut each hole from the plate with a
+// Boolean, which split each cap in two (`x/cap_top/piece:0` and `/piece:1`, recorded below), so
+// master's part had 72 faces, 214 edges and 140 vertices. The bridge's caps are one face each,
+// with two holes: 2 faces, 10 edges and 4 vertices fewer, 70, 204 and 136. The hole walls keep
+// master's logical names, `x~hole<k>/side:<circle>`.
 TEST(ExactExtrude, APlateWithTwoHolesHasInnerLoops) {
     const Profile profile = plate();
     const auto solid = exactly(profile, SketchPlane(), Vec3(0, 0, 1), 10.0);
@@ -246,6 +362,14 @@ TEST(ExactExtrude, APlateWithTwoHolesHasInnerLoops) {
     }
     expectValidAndExact(*solid, kPlateArea * 10.0);
 
+    const auto bridge = faceted(profile, SketchPlane(), Vec3(0, 0, 1), 10.0);
+    ASSERT_NE(bridge, nullptr);
+    const std::size_t mastersFaces = 72;
+    const std::size_t mastersEdges = 214;
+    const std::size_t mastersVertices = 140;
+    EXPECT_EQ(bridge->faceCount(), mastersFaces - 2);
+    EXPECT_EQ(bridge->edges().size(), mastersEdges - 10);
+    EXPECT_EQ(bridge->vertices().size(), mastersVertices - 4);
     const std::set<std::string> masters{
         "x/cap_bottom/piece:0", "x/cap_bottom/piece:1", "x/cap_top/piece:0", "x/cap_top/piece:1",
         "x/side:{0}",           "x/side:{1}",           "x/side:{2}",        "x/side:{3}",
@@ -254,7 +378,14 @@ TEST(ExactExtrude, APlateWithTwoHolesHasInnerLoops) {
     for (const auto& name : named(masters, profile)) {
         expected.insert(name.substr(0, name.find("/piece:")));
     }
+    EXPECT_EQ(logicalFaces(*bridge), expected);
     EXPECT_EQ(faceNames(*solid), expected);
+    expectNamedAsItsFacets(*solid, *bridge);
+    EXPECT_NEAR(
+        volumeOf(*bridge),
+        volumeOf(*faceted(profile, SketchPlane(), Vec3(0, 0, 1), 10.0, NamingScheme::FromGeometry)),
+        1e-9 * kPlateArea * 10.0)
+        << "the same facets as master's, its caps uncut";
 }
 
 // Swept along any direction but the sketch's normal, an arc sweeps an elliptic cylinder: a NURBS
@@ -268,18 +399,34 @@ TEST(ExactExtrude, AnObliqueArcIsANurbsExtrusion) {
     EXPECT_EQ(surfaceKinds(*solid),
               (std::map<SurfaceKind, int>{{SurfaceKind::Plane, 4}, {SurfaceKind::Nurbs, 2}}));
     expectValidAndExact(*solid, kSlotArea * 3.0 * rise);
+    // Master's: 36 faces, 102 edges, 68 vertices.
+    const auto bridge = faceted(profile, SketchPlane(), direction, 3.0);
+    ASSERT_NE(bridge, nullptr);
+    EXPECT_EQ(bridge->faceCount(), 36u);
+    EXPECT_EQ(bridge->edges().size(), 102u);
+    EXPECT_EQ(bridge->vertices().size(), 68u);
+    expectMastersVertices(*bridge, profile, SketchPlane(), direction, 3.0);
+    expectNamedAsItsFacets(*solid, *bridge);
 
-    // A whole circle: one NURBS face with its seam.
+    // A whole circle: one NURBS face with its seam. Master's: 34 faces, 96 edges, 64 vertices.
     const auto rod = exactly(disc(), SketchPlane(), direction, 3.0);
     ASSERT_NE(rod, nullptr);
     EXPECT_EQ(surfaceKinds(*rod),
               (std::map<SurfaceKind, int>{{SurfaceKind::Plane, 2}, {SurfaceKind::Nurbs, 1}}));
     expectValidAndExact(*rod, 36.0 * kPi * 3.0 * rise);
+    const auto rodBridge = faceted(disc(), SketchPlane(), direction, 3.0);
+    ASSERT_NE(rodBridge, nullptr);
+    EXPECT_EQ(rodBridge->faceCount(), 34u);
+    EXPECT_EQ(rodBridge->edges().size(), 96u);
+    EXPECT_EQ(rodBridge->vertices().size(), 64u);
 }
 
 // An island inside a hole is a region of its own, and its own shell, beside the square with the
-// hole: no Boolean joins them, as master's did (which split the square's caps in two, `/piece:0`
-// and `/piece:1`, recorded below).
+// hole: no Boolean joins them.
+//
+// Master joined them with a Boolean, which split the square's caps in two (`/piece:0` and
+// `/piece:1`): 46 faces, 132 edges and 88 vertices, recorded. The bridge's caps are one face each,
+// with the hole: 2 faces, 12 edges and 8 vertices fewer, 44, 120 and 80.
 TEST(ExactExtrude, AnIslandInAHoleIsItsOwnShell) {
     const Profile profile = island();
     const auto solid = exactly(profile, SketchPlane(), Vec3(0, 0, 1), 4.0);
@@ -296,6 +443,13 @@ TEST(ExactExtrude, AnIslandInAHoleIsItsOwnShell) {
                     sources == std::set<std::string>({"x~region1"}))
             << *sources.begin();
     }
+
+    const auto bridge = faceted(profile, SketchPlane(), Vec3(0, 0, 1), 4.0);
+    ASSERT_NE(bridge, nullptr);
+    EXPECT_EQ(bridge->shellCount(), 2u);
+    EXPECT_EQ(bridge->faceCount(), 46u - 2u);
+    EXPECT_EQ(bridge->edges().size(), 132u - 12u);
+    EXPECT_EQ(bridge->vertices().size(), 88u - 8u);
     const std::set<std::string> masters{
         "x/cap_bottom/piece:0", "x/cap_bottom/piece:1", "x/cap_top/piece:0", "x/cap_top/piece:1",
         "x/side:{0}",           "x/side:{1}",           "x/side:{2}",        "x/side:{3}",
@@ -306,12 +460,14 @@ TEST(ExactExtrude, AnIslandInAHoleIsItsOwnShell) {
         expected.insert(name.substr(0, name.find("/piece:")));
     }
     EXPECT_EQ(faceNames(*solid), expected);
+    expectNamedAsItsFacets(*solid, *bridge);
 }
 
 // Each exact face is named as master's Stable extrude named its facets, logically (recorded at
-// 1709c556), and its edges as nameEdgesLogically names them. A half disc's line and arc meet along
-// two vertical lines: two edges between the same two faces, which are `<edge>/chord:0` and
-// `/chord:1` as master's two were, one curve to logicalEdge, as master's faceted part had it.
+// 1709c556), and its edges as nameEdgesLogically names them, so the bridge's logical edges are
+// the exact solid's. A half disc's line and arc meet along two vertical lines: two edges between
+// the same two faces, which are `<edge>/chord:0` and `/chord:1` as master's two were, one curve to
+// logicalEdge, as master's faceted part had it.
 TEST(ExactExtrude, NamesAreMastersLogicalNames) {
     struct Case {
         const char* what;
@@ -319,29 +475,42 @@ TEST(ExactExtrude, NamesAreMastersLogicalNames) {
         SketchPlane plane;
         Vec3 direction;
         std::set<std::string> masters;  ///< master's logical faces
+        std::size_t faces;              ///< master's counts
+        std::size_t edges;
+        std::size_t vertices;
     };
     const std::set<std::string> four{"x/cap_bottom", "x/cap_top",  "x/side:{0}",
                                      "x/side:{1}",   "x/side:{2}", "x/side:{3}"};
     std::vector<Case> cases;
-    cases.push_back({"a rectangle", rectangle(), SketchPlane(), Vec3(0, 0, 1), four});
-    cases.push_back({"a slot", slot(), SketchPlane(), Vec3(0, 0, 1), four});
+    cases.push_back({"a rectangle", rectangle(), SketchPlane(), Vec3(0, 0, 1), four, 6, 12, 8});
+    cases.push_back({"a slot", slot(), SketchPlane(), Vec3(0, 0, 1), four, 36, 102, 68});
     cases.push_back({"a half disc",
                      dProfile(),
                      SketchPlane(),
                      Vec3(0, 0, 1),
-                     {"x/cap_bottom", "x/cap_top", "x/side:{0}", "x/side:{1}"}});
+                     {"x/cap_bottom", "x/cap_top", "x/side:{0}", "x/side:{1}"},
+                     19,
+                     51,
+                     34});
     cases.push_back({"a disc",
                      disc(),
                      SketchPlane(),
                      Vec3(0, 0, 1),
-                     {"x/cap_bottom", "x/cap_top", "x/side:{0}"}});
+                     {"x/cap_bottom", "x/cap_top", "x/side:{0}"},
+                     34,
+                     96,
+                     64});
     cases.push_back({"a tangent arc and a notch",
                      tangentAndTiny(),
                      SketchPlane(),
                      Vec3(0, 0, 1),
                      {"x/cap_bottom", "x/cap_top", "x/side:{0}", "x/side:{1}", "x/side:{2}",
-                      "x/side:{3}", "x/side:{4}", "x/side:{5}", "x/side:{6}"}});
-    cases.push_back({"a slot on an inclined plane", slot(), inclined(), inclined().normal(), four});
+                      "x/side:{3}", "x/side:{4}", "x/side:{5}", "x/side:{6}"},
+                     16,
+                     42,
+                     28});
+    cases.push_back({"a slot on an inclined plane", slot(), inclined(), inclined().normal(), four,
+                     36, 102, 68});
     for (const Case& c : cases) {
         SCOPED_TRACE(c.what);
         const auto solid = exactly(c.profile, c.plane, c.direction, 2.0);
@@ -350,6 +519,13 @@ TEST(ExactExtrude, NamesAreMastersLogicalNames) {
         for (const auto& edge : solid->edges()) {
             EXPECT_TRUE(edge.topoId.isValid()) << "every edge is named";
         }
+        const auto bridge = faceted(c.profile, c.plane, c.direction, 2.0);
+        ASSERT_NE(bridge, nullptr);
+        EXPECT_EQ(bridge->faceCount(), c.faces);
+        EXPECT_EQ(bridge->edges().size(), c.edges);
+        EXPECT_EQ(bridge->vertices().size(), c.vertices);
+        EXPECT_EQ(logicalFaces(*bridge), named(c.masters, c.profile));
+        expectNamedAsItsFacets(*solid, *bridge);
     }
 
     // The half disc's two vertical edges, between its line's face and its arc's.
@@ -369,7 +545,8 @@ TEST(ExactExtrude, NamesAreMastersLogicalNames) {
 }
 
 // Review Focus 1: a sketch tilted 30 degrees about x and turned 20 about z, extruded along its
-// normal and at a slant: the volume is exact.
+// normal and at a slant. Every vertex of the bridge lies on the exact face it is a facet of
+// within 1e-9 of the size, and the volume is exact.
 TEST(ExactExtrude, OnAnInclinedPlane) {
     const SketchPlane plane = inclined();
     const Vec3 slant = (plane.normal() + plane.xAxis() * 0.4 - plane.yAxis() * 0.25).normalized();
@@ -380,6 +557,12 @@ TEST(ExactExtrude, OnAnInclinedPlane) {
             const auto solid = exactly(profile, plane, direction, 3.0);
             ASSERT_NE(solid, nullptr);
             expectValidAndExact(*solid, area * 3.0 * direction.dot(plane.normal()));
+            const auto bridge = faceted(profile, plane, direction, 3.0);
+            ASSERT_NE(bridge, nullptr);
+            expectOnTheExactFaces(*bridge, *solid, 1e-9 * sizeOf(*solid));
+            if (profile.size() == 4) {
+                expectMastersVertices(*bridge, profile, plane, direction, 3.0);
+            }
         }
     }
 }
@@ -414,6 +597,10 @@ TEST(ExactExtrude, EitherWayRoundAndEitherWayUp) {
                 const auto solid = exactly(profile, SketchPlane(), unit, distance);
                 ASSERT_NE(solid, nullptr);
                 expectValidAndExact(*solid, kSlotArea * 3.0 * std::abs(unit.z));
+                const auto bridge = faceted(profile, SketchPlane(), unit, distance);
+                ASSERT_NE(bridge, nullptr);
+                EXPECT_EQ(bridge->faceCount(), 36u);
+                expectMastersVertices(*bridge, profile, SketchPlane(), unit, distance);
             }
         }
     }
@@ -464,4 +651,5 @@ TEST(ExactExtrude, ASketchsLooseEndsAreItsCornersTolerances) {
         if (e.tolerance > 0.0) ++grown;
     }
     EXPECT_EQ(grown, 1) << "the edge along the offset at that corner";
+    EXPECT_NE(faceted(loose, SketchPlane(), Vec3(0, 0, 1), 0.2), nullptr);
 }

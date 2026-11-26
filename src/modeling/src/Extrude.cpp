@@ -531,6 +531,42 @@ std::optional<std::string> refusal(const ProfileRegions& found, const draft::Ske
 // The exact extrusion (stage 3): whole faces carrying exact geometry.
 // ---------------------------------------------------------------------------
 
+/// The corners each cap's loop starts at: of the loop as it runs.
+struct CapStarts {
+    size_t bottom = 0;  ///< at the sketch
+    size_t top = 0;     ///< at the offset
+};
+
+/// Where master's faceted extrude of the single loop @p loop (going @p up its sketch's normal, or
+/// down) started its caps' loops, as a Boolean reads them, where those points are corners of the
+/// loop; its first corner elsewhere. A Boolean's result can depend on where a face's loop starts
+/// (a 25,000-sided prism less a box through its first corner did not sew from there), and the
+/// bridge copy still goes through master's Boolean: it reads master's loops.
+///
+/// Master's prism ran its caps from its ring's last point at the sketch and from its first at
+/// the offset, the chain's way at the sketch and against it at the offset. Where that left its
+/// solid facing in (its chain counter-clockwise going up, clockwise going down: this loop, which
+/// runs counter-clockwise, along its chain going up or against it going down),
+/// BoundaryMesh::extractFacePolygons reads each loop backwards: from the point before the last at
+/// the sketch, from the second at the offset. The ring's points beyond its first are corners only
+/// where the chain's curves beside them are lines; an arc's are its chords' ends.
+CapStarts mastersCapStarts(const exact::Loop& loop, bool up) {
+    const size_t m = loop.curves.size();
+    // The chain's corner k, and whether its curve k is a line, as this loop numbers them.
+    const auto corner = [&loop, m](size_t k) { return loop.againstChain ? (m - k) % m : k; };
+    const auto line = [&loop, m](size_t k) {
+        return !loop.curves[loop.againstChain ? m - 1 - k : k].curved();
+    };
+    CapStarts starts;
+    if (loop.againstChain != up) {  // master's solid faced in
+        if (m >= 3 && line(m - 1) && line(m - 2)) starts.bottom = corner(m - 2);
+        if (m >= 2 && line(0)) starts.top = corner(1);
+    } else if (line(m - 1)) {
+        starts.bottom = corner(m - 1);
+    }
+    return starts;
+}
+
 /// Builds the exact extrusion of a profile's regions by an offset, a shell for each region.
 ///
 /// Each loop's material lies on its left (exact::Loop), and the solid lies on the offset's side
@@ -567,9 +603,10 @@ public:
     }
 
     /// Adds @p region as a shell of its own: its caps and its outer loop's sides named for
-    /// @p source, each hole's sides for the source @p holeSources gives it.
+    /// @p source, each hole's sides for the source @p holeSources gives it; the caps' outer loops
+    /// start at the corners @p starts names.
     void addRegion(const exact::Region& region, const std::string& source,
-                   const std::vector<std::string>& holeSources) {
+                   const std::vector<std::string>& holeSources, const CapStarts& starts = {}) {
         topo::Shell* shell = solid_.allocShell();
         shell->solid = &solid_;
         geo::Frame atSketch;
@@ -582,9 +619,9 @@ public:
         Face* bottom =
             face(shell, source, "cap_bottom", std::make_shared<geo::Plane>(atSketch), up_);
         Face* top = face(shell, source, "cap_top", std::make_shared<geo::Plane>(atOffset), !up_);
-        addLoop(region.outer, source, shell, bottom, top, true);
+        addLoop(region.outer, source, shell, bottom, top, true, starts);
         for (size_t k = 0; k < region.holes.size(); ++k) {
-            addLoop(region.holes[k], holeSources[k], shell, bottom, top, false);
+            addLoop(region.holes[k], holeSources[k], shell, bottom, top, false, {});
         }
     }
 
@@ -751,7 +788,7 @@ private:
     }
 
     void addLoop(const exact::Loop& loop, const std::string& source, topo::Shell* shell,
-                 Face* bottomCap, Face* topCap, bool outer) {
+                 Face* bottomCap, Face* topCap, bool outer, const CapStarts& starts) {
         const size_t m = loop.curves.size();
         std::vector<Vertex*> b(m);
         std::vector<Vertex*> t(m);
@@ -809,10 +846,17 @@ private:
             edge(below, capBottom[i], c.curve(plane_, Vec3{}, up_));
             edge(above, capTop[i], c.curve(plane_, offset_, !up_));
         }
-        // Each cap's loop in the order its half-edges run.
+        // Each cap's loop in the order its half-edges run, from the corner it starts at.
         std::vector<HalfEdge*> alongLoop = up_ ? capTop : capBottom;
         std::vector<HalfEdge*> againstLoop = up_ ? capBottom : capTop;
         std::reverse(againstLoop.begin(), againstLoop.end());
+        const auto from = [](std::vector<HalfEdge*>& hes, const Vertex* start) {
+            const auto first = std::find_if(
+                hes.begin(), hes.end(), [start](const HalfEdge* h) { return h->origin == start; });
+            if (first != hes.end()) std::rotate(hes.begin(), first, hes.end());
+        };
+        from(up_ ? alongLoop : againstLoop, t[starts.top]);
+        from(up_ ? againstLoop : alongLoop, b[starts.bottom]);
         close(up_ ? topCap : bottomCap, alongLoop, outer);
         close(up_ ? bottomCap : topCap, againstLoop, outer);
         for (size_t j = 0; j < m; ++j) {
@@ -863,8 +907,13 @@ std::unique_ptr<topo::Solid> extrudeExactly(const ProfileRegions& found,
             for (size_t k = 0; k < region->holes.size(); ++k) {
                 holeSources.push_back(featureID + "~hole" + std::to_string(holeCount++));
             }
+            // A single loop's caps start where master's prism's did; a Boolean made the rest.
+            const CapStarts starts =
+                found.isSingleLoop()
+                    ? mastersCapStarts(region->outer, offset.dot(plane.normal()) > 0.0)
+                    : CapStarts{};
             build.addRegion(*region, r == 0 ? featureID : featureID + "~region" + std::to_string(r),
-                            holeSources);
+                            holeSources, starts);
         }
         std::string why;
         if (!build.coverGaps(&why)) return notExactly(why);
@@ -903,6 +952,27 @@ std::unique_ptr<topo::Solid> Extrude::execute(
     if (auto refused = refusal(found, plane, direction, distance)) return fail(*refused);
     if (segments < 3) {
         return fail("arcs need at least 3 segments per turn");
+    }
+    if (naming == NamingScheme::Stable) {
+        // The exact extrusion's bridge copy: master's facets, named for the exact faces and
+        // edges they lie on.
+        std::string why;
+        const auto solid = extrudeExactly(found, plane, direction * distance, featureID, &why);
+        if (!solid) return fail(why);
+        FacetResolution resolution;
+        resolution.segmentsPerTurn = segments;
+        resolution.chordTolerance = chordTolerance;
+        FacetedSolid bridge;
+        try {
+            bridge = facetExact(*solid, resolution);
+        } catch (const std::exception& e) {
+            bridge.error = e.what();
+        }
+        if (!bridge.solid) {
+            return fail("its exact form could not be cut into facets: " + bridge.error);
+        }
+        nameBridgeEdges(*bridge.solid, *solid);
+        return std::move(bridge.solid);
     }
     if (found.isSingleLoop()) {
         return extrudeLoop(found.regions.front().outer, plane, direction, distance, featureID,

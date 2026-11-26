@@ -47,7 +47,17 @@ public:
     /// @param naming     How the side faces and edges are named (see
     ///                   NamingScheme): by position, as before persistent
     ///                   naming, or from the sketch entities they come from.
-    /// @return The extruded solid, or nullptr if the profile is invalid.
+    ///                   Under Stable naming the solid is exact()'s bridge
+    ///                   copy (model::facetExact at {segments, chordTolerance}):
+    ///                   master's facets, vertex for vertex, each named for the
+    ///                   exact face it lies on (`<face>/facet:<k>`) and its
+    ///                   edges by model::nameBridgeEdges. A plate's holes are
+    ///                   then holes in its caps, not cut by a Boolean. The
+    ///                   other schemes build master's faceted solid as before.
+    /// @return The extruded solid, or nullptr if the profile is invalid (or,
+    ///         under Stable naming, its exact form cannot be built or cut into
+    ///         facets: "could not be built exactly: <why>", "its exact form
+    ///         could not be cut into facets: <why>").
     static std::unique_ptr<topo::Solid> execute(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const math::Vec3& direction, double distance,
@@ -69,7 +79,8 @@ public:
     /// are named after them (model::nameEdgesLogically). Its vertices are where master's faceted
     /// extrude put each loop's corners; where the sketch's curves miss one (by no more than the
     /// profile's join tolerance), its vertices and the edge along the offset there carry the gap
-    /// as their tolerance.
+    /// as their tolerance. A single loop's caps run from the corners master's prism's loops were
+    /// read from, where those are corners: a Boolean reads its bridge copy as it read master's.
     ///
     /// @return nullptr, with @p reason, where master refuses the profile, the distance or the
     ///         direction (in master's words), or with "could not be built exactly: <why>" where
