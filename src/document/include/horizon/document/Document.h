@@ -191,7 +191,12 @@ public:
     /// solid.
     std::shared_ptr<const geo::MeshData> exactOrFacetedMesh() const;
     /// Why the part has no exact counterpart where its bodies would give it
-    /// one (ExactCounterpart::note); empty otherwise.
+    /// one, as a kind, which the window says in its own words; None
+    /// otherwise.
+    ExactNoteKind exactNoteKind() const;
+    /// The note's detail, the technical reason (a face and why it could not
+    /// be meshed, or the two volumes that disagree), for a tooltip or a log;
+    /// the kind is said apart (exactNoteKind). Empty with None.
     const std::string& exactNote() const;
     /// The last counterpart a build made, shown or not (a feature after the
     /// bodies built exactly hides it, and its undo shows it again): what the

@@ -153,7 +153,8 @@ TEST(RebuildJobTest, AWorkersRebuildOfImportsReadsNoStep) {
     const auto part = partOf(hz::model::PrimitiveFactory::makeBox(2, 3, 4), "old.step", note);
     ASSERT_TRUE(part->rebuildModel()) << part->lastBuildMessage();
     ASSERT_EQ(part->exactSolid(), nullptr);
-    EXPECT_EQ(part->exactNote(), "shown from facets: " + note);
+    EXPECT_EQ(part->exactNoteKind(), hz::doc::ExactNoteKind::ShownFromFacets);
+    EXPECT_EQ(part->exactNote(), note);
     const auto made = part->exactCounterpart();
     ASSERT_NE(made, nullptr);
 
@@ -162,7 +163,8 @@ TEST(RebuildJobTest, AWorkersRebuildOfImportsReadsNoStep) {
     EXPECT_EQ(result.exact, made) << "the window's counterpart, made of the same body";
     ASSERT_TRUE(part->applyBuild(std::move(result))) << part->lastBuildMessage();
     EXPECT_EQ(part->exactSolid(), nullptr) << "a box read again from its STEP comes in exact";
-    EXPECT_EQ(part->exactNote(), "shown from facets: " + note);
+    EXPECT_EQ(part->exactNoteKind(), hz::doc::ExactNoteKind::ShownFromFacets);
+    EXPECT_EQ(part->exactNote(), note);
     EXPECT_NEAR(volumeOf(*part), 24.0, 1e-9);
 }
 

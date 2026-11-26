@@ -49,6 +49,7 @@
 using hz::doc::BodyOperation;
 using hz::doc::Document;
 using hz::doc::DocumentType;
+using hz::doc::ExactNoteKind;
 using hz::doc::ImportedBodyFeature;
 using hz::math::Vec2;
 using hz::math::Vec3;
@@ -329,6 +330,7 @@ TEST(ExactCounterpart, AnImportedBodyHasOne) {
     ASSERT_NE(part.solid(), nullptr);
     ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
     EXPECT_TRUE(part.exactNote().empty()) << part.exactNote();
+    EXPECT_EQ(part.exactNoteKind(), ExactNoteKind::None);
     EXPECT_EQ(part.exactSolid()->faceCount(), 3u);
     expectNamedAsItsFacets(*part.exactSolid(), *part.solid());
     EXPECT_NEAR(volumeOf(*part.exactSolid()), 2.0 * kPi, 2.0 * kPi * 1e-9);
@@ -410,6 +412,7 @@ TEST(ExactCounterpart, AFeatureAfterItDropsIt) {
     EXPECT_EQ(part.exactSolid(), nullptr);
     EXPECT_FALSE(part.exactMesh());
     EXPECT_TRUE(part.exactNote().empty()) << "no counterpart, by design: " << part.exactNote();
+    EXPECT_EQ(part.exactNoteKind(), ExactNoteKind::None);
 
     ASSERT_NE(part.solid(), nullptr);
     EXPECT_EQ(part.solid()->faceCount(), 36u);
@@ -484,7 +487,8 @@ TEST(ExactCounterpart, OneThatCannotBeMeshedIsDroppedWithANote) {
     EXPECT_EQ(part.exactSolid(), nullptr);
     EXPECT_FALSE(part.exactMesh());
     const std::string feature = part.featureTree().feature(0)->featureID();
-    const std::string said = "shown from facets: " + feature + "/face:";
+    EXPECT_EQ(part.exactNoteKind(), ExactNoteKind::ShownFromFacets);
+    const std::string said = feature + "/face:";
     EXPECT_EQ(part.exactNote().rfind(said, 0), 0u) << part.exactNote();
     ASSERT_NE(part.solid(), nullptr);
     EXPECT_EQ(logicalFaces(*part.solid()).size(), 3u);
@@ -512,7 +516,7 @@ TEST(ExactCounterpart, AnExactFormThatDisagreesWithItsFacetsIsDropped) {
     importInto(one, std::move(flipped));
     ASSERT_TRUE(one.rebuildModel()) << one.lastBuildMessage();
     EXPECT_EQ(one.exactSolid(), nullptr);
-    EXPECT_EQ(one.exactNote().rfind("shown from facets: ", 0), 0u) << one.exactNote();
+    EXPECT_EQ(one.exactNoteKind(), ExactNoteKind::ShownFromFacets) << one.exactNote();
     EXPECT_NE(one.exactNote().find("runs against its sense"), std::string::npos) << one.exactNote();
 
     Document part;
@@ -522,10 +526,9 @@ TEST(ExactCounterpart, AnExactFormThatDisagreesWithItsFacetsIsDropped) {
     ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
     EXPECT_EQ(part.exactSolid(), nullptr);
     EXPECT_FALSE(part.exactMesh());
-    const std::string said = "exact form disagrees with its facets: ";
-    ASSERT_EQ(part.exactNote().rfind(said, 0), 0u) << part.exactNote();
+    ASSERT_EQ(part.exactNoteKind(), ExactNoteKind::Disagrees) << part.exactNote();
     // "<exact> vs <faceted>": the cylinder and the block, against the cylinder in facets.
-    const std::string figures = part.exactNote().substr(said.size());
+    const std::string& figures = part.exactNote();
     const auto vs = figures.find(" vs ");
     ASSERT_NE(vs, std::string::npos) << figures;
     EXPECT_NEAR(std::stod(figures.substr(0, vs)), 2.0 * kPi + 1.0, 1e-6);
@@ -549,7 +552,7 @@ TEST(ExactCounterpart, EachBodyIsHeldToItsFacetsOnItsOwn) {
         EXPECT_TRUE(hz::topo::validateExact(*body, hz::topo::exactTolerance(*body)).empty());
         return body;
     };
-    const std::string inward = "shown from facets: the exact form faces inward (it encloses ";
+    const std::string inward = "the exact form faces inward (it encloses ";
 
     Document part;
     importInto(part, insideOut(read(hz::step_text::externalStyleCylinder())));
@@ -563,10 +566,13 @@ TEST(ExactCounterpart, EachBodyIsHeldToItsFacetsOnItsOwn) {
         ASSERT_EQ(made.bodies.size(), 2u);
         EXPECT_EQ(made.bodiesMeshed, 2u);
         EXPECT_EQ(made.bodies[0].mesh, nullptr);
+        EXPECT_EQ(made.bodies[0].kind, ExactNoteKind::ShownFromFacets);
         ASSERT_EQ(made.bodies[0].note.rfind(inward, 0), 0u) << made.bodies[0].note;
         EXPECT_NEAR(std::stod(made.bodies[0].note.substr(inward.size())), -2.0 * kPi, 1e-6);
         EXPECT_NE(made.bodies[1].mesh, nullptr) << made.bodies[1].note;
         EXPECT_TRUE(made.bodies[1].note.empty()) << made.bodies[1].note;
+        EXPECT_EQ(made.bodies[1].kind, ExactNoteKind::None);
+        EXPECT_EQ(part.exactNoteKind(), ExactNoteKind::ShownFromFacets);
         EXPECT_EQ(part.exactNote(), made.bodies[0].note);
     }
     const std::string cylinderSays = part.exactNote();
@@ -596,6 +602,7 @@ TEST(ExactCounterpart, EachBodyIsHeldToItsFacetsOnItsOwn) {
     ASSERT_EQ(made.bodies.size(), 2u);
     ASSERT_EQ(made.bodies[1].note.rfind(inward, 0), 0u) << made.bodies[1].note;
     EXPECT_NEAR(std::stod(made.bodies[1].note.substr(inward.size())), -2.5 * kPi, 1e-6);
+    EXPECT_EQ(both.exactNoteKind(), ExactNoteKind::ShownFromFacets);
     EXPECT_EQ(both.exactNote(), made.bodies[0].note + "; " + made.bodies[1].note);
 }
 
@@ -616,7 +623,8 @@ TEST(ExactCounterpart, ALoneBodyTurnedInsideOutIsSaidToFaceInward) {
     ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
     EXPECT_EQ(part.exactSolid(), nullptr) << "shown inside out";
     EXPECT_FALSE(part.exactMesh());
-    const std::string said = "shown from facets: the exact form faces inward (it encloses ";
+    EXPECT_EQ(part.exactNoteKind(), ExactNoteKind::ShownFromFacets);
+    const std::string said = "the exact form faces inward (it encloses ";
     ASSERT_EQ(part.exactNote().rfind(said, 0), 0u) << part.exactNote();
     EXPECT_NEAR(std::stod(part.exactNote().substr(said.size())), -2.5 * kPi, 1e-6);
     ASSERT_NE(part.solid(), nullptr);
@@ -650,7 +658,8 @@ TEST(ExactCounterpart, AnOldPartsBodyThatIsNotExactHasNone) {
     EXPECT_EQ(opened.exactSolid(), nullptr);
     EXPECT_FALSE(opened.exactMesh());
     ASSERT_EQ(report.converted.size(), 1u);
-    EXPECT_EQ(opened.exactNote(), "shown from facets: " + report.converted.front());
+    EXPECT_EQ(opened.exactNoteKind(), ExactNoteKind::ShownFromFacets);
+    EXPECT_EQ(opened.exactNote(), report.converted.front());
     const auto* body = dynamic_cast<const ImportedBodyFeature*>(opened.featureTree().feature(0));
     ASSERT_NE(body, nullptr);
     EXPECT_EQ(body->exactBody(), nullptr);
@@ -1034,9 +1043,11 @@ TEST(ExactCounterpart, ABodysFacetsAreFoundByTheirNames) {
     EXPECT_FALSE(part.exactMesh());
     const hz::doc::ExactCounterpart& made = counterpartOf(part);
     ASSERT_EQ(made.bodies.size(), 1u);
-    const std::string none = "exact form not checked: no facet of the part names a face of it";
+    const std::string none = "no facet of the part names a face of it";
+    EXPECT_EQ(made.bodies[0].kind, ExactNoteKind::NotChecked);
     EXPECT_EQ(made.bodies[0].note, none);
-    const std::string unnamed = none + "; exact form not checked: its facet elsewhere/face:";
+    EXPECT_EQ(part.exactNoteKind(), ExactNoteKind::NotChecked);
+    const std::string unnamed = none + "; its facet elsewhere/face:";
     ASSERT_EQ(part.exactNote().rfind(unnamed, 0), 0u) << part.exactNote();
     EXPECT_NE(part.exactNote().find(" names no face of it"), std::string::npos) << part.exactNote();
 }

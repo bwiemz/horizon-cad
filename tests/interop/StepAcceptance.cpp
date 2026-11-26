@@ -38,6 +38,26 @@ namespace {
 /// another reader's, quick enough for a corpus.
 constexpr double kIdealTolerance = 1e-6;
 
+/// @p part's exact note as the corpus's report says it: its kind (Document::exactNoteKind), then
+/// its detail (Document::exactNote); empty with none.
+std::string exactNoteOf(const doc::Document& part) {
+    const char* kind = nullptr;
+    switch (part.exactNoteKind()) {
+        case doc::ExactNoteKind::None:
+            return {};
+        case doc::ExactNoteKind::ShownFromFacets:
+            kind = "shown from facets";
+            break;
+        case doc::ExactNoteKind::NotChecked:
+            kind = "exact form not checked";
+            break;
+        case doc::ExactNoteKind::Disagrees:
+            kind = "exact form disagrees with its facets";
+            break;
+    }
+    return std::string(kind) + ": " + part.exactNote();
+}
+
 void include(Bounds& bounds, const topo::Solid& solid) {
     for (const auto& vertex : solid.vertices()) {
         const math::Vec3& p = vertex.point;
@@ -257,7 +277,7 @@ StepSummary summarize(const fs::path& step, const fs::path& work,
     // band round a hole written without the seam other readers need (#184).
     const fs::path exported = work / "export" / (name + ".step");
     summary.exportPath = exported.string();
-    summary.exactNote = part.exactNote();
+    summary.exactNote = exactNoteOf(part);
     if (!summary.importBuildError.empty() || part.solid() == nullptr) {
         summary.exportError = "not exported: the part does not build";
     } else if (StepFormat::WriteReport report;
@@ -291,7 +311,7 @@ StepSummary summarize(const fs::path& step, const fs::path& work,
             const topo::Solid& measured = *read.exactOrFacetedSolid();
             summary.reopenedVolume = MassPropertiesCalculator::compute(measured).volume;
             summary.reopenedExact = whollyExact(measured);
-            summary.reopenedExactNote = read.exactNote();
+            summary.reopenedExactNote = exactNoteOf(read);
             summary.reopenedFacetedVolume = MassPropertiesCalculator::compute(*read.solid()).volume;
         }
     }

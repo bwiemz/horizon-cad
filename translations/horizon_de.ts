@@ -2039,7 +2039,7 @@ Details stehen im Protokoll:
         <translation type="unfinished">%1 wirkt auf ein Zeichnungsblatt: öffnen Sie eines oder erstellen Sie eines aus einem Teil</translation>
     </message>
     <message>
-        <location line="+174"/>
+        <location line="+236"/>
         <source>Dimensions whose edges the part no longer has are not drawn: %1</source>
         <translation type="unfinished">Bemaßungen, deren Kanten das Teil nicht mehr hat, werden nicht gezeichnet: %1</translation>
     </message>
@@ -2083,7 +2083,7 @@ Details stehen im Protokoll:
         <translation type="unfinished">Fehler beim Öffnen von</translation>
     </message>
     <message>
-        <location line="+62"/>
+        <location line="+61"/>
         <source>Could not read again</source>
         <translation type="unfinished">Fehler beim erneuten Einlesen von</translation>
     </message>
@@ -2169,13 +2169,13 @@ Details stehen im Protokoll:
         <location line="+125"/>
         <location line="+128"/>
         <location line="+120"/>
-        <location line="+333"/>
+        <location line="+335"/>
         <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="-558"/>
+        <location line="-560"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">Nicht jede Ansicht passt auf dieses Papier: die übrigen liegen daneben</translation>
     </message>
@@ -2200,12 +2200,12 @@ Details stehen im Protokoll:
     </message>
     <message>
         <location line="+11"/>
-        <location line="+757"/>
+        <location line="+759"/>
         <source>Add Geometric Tolerance</source>
         <translation type="unfinished">Form- und Lagetoleranz hinzufügen</translation>
     </message>
     <message>
-        <location line="-735"/>
+        <location line="-737"/>
         <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
         <translation type="unfinished">%1: Das Blatt hat keinen Bezug %2; „Bezugselement hinzufügen“ setzt zuerst einen auf eine Kante</translation>
     </message>
@@ -2221,18 +2221,18 @@ Details stehen im Protokoll:
     </message>
     <message>
         <location line="+12"/>
-        <location line="+768"/>
+        <location line="+770"/>
         <source>Add Datum Feature</source>
         <translation type="unfinished">Bezugselement hinzufügen</translation>
     </message>
     <message>
-        <location line="-748"/>
-        <location line="+760"/>
+        <location line="-750"/>
+        <location line="+762"/>
         <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
         <translation type="unfinished">%1: „%2“ ist kein Bezugsbuchstabe: ein oder zwei Großbuchstaben, nicht I, O oder Q</translation>
     </message>
     <message>
-        <location line="-753"/>
+        <location line="-755"/>
         <source>%1: the sheet has datum %2 already</source>
         <translation type="unfinished">%1: Das Blatt hat Bezug %2 bereits</translation>
     </message>
@@ -2243,12 +2243,12 @@ Details stehen im Protokoll:
     </message>
     <message>
         <location line="+13"/>
-        <location line="+627"/>
+        <location line="+629"/>
         <source>Hole Callout</source>
         <translation type="unfinished">Bohrungsangabe</translation>
     </message>
     <message>
-        <location line="-605"/>
+        <location line="-607"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: Diese Kante gehört zu keiner Bohrung (einem Bohrungs-Feature)</translation>
     </message>
@@ -2264,17 +2264,17 @@ Details stehen im Protokoll:
     </message>
     <message>
         <location line="+7"/>
-        <location line="+292"/>
+        <location line="+294"/>
         <source>Scale:</source>
         <translation type="unfinished">Maßstab:</translation>
     </message>
     <message>
-        <location line="-279"/>
+        <location line="-281"/>
         <source>At this scale not every view has room on the sheet: those without are beside it</source>
         <translation type="unfinished">In diesem Maßstab passt nicht jede Ansicht auf das Blatt: die übrigen liegen daneben</translation>
     </message>
     <message>
-        <location line="+127"/>
+        <location line="+129"/>
         <source>%1: placed where there was room; Move View moves it</source>
         <translation type="unfinished">%1: dort platziert, wo Platz war; Ansicht verschieben versetzt sie</translation>
     </message>
@@ -2387,8 +2387,8 @@ Details stehen im Protokoll:
         <translation type="unfinished">%1: der Kreis enthält nichts von der Ansicht</translation>
     </message>
     <message>
-        <location line="-798"/>
-        <location line="+819"/>
+        <location line="-800"/>
+        <location line="+821"/>
         <source>Move View</source>
         <translation type="unfinished">Ansicht verschieben</translation>
     </message>
@@ -2408,14 +2408,14 @@ Details stehen im Protokoll:
         <translation type="unfinished">Nicht auf der Zeichnung, auf der die Ansicht liegt</translation>
     </message>
     <message>
-        <location line="-827"/>
-        <location line="+870"/>
+        <location line="-829"/>
+        <location line="+872"/>
         <source>Remove View</source>
         <translation type="unfinished">Ansicht entfernen</translation>
     </message>
     <message>
-        <location line="-854"/>
-        <location line="+859"/>
+        <location line="-856"/>
+        <location line="+861"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: ein Blatt behält mindestens eine Ansicht</translation>
     </message>
@@ -2426,12 +2426,12 @@ Details stehen im Protokoll:
         <translation type="unfinished">Ansicht:</translation>
     </message>
     <message>
-        <location line="-1082"/>
+        <location line="-1084"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: die davon abgeleiteten Ansichten wurden mit entfernt (%2)</translation>
     </message>
     <message>
-        <location line="+891"/>
+        <location line="+893"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">Klicken Sie auf eine Kante einer Ansicht (Esc zum Beenden)</translation>
     </message>
@@ -2446,20 +2446,20 @@ Details stehen im Protokoll:
         <translation type="unfinished">Dort ist keine Kante</translation>
     </message>
     <message>
-        <location line="-871"/>
-        <location line="+886"/>
+        <location line="-873"/>
+        <location line="+888"/>
         <source>Add Dimension</source>
         <translation type="unfinished">Bemaßung hinzufügen</translation>
     </message>
     <message>
-        <location line="-799"/>
-        <location line="+925"/>
+        <location line="-801"/>
+        <location line="+927"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">Bemaßung entfernen</translation>
     </message>
     <message>
-        <location line="-1002"/>
+        <location line="-1004"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: diese Kante ist bereits bemaßt; Bemaßung entfernen entfernt die Bemaßung</translation>
     </message>
@@ -2476,13 +2476,13 @@ Details stehen im Protokoll:
     <message>
         <location line="+17"/>
         <location line="+28"/>
-        <location line="+910"/>
+        <location line="+912"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: diese Kante hat keine Bemaßung</translation>
     </message>
     <message>
-        <location line="-1036"/>
-        <location line="+1044"/>
+        <location line="-1038"/>
+        <location line="+1046"/>
         <source>View Properties</source>
         <translation type="unfinished">Ansichtseigenschaften</translation>
     </message>
@@ -2647,8 +2647,8 @@ Details stehen im Protokoll:
         <translation type="unfinished">Aus Teil aktualisieren</translation>
     </message>
     <message>
-        <location line="-731"/>
-        <location line="+740"/>
+        <location line="-733"/>
+        <location line="+742"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">Die Zeichnung konnte nicht neu gezeichnet werden: %1</translation>
     </message>
@@ -4982,7 +4982,22 @@ um Ihr Teil aufzubauen.</translation>
         <translation type="unfinished">Abwicklung</translation>
     </message>
     <message>
-        <location line="+1068"/>
+        <location line="+495"/>
+        <source>Shown from facets</source>
+        <translation type="unfinished">Aus Facetten dargestellt</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Exact form not checked</source>
+        <translation type="unfinished">Exakte Form nicht geprüft</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Exact form disagrees with its facets</source>
+        <translation type="unfinished">Exakte Form weicht von ihren Facetten ab</translation>
+    </message>
+    <message>
+        <location line="+581"/>
         <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">Alle unterstützten Dateien (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon-CAD-Zeichnungen (*.hcad);;Horizon-Teile (*.hzpart);;Horizon-Baugruppen (*.hzasm);;Horizon-Zeichnungsblätter (*.hzdwg);;DXF-Dateien (*.dxf);;DWG-Dateien (*.dwg);;Alle Dateien (*)</translation>
     </message>
@@ -5079,7 +5094,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</translation>
     </message>
     <message>
-        <location line="-2715"/>
+        <location line="-2727"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -5310,7 +5325,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <location line="+97"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1083"/>
+        <location line="+1095"/>
         <location line="+502"/>
         <location line="+977"/>
         <location line="+600"/>
@@ -5319,7 +5334,7 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
         <translation type="unfinished">Bereit</translation>
     </message>
     <message>
-        <location line="-3253"/>
+        <location line="-3265"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
@@ -5340,17 +5355,17 @@ Sein Fehler ist nicht geschätzt: Es wurde einmal gemessen, nicht verfeinert.</t
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2893"/>
+        <location line="+2905"/>
         <source>None</source>
         <translation type="unfinished">Keine</translation>
     </message>
     <message>
-        <location line="-2887"/>
+        <location line="-2899"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
     <message>
-        <location line="+397"/>
+        <location line="+409"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (wiederhergestellt)</translation>
     </message>
@@ -6270,12 +6285,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">ideal</translation>
     </message>
     <message>
-        <location line="-3611"/>
+        <location line="-3623"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">Es konnte nicht ermittelt werden.</translation>
     </message>
     <message>
-        <location line="+3624"/>
+        <location line="+3636"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">Masseeigenschaften werden bereits gemessen</translation>
     </message>
@@ -6451,7 +6466,7 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Neuaufbau abgebrochen: das Modell ist wie vor der letzten Änderung.</translation>
     </message>
     <message>
-        <location line="-3269"/>
+        <location line="-3281"/>
         <source>0 selected</source>
         <translation>0 ausgewählt</translation>
     </message>
@@ -6565,12 +6580,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     <message>
         <location line="+0"/>
         <location line="+7"/>
-        <location line="+448"/>
+        <location line="+454"/>
         <source>Radius:</source>
         <translation type="unfinished">Radius:</translation>
     </message>
     <message>
-        <location line="-455"/>
+        <location line="-461"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">Höhe:</translation>
@@ -6757,30 +6772,30 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     </message>
     <message>
         <location line="+15"/>
-        <location line="+120"/>
+        <location line="+123"/>
         <source>Draw a closed profile first</source>
         <translation type="unfinished">Zeichnen Sie zuerst ein geschlossenes Profil</translation>
     </message>
     <message>
-        <location line="-99"/>
-        <location line="+46"/>
+        <location line="-102"/>
+        <location line="+49"/>
         <source>Extrude</source>
         <translation type="unfinished">Extrusion</translation>
     </message>
     <message>
-        <location line="-45"/>
-        <location line="+195"/>
+        <location line="-48"/>
+        <location line="+201"/>
         <source>Distance:</source>
         <translation type="unfinished">Abstand:</translation>
     </message>
     <message>
-        <location line="-194"/>
-        <location line="+475"/>
+        <location line="-200"/>
+        <location line="+481"/>
         <source>Goes:</source>
         <translation type="unfinished">Ausdehnung:</translation>
     </message>
     <message>
-        <location line="-474"/>
+        <location line="-480"/>
         <source>To the distance</source>
         <translation type="unfinished">Bis zum Abstand</translation>
     </message>
@@ -6791,23 +6806,23 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+475"/>
+        <location line="+481"/>
         <source>Through all</source>
         <translation type="unfinished">Durch alles</translation>
     </message>
     <message>
-        <location line="-474"/>
+        <location line="-480"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">Durch alles, beidseitig</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+474"/>
+        <location line="+480"/>
         <source>Up to a face</source>
         <translation type="unfinished">Bis zu einer Fläche</translation>
     </message>
     <message>
-        <location line="-470"/>
+        <location line="-476"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(keine ebene Fläche des Teils ist parallel zur Skizze)</translation>
     </message>
@@ -6818,12 +6833,12 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     </message>
     <message>
         <location line="+1"/>
-        <location line="+314"/>
+        <location line="+320"/>
         <source>Direction:</source>
         <translation type="unfinished">Richtung:</translation>
     </message>
     <message>
-        <location line="-313"/>
+        <location line="-319"/>
         <source>Out of the sketch</source>
         <translation type="unfinished">Aus der Skizze heraus</translation>
     </message>
@@ -6838,7 +6853,7 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Extrusion nicht hinzugefügt: keine ebene Fläche des Teils ist parallel zur Skizze</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+20"/>
         <source>Extrude failed: %1</source>
         <translation type="unfinished">Extrusion fehlgeschlagen: %1</translation>
     </message>
@@ -6895,18 +6910,18 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
     </message>
     <message>
         <location line="+21"/>
-        <location line="+27"/>
+        <location line="+30"/>
         <source>Revolve</source>
         <translation type="unfinished">Rotation</translation>
     </message>
     <message>
-        <location line="-26"/>
-        <location line="+144"/>
+        <location line="-29"/>
+        <location line="+147"/>
         <source>Angle:</source>
         <translation type="unfinished">Winkel:</translation>
     </message>
     <message>
-        <location line="-140"/>
+        <location line="-143"/>
         <source>Axis:</source>
         <translation type="unfinished">Achse:</translation>
     </message>
@@ -6921,7 +6936,7 @@ Ideal (auf den gekrümmten Flächen, die die Facetten annähern):
         <translation type="unfinished">Horizontale Achse der Skizze (X)</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+18"/>
         <source>Revolve failed: %1</source>
         <translation type="unfinished">Rotation fehlgeschlagen: %1</translation>
     </message>

@@ -2028,7 +2028,7 @@ Details are in the log:
         <translation type="unfinished">%1 は図面シートに対して使用します: 図面シートを開くか、部品から作成してください</translation>
     </message>
     <message>
-        <location line="+174"/>
+        <location line="+236"/>
         <source>Dimensions whose edges the part no longer has are not drawn: %1</source>
         <translation type="unfinished">部品に存在しなくなったエッジの寸法は表示されません: %1</translation>
     </message>
@@ -2071,7 +2071,7 @@ Details are in the log:
         <translation type="unfinished">開けませんでした</translation>
     </message>
     <message>
-        <location line="+62"/>
+        <location line="+61"/>
         <source>Could not read again</source>
         <translation type="unfinished">再読み込みできませんでした</translation>
     </message>
@@ -2157,13 +2157,13 @@ Details are in the log:
         <location line="+125"/>
         <location line="+128"/>
         <location line="+120"/>
-        <location line="+333"/>
+        <location line="+335"/>
         <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="-558"/>
+        <location line="-560"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">この用紙にはすべてのビューが収まりません: 収まらないビューは用紙の横に配置されます</translation>
     </message>
@@ -2188,12 +2188,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+11"/>
-        <location line="+757"/>
+        <location line="+759"/>
         <source>Add Geometric Tolerance</source>
         <translation type="unfinished">幾何公差の追加</translation>
     </message>
     <message>
-        <location line="-735"/>
+        <location line="-737"/>
         <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
         <translation type="unfinished">%1: シートにデータム %2 がありません。先にデータム形体の追加でエッジに設定してください</translation>
     </message>
@@ -2209,18 +2209,18 @@ Details are in the log:
     </message>
     <message>
         <location line="+12"/>
-        <location line="+768"/>
+        <location line="+770"/>
         <source>Add Datum Feature</source>
         <translation type="unfinished">データム形体の追加</translation>
     </message>
     <message>
-        <location line="-748"/>
-        <location line="+760"/>
+        <location line="-750"/>
+        <location line="+762"/>
         <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
         <translation type="unfinished">%1: 「%2」はデータム文字ではありません。大文字 1～2 文字で、I、O、Q は使えません</translation>
     </message>
     <message>
-        <location line="-753"/>
+        <location line="-755"/>
         <source>%1: the sheet has datum %2 already</source>
         <translation type="unfinished">%1: シートにはすでにデータム %2 があります</translation>
     </message>
@@ -2231,12 +2231,12 @@ Details are in the log:
     </message>
     <message>
         <location line="+13"/>
-        <location line="+627"/>
+        <location line="+629"/>
         <source>Hole Callout</source>
         <translation type="unfinished">穴の注記</translation>
     </message>
     <message>
-        <location line="-605"/>
+        <location line="-607"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: そのエッジは穴 (穴フィーチャー) のものではありません</translation>
     </message>
@@ -2252,17 +2252,17 @@ Details are in the log:
     </message>
     <message>
         <location line="+7"/>
-        <location line="+292"/>
+        <location line="+294"/>
         <source>Scale:</source>
         <translation type="unfinished">尺度:</translation>
     </message>
     <message>
-        <location line="-279"/>
+        <location line="-281"/>
         <source>At this scale not every view has room on the sheet: those without are beside it</source>
         <translation type="unfinished">この尺度ではシートにすべてのビューが収まりません: 収まらないビューはシートの横に配置されます</translation>
     </message>
     <message>
-        <location line="+127"/>
+        <location line="+129"/>
         <source>%1: placed where there was room; Move View moves it</source>
         <translation type="unfinished">%1: 空いている場所に配置しました。「ビューの移動」で移動できます</translation>
     </message>
@@ -2375,8 +2375,8 @@ Details are in the log:
         <translation type="unfinished">%1: 円内にビューの要素がありません</translation>
     </message>
     <message>
-        <location line="-798"/>
-        <location line="+819"/>
+        <location line="-800"/>
+        <location line="+821"/>
         <source>Move View</source>
         <translation type="unfinished">ビューの移動</translation>
     </message>
@@ -2396,14 +2396,14 @@ Details are in the log:
         <translation type="unfinished">ビューがある図面上ではありません</translation>
     </message>
     <message>
-        <location line="-827"/>
-        <location line="+870"/>
+        <location line="-829"/>
+        <location line="+872"/>
         <source>Remove View</source>
         <translation type="unfinished">ビューの削除</translation>
     </message>
     <message>
-        <location line="-854"/>
-        <location line="+859"/>
+        <location line="-856"/>
+        <location line="+861"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: シートには少なくとも 1 つのビューが必要です</translation>
     </message>
@@ -2414,12 +2414,12 @@ Details are in the log:
         <translation type="unfinished">ビュー:</translation>
     </message>
     <message>
-        <location line="-1082"/>
+        <location line="-1084"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: このビューから作成されたビューも削除されました (%2)</translation>
     </message>
     <message>
-        <location line="+891"/>
+        <location line="+893"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">ビューのエッジをクリックしてください (完了したら Esc)</translation>
     </message>
@@ -2434,20 +2434,20 @@ Details are in the log:
         <translation type="unfinished">そこにはエッジがありません</translation>
     </message>
     <message>
-        <location line="-871"/>
-        <location line="+886"/>
+        <location line="-873"/>
+        <location line="+888"/>
         <source>Add Dimension</source>
         <translation type="unfinished">寸法の追加</translation>
     </message>
     <message>
-        <location line="-799"/>
-        <location line="+925"/>
+        <location line="-801"/>
+        <location line="+927"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">寸法の削除</translation>
     </message>
     <message>
-        <location line="-1002"/>
+        <location line="-1004"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: そのエッジには既に寸法があります。「寸法の削除」で削除できます</translation>
     </message>
@@ -2464,13 +2464,13 @@ Details are in the log:
     <message>
         <location line="+17"/>
         <location line="+28"/>
-        <location line="+910"/>
+        <location line="+912"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: そのエッジには寸法がありません</translation>
     </message>
     <message>
-        <location line="-1036"/>
-        <location line="+1044"/>
+        <location line="-1038"/>
+        <location line="+1046"/>
         <source>View Properties</source>
         <translation type="unfinished">ビューのプロパティ</translation>
     </message>
@@ -2635,8 +2635,8 @@ Details are in the log:
         <translation type="unfinished">部品から更新</translation>
     </message>
     <message>
-        <location line="-731"/>
-        <location line="+740"/>
+        <location line="-733"/>
+        <location line="+742"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">図面を再作成できませんでした: %1</translation>
     </message>
@@ -4960,7 +4960,22 @@ begin building your part.</source>
         <translation type="unfinished">展開図</translation>
     </message>
     <message>
-        <location line="+1068"/>
+        <location line="+495"/>
+        <source>Shown from facets</source>
+        <translation type="unfinished">ファセットから表示</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Exact form not checked</source>
+        <translation type="unfinished">厳密形状は未検証</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Exact form disagrees with its facets</source>
+        <translation type="unfinished">厳密形状がファセットと一致しません</translation>
+    </message>
+    <message>
+        <location line="+581"/>
         <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">サポートされているすべてのファイル (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD 図面 (*.hcad);;Horizon 部品 (*.hzpart);;Horizon アセンブリ (*.hzasm);;Horizon 図面シート (*.hzdwg);;DXF ファイル (*.dxf);;DWG ファイル (*.dwg);;すべてのファイル (*)</translation>
     </message>
@@ -5054,7 +5069,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 誤差は推定されていません: 細分化せず一度だけ測定しました。</translation>
     </message>
     <message>
-        <location line="-2715"/>
+        <location line="-2727"/>
         <source>Radial</source>
         <translation type="unfinished">半径</translation>
     </message>
@@ -5285,7 +5300,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <location line="+97"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1083"/>
+        <location line="+1095"/>
         <location line="+502"/>
         <location line="+977"/>
         <location line="+600"/>
@@ -5294,7 +5309,7 @@ Its error is not estimated: it was measured once, not refined.</source>
         <translation type="unfinished">準備完了</translation>
     </message>
     <message>
-        <location line="-3253"/>
+        <location line="-3265"/>
         <source>Cancel</source>
         <translation type="unfinished">キャンセル</translation>
     </message>
@@ -5315,17 +5330,17 @@ Its error is not estimated: it was measured once, not refined.</source>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2893"/>
+        <location line="+2905"/>
         <source>None</source>
         <translation type="unfinished">なし</translation>
     </message>
     <message>
-        <location line="-2887"/>
+        <location line="-2899"/>
         <source>%1 selected</source>
         <translation>%1 個選択</translation>
     </message>
     <message>
-        <location line="+397"/>
+        <location line="+409"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (復元)</translation>
     </message>
@@ -6240,12 +6255,12 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">理想形状</translation>
     </message>
     <message>
-        <location line="-3611"/>
+        <location line="-3623"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">計算できませんでした。</translation>
     </message>
     <message>
-        <location line="+3624"/>
+        <location line="+3636"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">質量特性は既に計測中です</translation>
     </message>
@@ -6421,7 +6436,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">再構築をキャンセルしました: モデルは直前の変更前の状態です。</translation>
     </message>
     <message>
-        <location line="-3269"/>
+        <location line="-3281"/>
         <source>0 selected</source>
         <translation>0 個選択</translation>
     </message>
@@ -6535,12 +6550,12 @@ Ideal (on the curved surfaces the facets approximate):
     <message>
         <location line="+0"/>
         <location line="+7"/>
-        <location line="+448"/>
+        <location line="+454"/>
         <source>Radius:</source>
         <translation type="unfinished">半径:</translation>
     </message>
     <message>
-        <location line="-455"/>
+        <location line="-461"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">高さ:</translation>
@@ -6727,30 +6742,30 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+15"/>
-        <location line="+120"/>
+        <location line="+123"/>
         <source>Draw a closed profile first</source>
         <translation type="unfinished">先に閉じたプロファイルを描いてください</translation>
     </message>
     <message>
-        <location line="-99"/>
-        <location line="+46"/>
+        <location line="-102"/>
+        <location line="+49"/>
         <source>Extrude</source>
         <translation type="unfinished">押し出し</translation>
     </message>
     <message>
-        <location line="-45"/>
-        <location line="+195"/>
+        <location line="-48"/>
+        <location line="+201"/>
         <source>Distance:</source>
         <translation type="unfinished">距離:</translation>
     </message>
     <message>
-        <location line="-194"/>
-        <location line="+475"/>
+        <location line="-200"/>
+        <location line="+481"/>
         <source>Goes:</source>
         <translation type="unfinished">終了条件:</translation>
     </message>
     <message>
-        <location line="-474"/>
+        <location line="-480"/>
         <source>To the distance</source>
         <translation type="unfinished">指定距離</translation>
     </message>
@@ -6761,23 +6776,23 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+475"/>
+        <location line="+481"/>
         <source>Through all</source>
         <translation type="unfinished">全貫通</translation>
     </message>
     <message>
-        <location line="-474"/>
+        <location line="-480"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">全貫通 (両側)</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+474"/>
+        <location line="+480"/>
         <source>Up to a face</source>
         <translation type="unfinished">指定面まで</translation>
     </message>
     <message>
-        <location line="-470"/>
+        <location line="-476"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(スケッチに平行な部品の平面がありません)</translation>
     </message>
@@ -6788,12 +6803,12 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+1"/>
-        <location line="+314"/>
+        <location line="+320"/>
         <source>Direction:</source>
         <translation type="unfinished">方向:</translation>
     </message>
     <message>
-        <location line="-313"/>
+        <location line="-319"/>
         <source>Out of the sketch</source>
         <translation type="unfinished">スケッチの法線方向</translation>
     </message>
@@ -6808,7 +6823,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">押し出しは追加されませんでした: スケッチに平行な部品の平面がありません</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+20"/>
         <source>Extrude failed: %1</source>
         <translation type="unfinished">押し出しに失敗しました: %1</translation>
     </message>
@@ -6865,18 +6880,18 @@ Ideal (on the curved surfaces the facets approximate):
     </message>
     <message>
         <location line="+21"/>
-        <location line="+27"/>
+        <location line="+30"/>
         <source>Revolve</source>
         <translation type="unfinished">回転</translation>
     </message>
     <message>
-        <location line="-26"/>
-        <location line="+144"/>
+        <location line="-29"/>
+        <location line="+147"/>
         <source>Angle:</source>
         <translation type="unfinished">角度:</translation>
     </message>
     <message>
-        <location line="-140"/>
+        <location line="-143"/>
         <source>Axis:</source>
         <translation type="unfinished">軸:</translation>
     </message>
@@ -6891,7 +6906,7 @@ Ideal (on the curved surfaces the facets approximate):
         <translation type="unfinished">スケッチの水平軸 (X)</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+18"/>
         <source>Revolve failed: %1</source>
         <translation type="unfinished">回転に失敗しました: %1</translation>
     </message>

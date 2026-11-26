@@ -1613,17 +1613,29 @@ void MainWindow::rebuildScene() {
     m_viewport->update();
 }
 
+QString MainWindow::exactNoteText(doc::ExactNoteKind kind) {
+    switch (kind) {
+        case doc::ExactNoteKind::ShownFromFacets:
+            return tr("Shown from facets");
+        case doc::ExactNoteKind::NotChecked:
+            return tr("Exact form not checked");
+        case doc::ExactNoteKind::Disagrees:
+            return tr("Exact form disagrees with its facets");
+        case doc::ExactNoteKind::None:
+            break;
+    }
+    return {};
+}
+
 void MainWindow::updateExactNote() {
-    const std::string note = m_assembly ? std::string() : m_document->exactNote();
-    if (note.empty()) {
+    const doc::ExactNoteKind kind =
+        m_assembly ? doc::ExactNoteKind::None : m_document->exactNoteKind();
+    if (kind == doc::ExactNoteKind::None) {
         m_exactNote->hide();
         return;
     }
-    // "shown from facets: <why>": its first words, as a sentence begins.
-    QString first = QString::fromStdString(note.substr(0, note.find(": ")));
-    if (!first.isEmpty()) first[0] = first[0].toUpper();
-    m_exactNote->setText(first);
-    m_exactNote->setToolTip(QString::fromStdString(note));
+    m_exactNote->setText(exactNoteText(kind));
+    m_exactNote->setToolTip(QString::fromStdString(m_document->exactNote()));
     m_exactNote->show();
 }
 

@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QTemporaryDir>
+#include <QTranslator>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -20,6 +21,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -144,6 +146,49 @@ void expectOnTheCylinder(const hz::geo::MeshData& mesh, double within) {
         ASSERT_TRUE(onSide || onCap) << "(" << p.x << ", " << p.y << ", " << p.z << ")";
     }
 }
+
+/// A part saved before stage 2 whose body's STEP is not exact, written into @p dir: a box with one
+/// corner raised off its planes, kept as it was. Opened, it is shown from its facets.
+QString writeOldPart(const QTemporaryDir& dir) {
+    auto box = hz::model::PrimitiveFactory::makeBox(7.0, 11.0, 13.0);
+    std::string text = hz::io::StepFormat::toString({box.get()});
+    const std::string corner = "(7.,11.,13.)";
+    EXPECT_NE(text.find(corner), std::string::npos);
+    if (text.find(corner) == std::string::npos) return {};
+    text.replace(text.find(corner), corner.size(), "(7.,11.,13.2)");
+    hz::io::StepReadOptions keep;
+    keep.keepWhenNotExact = true;
+    auto solids = hz::io::StepFormat::fromString(text, nullptr, nullptr, keep);
+    EXPECT_EQ(solids.size(), 1u) << hz::io::StepFormat::lastError();
+    if (solids.size() != 1) return {};
+    Document old;
+    old.setType(hz::doc::DocumentType::Part);
+    old.featureTree().addFeature(std::make_unique<hz::doc::ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(solids.front())), "creo.step"));
+    const QString path = dir.filePath(QStringLiteral("old.hzpart"));
+    std::string error;
+    EXPECT_TRUE(hz::io::NativeFormat::save(path.toStdString(), old, &error)) << error;
+    return path;
+}
+
+/// A catalog that translates the status line's words for each kind of exact note, each into
+/// itself in guillemets, and nothing else: what reaches the window through tr() shows so.
+class MarkingCatalog : public QTranslator {
+public:
+    static QString marked(const char* english) {
+        return QStringLiteral("\u00AB%1\u00BB").arg(QString::fromLatin1(english));
+    }
+    bool isEmpty() const override { return false; }
+    QString translate(const char* /*context*/, const char* sourceText,
+                      const char* /*disambiguation*/, int /*n*/) const override {
+        for (const char* english : kWords) {
+            if (std::string_view(sourceText) == english) return marked(english);
+        }
+        return {};
+    }
+    static constexpr const char* kWords[] = {"Shown from facets", "Exact form not checked",
+                                             "Exact form disagrees with its facets"};
+};
 
 }  // namespace
 
@@ -426,26 +471,13 @@ TEST(ExactDisplay, AFeatureAfterTheImportDrawsTheFacetsAndItsUndoTheExactFaces) 
 
 // A part whose imports would give it a counterpart, but cannot, says why on the status line; the
 // note goes with its part. Here a part saved before stage 2 whose body's STEP is not exact.
+// (Re-baselined for Task 10: the note is a kind and its detail; the tooltip is the detail, which
+// no longer begins with the kind's words.)
 TEST(ExactDisplay, WhyAPartIsShownFromFacetsIsOnTheStatusLine) {
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());
-    // A box with one corner raised off its planes: no exact form, kept as it was.
-    auto box = hz::model::PrimitiveFactory::makeBox(7.0, 11.0, 13.0);
-    std::string text = hz::io::StepFormat::toString({box.get()});
-    const std::string corner = "(7.,11.,13.)";
-    ASSERT_NE(text.find(corner), std::string::npos);
-    text.replace(text.find(corner), corner.size(), "(7.,11.,13.2)");
-    hz::io::StepReadOptions keep;
-    keep.keepWhenNotExact = true;
-    auto solids = hz::io::StepFormat::fromString(text, nullptr, nullptr, keep);
-    ASSERT_EQ(solids.size(), 1u) << hz::io::StepFormat::lastError();
-    Document old;
-    old.setType(hz::doc::DocumentType::Part);
-    old.featureTree().addFeature(std::make_unique<hz::doc::ImportedBodyFeature>(
-        std::shared_ptr<const hz::topo::Solid>(std::move(solids.front())), "creo.step"));
-    const QString oldPath = dir.filePath(QStringLiteral("old.hzpart"));
-    std::string error;
-    ASSERT_TRUE(hz::io::NativeFormat::save(oldPath.toStdString(), old, &error)) << error;
+    const QString oldPath = writeOldPart(dir);
+    ASSERT_FALSE(oldPath.isEmpty());
 
     MainWindow w;
     auto* note = w.findChild<QLabel*>(QStringLiteral("exactNote"));
@@ -455,7 +487,9 @@ TEST(ExactDisplay, WhyAPartIsShownFromFacetsIsOnTheStatusLine) {
     settle(w);
     ASSERT_NE(w.activeDocument()->solid(), nullptr);
     const std::string why = w.activeDocument()->exactNote();
-    ASSERT_EQ(why.rfind("shown from facets: ", 0), 0u) << why;
+    ASSERT_EQ(w.activeDocument()->exactNoteKind(), hz::doc::ExactNoteKind::ShownFromFacets) << why;
+    ASSERT_FALSE(why.empty());
+    EXPECT_EQ(why.find("shown from facets"), std::string::npos) << "the detail alone: " << why;
     EXPECT_FALSE(note->isHidden());
     EXPECT_EQ(note->text(), QStringLiteral("Shown from facets"));
     EXPECT_EQ(note->toolTip().toStdString(), why);
@@ -466,4 +500,43 @@ TEST(ExactDisplay, WhyAPartIsShownFromFacetsIsOnTheStatusLine) {
     importInto(w, step);
     ASSERT_NE(w.activeDocument()->exactSolid(), nullptr) << w.activeDocument()->exactNote();
     EXPECT_TRUE(note->isHidden());
+}
+
+// Task 10: the status line says the kind of note in the window's own words, through tr(), for
+// each kind; nothing it shows is English built in the document. Its tooltip is the note's detail,
+// the technical reason. Under a catalog that translates those words, the line shows them
+// translated.
+TEST(ExactDisplay, TheNoteIsTranslatable) {
+    MarkingCatalog catalog;
+    ASSERT_TRUE(QCoreApplication::installTranslator(&catalog));
+    struct Uninstalled {
+        QTranslator* catalog;
+        ~Uninstalled() { QCoreApplication::removeTranslator(catalog); }
+    } const uninstalled{&catalog};
+
+    using hz::doc::ExactNoteKind;
+    const std::vector<std::pair<ExactNoteKind, const char*>> kinds = {
+        {ExactNoteKind::ShownFromFacets, "Shown from facets"},
+        {ExactNoteKind::NotChecked, "Exact form not checked"},
+        {ExactNoteKind::Disagrees, "Exact form disagrees with its facets"},
+    };
+    for (const auto& kind : kinds) {
+        EXPECT_EQ(MainWindow::exactNoteText(kind.first), MarkingCatalog::marked(kind.second))
+            << kind.second;
+    }
+    EXPECT_TRUE(MainWindow::exactNoteText(ExactNoteKind::None).isEmpty());
+
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString oldPath = writeOldPart(dir);
+    ASSERT_FALSE(oldPath.isEmpty());
+    MainWindow w;
+    auto* note = w.findChild<QLabel*>(QStringLiteral("exactNote"));
+    ASSERT_NE(note, nullptr);
+    ASSERT_TRUE(w.openPath(oldPath));
+    settle(w);
+    ASSERT_EQ(w.activeDocument()->exactNoteKind(), ExactNoteKind::ShownFromFacets);
+    EXPECT_FALSE(note->isHidden());
+    EXPECT_EQ(note->text(), MarkingCatalog::marked("Shown from facets"));
+    EXPECT_EQ(note->toolTip().toStdString(), w.activeDocument()->exactNote());
 }

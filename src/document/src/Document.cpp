@@ -149,6 +149,10 @@ std::shared_ptr<const geo::MeshData> Document::exactOrFacetedMesh() const {
     return std::make_shared<const geo::MeshData>(model::SolidTessellator::tessellate(*m_solid));
 }
 
+ExactNoteKind Document::exactNoteKind() const {
+    return m_exact ? m_exact->noteKind : ExactNoteKind::None;
+}
+
 const std::string& Document::exactNote() const {
     static const std::string kNone;
     return m_exact ? m_exact->note : kNone;

@@ -30,9 +30,12 @@ struct BodyMesh {
     /// Its mesh at that tolerance, as ExactCounterpart::mesh is made, its faces' names as they
     /// are. Null with a note.
     std::shared_ptr<const geo::MeshData> mesh;
-    /// Why it cannot be shown exactly, as ExactCounterpart::note says it for the body alone: its
-    /// mesh, its volume (facing inward), its facets' (or that no facet of the part is named after
-    /// a face of it), or the two disagreeing. Empty with a mesh.
+    /// Why it cannot be shown exactly, as ExactCounterpart's note says it for the body alone: its
+    /// kind, and its detail: its mesh or its volume (ShownFromFacets: a face that cannot be
+    /// meshed, or facing inward), its facets' (NotChecked: they cannot be measured, or no facet of
+    /// the part is named after a face of it), or the two disagreeing (Disagrees). None and empty
+    /// with a mesh.
+    ExactNoteKind kind = ExactNoteKind::None;
     std::string note;
 };
 
@@ -52,11 +55,13 @@ struct ExactCounterpart {
     /// (model::SolidTessellator::displayTolerance of all its bodies). A part of one body has that
     /// body's mesh itself. Set with `solid`, null with it.
     std::shared_ptr<const geo::MeshData> mesh;
-    /// Why there is no `solid`: "shown from facets: <why>" ("the exact form faces inward (it
-    /// encloses <volume>)" among them), "exact form not checked: <why>" or "exact form disagrees
-    /// with its facets: <exact> vs <faceted>". Each body is held to its facets on its own, and
-    /// says its own (BodyMesh::note); the part's is theirs, in order, joined by "; ", and after
-    /// them a facet that names no body's face. Empty with a solid.
+    /// Why there is no `solid`, as a kind (Document::exactNoteKind), which the window words, and
+    /// its detail, the technical reason: ShownFromFacets "<why>" ("the exact form faces inward (it
+    /// encloses <volume>)" among them), NotChecked "<why>" or Disagrees "<exact> vs <faceted>".
+    /// Each body is held to its facets on its own, and says its own (BodyMesh::kind and note);
+    /// the part's detail is theirs, in order, joined by "; ", and after them a facet that names no
+    /// body's face, and its kind the first of theirs. None and empty with a solid.
+    ExactNoteKind noteKind = ExactNoteKind::None;
     std::string note;
     /// What it was made from: each body's definition (its fingerprint: its counts, and each face's
     /// surface and each edge's curve, bit for bit) and its faces' and edges' names, in order; for

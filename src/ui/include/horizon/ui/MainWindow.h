@@ -117,6 +117,11 @@ public:
 
     /// How many times a model has been tessellated for the view (for tests).
     std::uint64_t tessellations() const { return m_tessellations; }
+
+    /// The status line's words for a part's @p kind of exact note
+    /// (Document::exactNoteKind), translated; empty for None. The note's
+    /// detail, the technical reason, is its tooltip.
+    static QString exactNoteText(doc::ExactNoteKind kind);
     static constexpr qint64 kWorkerImportBytes =
         ExchangeCommands::kWorkerImportBytes;  ///< and a file opened
     /// Mass Properties measures the ideal on a worker, in Auto, for a part
@@ -432,8 +437,9 @@ private:
     void activateTabDocument();
     void rebuildScene() override;
     /// The status line's note of why the part in front has no exact
-    /// counterpart where its imports would give it one (Document::exactNote),
-    /// shown while it has one.
+    /// counterpart where its bodies would give it one: its kind in the
+    /// window's words (exactNoteText), its detail as the tooltip
+    /// (Document::exactNote), shown while it has one.
     void updateExactNote();
     void refreshAllPanels();
     void updateWindowTitle();

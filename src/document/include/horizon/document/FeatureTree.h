@@ -31,6 +31,17 @@ namespace hz::doc {
 class Sketch;
 struct ExactCounterpart;
 
+/// Why a part whose bodies would give it an exact counterpart is shown from its facets instead,
+/// as a kind (Document::exactNoteKind): the window says it in its own words, translated, and the
+/// note's detail (Document::exactNote), the technical reason, beside them. The document builds no
+/// words for it.
+enum class ExactNoteKind {
+    None,             ///< no note: the part is shown exactly, or has no counterpart by design
+    ShownFromFacets,  ///< its exact form could not be had, meshed or measured
+    NotChecked,       ///< its exact form could not be held to its facets (exactNote says why)
+    Disagrees,        ///< its exact form measures otherwise than its facets
+};
+
 /// Upper bounds on feature resolution and repetition. Feature parameters come
 /// from files as well as from the UI, and every step or instance costs memory
 /// and time in every later operation, so past these a value is clamped rather

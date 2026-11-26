@@ -99,7 +99,7 @@ struct StepSummary {
     /// What reopenedVolume measured is exact, every face on its exact surface:
     /// the part read back has its exact counterpart, and is not measured as its
     /// faceted copy. With why it has none where it does not
-    /// (Document::exactNote()).
+    /// (Document::exactNoteKind() and exactNote(): "<kind>: <detail>").
     bool reopenedExact = false;
     std::string reopenedExactNote;
     std::string reopenError;
@@ -111,7 +111,7 @@ struct StepSummary {
     std::string exportPath;
     /// What was sent out is exact, every face on its exact surface: the part's
     /// exact counterpart, not its faceted copy. With why the part has none
-    /// where it does not (Document::exactNote()).
+    /// where it does not (Document::exactNoteKind() and exactNote(): "<kind>: <detail>").
     bool exportedExact = false;
     std::string exactNote;
     std::optional<std::size_t> reimportedBodies;

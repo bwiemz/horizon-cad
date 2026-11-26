@@ -235,7 +235,8 @@ std::string figure(double value) {
 /// What holding a counterpart to its facets found.
 struct Check {
     bool cancelled = false;
-    std::string note;  ///< empty when they agree
+    ExactNoteKind kind = ExactNoteKind::None;  ///< None when they agree
+    std::string note;                          ///< its detail; empty when they agree
 };
 
 /// A face's outer loop's corners, at most one for each of @p limit's edges.
@@ -324,8 +325,8 @@ Check holdToFacets(const topo::Solid& exact, double exactVolume,
         if (!face->alive) continue;
         const auto found = faces.find(model::logicalFace(face->topoId.tag()));
         if (found == faces.end()) {
-            check.note =
-                "exact form not checked: its facet " + face->topoId.tag() + " names no face of it";
+            check.kind = ExactNoteKind::NotChecked;
+            check.note = "its facet " + face->topoId.tag() + " names no face of it";
             return check;
         }
         const auto corners = cornersOf(*face, limit);
@@ -365,16 +366,17 @@ Check holdToFacets(const topo::Solid& exact, double exactVolume,
             double d = std::max(off(centre), off(longestMiddle));
             for (const math::Vec3& corner : corners) d = std::max(d, off(corner));
             if (!std::isfinite(d)) {
-                check.note = "exact form not checked: its facet " + face->topoId.tag() +
-                             " could not be measured against it";
+                check.kind = ExactNoteKind::NotChecked;
+                check.note =
+                    "its facet " + face->topoId.tag() + " could not be measured against it";
                 return check;
             }
             bound += 2.0 * areaOf(corners) * d;
             if (bound >= difference) return check;
         }
     }
-    check.note = "exact form disagrees with its facets: " + figure(exactVolume) + " vs " +
-                 figure(facetedVolume);
+    check.kind = ExactNoteKind::Disagrees;
+    check.note = figure(exactVolume) + " vs " + figure(facetedVolume);
     return check;
 }
 
@@ -382,7 +384,8 @@ Check holdToFacets(const topo::Solid& exact, double exactVolume,
 struct Facets {
     std::vector<std::vector<const topo::Face*>> faces;  ///< by body
     std::vector<std::vector<bool>> shells;  ///< by body: which shells of the faceted copy are its
-    std::string note;  ///< a facet that names no body's face, as holdToFacets would say it
+    /// A facet that names no body's face, as holdToFacets would say it (ExactNoteKind::NotChecked).
+    std::string note;
 };
 
 /// The faces and shells of @p faceted, the part's faceted copy, that each of @p bodies, its exact
@@ -414,9 +417,7 @@ Facets facetsOf(const topo::Solid& faceted, const std::vector<std::unique_ptr<to
         const std::string& name = (*first)->topoId.tag();
         const auto found = bodyOf.find(model::logicalFace(name));
         if (found == bodyOf.end()) {
-            if (out.note.empty()) {
-                out.note = "exact form not checked: its facet " + name + " names no face of it";
-            }
+            if (out.note.empty()) out.note = "its facet " + name + " names no face of it";
             continue;
         }
         const std::size_t body = found->second;
@@ -433,6 +434,7 @@ Facets facetsOf(const topo::Solid& faceted, const std::vector<std::unique_ptr<to
 struct Meshed {
     bool cancelled = false;
     std::shared_ptr<const geo::MeshData> mesh;  ///< null with a note
+    ExactNoteKind kind = ExactNoteKind::None;
     std::string note;
 };
 
@@ -453,7 +455,8 @@ Meshed meshBody(const topo::Solid& body, double tolerance, const topo::Solid& fa
         return meshed;
     }
     if (!problem.empty()) {
-        meshed.note = "shown from facets: " + problem;
+        meshed.kind = ExactNoteKind::ShownFromFacets;
+        meshed.note = problem;
         return meshed;
     }
     const auto volumes =
@@ -463,8 +466,8 @@ Meshed meshBody(const topo::Solid& body, double tolerance, const topo::Solid& fa
         return meshed;
     }
     if (volumes.empty()) {
-        meshed.note = "shown from facets: " +
-                      (problem.empty() ? std::string("its exact form encloses nothing") : problem);
+        meshed.kind = ExactNoteKind::ShownFromFacets;
+        meshed.note = problem.empty() ? std::string("its exact form encloses nothing") : problem;
         return meshed;
     }
     // Signed as its faces face: a body faces out as its own faces say (Pattern::append copies an
@@ -479,14 +482,15 @@ Meshed meshBody(const topo::Solid& body, double tolerance, const topo::Solid& fa
         exactError += shell.error;
     }
     if (exactVolume < 0.0 && -exactVolume > exactError) {
-        meshed.note = "shown from facets: the exact form faces inward (it encloses " +
-                      figure(exactVolume) + ")";
+        meshed.kind = ExactNoteKind::ShownFromFacets;
+        meshed.note = "the exact form faces inward (it encloses " + figure(exactVolume) + ")";
         return meshed;
     }
     exactVolume = std::abs(exactVolume);
     if (facets.empty()) {
         // Nothing to hold it to: no face of the faceted copy is named after one of its own.
-        meshed.note = "exact form not checked: no facet of the part names a face of it";
+        meshed.kind = ExactNoteKind::NotChecked;
+        meshed.note = "no facet of the part names a face of it";
         return meshed;
     }
     // Its facets' volume: the shells its faces make, by their polygons, their sign normalised
@@ -503,7 +507,8 @@ Meshed meshBody(const topo::Solid& body, double tolerance, const topo::Solid& fa
     }
     facetedVolume = std::abs(facetedVolume);
     if (facetShells.empty() || !(facetedVolume > 0.0) || !std::isfinite(facetedVolume)) {
-        meshed.note = "exact form not checked: its facets cannot be measured (" +
+        meshed.kind = ExactNoteKind::NotChecked;
+        meshed.note = "its facets cannot be measured (" +
                       (problem.empty() ? std::string("they enclose nothing") : problem) + ")";
         return meshed;
     }
@@ -513,7 +518,8 @@ Meshed meshBody(const topo::Solid& body, double tolerance, const topo::Solid& fa
         meshed.cancelled = true;
         return meshed;
     }
-    if (!check.note.empty()) {
+    if (check.kind != ExactNoteKind::None) {
+        meshed.kind = check.kind;
         meshed.note = check.note;
         return meshed;
     }
@@ -562,7 +568,8 @@ geo::MeshData joined(const std::vector<BodyMesh>& bodies) {
 std::shared_ptr<const ExactCounterpart> unmade(const char* why) noexcept {
     try {
         auto failed = std::make_shared<ExactCounterpart>();
-        failed->note = std::string("shown from facets: ") + why;
+        failed->noteKind = ExactNoteKind::ShownFromFacets;
+        failed->note = why;
         return failed;
     } catch (...) {
         return nullptr;
@@ -597,10 +604,9 @@ void ExactFollower::follow(const Feature& feature, bool first,
             // from what it says, it is kept for reuse as one made from a body.
             m_bodies.clear();
             m_noteKept = true;
-            m_note = "shown from facets: " +
-                     (imported->note().empty()
-                          ? "imported body \"" + imported->source() + "\" has no exact form"
-                          : imported->note());
+            m_note = imported->note().empty()
+                         ? "imported body \"" + imported->source() + "\" has no exact form"
+                         : imported->note();
             return;
         }
         // Kept as it is, a body of its own: meshed on its own, then joined to the others (make()).
@@ -609,7 +615,7 @@ void ExactFollower::follow(const Feature& feature, bool first,
         m_open = false;
         m_bodies.clear();
         m_noteKept = false;
-        m_note = "shown from facets: its exact form could not be gathered";
+        m_note = "its exact form could not be gathered";
     }
 }
 
@@ -622,6 +628,7 @@ std::shared_ptr<const ExactCounterpart> ExactFollower::make(
         auto made = std::make_shared<ExactCounterpart>();
         std::vector<std::uint64_t> definitions;  // each body's, in order
         if (!m_note.empty()) {
+            made->noteKind = ExactNoteKind::ShownFromFacets;
             made->note = m_note;
             if (m_noteKept) made->madeFrom = "note: " + m_note;
         } else {
@@ -679,6 +686,7 @@ std::shared_ptr<const ExactCounterpart> ExactFollower::make(
             }
             const BodyMesh& kept = *found->second;
             body.mesh = kept.mesh;
+            body.kind = kept.kind;
             body.note = kept.note;
         }
         // The others meshed now, each on its own, and each held to its own facets.
@@ -697,21 +705,26 @@ std::shared_ptr<const ExactCounterpart> ExactFollower::make(
             }
             ++made->bodiesMeshed;
             made->bodies[k].mesh = std::move(meshed.mesh);
+            made->bodies[k].kind = meshed.kind;
             made->bodies[k].note = std::move(meshed.note);
         }
         // Shown exactly only while every body is, and every facet is a body's; else each body's
-        // note, in order, and then the facet's.
+        // note, in order, and then the facet's, of the kind the first says.
+        ExactNoteKind kind = ExactNoteKind::None;
         std::string notes;
         for (const BodyMesh& body : made->bodies) {
-            if (body.note.empty()) continue;
+            if (body.kind == ExactNoteKind::None) continue;
+            if (kind == ExactNoteKind::None) kind = body.kind;
             if (!notes.empty()) notes += "; ";
             notes += body.note;
         }
         if (!facets.note.empty()) {
+            if (kind == ExactNoteKind::None) kind = ExactNoteKind::NotChecked;
             if (!notes.empty()) notes += "; ";
             notes += facets.note;
         }
-        if (!notes.empty()) {
+        if (kind != ExactNoteKind::None) {
+            made->noteKind = kind;
             made->note = std::move(notes);
             return made;
         }
