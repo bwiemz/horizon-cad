@@ -19,6 +19,43 @@ work, not "post-1.0".
 
 ## Unreleased — Toward a beta
 
+- **Exact kernel, stage 3: exact construction.** A part built of
+  primitives, extrusions, revolves and sheet-metal base flanges, each a new
+  body, is exact: a cylinder is three faces, not 34, and a part's volume,
+  area and centre of mass are integrated over its true faces (the pin
+  sample is 270π, 848.230016, where its facets gave 842.790191). It is
+  drawn, measured (the mass dialog, scripts, the AI's and MCP's tools) and
+  exported (STEP, STL, glTF, and each part of an assembly's STEP) from those
+  faces, and its drawing sheets are drawn from them, smooth to 0.01 mm on
+  paper. A hole's tool is exact too, but a hole is a cut: a Join, Cut or
+  Intersect, a hole, and every other feature (fillet, chamfer, shell, draft,
+  pattern, mirror) work on the part's faceted copy, and the part is faceted
+  from the first of them on, until later stages. That copy is built and
+  named as before, so those features give the results they gave; `segments`
+  and `chordTolerance` now shape only it. A sheet's faces are named after
+  its sketch, the same in every build, so a hole on a flange no longer fails
+  on the next rebuild. Parts, assemblies and 2D drawings are now saved as
+  format 32, which earlier versions refuse to open. A part of format 31 or
+  older is rebuilt exactly when it opens, and the report of what was not
+  read says what changed: a feature drawn with fewer than 12 sides a
+  turn ("drawn as a 6-sided prism before; round now"), and every stored
+  reference that can no longer mean what it meant, which is left out, never
+  guessed (one kept by a feature named the old ways, one into a sheet's
+  faces, and a piece, region, chord or seam of an extrusion or revolve of
+  several loops). A part that loses a reference is saved elsewhere, or over
+  its file only once you confirm. An old assembly's mates that find nothing,
+  and a sheet's dimensions that find no edge, are reported when they open;
+  a dimension on a line inside a curved face of a view is reported lost
+  after the sheet's scale changes, never measured on another line. Refused,
+  where earlier versions built them from facets, each "could not be built
+  exactly" with why: a revolve whose profile has an arc reaching the axis
+  between its ends (a horn torus), a revolve of regions on both sides of
+  the axis, and a sketch whose curves miss each other by more than a
+  thousandth of the part's size (parts under about a micrometre). A revolve
+  whose face comes to a cusp at a pole is built, and shown and measured
+  from its facets, saying so. The spec lists each with its reason. Design:
+  [the exact kernel spec](docs/superpowers/specs/2026-11-24-exact-kernel-design.md).
+
 - **Exact kernel, stage 2: exact exchange.** A STEP import keeps its faces
   exact: typed planes, cylinders, cones, spheres and tori, and the file's own
   B-splines, each edge's tolerance grown to the gaps the file gives it, which
@@ -32,9 +69,12 @@ work, not "post-1.0".
   this stage among them (below). Part files saved before this stage still
   open, each imported body as it was. Parts are drawn lighter: an exact
   part's faces at 0.5 rad between neighbouring triangles, and a part above
-  about 667 across to 1.5e-4 of its diagonal rather than 0.1. Part-file
-  caches and glTF exports shrink with them (the Moon buggy's cache from
-  26.5 MB to 3.9 MB); STL keeps 0.1. Design:
+  about 793 across to about 1.5e-4 of its diagonal rather than 0.1. That
+  tolerance moves in steps a quarter octave apart (0.1 × 2^(k/4)), the step
+  at or below 1.5e-4 of the diagonal, so a small edit to a large part keeps
+  it, and keeps the part's meshes. Part-file caches and glTF exports shrink
+  with them (the Moon buggy's cache from 26.5 MB to 4.0 MB); STL keeps 0.1.
+  Design:
   [the exact kernel spec](docs/superpowers/specs/2026-11-24-exact-kernel-design.md).
 
 - **STEP that Horizon CAD exported before the exact kernel may not import.**
