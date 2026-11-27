@@ -348,7 +348,9 @@ a user can see. Each is several PRs.
      over all 64 bodies): ProE's 14 bodies take 0.95 s (master 0.18 s),
      IronCAD's 0.39 s (0.06 s). Only irnas (×1.97) and the emblem, which
      fails at once, are within 2×. 60 of the 64 bodies reopen exact, and four
-     as they were (below).
+     as they were (below). Stage 3 could not reproduce master's side of this
+     comparison: with its harness, `7b381819` reads ProE's 14 bodies in
+     1.75 s, not 0.18 s (stage 3's budgets, below).
    - No ctest takes over 60 s; the slowest takes 35 s.
 
    *Regression list,* 2 corpus solids and 12 shape classes: what master read
@@ -527,12 +529,21 @@ a user can see. Each is several PRs.
      move it (329,324 at 0.5 rad, 329,436 with no angle limit at all). The
      owner chose 0.5 rad between neighbouring triangles (26 chords a turn
      where the angle sets them, where 0.35 made 36) and a chord tolerance of
-     max(0.1, 1.5e-4 × the part's diagonal)
-     (`SolidTessellator::displayTolerance`). Triangles and cache, stage 2 →
-     now: the Moon buggy 329,308 → 49,462 (26.5 → 3.9 MB); IronCAD (1263
-     across) 41,242 → 20,892 (3.9 → 2.1 MB); ProE (1235 across) 76,238 →
-     43,430 (7.9 → 4.7 MB); irnas (112 across, at 0.1 still) 10,000 → 5,568
-     (1.3 → 0.8 MB).
+     max(0.1, 1.5e-4 × the part's diagonal). Triangles and cache, stage 2 →
+     the owner's tolerance: the Moon buggy 329,308 → 49,462 (26.5 → 3.9 MB);
+     IronCAD (1263 across) 41,242 → 20,892 (3.9 → 2.1 MB); ProE (1235
+     across) 76,238 → 43,430 (7.9 → 4.7 MB); irnas (112 across, at 0.1
+     still) 10,000 → 5,568 (1.3 → 0.8 MB).
+
+     Stage 3 steps the part-relative tolerance down to a quarter octave
+     (stage 3's Ruling 29; `SolidTessellator::displayTolerance`): 0.1 ×
+     2^(k/4), the largest such step not above 1.5e-4 of the diagonal, so
+     never coarser than the owner's and at most 19% finer. A part up to
+     about 793 across is drawn to 0.1, and a small edit to a larger one
+     keeps its tolerance, and so its bodies' meshes. Measured in stage 3,
+     the owner's → stepped: the Moon buggy 49,460 → 50,452 triangles
+     (3.95 → 4.02 MB), IronCAD 20,878 → 23,844 (2.07 → 2.34 MB), ProE
+     43,430 → 46,410 (4.71 → 5.10 MB); irnas, at 0.1, 5,608 either way.
 
    For the owner to check, the decisions stage 2's plan made:
    - *The exact counterpart, not exact parts everywhere.* Operations and every
@@ -556,12 +567,370 @@ a user can see. Each is several PRs.
    without facets. *Seen:* exact volumes, a cylinder of three faces, smooth
    silhouettes in drawings at any zoom. (A part with a Boolean is still
    faceted after it until stage 5.)
-   - *Regression list (in progress):*
-     - *A horn torus, and a spindle near one:* its cusp pole is refused by the
-       read point at once, with why; cusp meshing is carried to a later stage
-       (Ruling 9). A pole whose surface opens from it at under 30 degrees and
-       wider further out (an apple's, R/r above about 0.866) is the cusp; a
-       cone's apex and a lemon's tip still mesh.
+   *Landed:* primitives, extrusions, revolves, holes' tools and sheet-metal
+   flanges build exact faces, each named as master named its facets, less
+   the facet (`<feature>/side`, `side:<entity>`), and their edges by
+   `nameEdgesLogically`. A cylinder is three faces. A cone runs to its apex
+   and a sphere to its poles with no degenerate edge: a loop jumps along the
+   pole in (u, v). A torus is typed; one whose tube reaches its axis is
+   refused, as master refused it (Ruling 2). An extrusion's side is a plane
+   for a line, a cylinder for an arc swept square to its sketch, and a NURBS
+   extrusion otherwise; a hole in its profile is an inner loop of each cap,
+   not a Boolean, and each region is a shell of its own. A revolve turns
+   each curve of its profile into a plane, a cylinder, a cone, a sphere, a
+   torus or a NURBS surface of revolution. A hole's tool is its half-section
+   turned exactly. A sheet's bend is two cylinders, its inside at the bend
+   radius and its outside a thickness further, and the sheet's faces are
+   named after its sketch, the same in every build, where master's changed
+   with each (Ruling 28). Volumes are their closed forms to 1e-9: the pin
+   sample is 270π (848.230016), where its 32 facets enclosed 842.790191. The
+   rulings named in this entry are stage 3's
+   (`docs/superpowers/notes/2026-11-26-exact-kernel-stage3-rulings.md`).
+
+   A part is exact while every body in it came, as a new body, from one of
+   these features or from an exact import. The build carries that exact part
+   beside the faceted one, as stage 2 carried an import's counterpart. The
+   display, the mass dialog (on a worker, under the rebuild mode's rule),
+   scripts, the AI and MCP mass tools, and STEP, STL and glTF export read
+   it, and an assembly's STEP export builds copies of its parts to write
+   each exact. A Join, a Cut, an Intersect, a hole (which is a cut) and every
+   feature not yet converted drop it: the part is faceted from the first of
+   them on, until stages 5 and 6 convert them.
+
+   Every operation not yet converted reads the faceted copy, as in stage 2.
+   Where master built a feature's body by one construction (a primitive, an
+   extrusion or revolve of one loop, a hole's tool, a sheet's flange), the
+   copy is master's own construction, named by master's own pass (Rulings 44
+   and 45). Its faces, loops and edges are in master's order, so an
+   operation after it numbers pieces and chords as master did and gives
+   master's result. An extrusion or revolve of several loops is cut from its
+   exact solid instead (`facetExact`, Ruling 23). `segments` and
+   `chordTolerance` shape only the copy now. A picked or hovered face of an
+   exact part is highlighted from the copy's facets, masked by the face as
+   drawn, so a coarse part shows the facets a click picks (owner A1, Ruling
+   39).
+
+   The display meshes each body on its own and keeps its mesh while the body
+   and the part's tolerance hold: a primitive added to the IronCAD impeller
+   and edited rebuilds in 248 ms, where it took 1006 ms (Debug). A large
+   part's display tolerance steps by quarter octaves (Ruling 29; stage 2's
+   settled display, above), so a small edit keeps it.
+
+   A sheet of an exact part is drawn from a copy cut from its exact faces at
+   0.01 mm on paper for the sheet's views, details aside (Ruling 35). A
+   cylinder's outline on a 1:1 sheet lies within 0.01 mm of its silhouette,
+   where a 45-sided faceted part's lay 0.12 mm inside. Projected edges are
+   still chords, and a detail's sag up to 0.01 mm times its scale over its
+   view's.
+   A line inside a face of the copy is named for the cut it is part of
+   (`<face>/line:<n>/of:<m>/at:<k>`, Rulings 31, 34 and 36), so a dimension
+   on one is reported lost after a change of scale, or an edit that cuts its
+   face again, and is never measured on another line. An assembly's sheet
+   draws its components' faceted parts.
+
+   Old parts are migrated when they open, and written as format 32. Every
+   feature is named Stable. A stored reference that can no longer mean what
+   it meant is left out and listed, never guessed: one that a feature named
+   the old ways made, one into a sheet's faces (Ruling 28), and a piece,
+   region, chord or seam of an extrusion or revolve of several loops (Ruling
+   23). Facet and chord references are kept as written, since the copy
+   numbers facets and chords as master did, and mapping a chord to its edge
+   would widen it (Ruling 40). A part that loses a reference is read in
+   part: Save becomes Save As, and saving over the original asks first
+   (owner A2). A feature drawn with fewer than 12 chords a turn is listed as
+   approximated ("drawn as a 6-sided prism before; round now"), which does
+   not stop a save. A migrated part whose first exact build fails says so,
+   and is read in part. An old assembly's mates that find nothing are
+   reported when it opens, and so are a sheet's dimensions that find no
+   edge ("Not drawn:"), which do not make the sheet read in part (Ruling
+   41). The cached mesh of a part of format 31 or older, master's facets, is
+   not read.
+
+   The kernel under them: typed surfaces and curves convert to exact NURBS
+   (`toNurbs`), so a non-similar copy stays exact and a mirrored cone
+   validates. A ball of two meridian faces reads exact. A cusp at a pole is
+   refused at once, saying why, where the read point failed after about
+   12 s (Ruling 9). A pcurve's gap is measured at its peak, not only at its
+   samples, so a tilted band rim reads exact, to the peak of its gap. A
+   B-spline face's mass budget grows with its spans, to a ceiling of 1e8
+   evaluations (Ruling 10). A torus band whose loops wind round both ways
+   gets one seam and is cut in two across it, so a STEP round trip writes it
+   as two faces (Ruling 12). Rims the old writer wrote the wrong way round
+   are turned, so Onshape's and Solid Edge's old-part bodies open exact
+   (Solid Edge's volume 684.683542908, OpenCASCADE's 684.683543).
+
+   Stage 2's carries closed here: non-similar transforms and the mirrored
+   cone; the bridge for faces with no carrier (`facetExact`, which refuses a
+   face with no surface rather than outline it); voids beside a body built
+   exactly (once a shell has no carriers, `Pattern::bodyShells` measures
+   every shell whose faces are all exact by its exact mass); the ball of two
+   meridian faces; bands winding round both ways; gaps that peak between
+   samples; exact STEP export of assemblies; the callers (a script's mass,
+   an interference's reason, the exact note's kind translated, exact mass
+   off the GUI thread, STL and glTF from the kept mesh where it was made at
+   their tolerance); a dense face's mass budget and the thin part's floor,
+   which the dialog now states; and the speed of opening old parts (below).
+   Settled otherwise:
+   - mixed solids go to stage 5 (below): a part is exact only while every
+     body is, so this stage makes none;
+   - the mesh cache is per body, not per face, since the read point samples
+     an edge from both its faces, so a face's mesh depends on its
+     neighbours';
+   - the other pole cases go to stage 5 (below): only imports make them
+     now;
+   - a body whose exact form fails still opens from its facets, with a
+     note, after migration: two of the corpus's 64 old-part bodies.
+
+   Stage 1's stage-3 carries are closed too. Poles and apexes have no
+   degenerate edges; a loop's jump along a pole is laid round it the way the
+   face's sense says; `sameUv` reads the arc along a pole, not its chord;
+   and a recognised sphere's frame z is moot, since construction sets every
+   frame and imports are never recognised (goal 7). Exact primitives name
+   their edges. Vertices are not named, since nothing refers to one; one is
+   named the day something does.
+
+   *Budgets,* each measured when the work it times landed: the build and its
+   reference built alike, timed with one harness on the same machine, back
+   to back, best of 3, twice.
+   - Rebuilding the bracket sample at 32 facets a turn, in Release (the
+     budget above): 4.273 and 4.256 ms, against master's 4.409 and 4.375
+     at `6e822892` (×0.969 and ×0.973). The exact builds add about 0.02 ms
+     on the extrusion and 0.003 ms on a hole's tool, and the sewer's
+     speed-ups make master's own construction faster than at `6e822892`.
+     The budget's second half, faster than master at 1e-4 relative
+     accuracy, waits for stages 5 and 6: the bracket is faceted after its
+     fillet on both builds.
+   - Reading the STEP Horizon wrote before stage 2 (stage 2's budget 2) is
+     within 2× of `7b381819` for all 18 of the corpus's parts, in Debug.
+     After construction landed, the two nearest the limit read at ×1.98
+     (KiCad) and ×1.94 (Fusion).
+   - Opening an old part. Its bodies' reads, summed over the corpus's 18
+     old parts in Debug, take 2.23 s, where `7b381819` takes 8.20 s (×0.27)
+     and stage 2's reader 2.77 s; every part's bodies read faster than on
+     `7b381819`. ProE's 14 bodies take 0.69 s (`7b381819` 1.75 s, stage 2
+     0.95 s), over the plan's 0.5 s target, and accepted (Ruling 15): they
+     take 107 ms in Release, where the owner asked for well under 0.25 s,
+     and what is left is the measuring itself (pcurves 42% of the read, the
+     validator 18%, parsing 16%, the shell-sign check 12%).
+   - Stage 2's comparison of this open with master's read ("up to ×6.4
+     master's read per part"; ProE "master 0.18 s") does not reproduce.
+     With the same texts and one harness, `7b381819` reads ProE's 14 bodies
+     in 1.75 s, and stage 2's reader read every one of the 18 parts' bodies
+     faster than `7b381819` did (2.77 s against 8.20 s in all). Master's
+     side of that comparison measured something else.
+   - The validator's quadratic checks, in Release (owner A4, Ruling 14):
+     at most 2.6% of an old part's open and 1.6% of an import, 6.4–6.9% of
+     an old faceted export (ProE 86 of 1357 ms). None passes 10% or 100 ms,
+     so no prefilter.
+   - A sheet of a corpus body and a primitive, drawn from the exact faces in
+     Debug, within max(1 s, 3× master's sheet) (Ruling 30): the Thor base
+     656 ms, the Shapr3D lid 611 ms, the Inventor hinge 983 ms. The IronCAD
+     impeller's takes 1.72 s, over, and is accepted (Ruling 33): each
+     B-spline face is cut by its largest curvature throughout.
+   - No ctest takes over 60 s; the slowest takes 37 s. 3,109 tests pass; 20
+     skip here, 10 that need a GL context and 10 a comma-decimal locale.
+   - *Regression list,* 3 shape classes refused and 1 shown from its facets:
+     what master built and stage 3 does not, each with its reason (anti-goal
+     "failures nobody tracks"). Master is the commit just before stage 3,
+     `6e822892` (Ruling 42). The regression set, run on both:
+     - every test: master's 2,897 against the branch's 3,109. None of
+       master's was dropped or changed for a refusal. The four it no longer
+       has were renamed for what stage 3 now builds or migrates;
+     - the samples. Each builds as on master. The bracket and the plate are
+       faceted after their fillet and holes: master's counts, volumes and
+       names. The pin is exact: 3 faces and 848.230016 (270π), where its 32
+       facets enclose 842.790191. The assembly is placed by its mates, and
+       the sheet is drawn as master drew it;
+     - the STEP corpus: the manifest is unchanged, and every file reads as
+       it says;
+     - `test_AdversarialModels`: unchanged, 9 of 9. Its kinds of operand (a
+       box, an L-shaped extrude), built as features, are exact, with master's
+       faceted copies;
+     - the beta tasks in `docs/BETA.md`, scripted through the document API,
+       come out as on master:
+       - task 1: a part with a hole and a fillet, edited, measured, saved and
+         reopened;
+       - task 2: two of it in an assembly with a coincident and a concentric
+         mate, saved, reopened, and following the part when it changes;
+       - task 3: a sheet with a length, saved, reopened and written as DXF.
+
+       What a person does with the mouse, and opening the exports in other
+       programs, was not scripted;
+     - 124 probe models, built as a user builds them: primitives, extrudes,
+       revolves, holes, sheet metal, and operations after them.
+
+     Each refused or shown class is pinned in
+     `tests/document/test_RegressionSet.cpp`, or in the test named with it.
+
+     Refused. The feature fails with `could not be built exactly: <why>`, and
+     master's construction never runs in its place (decision 1b):
+     - *A revolve whose profile has an arc reaching the axis between its
+       ends:* a circle touching the axis (a horn torus), an arc through the
+       axis, or a ring whose inner side bulges to it. The reason is "an arc
+       of the profile about (x, y) reaches the axis between its ends". Its
+       surface pinches to a cusp on the axis inside the face. The exact faces
+       have no topology for a pole there, and the read point would not mesh
+       it. A torus primitive whose tube reaches its axis is refused as master
+       refused it (Ruling 2). Carried to stage 6 with cusp meshing (Ruling
+       9; below).
+     - *A revolve whose profile has regions on both sides of the axis.* The
+       reason is "its regions lie on both sides of the axis". Master turned
+       each region and joined them with its Boolean. Two regions turned from
+       both sides of one axis give shells that meet or overlap, which needs
+       an exact Boolean: stage 5.
+     - *A sketch whose curves meet within the profile's join tolerance
+       (1e-6) but miss by more than a thousandth of the part's size,*
+       extruded or revolved. Only parts under about a micrometre are
+       affected; the test is a slot 0.3 µm across missing by 0.9 nm. The
+       reason is "the profile's curves miss each other at (x, y) by g, more
+       than its exact form can take at its size". The limit is the tolerance
+       model's (`topo::ToleranceGrowth`), the same for imports. No stage moves
+       it (`ExactConstruction.AFailedExactExtrudeFailsTheFeature`).
+
+     Built, but shown and measured from its facets as master showed it, with
+     a "shown from facets" note:
+     - *A revolve whose face comes to a cusp at a pole:* its surface opens
+       from the pole at under 30 degrees and wider further out. Two shapes
+       do this: an apple (the part of a circle outside the axis it crosses,
+       R/r above about 0.866), and an arc meeting the axis tangentially at
+       its end. The read point refuses the pole at once (Ruling 9), and the
+       exact counterpart is dropped with why. A cone's apex and a lemon's
+       tip still mesh. Carried to stage 6 with cusp meshing.
+
+     *The faceted copy is master's own construction* wherever master's
+     construction of the body was one construction (Ruling 44). That holds for
+     primitives, a single loop's extrude and revolve, a hole's tool and a
+     sheet's flange. Its faces, loops and edges are in master's order and
+     winding. Its names are master's own, with no copy cut for them (Ruling
+     45). The exceptions: an exact seam's chords are named after the seam
+     (Ruling 18), and a sheet's names come from its sketch (Ruling 28). So
+     what an operation after it numbers by the order it meets them is
+     master's:
+     - the pieces of a face a Boolean splits (`<face>/piece:<n>`);
+     - the chords and seams that a Boolean, shell or pattern names again.
+
+     The regression set found that the bridge, stored otherwise, moved those
+     numbers silently. A sheet's length saved on master on a drilled box's
+     `…/edge:bottom/piece:0|front` read 6 where master read 14. The set's
+     downstream cases are now named as master named them at the same places
+     (`DownstreamNumbering`, tables recorded at `6e822892`): a join, a cut, a
+     shell, a pattern, an extrude with arcs, a revolve and a hole. So are
+     the bracket and plate samples, sheet and all. A partial turn's flat
+     faces are master's quads again, and every bend is cut into its
+     `bendSegments` chords, whatever its angle.
+
+     Changed, not refused. An old part says so when it opens, wherever a
+     reference of its depends on one of the first two (Rulings 23, 28 and
+     40):
+     - *Faceted copies that are not master's:* an extrude or revolve of
+       several loops (holes, islands, regions). It is its exact solid's
+       facets, numbered its own way (Ruling 23), not master's Boolean of its
+       loops. A plate with two holes has 70 faces (master 72). A washer
+       turned 90° encloses 80.399405, the facets' own volume; master's
+       Boolean cut 5e-5 of it more (80.395175). Its pieces, regions, chords
+       and seams, and the pieces an operation after it makes, are reported
+       when an old part opens. A facet named by master's Boolean may stand
+       for a part of the bridge's facet of that name, the same facet uncut.
+     - *Names that are new:* sheet metal's (Ruling 28).
+     - *Seam chords, renamed and not reported.* An exact seam (a sphere's
+       meridian, a torus's circles) takes master's name for its first chord,
+       and its chords are `<that name>/chord:<k>` (Ruling 18). A grid line
+       inside a curved face keeps master's name, unless that name is now an
+       exact seam's; then it is numbered past the names taken (Ruling 45).
+       The migration does not report these: nothing refers to a smooth grid
+       line, since fillets and chamfers work between flat faces (Ruling 18).
+     - A part file of format 31 or older has its cached mesh, master's
+       facets, left unread: an assembly reads and builds the part instead.
+     - A primitive whose dimensions master refused is refused as before,
+       now in the exact build's words ("could not be built exactly: these
+       dimensions do not make a solid ...").
+
+     Imports keep stage 2's list (above), now shorter: two of the corpus's 64
+     old-part bodies open from their facets, the Moon buggy's body 15 ("its
+     seam would cross where its surface closes") and the emblem. Onshape's
+     and Solid Edge's bands now open exact.
+
+   Carried to later stages:
+   - *Stage 4:* closed-form intersections read the surfaces' scale and
+     axialScale (stage 1's, unchanged).
+   - *Stage 5, mixed solids:* a part is exact only while every body is, so
+     no part yet holds exact and faceted bodies together. Stage 5's
+     Booleans make the first, and stage 1's orientation of the faceted
+     subset goes with them.
+   - *Stage 5, the faceted copy:* every operation not yet converted reads
+     it, so `segments` and `chordTolerance` still shape it until Booleans
+     are exact, and an operation after a converted feature gives master's
+     result. `BooleanOp`'s result depends on where a face's loop starts
+     (`FragmentMerge`'s `removeCollinear`;
+     `LargeProfileTest.AFinelyFacetedPrismsCapMeetsItsSidesCornerToCorner`),
+     and the exact extrusion starts its caps' loops where master's prism did
+     for it (`mastersCapStarts`). Both go when Booleans are exact.
+   - *Stage 5, revolves across the axis:* a profile with regions on both
+     sides of the axis is refused (above). Its two shells meet or overlap,
+     which needs an exact Boolean.
+   - *Stage 5, poles:* only imports make these now, and stage 5's Booleans
+     make them too (a ball cut flat, a ball drilled at its pole). On import,
+     a face whose region holds a pole or wraps its surface, a hole near a
+     pole, a pole-to-pole seam on a B-spline ball and spread pole rows are
+     left out (stage 2's list). The read point knows poles on a face's outer
+     loop only: a hole touching a pole, a zero-length edge along one, or an
+     edge a hair past an apex fails to mesh, saying so.
+   - *Stage 5, transforms:* patterns and mirror, which stage 5 makes exact,
+     copy exact solids by `Pattern::transformed`. Its old overload drops a
+     non-similar copy's exact form without saying why (Ruling 4), and a
+     sheared sphere's copy drops it with why, since its pole-to-pole seam
+     needs a pcurve that knows poles (Ruling 5). Nothing in the application
+     transforms an exact solid non-similarly yet.
+   - *Stage 5, the validator:* its O(n²) self-intersection and hole checks
+     (at most 2.6% of an old part's open in Release, above), a crossing at a
+     sample point, near-concentric loops, and a global orientation check, as
+     stage 1 carried them. The exact part's volume check against its facets
+     stands in for the last.
+   - *Stage 5, assembly sheets:* they draw their components' faceted parts,
+     since a component is built without its exact part (Ruling 20). Most
+     parts are faceted after a hole or a cut until stage 5, so few
+     components have an exact part to draw before it.
+   - *Stage 6, the spindle torus and cusps:* `Torus::invert` takes every
+     torus for a ring (stage 1's; the screw stays on stage 2's list). A
+     typed `Torus` is made only where its ring is wider than its tube: a
+     revolve's apple, an arc of a circle that crosses the axis, is a NURBS
+     surface of revolution, and a torus primitive whose tube reaches its
+     axis is refused as master refused it, so nothing new reaches that
+     limit. An apple is only the part of its circle outside the axis; the
+     lemon inside is a second face, added when it is wanted (Ruling 2). The
+     read point refuses a cusp at a pole at once (Ruling 9): one opening
+     under 30 degrees, a threshold not scaled with the chord tolerance; it
+     looks for poles on the outer loop only. With it go the horn revolve
+     refused above and the apple and tangent arc shown from facets. Fillets
+     make spindle tori, so these go with stage 6's blends.
+   - *Stage 6, fillets' segments:* a fillet of fewer than 4 arc segments is
+     not reported at migration (spec: Migration), since fillets are not
+     exact yet and their segments still shape them.
+   - *Stage 7, drawings:* a sheet is drawn from a faceted copy cut at
+     0.01 mm on paper, so projected edges are chords, not arcs and
+     ellipses, in views and in a sheet's DXF export. A detail view is drawn
+     from its view's copy (Ruling 35). A B-spline face is cut by its largest
+     curvature throughout (Ruling 33). The grid's cap of 400 chords a
+     direction, a bound against hostile files, leaves an imported rim over
+     about 325 mm in radius sagging a little more than 0.01 mm on a 1:1
+     sheet (Ruling 32). Stage 7 deletes the faceted bridge, so drawings
+     project exact edges by then.
+   - *Stage 7, picks:* picks, mates, sketches on a face and the AI's face
+     lists read the faceted copy. An exact part's face highlight is drawn
+     from it (owner A1) in a part's tab only; an assembly's component is
+     highlighted from its exact mesh. They read exact faces when the faceted
+     copy goes.
+   - *Stage 7, coarse display:* `segments` and `chordTolerance` shape only
+     the faceted copy. A feature's coarse display (spec: Migration) waits
+     until the bridge's last user goes.
+   - *Stage 7, naming:* the Positional and FromGeometry builders stay for
+     the code and tests that set those schemes, and master's Stable pass
+     names the faceted copy beside the exact solid's own naming (Ruling 45).
+     Both go with the faceted kernel.
+   - *Stage 7, platforms:* the facet grid in `trimmedFacets` can differ by a
+     column between platforms (stage 2's), and goes with the bridge. An edge
+     on stage 2's Ruling 66 rounding bound stays as stage 2 left it: no
+     corpus file sits there.
 4. **Exact intersection.** The intersection library, analytic pairs first,
    then NURBS marching with tangencies and overlaps; property tests and
    fuzzing. Library only.

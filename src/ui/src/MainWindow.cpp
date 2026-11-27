@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <iterator>
@@ -48,6 +49,7 @@
 #include <numbers>
 #include <optional>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "horizon/Revision.h"
@@ -67,6 +69,7 @@
 #include "horizon/fileio/StlExport.h"
 #include "horizon/fileio/SvgExport.h"
 #include "horizon/geometry/curves/NurbsCurve.h"
+#include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/BoundingBox.h"
 #include "horizon/math/Expression.h"
 #include "horizon/math/Mat4.h"
@@ -175,6 +178,23 @@ void nameCloseButton(QTabBar& bar, int index) {
             button->setAccessibleName(MainWindow::tr("Close %1").arg(bar.tabText(index)));
         }
     }
+}
+
+/// Whether every body of @p part is an import (ImportedBodyFeature), its features that make no
+/// body (datums) aside: its exact counterpart's faces are as its files gave them, not built.
+bool madeOfImportsAlone(const doc::Document& part) {
+    const doc::FeatureTree& tree = part.featureTree();
+    const int rollback = tree.rollbackIndex();
+    bool any = false;
+    for (std::size_t i = 0; i < tree.featureCount(); ++i) {
+        if (rollback >= 0 && static_cast<int>(i) > rollback) break;
+        const doc::Feature* feature = tree.feature(i);
+        if (feature == nullptr || feature->isSuppressed()) continue;
+        if (dynamic_cast<const doc::DatumFeature*>(feature) != nullptr) continue;
+        if (dynamic_cast<const doc::ImportedBodyFeature*>(feature) == nullptr) return false;
+        any = true;
+    }
+    return any;
 }
 
 /// Mass Properties' word for an ideal that could not be measured: with why, where that is known.
@@ -1576,7 +1596,9 @@ void MainWindow::rebuildScene() {
         // GUI thread, would only fail again. Nor one a worker is building.
         const bool building = m_rebuildJob != nullptr && m_rebuildDocument == m_document;
         if (!m_document->solid() && m_document->needsBuild() && !building) {
+            const std::size_t before = m_document->leftOut().size();
             m_document->rebuildModel();
+            noteBuildLeftOut(*m_document, before);
         }
         if (m_document->solid()) {
             DocTab* tab = activeTab();
@@ -1613,17 +1635,33 @@ void MainWindow::rebuildScene() {
     m_viewport->update();
 }
 
+std::uint64_t MainWindow::tessellations() const {
+    return m_tessellations + (m_exchange ? m_exchange->tessellations() : 0);
+}
+
+QString MainWindow::exactNoteText(doc::ExactNoteKind kind) {
+    switch (kind) {
+        case doc::ExactNoteKind::ShownFromFacets:
+            return tr("Shown from facets");
+        case doc::ExactNoteKind::NotChecked:
+            return tr("Exact form not checked");
+        case doc::ExactNoteKind::Disagrees:
+            return tr("Exact form disagrees with its facets");
+        case doc::ExactNoteKind::None:
+            break;
+    }
+    return {};
+}
+
 void MainWindow::updateExactNote() {
-    const std::string note = m_assembly ? std::string() : m_document->exactNote();
-    if (note.empty()) {
+    const doc::ExactNoteKind kind =
+        m_assembly ? doc::ExactNoteKind::None : m_document->exactNoteKind();
+    if (kind == doc::ExactNoteKind::None) {
         m_exactNote->hide();
         return;
     }
-    // "shown from facets: <why>": its first words, as a sentence begins.
-    QString first = QString::fromStdString(note.substr(0, note.find(": ")));
-    if (!first.isEmpty()) first[0] = first[0].toUpper();
-    m_exactNote->setText(first);
-    m_exactNote->setToolTip(QString::fromStdString(note));
+    m_exactNote->setText(exactNoteText(kind));
+    m_exactNote->setToolTip(QString::fromStdString(m_document->exactNote()));
     m_exactNote->show();
 }
 
@@ -2242,8 +2280,12 @@ bool MainWindow::openPath(const QString& fileName) {
                 return true;
             }
         }
-        io::ImportReport report = m_lastLoadReport;
-        if (report.skipped.empty()) report.skipped = assembly->leftOut();
+        // What it left out, as it holds it: its read's, and an old one's mates that find
+        // nothing (DocumentManager::openAssembly). Not the loaders' last report: that is of the
+        // last part read to check those mates. An assembly's read approximates and converts
+        // nothing.
+        io::ImportReport report;
+        report.skipped = assembly->leftOut();
         const bool readInPart = assembly->readInPart();
         // Saved assemblies come back positioned by their mates: modified, if
         // that moved anything, so the placing can be saved.
@@ -2302,10 +2344,79 @@ void MainWindow::showOpened(std::shared_ptr<doc::Document> document, const QStri
         }
     }
     const bool readInPart = document->readInPart();
+    // A migrated part's first build, its first exact one, starts as its tab is added, and may
+    // leave out more (Document::applyBuild): what its reading left out is said with that, once
+    // the build is applied.
+    const bool awaitsBuild = document->firstBuildPending();
+    const std::shared_ptr<doc::Document> opened = document;
     addDocumentTab(std::move(document), nullptr,
                    tabTitleForPath(fileName.toStdString(), fallbackTitle));
-    showImportReport(QFileInfo(fileName).fileName(), report, readInPart);
+    DocTab* tab = nullptr;
+    for (DocTab& t : m_tabs) {
+        if (t.document == opened) tab = &t;
+    }
+    if (!awaitsBuild || tab == nullptr) {
+        showImportReport(QFileInfo(fileName).fileName(), report, readInPart);
+        RecentFiles::add(fileName);
+        return;
+    }
+    HeldReport said{QFileInfo(fileName).fileName(), std::move(report)};
+    // What a build applied as the tab was added (here, not on a worker) left out, after it.
+    std::optional<HeldReport>& held = tab->heldReport;
+    if (held) {
+        const std::vector<std::string>& built = held->report.skipped;
+        said.report.skipped.insert(said.report.skipped.end(), built.begin(), built.end());
+    }
+    held = std::move(said);
     RecentFiles::add(fileName);
+    showHeldReports();
+}
+
+void MainWindow::noteBuildLeftOut(const doc::Document& document, std::size_t before) {
+    const std::vector<std::string>& leftOut = document.leftOut();
+    if (leftOut.size() <= before) return;
+    for (DocTab& tab : m_tabs) {
+        if (tab.document.get() != &document || tab.assembly) continue;
+        const std::string& path = document.filePath();
+        std::optional<HeldReport>& held = tab.heldReport;
+        HeldReport said =
+            held ? std::move(*held)
+                 : HeldReport{path.empty() ? tab.title
+                                           : QFileInfo(QString::fromStdString(path)).fileName(),
+                              {}};
+        said.report.skipped.insert(said.report.skipped.end(),
+                                   leftOut.begin() + static_cast<std::ptrdiff_t>(before),
+                                   leftOut.end());
+        held = std::move(said);
+        refreshModifiedIndicators();  // " (incomplete)"
+        // Not here: a build is applied inside other work (a rebuild shown, a save).
+        QMetaObject::invokeMethod(this, &MainWindow::showHeldReports, Qt::QueuedConnection);
+        return;
+    }
+}
+
+bool MainWindow::reportsHeld() const {
+    return std::any_of(m_tabs.begin(), m_tabs.end(),
+                       [](const DocTab& tab) { return tab.heldReport.has_value(); });
+}
+
+void MainWindow::showHeldReports() {
+    for (DocTab& tab : m_tabs) {
+        std::optional<HeldReport>& held = tab.heldReport;
+        if (!held) continue;
+        // Its first build still to come while a build runs (its own, or one it waits for):
+        // said once that is applied (onRebuildFinished).
+        if (tab.document->firstBuildPending() && m_rebuildJob != nullptr) continue;
+        HeldReport said = std::move(*held);
+        held.reset();
+        const bool readInPart = tab.document->readInPart();
+        showImportReport(said.file, said.report, readInPart);
+        // The box's own event loop may have changed the tabs: the rest are said after it.
+        if (reportsHeld()) {
+            QMetaObject::invokeMethod(this, &MainWindow::showHeldReports, Qt::QueuedConnection);
+        }
+        return;
+    }
 }
 
 MainWindow::FileOpen MainWindow::readFile(const std::string& path, bool drawing,
@@ -2546,6 +2657,7 @@ bool MainWindow::saveActiveDocument() {
         return false;
     }
 
+    settleFirstBuild();
     // Nor over a DWG file, which Horizon CAD reads but does not write.
     const auto readFromDwg = [this] {
         return DwgImport::isDwg(QString::fromStdString(m_document->filePath()));
@@ -2579,7 +2691,11 @@ bool MainWindow::saveActiveDocument() {
         // Make sure parts carry a fresh tessellation cache for lightweight
         // assembly loading. A solid may be there and still be out of date:
         // while a rebuild runs on a worker, it is the part before the edit.
-        if (m_document->needsBuild()) m_document->rebuildModel();
+        if (m_document->needsBuild()) {
+            const std::size_t before = m_document->leftOut().size();
+            m_document->rebuildModel();
+            noteBuildLeftOut(*m_document, before);
+        }
         ok = io::NativeFormat::save(path, *m_document, &error);
     }
     if (ok) {
@@ -2625,7 +2741,18 @@ void MainWindow::onSaveFile() {
     saveActiveDocument();
 }
 
+void MainWindow::settleFirstBuild() {
+    if (m_assembly || !m_document->firstBuildPending()) return;
+    const std::size_t before = m_document->leftOut().size();
+    m_document->rebuildModel();
+    noteBuildLeftOut(*m_document, before);
+}
+
 void MainWindow::onSaveFileAs() {
+    // Before anything is decided of where it goes (a new file, the file it was read from asked
+    // about) or what it lacks is set aside: a build that finds it read in part, after them, made
+    // the decisions wrong, and was undone with them (owner A2).
+    settleFirstBuild();
     QString filter;
     const bool sheet = !m_assembly && m_drawings->isSheet(m_document.get());
     if (m_assembly) {
@@ -2747,16 +2874,28 @@ void MainWindow::showImportReport(const QString& file, const io::ImportReport& r
     for (const auto& item : report.approximated) {
         lines << tr("Approximated: %1").arg(QString::fromStdString(item));
     }
+    for (const auto& item : report.notDrawn) {
+        lines << tr("Not drawn: %1").arg(QString::fromStdString(item));
+    }
     for (const auto& item : converted) lines << tr("Converted: %1").arg(item);
     QMessageBox box(QMessageBox::Warning, tr("Not Everything Was Read"),
                     tr("\"%1\": %2").arg(file, QString::fromStdString(report.summary())),
                     QMessageBox::Ok, this);
-    box.setInformativeText(
-        notSavedOver
-            ? tr("So that \"%1\" keeps what the document lacks, the document is not saved over "
-                 "it: Save asks where to save it instead.")
-                  .arg(file)
-            : tr("What was left out is not in the document, and saving will not keep it."));
+    QStringList said;
+    if (notSavedOver) {
+        said << tr("So that \"%1\" keeps what the document lacks, the document is not saved over "
+                   "it: Save asks where to save it instead.")
+                    .arg(file);
+    } else if (!report.skipped.empty() || !report.approximated.empty()) {
+        said << tr("What was left out is not in the document, and saving will not keep it.");
+    }
+    // Kept by the sheet and its file (Ruling 41): no reason not to save over it.
+    if (!report.notDrawn.empty()) {
+        said << tr(
+            "What is not drawn is kept, and saving keeps it: it is drawn again should the "
+            "part have its edges again.");
+    }
+    box.setInformativeText(said.join(QLatin1Char(' ')));
     box.setDetailedText(lines.join(QLatin1Char('\n')));
     box.exec();
 }
@@ -2934,6 +3073,7 @@ bool MainWindow::replaceTabDocument(const std::shared_ptr<doc::Document>& old, F
     tab.meshBuild = 0;
     tab.lastBuildMs = kBuildTimeUnknown;
     tab.modelStale = fresh->needsBuild();
+    tab.heldReport.reset();  // the old document's; this one's reading is said below
 
     if (&tab == activeTab()) activateTabDocument();
     refreshModifiedIndicators();
@@ -3642,24 +3782,12 @@ void MainWindow::onMassProperties() {
     const QString& materialName = chosen.first;
     const std::optional<model::Material>& material = chosen.second;
     const model::Material* density = material ? &*material : nullptr;
-    // An imported part's exact counterpart is measured, integrated on its
-    // faces as read, once, with the integration's estimate of its error; any
-    // other part as modelled, and ideally below.
-    const topo::Solid* exact = m_document->exactSolid();
-    model::IdealMassProperties exactMeasure;
-    if (exact != nullptr) {
-        exactMeasure = model::MassPropertiesCalculator::computeIdeal(*exact, density);
-    }
-    const model::MassProperties modelled =
-        exact != nullptr ? exactMeasure.properties
-                         : model::MassPropertiesCalculator::compute(*solid, density);
-    if (!modelled.valid) {
-        statusBar()->showMessage(modelled.problem.empty()
+    const auto refused = [this](const model::MassProperties& props) {
+        statusBar()->showMessage(props.problem.empty()
                                      ? tr("The part's mass properties could not be worked out")
                                      : tr("The part's mass properties could not be worked out: %1")
-                                           .arg(QString::fromStdString(modelled.problem)));
-        return;
-    }
+                                           .arg(QString::fromStdString(props.problem)));
+    };
 
     const auto n = [](double v) { return QString::number(v, 'g', 7); };
     // In the document's unit (Phase 154). Superscripts by code point: the
@@ -3700,35 +3828,85 @@ void MainWindow::onMassProperties() {
             .arg(n(I.at(2, 1) * scale), n(I.at(2, 2) * scale));
     };
     const QString header =
-        weighed ? tr("%1: density %2 g/%3\n\n").arg(materialName, n(modelled.density / 1000.0), cm3)
-                : QString();
-    if (exact) {
+        weighed
+            ? tr("%1: density %2 g/%3\n\n").arg(materialName, n(material->density / 1000.0), cm3)
+            : QString();
+    // The part's exact counterpart (an import's bodies as read, a primitive's
+    // exact form) is measured, integrated on its exact faces, once, with the
+    // integration's estimate of its error; any other part as modelled, and
+    // ideally below.
+    if (const topo::Solid* exact = m_document->exactSolid()) {
         // Exact to what its file gives its edges, and said so (goal 6): how far
         // its edges were let stand off its faces, where that is past the
         // model's resolution, and the integration's estimate of its error,
-        // which counts them, where that is past a billionth.
+        // which counts them, where that is past a billionth or short of the
+        // tolerance asked for (its note says so). An import's faces are
+        // integrated as they were imported; a part built, or partly built, on
+        // its exact faces.
         double standOff = 0.0;
         for (const auto& edge : exact->edges()) {
             if (edge.alive) standOff = std::max(standOff, edge.tolerance);
         }
         const bool tolerant = standOff > topo::exactTolerance(*exact).linear;
-        const QString within =
-            QString::number(100.0 * exactMeasure.estimatedError, 'g', 2) + QLatin1Char('%');
-        QString said;
-        if (tolerant) {
-            said = tr("Exact to %1 %2, as its file gives its edges (integrated on its faces as "
-                      "they were imported; its volume and area to within %3):\n")
-                       .arg(n(standOff / per), u, within);
-        } else if (exactMeasure.estimatedError > 1e-9) {
-            said = tr("Exact (integrated on its faces as they were imported; its volume and area "
-                      "to within %1):\n")
-                       .arg(within);
-        } else {
-            said = tr("Exact (integrated on its faces as they were imported):\n");
+        const bool imported = madeOfImportsAlone(*m_document);
+        MassText wording = [=](const model::IdealMassProperties* measured, const QString& why) {
+            if (measured == nullptr) {
+                return header +
+                       (imported ? tr("Exact (integrated on its faces as they were imported):\n")
+                                 : tr("Exact (integrated on its exact faces):\n")) +
+                       why;
+            }
+            const QString within =
+                QString::number(100.0 * measured->estimatedError, 'g', 2) + QLatin1Char('%');
+            QString said;
+            if (tolerant) {
+                said = imported
+                           ? tr("Exact to %1 %2, as its file gives its edges (integrated on its "
+                                "faces as they were imported; its volume and area to within %3):\n")
+                           : tr("Exact to %1 %2, as its file gives its edges (integrated on its "
+                                "exact faces; its volume and area to within %3):\n");
+                said = said.arg(n(standOff / per), u, within);
+            } else if (measured->estimatedError > 1e-9 || !measured->note.empty()) {
+                said = imported ? tr("Exact (integrated on its faces as they were imported; its "
+                                     "volume and area to within %1):\n")
+                                : tr("Exact (integrated on its exact faces; its volume and area "
+                                     "to within %1):\n");
+                said = said.arg(within);
+            } else {
+                said = imported ? tr("Exact (integrated on its faces as they were imported):\n")
+                                : tr("Exact (integrated on its exact faces):\n");
+            }
+            return header + said + measures(measured->properties) + QStringLiteral("\n\n") +
+                   inertia(measured->properties, tr("exact"));
+        };
+        // On a worker by the faceted path's rule: always, or in Auto, for a
+        // part with many curved faces.
+        std::size_t curved = 0;
+        for (const auto& face : exact->faces()) {
+            curved += face.alive && face.exactSurface &&
+                              face.exactSurface->kind() != geo::SurfaceKind::Plane
+                          ? 1
+                          : 0;
         }
-        QMessageBox::information(this, verb,
-                                 header + said + measures(modelled) + QStringLiteral("\n\n") +
-                                     inertia(modelled, tr("exact")));
+        const bool onWorker = m_rebuildMode == RebuildMode::Always ||
+                              (m_rebuildMode == RebuildMode::Auto && curved >= kWorkerIdealFaces);
+        if (onWorker) {
+            // Shared, not copied: the counterpart is never changed once made.
+            measureOnWorker(verb, m_document->sharedExactSolid(), material, std::move(wording));
+            return;
+        }
+        const auto measured = model::MassPropertiesCalculator::computeIdeal(*exact, density);
+        if (!measured.properties.valid) {
+            refused(measured.properties);
+            return;
+        }
+        QMessageBox::information(this, verb, wording(&measured, {}));
+        return;
+    }
+    const model::MassProperties modelled =
+        model::MassPropertiesCalculator::compute(*solid, density);
+    if (!modelled.valid) {
+        refused(modelled);
         return;
     }
 
@@ -3752,7 +3930,7 @@ void MainWindow::onMassProperties() {
     // As modelled, the facets (what Booleans and export use); ideally, the
     // surfaces they approximate. The ideal is null while it is measured, or
     // not there, for @p why.
-    m_massText = [=](const model::IdealMassProperties* ideal, const QString& why) {
+    MassText wording = [=](const model::IdealMassProperties* ideal, const QString& why) {
         QString text = header + tr("As modelled (its facets, which Booleans and export use):\n") +
                        measures(modelled) +
                        tr("\n\nIdeal (on the curved surfaces the facets approximate):\n");
@@ -3799,22 +3977,28 @@ void MainWindow::onMassProperties() {
                           (m_rebuildMode == RebuildMode::Auto && curved >= kWorkerIdealFaces);
     if (!onWorker) {
         const auto ideal = model::MassPropertiesCalculator::computeIdeal(*solid, density);
-        QMessageBox::information(this, verb,
-                                 ideal.properties.valid ? m_massText(&ideal, {})
-                                                        : m_massText(nullptr, notWorkedOut(ideal)));
-        return;
-    }
-    if (m_massTask) {
-        statusBar()->showMessage(tr("Mass properties are already being measured"));
+        QMessageBox::information(
+            this, verb,
+            ideal.properties.valid ? wording(&ideal, {}) : wording(nullptr, notWorkedOut(ideal)));
         return;
     }
     // A copy: the part can be edited, or its tab closed, while it is measured.
-    std::shared_ptr<const topo::Solid> copy =
-        model::Pattern::transformed(*solid, math::Mat4::identity());
+    measureOnWorker(verb, model::Pattern::transformed(*solid, math::Mat4::identity()), material,
+                    std::move(wording));
+}
+
+void MainWindow::measureOnWorker(const QString& verb, std::shared_ptr<const topo::Solid> solid,
+                                 const std::optional<model::Material>& material, MassText text) {
+    if (m_massTask) {
+        // The box open is the measuring's, in its own words.
+        statusBar()->showMessage(tr("Mass properties are already being measured"));
+        return;
+    }
+    m_massText = std::move(text);
     m_massTask = std::make_unique<BackgroundTask<model::IdealMassProperties>>(
-        [copy, material](const std::atomic<bool>& cancelled) {
+        [solid = std::move(solid), material](const std::atomic<bool>& cancelled) {
             return model::MassPropertiesCalculator::computeIdeal(
-                *copy, material ? &*material : nullptr, 1e-10, &cancelled);
+                *solid, material ? &*material : nullptr, 1e-10, &cancelled);
         });
     // Shown now, and the ideal filled in when it is measured; closing it
     // stops the measuring.
@@ -4296,11 +4480,13 @@ void MainWindow::rebuildFeatureTree() {
     }
     QElapsedTimer clock;
     clock.start();
+    const std::size_t before = m_document->leftOut().size();
     m_document->rebuildModel();
     if (tab) {
         tab->lastBuildMs = clock.elapsed();
         tab->modelStale = false;
     }
+    noteBuildLeftOut(*m_document, before);
     showBuildResult();
 }
 
@@ -4436,7 +4622,9 @@ void MainWindow::onRebuildFinished() {
         const bool cancelled = result.cancelled;
         const bool active = document == m_document;
         if (!cancelled && RebuildJob::stampOf(*document) == job->stamp()) {
+            const std::size_t before = document->leftOut().size();
             document->applyBuild(std::move(result));
+            noteBuildLeftOut(*document, before);
             tab->lastBuildMs = m_rebuildClock.elapsed();
             tab->modelStale = false;
             if (active && !again) {
@@ -4460,6 +4648,10 @@ void MainWindow::onRebuildFinished() {
         }
     }
     if (again) startRebuild();  // the active document, as it is now
+    // A report held for a first build (showHeldReports) is said once none is to come.
+    if (reportsHeld()) {
+        QMetaObject::invokeMethod(this, &MainWindow::showHeldReports, Qt::QueuedConnection);
+    }
 }
 
 }  // namespace hz::ui

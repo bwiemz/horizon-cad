@@ -15,7 +15,6 @@
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/AssemblyMates.h"
 #include "horizon/document/MotionStudy.h"
-#include "horizon/fileio/AssemblyStepExport.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/ui/BackgroundTask.h"
 #include "horizon/ui/ComponentDragger.h"
@@ -110,14 +109,6 @@ public:
     /// mirrored, and the status bar says so.
     void onMirrorComponents();
 
-    /// What a STEP export of the active assembly writes (Phase 153): each
-    /// part once, from its file, and each unsuppressed component placed; the
-    /// components whose part could not be read, by name. The parts'
-    /// solids are the resolved components' own: valid while the assembly
-    /// is not changed. A subassembly's parts are placed in one level with
-    /// the rest, their transforms composed with its (Phase 159).
-    using StepExport = io::AssemblyStepExport;
-    StepExport stepExport();
     void onBillOfMaterials();
 
     // --- For the window ---

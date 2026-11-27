@@ -13,25 +13,31 @@
 #include <QStatusBar>
 #include <QTabBar>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <fstream>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "UiTestSupport.h"
 #include "horizon/document/Document.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/document/Sketch.h"
 #include "horizon/document/UndoStack.h"
 #include "horizon/drafting/BlockDefinition.h"
 #include "horizon/drafting/DraftBlockRef.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/Layer.h"
 #include "horizon/fileio/DxfFormat.h"
+#include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/Solid.h"
+#include "horizon/topology/TopologyID.h"
 #include "horizon/ui/DwgImport.h"
 #include "horizon/ui/MainWindow.h"
 
@@ -443,12 +449,13 @@ void writeDamaged(const QString& path) {
 /// Open @p path through File > Open, answering the report of what it left
 /// out; that report's words.
 QString openReadInPart(MainWindow& w, const QString& path) {
-    DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+    // A migrated part's report waits for its first build, on a worker (Task 12).
+    DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"), 30'000);
     {
         FilePicker picker(path);
         menuAction(w, QStringLiteral("&Open..."))->trigger();
     }
-    report.waitForDialog(5000);
+    report.waitForDialog(30'000);
     EXPECT_TRUE(report.seen()) << "the omission is reported";
     return report.informativeText();
 }
@@ -530,6 +537,321 @@ TEST(ImportExportTest, SavingOverTheFileItWasReadFromAsksFirst) {
     }
     EXPECT_NE(contents(path), before) << "replaced, as asked";
     EXPECT_FALSE(w.activeDocument()->readInPart());
+}
+
+namespace {
+
+/// A square of side 10, as a sketch of a part.
+std::shared_ptr<hz::doc::Sketch> squareSketch() {
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    const Vec2 corners[] = {{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+    for (int i = 0; i < 4; ++i) {
+        sketch->addEntity(std::make_shared<hz::draft::DraftLine>(corners[i], corners[(i + 1) % 4]));
+    }
+    return sketch;
+}
+
+/// @p part written at @p path as a file of format @p version holds it.
+void writeAsFormat(const hz::doc::Document& part, const QString& path, int version) {
+    nlohmann::json root = nlohmann::json::parse(
+        hz::io::NativeFormat::documentToJson(part, /*includeTessellation=*/false));
+    root["version"] = version;
+    std::ofstream(path.toStdString()) << root.dump();
+}
+
+/// A part of format 18 (before persistent naming) at @p path: a square extruded, and a fillet on
+/// its edge named by position, `<extrude>/edge7`, which its migration to format 32 cannot carry
+/// over.
+void writeOldPartWithAPositionalReference(const QString& path) {
+    hz::doc::Document part;
+    part.setType(hz::doc::DocumentType::Part);
+    auto sketch = squareSketch();
+    part.addSketch(sketch);
+    auto extrude = std::make_unique<hz::doc::ExtrudeFeature>(sketch, hz::math::Vec3(0, 0, 1), 5.0);
+    extrude->setNaming(hz::model::NamingScheme::Positional);
+    const std::string edge7 = extrude->featureID() + "/edge7";
+    part.featureTree().addFeature(std::move(extrude));
+    auto fillet = std::make_unique<hz::doc::FilletFeature>(
+        std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::fromTag(edge7)}, 1.0);
+    fillet->setNaming(hz::model::NamingScheme::Positional);
+    part.featureTree().addFeature(std::move(fillet));
+    writeAsFormat(part, path, 18);
+}
+
+/// A part of format @p version at @p path, its features Stable: a square extruded, and, with
+/// @p filleted, a fillet on an edge named as such an extrusion names one,
+/// `<extrude>/edge:cap_top|side:e0`, which its sketch has no entity to make; with @p copies, a
+/// pattern of that many of the square between them. Of format 31, its
+/// migration carries the name over as it is (a Stable name means what it meant), and its first
+/// build, its first exact one, fails on it: a reference found gone only when the part is built.
+void writeSquarePart(const QString& path, int version, bool filleted, int copies = 1) {
+    hz::doc::Document part;
+    part.setType(hz::doc::DocumentType::Part);
+    auto sketch = squareSketch();
+    part.addSketch(sketch);
+    auto extrude = std::make_unique<hz::doc::ExtrudeFeature>(sketch, hz::math::Vec3(0, 0, 1), 5.0);
+    const std::string gone = extrude->featureID() + "/edge:cap_top|side:e0";
+    part.featureTree().addFeature(std::move(extrude));
+    if (copies > 1) {
+        // Copies of it in a row, 15 apart: a slower build, which a Cancel can stop.
+        part.featureTree().addFeature(
+            hz::doc::PatternFeature::makeLinear(hz::math::Vec3(1, 0, 0), 15.0, copies));
+    }
+    if (filleted) {
+        part.featureTree().addFeature(std::make_unique<hz::doc::FilletFeature>(
+            std::vector<hz::topo::TopologyID>{hz::topo::TopologyID::fromTag(gone)}, 1.0));
+    }
+    writeAsFormat(part, path, version);
+}
+
+int formatOf(const QString& path) {
+    return nlohmann::json::parse(contents(path).toStdString()).at("version").get<int>();
+}
+
+/// Run the event loop until nothing runs on a worker, and what it posted is done.
+void settle(MainWindow& w) {
+    QElapsedTimer waited;
+    waited.start();
+    while (w.backgroundWorkRunning() && waited.elapsed() < 30'000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+}
+
+/// Owner amendment A2 for the migrated part at @p path, whose report says @p said of what it
+/// lost: it is read in part, and the loss never stops it being written. Save asks where, as for
+/// any document read in part, and writes a new file; the file it was read from is written over
+/// only once that is confirmed, and Cancel (the default) writes nothing.
+void expectSavedWhereChosen(const QString& path, const QString& said) {
+    SCOPED_TRACE(path.toStdString());
+    const QByteArray before = contents(path);
+    {
+        MainWindow w;
+        DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"), 30'000);
+        {
+            FilePicker picker(path);
+            menuAction(w, QStringLiteral("&Open..."))->trigger();
+        }
+        report.waitForDialog(30'000);
+        ASSERT_TRUE(report.seen()) << "the lost reference is reported";
+        EXPECT_TRUE(report.detailedText().contains(said)) << report.detailedText().toStdString();
+        ASSERT_TRUE(w.activeDocument()->readInPart());
+
+        const QString copy = QFileInfo(path).absolutePath() + QStringLiteral("/") +
+                             QFileInfo(path).completeBaseName() + QStringLiteral("-copy.hzpart");
+        {
+            FilePicker picker(copy);
+            action(w, "action_save")->trigger();
+        }
+        EXPECT_EQ(contents(path), before) << "the file it was read from is as it was";
+        ASSERT_TRUE(QFileInfo::exists(copy)) << "written as a new file";
+        EXPECT_EQ(formatOf(copy), 32);
+        EXPECT_EQ(w.activeDocument()->filePath(), copy.toStdString());
+        EXPECT_FALSE(w.activeDocument()->readInPart());
+    }
+
+    MainWindow w;
+    openReadInPart(w, path);
+    ASSERT_TRUE(w.activeDocument()->readInPart());
+    const QString title = QStringLiteral("Replace the File It Was Read From?");
+    {
+        DialogResponder exists(QMessageBox::Yes);  // the file dialog's own question
+        DialogResponder keep(QMessageBox::Cancel, title);
+        FilePicker picker(path);
+        action(w, "action_save")->trigger();
+        EXPECT_TRUE(keep.seen());
+        EXPECT_EQ(keep.defaultButton(), QMessageBox::Cancel);
+    }
+    EXPECT_EQ(contents(path), before) << "Cancel writes nothing";
+    EXPECT_TRUE(w.activeDocument()->readInPart());
+    {
+        DialogResponder exists(QMessageBox::Yes);
+        DialogResponder replace(QStringLiteral("Replace"), title);
+        FilePicker picker(path);
+        action(w, "action_save")->trigger();
+        EXPECT_TRUE(replace.seen());
+    }
+    EXPECT_NE(contents(path), before) << "replaced, as confirmed";
+    EXPECT_EQ(formatOf(path), 32);
+    EXPECT_FALSE(w.activeDocument()->readInPart());
+}
+
+}  // namespace
+
+// Owner amendment A2: a part migrated to format 32 that lost a reference on the way is read in
+// part, and a lost reference never stops it being written: one its migration dropped (Task 11),
+// and one its first exact build found gone (Task 12).
+TEST(ImportExport, AMigratedPartWithALostReferenceCanStillBeSaved) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString dropped = dir.filePath(QStringLiteral("old.hzpart"));
+    writeOldPartWithAPositionalReference(dropped);
+    expectSavedWhereChosen(dropped, QStringLiteral("is not carried over"));
+
+    const QString unbuilt = dir.filePath(QStringLiteral("unbuilt.hzpart"));
+    writeSquarePart(unbuilt, 31, /*filleted=*/true);
+    expectSavedWhereChosen(unbuilt, QStringLiteral("after the exact rebuild"));
+}
+
+// A part migrated to format 32 whose first build fails (a fillet on an edge its migration kept,
+// which its exact build does not have) is read in part: the failure is left out of it, "after the
+// exact rebuild: <why>", once, and said in the report of what its reading left out when that build
+// is done, on a worker or here; its tab says it is incomplete. One whose first build succeeds
+// says nothing, and a part of format 32 that fails is not read in part: its build fails as any
+// does.
+TEST(ImportExport, AMigratedPartThatNoLongerBuildsIsReported) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("old.hzpart"));
+    writeSquarePart(path, 31, /*filleted=*/true);
+
+    for (const auto mode : {MainWindow::RebuildMode::Auto, MainWindow::RebuildMode::Never}) {
+        SCOPED_TRACE(mode == MainWindow::RebuildMode::Auto ? "built on a worker" : "built here");
+        MainWindow w;
+        w.setRebuildMode(mode);
+        DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"), 30'000);
+        {
+            FilePicker picker(path);
+            menuAction(w, QStringLiteral("&Open..."))->trigger();
+        }
+        report.waitForDialog(30'000);
+        ASSERT_TRUE(report.seen()) << "the failed build is reported";
+        hz::doc::Document& part = *w.activeDocument();
+        EXPECT_GE(part.failedFeatureIndex(), 0) << "built before it was said";
+        const std::string failure = "after the exact rebuild: " + part.lastBuildMessage();
+        EXPECT_EQ(part.leftOut(), std::vector<std::string>{failure});
+        EXPECT_NE(failure.find("Fillet"), std::string::npos) << failure;
+        EXPECT_TRUE(report.detailedText().contains(QStringLiteral("Left out: ") +
+                                                   QString::fromStdString(failure)))
+            << report.detailedText().toStdString();
+        EXPECT_TRUE(report.informativeText().contains(QStringLiteral("not saved over")))
+            << report.informativeText().toStdString();
+        EXPECT_TRUE(part.readInPart());
+        EXPECT_TRUE(activeTabText(w).contains(QStringLiteral("(incomplete)")))
+            << activeTabText(w).toStdString();
+
+        // Built again, it says nothing more: its first exact build is the one said.
+        part.featureTree().markChanged();
+        EXPECT_FALSE(part.rebuildModel());
+        EXPECT_EQ(part.leftOut(), std::vector<std::string>{failure});
+    }
+
+    // One whose first build succeeds: nothing is said, and it is read whole.
+    const QString builds = dir.filePath(QStringLiteral("builds.hzpart"));
+    writeSquarePart(builds, 31, /*filleted=*/false);
+    // A part of format 32, failing as the old one does: not migrated, its failure no loss.
+    const QString current = dir.filePath(QStringLiteral("current.hzpart"));
+    writeSquarePart(current, 32, /*filleted=*/true);
+    for (const QString& file : {builds, current}) {
+        SCOPED_TRACE(file.toStdString());
+        MainWindow w;
+        {
+            FilePicker picker(file);
+            menuAction(w, QStringLiteral("&Open..."))->trigger();
+        }
+        // Built on a worker: anything it says, it says after the Open.
+        hz::test::ModalCloser closer;
+        settle(w);
+        EXPECT_TRUE(closer.dismissed().isEmpty()) << closer.dismissed().join(", ").toStdString();
+        const hz::doc::Document& part = *w.activeDocument();
+        EXPECT_GE(part.builds(), 1u) << "built";
+        EXPECT_EQ(part.failedFeatureIndex() >= 0, file == current) << part.lastBuildMessage();
+        EXPECT_FALSE(part.readInPart());
+        EXPECT_FALSE(activeTabText(w).contains(QStringLiteral("(incomplete)")));
+    }
+}
+
+// Saved while its first build still runs on a worker, a migrated part is built first: what that
+// build fails on is left out of it before where it is written is decided, so the file it was read
+// from is not written over unasked (owner amendment A2); Save asks where, and the report comes
+// once the worker's build is in.
+TEST(ImportExport, AMigratedPartSavedWhileItsFirstBuildRunsIsBuiltFirst) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("old.hzpart"));
+    writeSquarePart(path, 31, /*filleted=*/true);
+    const QByteArray before = contents(path);
+
+    MainWindow w;  // read here, and built on a worker: its build time is not known
+    {
+        FilePicker picker(path);
+        menuAction(w, QStringLiteral("&Open..."))->trigger();
+    }
+    ASSERT_TRUE(w.rebuildRunning());
+    ASSERT_TRUE(w.activeDocument()->firstBuildPending()) << "its build still to come";
+    const QString copy = dir.filePath(QStringLiteral("copy.hzpart"));
+    DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"), 30'000);
+    {
+        FilePicker picker(copy);
+        action(w, "action_save")->trigger();
+    }
+    EXPECT_EQ(contents(path), before) << "not written over unasked";
+    EXPECT_TRUE(QFileInfo::exists(copy)) << "Save asked where";
+    report.waitForDialog(30'000);
+    EXPECT_TRUE(report.seen());
+    EXPECT_TRUE(report.detailedText().contains(QStringLiteral("after the exact rebuild")))
+        << report.detailedText().toStdString();
+    settle(w);
+}
+
+// Save As while a migrated part's first build is still to come builds it first, before it asks
+// anything: the part, which that build finds read in part, is saved as a new file, and the file it
+// was read from, chosen, is asked about; Cancel (the default) writes nothing, and the part stays
+// read in part, so a later Save still asks (owner amendment A2). It built the part only once it
+// had decided where to write it, as the file it was read from, and a Cancel of the second "Save
+// As a New File" this opened put back what the part had left out before the build: read whole,
+// it was written over its file at the next Save (review of Task 12, finding 1). Its build on a
+// worker is cancelled first, so that it cannot be applied while the file dialog is open.
+TEST(ImportExport, AMigratedPartSavedAsBeforeItsFirstBuildIsBuiltFirst) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("old.hzpart"));
+    writeSquarePart(path, 31, /*filleted=*/true, /*copies=*/24);
+    const QByteArray before = contents(path);
+
+    MainWindow w;  // read here, and built on a worker: its build time is not known
+    {
+        FilePicker picker(path);
+        menuAction(w, QStringLiteral("&Open..."))->trigger();
+    }
+    ASSERT_TRUE(w.rebuildRunning());
+    w.findChild<QToolButton*>(QStringLiteral("cancelRebuild"))->click();
+    settle(w);
+    hz::doc::Document& part = *w.activeDocument();
+    // Under load the worker can finish before Cancel is clicked, and its build is applied.
+    if (!part.firstBuildPending()) GTEST_SKIP() << "the first build ended before Cancel";
+    ASSERT_FALSE(part.readInPart()) << "nothing left out until it is built";
+
+    DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"), 30'000);
+    const QString title = QStringLiteral("Replace the File It Was Read From?");
+    {
+        DialogResponder exists(QMessageBox::Yes);  // the file dialog's own question
+        DialogResponder keep(QMessageBox::Cancel, title);
+        FilePicker picker(path);
+        menuAction(w, QStringLiteral("Save &As..."))->trigger();
+        EXPECT_TRUE(keep.seen()) << "the file it was read from is asked about";
+        EXPECT_EQ(keep.defaultButton(), QMessageBox::Cancel);
+    }
+    EXPECT_EQ(contents(path), before) << "Cancel writes nothing";
+    EXPECT_FALSE(part.firstBuildPending()) << "built before anything was asked";
+    EXPECT_EQ(part.filePath(), path.toStdString());
+    ASSERT_EQ(part.leftOut().size(), 1u);
+    EXPECT_EQ(part.leftOut()[0].rfind("after the exact rebuild: ", 0), 0u) << part.leftOut()[0];
+    EXPECT_TRUE(part.readInPart());
+    report.waitForDialog(30'000);
+    EXPECT_TRUE(report.seen());
+    settle(w);
+    EXPECT_TRUE(activeTabText(w).contains(QStringLiteral("(incomplete)")))
+        << activeTabText(w).toStdString();
+
+    // Saved again, it still asks where.
+    const QString copy = dir.filePath(QStringLiteral("copy.hzpart"));
+    {
+        FilePicker picker(copy);
+        action(w, "action_save")->trigger();
+    }
+    EXPECT_EQ(contents(path), before) << "not written over unasked";
+    EXPECT_TRUE(QFileInfo::exists(copy));
 }
 
 // A DXF read in part is not written over by an export either: exporting it

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <set>
@@ -16,10 +17,12 @@
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Constants.h"
+#include "horizon/math/Mat4.h"
 #include "horizon/math/Vec3.h"
 #include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/MassProperties.h"
+#include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/ExactTolerance.h"
@@ -417,9 +420,10 @@ TEST(SolidTessellatorTest, AnExactPartsMeshIsWatertight) {
 }
 
 // The owner's display tolerance: a part is drawn to 0.1 up to about 667 across, and beyond that to
-// 1.5e-4 of its size (its diagonal, topo::exactExtent). A cylinder of radius 200 and height 200,
-// 600 across, is drawn to 0.1; one of radius 1000 and height 2000, 2000 sqrt 3 across, to 0.52,
-// with fewer triangles than 0.1 would give it.
+// 1.5e-4 of its size (its diagonal, topo::exactExtent), stepped down to a quarter octave (Ruling
+// 29). A cylinder of radius 200 and height 200, 600 across, is drawn to 0.1; one of radius 1000
+// and height 2000, 2000 sqrt 3 across (0.52 by the owner's formula), to 0.1 x 2^(9/4) = 0.476,
+// with fewer triangles than 0.1 would give it. (Re-baselined for Ruling 29: it was drawn to 0.52.)
 TEST(SolidTessellatorTest, ALargePartIsDrawnToItsSizeASmallOneToATenth) {
     const auto small = exactCylinder(200.0, 200.0);
     const auto large = exactCylinder(1000.0, 2000.0);
@@ -429,12 +433,82 @@ TEST(SolidTessellatorTest, ALargePartIsDrawnToItsSizeASmallOneToATenth) {
     const double across = 2000.0 * std::sqrt(3.0);
     EXPECT_NEAR(hz::topo::exactExtent(*large), across, 1e-9 * across);
     EXPECT_EQ(SolidTessellator::displayTolerance(*small), 0.1);
-    EXPECT_NEAR(SolidTessellator::displayTolerance(*large), 1.5e-4 * across, 1e-12 * across);
+    const double stepped = 0.1 * std::exp2(9.0 / 4.0);
+    EXPECT_DOUBLE_EQ(SolidTessellator::displayTolerance(*large), stepped);
+    EXPECT_LE(SolidTessellator::displayTolerance(*large), 1.5e-4 * across);
 
     // Drawn so: the display's mesh is the mesh at that tolerance.
     EXPECT_EQ(SolidTessellator::tessellate(*small).indices,
               SolidTessellator::tessellate(*small, 0.1).indices);
     const auto drawn = SolidTessellator::tessellate(*large);
-    EXPECT_EQ(drawn.indices, SolidTessellator::tessellate(*large, 1.5e-4 * across).indices);
+    EXPECT_EQ(
+        drawn.indices,
+        SolidTessellator::tessellate(*large, SolidTessellator::displayTolerance(*large)).indices);
     EXPECT_LT(drawn.indices.size(), SolidTessellator::tessellate(*large, 0.1).indices.size());
+}
+
+// A part of several bodies is drawn at the tolerance of them all: its size is the box round every
+// body (topo::exactExtent of them together), as the solid they are joined into gives it, found
+// before they are joined, so that each can be meshed on its own at the part's tolerance. Two
+// cylinders 3.5 across and 1000 apart are a part about 1002 across, drawn to 0.1 sqrt 2 (1.5e-4 of
+// that, 0.150, stepped down to a quarter octave) where each alone is drawn to 0.1.
+TEST(SolidTessellatorTest, APartOfSeveralBodiesIsDrawnAtTheToleranceOfThemAll) {
+    const auto near = exactCylinder(1.0, 2.0);
+    const auto far =
+        hz::model::exact::makeCylinder(hz::geo::Frame::fromAxis({1000, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    ASSERT_NE(near, nullptr);
+    ASSERT_NE(far, nullptr);
+    hz::topo::Solid joined;
+    Pattern::append(joined, *near, hz::math::Mat4::identity());
+    Pattern::append(joined, *far, hz::math::Mat4::identity());
+    const std::vector<const hz::topo::Solid*> bodies{near.get(), far.get()};
+
+    const double across = std::sqrt(1002.0 * 1002.0 + 2.0 * 2.0 + 2.0 * 2.0);
+    EXPECT_NEAR(hz::topo::exactExtent(bodies), across, 1e-12 * across);
+    EXPECT_NEAR(hz::topo::exactExtent(bodies), hz::topo::exactExtent(joined), 1e-12 * across);
+    EXPECT_DOUBLE_EQ(SolidTessellator::displayTolerance(bodies), 0.1 * std::sqrt(2.0));
+    EXPECT_NEAR(SolidTessellator::displayTolerance(bodies),
+                SolidTessellator::displayTolerance(joined), 1e-12 * across);
+    EXPECT_EQ(SolidTessellator::displayTolerance(*near), 0.1);
+    EXPECT_EQ(SolidTessellator::displayTolerance(*far), 0.1);
+
+    // One body is the body; none is nothing.
+    EXPECT_EQ(hz::topo::exactExtent(std::vector<const hz::topo::Solid*>{near.get()}),
+              hz::topo::exactExtent(*near));
+    EXPECT_EQ(hz::topo::exactExtent(std::vector<const hz::topo::Solid*>{}), 0.0);
+    EXPECT_EQ(SolidTessellator::displayTolerance(std::vector<const hz::topo::Solid*>{}), 0.1);
+}
+
+// Ruling 29: the display tolerance steps down by quarter octaves, 0.1 x 2^(k/4), the largest such
+// step not above the owner's max(0.1, 1.5e-4 x size): never coarser than the owner's, at most 19%
+// finer, and the same over each step, so that a part a little larger or smaller (a body moved a
+// few millimetres) keeps its tolerance, and every other body its mesh (Task 8). A part up to about
+// 667 across is drawn to 0.1, exactly; so is one whose size cannot be measured.
+TEST(SolidTessellatorTest, TheDisplayToleranceStepsByAQuarterOctave) {
+    EXPECT_EQ(SolidTessellator::displayTolerance(500.0), 0.1);
+    EXPECT_EQ(SolidTessellator::displayTolerance(667.0), 0.1);
+    EXPECT_EQ(SolidTessellator::displayTolerance(700.0), 0.1) << "0.105 by the owner's formula";
+    EXPECT_DOUBLE_EQ(SolidTessellator::displayTolerance(1000.0), 0.1 * std::exp2(2.0 / 4.0));
+    EXPECT_DOUBLE_EQ(SolidTessellator::displayTolerance(4488.0), 0.1 * std::exp2(11.0 / 4.0));
+    for (const double unmeasured :
+         {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity(),
+          -std::numeric_limits<double>::infinity(), 0.0, -5.0}) {
+        EXPECT_EQ(SolidTessellator::displayTolerance(unmeasured), 0.1) << unmeasured;
+    }
+
+    // Over sizes from 1 to 10^7: a quarter-octave step of 0.1, not above the owner's tolerance
+    // and above it divided by 2^(1/4); one step over each, so a 1% change within one keeps it.
+    const double quarter = std::exp2(0.25);
+    for (double extent = 1.0; extent < 1e7; extent *= 1.0137) {
+        SCOPED_TRACE(extent);
+        const double owners = std::max(0.1, 1.5e-4 * extent);
+        const double t = SolidTessellator::displayTolerance(extent);
+        EXPECT_LE(t, owners);
+        EXPECT_GT(t * quarter, owners * (1.0 - 1e-12));
+        const double k = 4.0 * std::log2(t / 0.1);
+        EXPECT_NEAR(k, std::round(k), 1e-9);
+    }
+    EXPECT_EQ(SolidTessellator::displayTolerance(1130.0),
+              SolidTessellator::displayTolerance(1330.0))
+        << "0.1 x 2^(3/4) from 1121 to 1333 across";
 }

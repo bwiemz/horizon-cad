@@ -951,7 +951,7 @@ Los detalles están en el registro:
         <translation type="unfinished">Arrastre cancelado: todo está donde estaba</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+16"/>
         <source>Check Interference is only available in an assembly document</source>
         <translation type="unfinished">Comprobar interferencias solo está disponible en un documento de ensamblaje</translation>
     </message>
@@ -967,12 +967,12 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+10"/>
-        <location line="+167"/>
+        <location line="+172"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-165"/>
+        <location line="-170"/>
         <source>Interference check cancelled</source>
         <translation type="unfinished">Comprobación de interferencias cancelada</translation>
     </message>
@@ -987,12 +987,12 @@ Los detalles están en el registro:
         <translation type="unfinished">%1 en común</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+5"/>
         <source>overlap could not be measured</source>
         <translation type="unfinished">no se pudo medir la superposición</translation>
     </message>
     <message>
-        <location line="+1"/>
+        <location line="+2"/>
         <source>%1 and %2: %3</source>
         <translation type="unfinished">%1 y %2: %3</translation>
     </message>
@@ -1141,7 +1141,12 @@ Los detalles están en el registro:
         <translation type="unfinished">%1: %2 y %3 (#%4)</translation>
     </message>
     <message>
-        <location line="-547"/>
+        <location line="-571"/>
+        <source>overlap not measured: %1</source>
+        <translation type="unfinished">superposición no medida: %1</translation>
+    </message>
+    <message>
+        <location line="+24"/>
         <source>Motion Study</source>
         <translation type="unfinished">Estudio de movimiento</translation>
     </message>
@@ -2039,7 +2044,7 @@ Los detalles están en el registro:
         <translation type="unfinished">%1 actúa sobre una hoja de dibujo: abra una o cree una a partir de una pieza</translation>
     </message>
     <message>
-        <location line="+174"/>
+        <location line="+240"/>
         <source>Dimensions whose edges the part no longer has are not drawn: %1</source>
         <translation type="unfinished">No se dibujan las cotas cuyas aristas ya no existen en la pieza: %1</translation>
     </message>
@@ -2083,12 +2088,12 @@ Los detalles están en el registro:
         <translation type="unfinished">No se pudo abrir</translation>
     </message>
     <message>
-        <location line="+62"/>
+        <location line="+75"/>
         <source>Could not read again</source>
         <translation type="unfinished">No se pudo volver a leer</translation>
     </message>
     <message>
-        <location line="+70"/>
+        <location line="+69"/>
         <source>A drawing of &quot;%1&quot; could not be drawn again: %2</source>
         <translation type="unfinished">No se pudo volver a generar un dibujo de &quot;%1&quot;: %2</translation>
     </message>
@@ -2169,13 +2174,13 @@ Los detalles están en el registro:
         <location line="+125"/>
         <location line="+128"/>
         <location line="+120"/>
-        <location line="+333"/>
+        <location line="+335"/>
         <location line="+343"/>
         <source>%1: %2</source>
         <translation type="unfinished">%1: %2</translation>
     </message>
     <message>
-        <location line="-558"/>
+        <location line="-560"/>
         <source>Not every view has room on this paper: those without are beside it</source>
         <translation type="unfinished">No todas las vistas caben en este papel: las que no caben están a su lado</translation>
     </message>
@@ -2200,12 +2205,12 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+11"/>
-        <location line="+757"/>
+        <location line="+759"/>
         <source>Add Geometric Tolerance</source>
         <translation type="unfinished">Añadir tolerancia geométrica</translation>
     </message>
     <message>
-        <location line="-735"/>
+        <location line="-737"/>
         <source>%1: the sheet has no datum %2; Add Datum Feature puts one on an edge first</source>
         <translation type="unfinished">%1: la hoja no tiene la referencia %2; Añadir elemento de referencia pone primero una en una arista</translation>
     </message>
@@ -2221,18 +2226,18 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+12"/>
-        <location line="+768"/>
+        <location line="+770"/>
         <source>Add Datum Feature</source>
         <translation type="unfinished">Añadir elemento de referencia</translation>
     </message>
     <message>
-        <location line="-748"/>
-        <location line="+760"/>
+        <location line="-750"/>
+        <location line="+762"/>
         <source>%1: &quot;%2&quot; is not a datum letter: one or two capitals, not I, O or Q</source>
         <translation type="unfinished">%1: «%2» no es una letra de referencia: una o dos mayúsculas, ni I, ni O, ni Q</translation>
     </message>
     <message>
-        <location line="-753"/>
+        <location line="-755"/>
         <source>%1: the sheet has datum %2 already</source>
         <translation type="unfinished">%1: la hoja ya tiene la referencia %2</translation>
     </message>
@@ -2243,12 +2248,12 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+13"/>
-        <location line="+627"/>
+        <location line="+629"/>
         <source>Hole Callout</source>
         <translation type="unfinished">Indicación de taladro</translation>
     </message>
     <message>
-        <location line="-605"/>
+        <location line="-607"/>
         <source>%1: that edge is not a hole&apos;s (a Hole feature&apos;s)</source>
         <translation type="unfinished">%1: esa arista no es de un taladro (de una operación Taladro)</translation>
     </message>
@@ -2264,17 +2269,17 @@ Los detalles están en el registro:
     </message>
     <message>
         <location line="+7"/>
-        <location line="+292"/>
+        <location line="+294"/>
         <source>Scale:</source>
         <translation type="unfinished">Escala:</translation>
     </message>
     <message>
-        <location line="-279"/>
+        <location line="-281"/>
         <source>At this scale not every view has room on the sheet: those without are beside it</source>
         <translation type="unfinished">A esta escala no todas las vistas caben en la hoja: las que no caben están a su lado</translation>
     </message>
     <message>
-        <location line="+127"/>
+        <location line="+129"/>
         <source>%1: placed where there was room; Move View moves it</source>
         <translation type="unfinished">%1: colocada donde había espacio; Mover vista la desplaza</translation>
     </message>
@@ -2387,8 +2392,8 @@ Los detalles están en el registro:
         <translation type="unfinished">%1: el círculo no contiene nada de la vista</translation>
     </message>
     <message>
-        <location line="-798"/>
-        <location line="+819"/>
+        <location line="-800"/>
+        <location line="+821"/>
         <source>Move View</source>
         <translation type="unfinished">Mover vista</translation>
     </message>
@@ -2408,14 +2413,14 @@ Los detalles están en el registro:
         <translation type="unfinished">No está en el dibujo de la vista</translation>
     </message>
     <message>
-        <location line="-827"/>
-        <location line="+870"/>
+        <location line="-829"/>
+        <location line="+872"/>
         <source>Remove View</source>
         <translation type="unfinished">Eliminar vista</translation>
     </message>
     <message>
-        <location line="-854"/>
-        <location line="+859"/>
+        <location line="-856"/>
+        <location line="+861"/>
         <source>%1: a sheet keeps at least one view</source>
         <translation type="unfinished">%1: una hoja conserva al menos una vista</translation>
     </message>
@@ -2426,12 +2431,12 @@ Los detalles están en el registro:
         <translation type="unfinished">Vista:</translation>
     </message>
     <message>
-        <location line="-1082"/>
+        <location line="-1084"/>
         <source>%1: the views taken from it went with it (%2)</source>
         <translation type="unfinished">%1: las vistas derivadas de ella se eliminaron con ella (%2)</translation>
     </message>
     <message>
-        <location line="+891"/>
+        <location line="+893"/>
         <source>Click an edge of a view (Esc when done)</source>
         <translation type="unfinished">Haga clic en una arista de una vista (Esc para terminar)</translation>
     </message>
@@ -2446,20 +2451,20 @@ Los detalles están en el registro:
         <translation type="unfinished">No hay ninguna arista ahí</translation>
     </message>
     <message>
-        <location line="-871"/>
-        <location line="+886"/>
+        <location line="-873"/>
+        <location line="+888"/>
         <source>Add Dimension</source>
         <translation type="unfinished">Añadir cota</translation>
     </message>
     <message>
-        <location line="-799"/>
-        <location line="+925"/>
+        <location line="-801"/>
+        <location line="+927"/>
         <location line="+19"/>
         <source>Remove Dimension</source>
         <translation type="unfinished">Eliminar cota</translation>
     </message>
     <message>
-        <location line="-1002"/>
+        <location line="-1004"/>
         <source>%1: that edge is dimensioned already; Remove Dimension removes it</source>
         <translation type="unfinished">%1: esa arista ya está acotada; Eliminar cota la elimina</translation>
     </message>
@@ -2476,13 +2481,13 @@ Los detalles están en el registro:
     <message>
         <location line="+17"/>
         <location line="+28"/>
-        <location line="+910"/>
+        <location line="+912"/>
         <source>%1: that edge has no dimension</source>
         <translation type="unfinished">%1: esa arista no tiene cota</translation>
     </message>
     <message>
-        <location line="-1036"/>
-        <location line="+1044"/>
+        <location line="-1038"/>
+        <location line="+1046"/>
         <source>View Properties</source>
         <translation type="unfinished">Propiedades de la vista</translation>
     </message>
@@ -2647,8 +2652,8 @@ Los detalles están en el registro:
         <translation type="unfinished">Actualizar desde la pieza</translation>
     </message>
     <message>
-        <location line="-731"/>
-        <location line="+740"/>
+        <location line="-733"/>
+        <location line="+742"/>
         <source>The drawing could not be drawn again: %1</source>
         <translation type="unfinished">No se pudo volver a generar el dibujo: %1</translation>
     </message>
@@ -2747,7 +2752,7 @@ Los detalles están en el registro:
 <context>
     <name>hz::ui::ExchangeCommands</name>
     <message>
-        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+108"/>
+        <location filename="../src/ui/src/ExchangeCommands.cpp" line="+129"/>
         <source>Length Unit Not Given</source>
         <translation type="unfinished">Unidad de longitud no indicada</translation>
     </message>
@@ -2802,11 +2807,12 @@ Los detalles están en el registro:
         <location line="-142"/>
         <location line="+15"/>
         <location line="+136"/>
+        <location line="+153"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-150"/>
+        <location line="-303"/>
         <location line="+152"/>
         <source>Import cancelled</source>
         <translation type="unfinished">Importación cancelada</translation>
@@ -2906,34 +2912,35 @@ Los detalles están en el registro:
     <message>
         <location line="+8"/>
         <location line="+5"/>
-        <location line="+240"/>
+        <location line="+303"/>
         <location line="+44"/>
         <source>Export %1</source>
         <translation type="unfinished">Exportar %1</translation>
     </message>
     <message>
-        <location line="-283"/>
+        <location line="-346"/>
         <source>Horizon CAD does not write DWG files: give the file a name ending in %1.</source>
         <translation type="unfinished">Horizon CAD no escribe archivos DWG: dé al archivo un nombre que termine en %1.</translation>
     </message>
     <message>
         <location line="+16"/>
         <location line="+3"/>
-        <location line="+22"/>
+        <location line="+26"/>
         <source>STEP</source>
         <translation type="unfinished">STEP</translation>
     </message>
     <message>
-        <location line="-22"/>
-        <location line="+22"/>
+        <location line="-26"/>
+        <location line="+26"/>
         <source>STEP Files (*.step *.stp)</source>
         <translation type="unfinished">Archivos STEP (*.step *.stp)</translation>
     </message>
     <message>
-        <location line="-18"/>
-        <location line="+28"/>
-        <location line="+52"/>
+        <location line="-22"/>
+        <location line="+63"/>
         <location line="+18"/>
+        <location line="+56"/>
+        <location line="+24"/>
         <location line="+17"/>
         <location line="+34"/>
         <location line="+134"/>
@@ -2941,38 +2948,54 @@ Los detalles están en el registro:
         <translation type="unfinished">No se pudo exportar</translation>
     </message>
     <message>
-        <location line="-279"/>
-        <location line="+28"/>
-        <location line="+51"/>
-        <location line="+18"/>
+        <location line="-342"/>
+        <location line="+81"/>
+        <location line="+55"/>
+        <location line="+24"/>
         <location line="+17"/>
         <location line="+168"/>
         <source>Exported %1.</source>
         <translation type="unfinished">Se exportó %1.</translation>
     </message>
     <message>
-        <location line="-273"/>
+        <location line="-336"/>
+        <location line="+61"/>
         <source>STEP export writes an assembly&apos;s components; none of this one&apos;s parts can be read</source>
         <translation type="unfinished">La exportación STEP escribe los componentes de un ensamblaje; no se puede leer ninguna de las piezas de este</translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="-56"/>
+        <source>A STEP export is already being written</source>
+        <translation type="unfinished">Ya se está escribiendo una exportación STEP</translation>
+    </message>
+    <message>
+        <location line="+8"/>
         <source>Assembly</source>
         <translation type="unfinished">Ensamblaje</translation>
     </message>
     <message>
         <location line="+22"/>
+        <source>Building the parts to export...</source>
+        <translation type="unfinished">Construyendo las piezas para exportar...</translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>STEP export cancelled: nothing was written</source>
+        <translation type="unfinished">Exportación STEP cancelada: no se escribió nada</translation>
+    </message>
+    <message>
+        <location line="+38"/>
         <source>Left out: &quot;%1&quot;: its part could not be read</source>
         <translation type="unfinished">Omitido: &quot;%1&quot;: no se pudo leer su pieza</translation>
     </message>
     <message>
         <location line="+3"/>
-        <location line="+117"/>
+        <location line="+127"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Omitido: %1</translation>
     </message>
     <message numerus="yes">
-        <location line="-109"/>
+        <location line="-119"/>
         <source>%n curved face(s) were written as their facets, not on their surfaces.</source>
         <translation type="unfinished">
             <numerusform>%n cara curva se escribió como sus facetas, no sobre su superficie.</numerusform>
@@ -3009,7 +3032,7 @@ Los detalles están en el registro:
         <translation type="unfinished">Archivos STL (*.stl)</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+15"/>
         <location line="+3"/>
         <source>glTF</source>
         <translation type="unfinished">glTF</translation>
@@ -3020,7 +3043,7 @@ Los detalles están en el registro:
         <translation type="unfinished">glTF binario (*.glb)</translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+22"/>
         <source>DXF export writes a drawing; this document has nothing drawn</source>
         <translation type="unfinished">La exportación DXF escribe un dibujo; este documento no tiene nada dibujado</translation>
     </message>
@@ -3548,7 +3571,7 @@ empezar a construir su pieza.</translation>
 <context>
     <name>hz::ui::MainWindow</name>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="+467"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="+487"/>
         <source>&amp;File</source>
         <translation>&amp;Archivo</translation>
     </message>
@@ -3584,12 +3607,12 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">una cara curva de %1 facetas, en torno a %2</translation>
     </message>
     <message>
-        <location filename="../src/ui/src/MainWindow.cpp" line="-294"/>
+        <location filename="../src/ui/src/MainWindow.cpp" line="-311"/>
         <source>Close %1</source>
         <translation type="unfinished">Cerrar %1</translation>
     </message>
     <message>
-        <location line="+908"/>
+        <location line="+925"/>
         <location line="+17"/>
         <location filename="../src/ui/src/ModelPicks.cpp" line="+25"/>
         <source>Distance</source>
@@ -4982,12 +5005,27 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished">Desarrollo plano</translation>
     </message>
     <message>
-        <location line="+1068"/>
+        <location line="+501"/>
+        <source>Shown from facets</source>
+        <translation type="unfinished">Mostrado a partir de facetas</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Exact form not checked</source>
+        <translation type="unfinished">Forma exacta no comprobada</translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Exact form disagrees with its facets</source>
+        <translation type="unfinished">La forma exacta no coincide con sus facetas</translation>
+    </message>
+    <message>
+        <location line="+581"/>
         <source>All Supported Files (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Horizon CAD Drawings (*.hcad);;Horizon Parts (*.hzpart);;Horizon Assemblies (*.hzasm);;Horizon Drawing Sheets (*.hzdwg);;DXF Files (*.dxf);;DWG Files (*.dwg);;All Files (*)</source>
         <translation type="unfinished">Todos los archivos compatibles (*.hcad *.hzpart *.hzasm *.hzdwg *.dxf *.dwg);;Dibujos de Horizon CAD (*.hcad);;Piezas de Horizon (*.hzpart);;Ensamblajes de Horizon (*.hzasm);;Hojas de dibujo de Horizon (*.hzdwg);;Archivos DXF (*.dxf);;Archivos DWG (*.dwg);;Todos los archivos (*)</translation>
     </message>
     <message numerus="yes">
-        <location line="+408"/>
+        <location line="+486"/>
         <source>File saved; %n layer(s) under a name DXF allows.</source>
         <translation type="unfinished">
             <numerusform>Archivo guardado; %n capa con un nombre que DXF admite.</numerusform>
@@ -4995,25 +5033,50 @@ empezar a construir su pieza.</translation>
         </translation>
     </message>
     <message>
-        <location line="+62"/>
+        <location line="+73"/>
         <source>Horizon CAD reads DWG files but does not write them. Save the drawing as DXF (.dxf), which AutoCAD opens, or as a Horizon CAD drawing (.hcad).</source>
         <translation type="unfinished">Horizon CAD lee archivos DWG pero no los escribe. Guarde el dibujo como DXF (.dxf), que AutoCAD abre, o como dibujo de Horizon CAD (.hcad).</translation>
     </message>
     <message>
-        <location line="+383"/>
+        <location line="+89"/>
+        <source>Not drawn: %1</source>
+        <translation type="unfinished">No dibujado: %1</translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>What is not drawn is kept, and saving keeps it: it is drawn again should the part have its edges again.</source>
+        <translation type="unfinished">Lo que no se dibuja se conserva, también al guardar: se vuelve a dibujar si la pieza vuelve a tener sus aristas.</translation>
+    </message>
+    <message>
+        <location line="+291"/>
         <source>Nothing selected to zoom to: Fit All (F) shows everything</source>
         <translation type="unfinished">No hay nada seleccionado para hacer zoom: Ajustar todo (F) lo muestra todo</translation>
     </message>
     <message>
-        <location line="+614"/>
+        <location line="+603"/>
         <source>The part&apos;s mass properties could not be worked out: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+60"/>
+        <location line="+68"/>
+        <location line="+21"/>
+        <source>Exact (integrated on its exact faces):
+</source>
+        <translation type="unfinished">Exacta (integrada sobre sus caras exactas):
+</translation>
+    </message>
+    <message>
+        <location line="-13"/>
         <source>Exact to %1 %2, as its file gives its edges (integrated on its faces as they were imported; its volume and area to within %3):
 </source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Exact to %1 %2, as its file gives its edges (integrated on its exact faces; its volume and area to within %3):
+</source>
+        <translation type="unfinished">Exacta a %1 %2, como su archivo da sus aristas (integrada sobre sus caras exactas; su volumen y su área con una precisión de %3):
+</translation>
     </message>
     <message>
         <location line="+4"/>
@@ -5022,7 +5085,8 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+4"/>
+        <location line="-15"/>
+        <location line="+21"/>
         <source>Exact (integrated on its faces as they were imported):
 </source>
         <translation type="unfinished"></translation>
@@ -5033,7 +5097,7 @@ empezar a construir su pieza.</translation>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+35"/>
+        <location line="+64"/>
         <source>
 Measured on the ideal surfaces: every curved face on its own.</source>
         <translation type="unfinished">
@@ -5079,7 +5143,7 @@ Its error is not estimated: it was measured once, not refined.</source>
 Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
-        <location line="-2715"/>
+        <location line="-2873"/>
         <source>Radial</source>
         <translation type="unfinished">Radial</translation>
     </message>
@@ -5310,16 +5374,16 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <location line="+97"/>
         <location line="+3"/>
         <location line="+10"/>
-        <location line="+1083"/>
-        <location line="+502"/>
-        <location line="+977"/>
-        <location line="+600"/>
+        <location line="+1174"/>
+        <location line="+530"/>
+        <location line="+1022"/>
+        <location line="+604"/>
         <location line="+13"/>
         <source>Ready</source>
         <translation type="unfinished">Listo</translation>
     </message>
     <message>
-        <location line="-3253"/>
+        <location line="-3421"/>
         <source>Cancel</source>
         <translation type="unfinished">Cancelar</translation>
     </message>
@@ -5340,17 +5404,17 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+18"/>
-        <location line="+2893"/>
+        <location line="+3057"/>
         <source>None</source>
         <translation type="unfinished">Ninguno</translation>
     </message>
     <message>
-        <location line="-2887"/>
+        <location line="-3051"/>
         <source>%1 selected</source>
         <translation>%1 seleccionado(s)</translation>
     </message>
     <message>
-        <location line="+397"/>
+        <location line="+415"/>
         <source> (recovered)</source>
         <translation type="unfinished"> (recuperado)</translation>
     </message>
@@ -5650,9 +5714,9 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+41"/>
-        <location line="+38"/>
+        <location line="+42"/>
         <location line="+13"/>
-        <location line="+90"/>
+        <location line="+159"/>
         <location line="+36"/>
         <location line="+71"/>
         <location line="+6"/>
@@ -5661,19 +5725,19 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">No se pudo abrir</translation>
     </message>
     <message>
-        <location line="-241"/>
+        <location line="-310"/>
         <source>Assembly</source>
         <translation type="unfinished">Ensamblaje</translation>
     </message>
     <message>
         <location line="+22"/>
-        <location line="+111"/>
+        <location line="+180"/>
         <source>Drawing</source>
         <translation type="unfinished">Dibujo</translation>
     </message>
     <message>
-        <location line="-97"/>
-        <location line="+97"/>
+        <location line="-166"/>
+        <location line="+166"/>
         <source>Document</source>
         <translation type="unfinished">Documento</translation>
     </message>
@@ -5749,18 +5813,18 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+7"/>
-        <location line="+16"/>
-        <location line="+44"/>
+        <location line="+17"/>
+        <location line="+48"/>
         <source>Could not save</source>
         <translation type="unfinished">No se pudo guardar</translation>
     </message>
     <message>
-        <location line="-37"/>
+        <location line="-41"/>
         <source>Drawing saved.</source>
         <translation type="unfinished">Dibujo guardado.</translation>
     </message>
     <message>
-        <location line="+22"/>
+        <location line="+26"/>
         <source>File saved.</source>
         <translation type="unfinished">Archivo guardado.</translation>
     </message>
@@ -5784,7 +5848,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
 %3</translation>
     </message>
     <message>
-        <location line="+11"/>
+        <location line="+22"/>
         <source>Horizon Assemblies (*.hzasm);;All Files (*)</source>
         <translation type="unfinished">Ensamblajes de Horizon (*.hzasm);;Todos los archivos (*)</translation>
     </message>
@@ -5831,12 +5895,12 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
     </message>
     <message>
         <location line="+25"/>
-        <location line="+13"/>
+        <location line="+16"/>
         <source>&quot;%1&quot;: %2</source>
         <translation type="unfinished">&quot;%1&quot;: %2</translation>
     </message>
     <message>
-        <location line="-7"/>
+        <location line="-10"/>
         <source>Left out: %1</source>
         <translation type="unfinished">Omitido: %1</translation>
     </message>
@@ -5846,7 +5910,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Aproximado: %1</translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+5"/>
         <source>Converted: %1</source>
         <translation type="unfinished">Convertido: %1</translation>
     </message>
@@ -5861,12 +5925,12 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Para que &quot;%1&quot; conserve lo que le falta al documento, el documento no se guarda encima: Guardar pregunta dónde guardarlo.</translation>
     </message>
     <message>
-        <location line="+3"/>
+        <location line="+4"/>
         <source>What was left out is not in the document, and saving will not keep it.</source>
         <translation type="unfinished">Lo omitido no está en el documento, y al guardar no se conservará.</translation>
     </message>
     <message>
-        <location line="+32"/>
+        <location line="+40"/>
         <source>&quot;%1&quot; was changed by another program: close it and open it again to see the change</source>
         <translation type="unfinished">&quot;%1&quot; ha sido modificado por otro programa: ciérrelo y vuelva a abrirlo para ver el cambio</translation>
     </message>
@@ -5916,7 +5980,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">&quot;%1&quot; ha sido modificado por otro programa; se conservan los cambios que hizo mientras tanto, y al guardarlos se reemplazarán los del otro programa</translation>
     </message>
     <message>
-        <location line="+28"/>
+        <location line="+29"/>
         <source>&quot;%1&quot; was changed by another program, and has been read again</source>
         <translation type="unfinished">&quot;%1&quot; ha sido modificado por otro programa, y se ha vuelto a leer</translation>
     </message>
@@ -5926,7 +5990,14 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">X: %1  Y: %2</translation>
     </message>
     <message>
-        <location line="+803"/>
+        <location line="+399"/>
+        <source>Exact (integrated on its exact faces; its volume and area to within %1):
+</source>
+        <translation type="unfinished">Exacta (integrada sobre sus caras exactas; su volumen y su área con una precisión de %1):
+</translation>
+    </message>
+    <message>
+        <location line="+448"/>
         <source>y:</source>
         <translation type="unfinished">y:</translation>
     </message>
@@ -5936,7 +6007,7 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">z:</translation>
     </message>
     <message>
-        <location line="-779"/>
+        <location line="-823"/>
         <source>An assembly has no sketches: sketch in a part</source>
         <translation type="unfinished">Un ensamblaje no tiene croquis: cree el croquis en una pieza</translation>
     </message>
@@ -6182,12 +6253,12 @@ Su error no está estimado: se midió una vez, sin refinar.</translation>
         <translation type="unfinished">Material:</translation>
     </message>
     <message>
-        <location line="+21"/>
+        <location line="+10"/>
         <source>The part&apos;s mass properties could not be worked out</source>
         <translation type="unfinished">No se pudieron calcular las propiedades físicas de la pieza</translation>
     </message>
     <message>
-        <location line="+24"/>
+        <location line="+23"/>
         <source>Volume: %1 %2
 Surface area: %3 %4
 Centre of mass: %5 %6</source>
@@ -6219,7 +6290,7 @@ Masa: %1 g</translation>
 %9  %10  %11</translation>
     </message>
     <message>
-        <location line="+8"/>
+        <location line="+9"/>
         <source>%1: density %2 g/%3
 
 </source>
@@ -6228,7 +6299,7 @@ Masa: %1 g</translation>
 </translation>
     </message>
     <message>
-        <location line="+44"/>
+        <location line="+93"/>
         <source>
 
 Every face is flat, so the part is exactly as modelled.
@@ -6270,17 +6341,17 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">ideal</translation>
     </message>
     <message>
-        <location line="-3611"/>
+        <location line="-3769"/>
         <source>It could not be worked out.</source>
         <translation type="unfinished">No se pudo calcular.</translation>
     </message>
     <message>
-        <location line="+3624"/>
+        <location line="+3790"/>
         <source>Mass properties are already being measured</source>
         <translation type="unfinished">Ya se están midiendo las propiedades físicas</translation>
     </message>
     <message>
-        <location line="+14"/>
+        <location line="+12"/>
         <source>Measuring...</source>
         <translation type="unfinished">Midiendo...</translation>
     </message>
@@ -6431,7 +6502,7 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">%1 no puede usar el valor indicado para: %2</translation>
     </message>
     <message>
-        <location line="+85"/>
+        <location line="+87"/>
         <source>Feature rebuild failed at feature %1: %2</source>
         <translation type="unfinished">La reconstrucción falló en la operación %1: %2</translation>
     </message>
@@ -6446,12 +6517,12 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">Importando %1: %2 de %3 piezas escritas...</translation>
     </message>
     <message>
-        <location line="+45"/>
+        <location line="+47"/>
         <source>Rebuild cancelled: the model is as it was before the last change.</source>
         <translation type="unfinished">Reconstrucción cancelada: el modelo está como antes del último cambio.</translation>
     </message>
     <message>
-        <location line="-3269"/>
+        <location line="-3437"/>
         <source>0 selected</source>
         <translation>0 seleccionado</translation>
     </message>
@@ -6565,12 +6636,12 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
     <message>
         <location line="+0"/>
         <location line="+7"/>
-        <location line="+448"/>
+        <location line="+454"/>
         <source>Radius:</source>
         <translation type="unfinished">Radio:</translation>
     </message>
     <message>
-        <location line="-455"/>
+        <location line="-461"/>
         <location line="+17"/>
         <source>Height:</source>
         <translation type="unfinished">Altura:</translation>
@@ -6757,30 +6828,30 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
     </message>
     <message>
         <location line="+15"/>
-        <location line="+120"/>
+        <location line="+123"/>
         <source>Draw a closed profile first</source>
         <translation type="unfinished">Dibuje primero un perfil cerrado</translation>
     </message>
     <message>
-        <location line="-99"/>
-        <location line="+46"/>
+        <location line="-102"/>
+        <location line="+49"/>
         <source>Extrude</source>
         <translation type="unfinished">Extruir</translation>
     </message>
     <message>
-        <location line="-45"/>
-        <location line="+195"/>
+        <location line="-48"/>
+        <location line="+201"/>
         <source>Distance:</source>
         <translation type="unfinished">Distancia:</translation>
     </message>
     <message>
-        <location line="-194"/>
-        <location line="+475"/>
+        <location line="-200"/>
+        <location line="+481"/>
         <source>Goes:</source>
         <translation type="unfinished">Extensión:</translation>
     </message>
     <message>
-        <location line="-474"/>
+        <location line="-480"/>
         <source>To the distance</source>
         <translation type="unfinished">Hasta la distancia</translation>
     </message>
@@ -6791,23 +6862,23 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
     </message>
     <message>
         <location line="+0"/>
-        <location line="+475"/>
+        <location line="+481"/>
         <source>Through all</source>
         <translation type="unfinished">Por todo</translation>
     </message>
     <message>
-        <location line="-474"/>
+        <location line="-480"/>
         <source>Through all, both ways</source>
         <translation type="unfinished">Por todo, en ambos sentidos</translation>
     </message>
     <message>
         <location line="+0"/>
-        <location line="+474"/>
+        <location line="+480"/>
         <source>Up to a face</source>
         <translation type="unfinished">Hasta una cara</translation>
     </message>
     <message>
-        <location line="-470"/>
+        <location line="-476"/>
         <source>(no flat face of the part is parallel to the sketch)</source>
         <translation type="unfinished">(ninguna cara plana de la pieza es paralela al croquis)</translation>
     </message>
@@ -6818,12 +6889,12 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
     </message>
     <message>
         <location line="+1"/>
-        <location line="+314"/>
+        <location line="+320"/>
         <source>Direction:</source>
         <translation type="unfinished">Dirección:</translation>
     </message>
     <message>
-        <location line="-313"/>
+        <location line="-319"/>
         <source>Out of the sketch</source>
         <translation type="unfinished">Hacia fuera del croquis</translation>
     </message>
@@ -6838,7 +6909,7 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">Extrusión no añadida: ninguna cara plana de la pieza es paralela al croquis</translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+20"/>
         <source>Extrude failed: %1</source>
         <translation type="unfinished">Error en la extrusión: %1</translation>
     </message>
@@ -6895,18 +6966,18 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
     </message>
     <message>
         <location line="+21"/>
-        <location line="+27"/>
+        <location line="+30"/>
         <source>Revolve</source>
         <translation type="unfinished">Revolución</translation>
     </message>
     <message>
-        <location line="-26"/>
-        <location line="+144"/>
+        <location line="-29"/>
+        <location line="+147"/>
         <source>Angle:</source>
         <translation type="unfinished">Ángulo:</translation>
     </message>
     <message>
-        <location line="-140"/>
+        <location line="-143"/>
         <source>Axis:</source>
         <translation type="unfinished">Eje:</translation>
     </message>
@@ -6921,7 +6992,7 @@ Ideal (sobre las superficies curvas que aproximan las facetas):
         <translation type="unfinished">El eje horizontal del croquis (X)</translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+18"/>
         <source>Revolve failed: %1</source>
         <translation type="unfinished">Error en la revolución: %1</translation>
     </message>
@@ -7725,7 +7796,7 @@ ver y editar sus propiedades.</translation>
 <context>
     <name>hz::ui::ViewportWidget</name>
     <message>
-        <location filename="../src/ui/src/ViewportWidget.cpp" line="+41"/>
+        <location filename="../src/ui/src/ViewportWidget.cpp" line="+48"/>
         <source>Viewport</source>
         <translation type="unfinished">Ventana gráfica</translation>
     </message>
@@ -7735,7 +7806,7 @@ ver y editar sus propiedades.</translation>
         <translation type="unfinished">El dibujo o el modelo, tal como se muestra. Trabaje en él desde los menús, la cinta de opciones y los métodos abreviados de teclado.</translation>
     </message>
     <message>
-        <location line="+448"/>
+        <location line="+582"/>
         <source>The graphics driver provides OpenGL %1.%2; Horizon CAD needs 3.3.</source>
         <translation type="unfinished">El controlador gráfico ofrece OpenGL %1.%2; Horizon CAD necesita 3.3.</translation>
     </message>

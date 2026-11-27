@@ -125,6 +125,11 @@ struct DrawingDocumentSpec {
     /// view that is not one, a dimension it cannot read, an annotation.
     /// Saved over that file, the sheet would lose them (Document::leftOut).
     std::vector<std::string> leftOut;
+    /// What load() did not draw (stage 3): each dimension, callout, tolerance or datum whose edge
+    /// the part no longer has, as notDrawnOf() says it. Unlike leftOut, the spec keeps them, and
+    /// so does the file saved from it: they are said, and the sheet is not read in part for them
+    /// (Ruling 41).
+    std::vector<std::string> notDrawn;
 };
 
 /// Reads/writes `.hzdwg` drawing documents.
@@ -149,7 +154,9 @@ public:
 
     /// Load a `.hzdwg`: read the spec, open and rebuild the referenced part, and
     /// project its views into @p outDrawing. @p outSpec receives the spec, its
-    /// part path as found (relative paths are the drawing folder's). Returns
+    /// part path as found (relative paths are the drawing folder's), and in
+    /// its notDrawn each dimension, callout, tolerance or datum whose edge the
+    /// part no longer has (build()'s lost, as notDrawnOf() says it). Returns
     /// false, with the reason in @p error when given, on I/O failure, a file
     /// that is not a drawing, a missing or broken part, or a rebuild that
     /// makes no solid.
@@ -168,6 +175,51 @@ public:
     static model::Drawing build(const topo::Solid& solid, const DrawingDocumentSpec& spec,
                                 std::vector<std::string>* lost = nullptr,
                                 const std::vector<HoleNote>* holes = nullptr);
+    /// What build() said was @p lost, as a sheet read says what it did not draw
+    /// (DrawingDocumentSpec::notDrawn; stage 3): "view 2: a length on an edge the part no longer
+    /// has". Not drawn, it is kept in the spec, and in its file, and drawn again should the part
+    /// have its edge again: said when the sheet is opened, whatever its file's age, but no reason
+    /// not to save over that file (Ruling 41).
+    static std::vector<std::string> notDrawnOf(const std::vector<std::string>& lost);
+
+    /// The most a chord of a view of an exact part sags on paper, in millimetres (stage 3).
+    static constexpr double kChordOnPaper = 0.01;
+
+    /// The largest scale (paper ÷ model) a sheet of @p spec draws its views at, of a part whose
+    /// faceted solid is @p faceted, which its copy is cut for: its views' largest but its details'
+    /// (Ruling 35); with none, its scale where it is set, else the one its standard layout
+    /// chooses for @p faceted above @p room, as before (DrawingGenerator::sheetLayout); a version
+    /// 1 sheet's views are at 1:1. A detail is cut from its view as drawn, so its chords sag up
+    /// to 0.01 × its scale ÷ its view's mm on paper (0.1 mm for a 10:1 detail of a 1:1 view).
+    static double sheetScale(const DrawingDocumentSpec& spec, const topo::Solid& faceted,
+                             const model::TitleBlock& room);
+
+    /// The step of the tolerance a sheet whose views are at most @p scale is cut at (Ruling 34):
+    /// its quarter octaves above 1:1, rounded up, 4 log2(@p scale), so that the tolerance,
+    /// kChordOnPaper halved every four steps, is no coarser than kChordOnPaper / @p scale, and
+    /// every scale of one step is cut alike. A scale a sheet cannot be drawn at is 1:1, step 0.
+    static int toleranceStep(double scale);
+
+    /// What a sheet whose views are at most @p scale draws a part from, where it has an exact
+    /// part @p exact (Document::exactSolid; stage 3): its exact faces cut into facets, 32 a turn
+    /// and so finely that no chord sags more than kChordOnPaper on paper (model::facetExact at
+    /// kChordOnPaper / 2^(k / 4) mm, k its toleranceStep; an import's faces as its own bridge
+    /// cuts them, Ruling 17, its rims into at most 400 chords, Ruling 32, so that an imported rim
+    /// over about 325 mm in radius sags a little more than 0.01 mm on paper at 1:1).
+    /// Its edges are named so that dimensions, callouts, tolerances and datums find theirs by
+    /// model::logicalEdge as on the faceted part: a curve's chords logically
+    /// (model::nameEdgesLogically), a chord of an exact edge inside one face (a seam) as that
+    /// edge. Every other line inside a face is `<face>/line:<n>/of:<m>/at:<k>` (Rulings 31, 34
+    /// and 36), the face's n-th of its m lines, a name of this copy alone: the lines depend on the
+    /// tolerance and on the face, and so their names carry the tolerance's step k and the face's
+    /// count m. A dimension placed on one resolves on a copy cut at that step of a face cut into
+    /// as many lines, and on no other: at another scale, or after an edit that cuts the face into
+    /// another number (a cylinder's radius changed), it is lost, and said to be, never measured on
+    /// a line elsewhere; and the faceted part's lines (`<face>/seam:<n>`) are none of them. A part
+    /// with no exact part is drawn from its faceted solid (Document::solid), as before. Null, with
+    /// why, where it cannot be cut.
+    static std::unique_ptr<topo::Solid> cutForSheet(const topo::Solid& exact, double scale,
+                                                    std::string* error = nullptr);
 
     /// The hole features of @p part that take part in its build.
     static std::vector<HoleNote> holesOf(const doc::Document& part);

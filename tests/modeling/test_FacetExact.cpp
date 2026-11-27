@@ -8,7 +8,10 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <functional>
 #include <map>
 #include <memory>
@@ -18,10 +21,13 @@
 #include <utility>
 #include <vector>
 
+#include "../TimeLimits.h"
 #include "StepTestText.h"
 #include "horizon/fileio/StepFormat.h"
 #include "horizon/geometry/Frame.h"
 #include "horizon/geometry/curves/Curve3.h"
+#include "horizon/geometry/surfaces/NurbsSurface.h"
+#include "horizon/geometry/surfaces/Surface.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Units.h"
 #include "horizon/math/Vec2.h"
@@ -34,6 +40,7 @@
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/topology/HalfEdge.h"
+#include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
 namespace {
@@ -514,3 +521,346 @@ TEST(FacetExact, AnImportsVoidBesideABodyBuiltExactlyStaysWithItsBlock) {
 }
 
 }  // namespace
+
+namespace {
+
+/// A resolution of @p segments per turn and @p chordTolerance turning @p aroundAxis steps round
+/// the z axis through the origin (Ruling 24), or none where it is 0.
+FacetResolution roundZ(int segments, double chordTolerance, int aroundAxis) {
+    FacetResolution resolution;
+    resolution.segmentsPerTurn = segments;
+    resolution.chordTolerance = chordTolerance;
+    resolution.aroundAxis = aroundAxis;
+    resolution.axisPoint = Vec3(0, 0, 0);
+    resolution.axisDirection = Vec3(0, 0, 2);  // any length
+    return resolution;
+}
+
+/// How far each of @p solid's vertices off the z axis is from the nearest of @p n equal angles
+/// round it from the x axis, in radians: the most.
+double offTheAngles(const topo::Solid& solid, int n) {
+    double worst = 0.0;
+    for (const auto& v : solid.vertices()) {
+        if (std::hypot(v.point.x, v.point.y) < 1e-9) continue;
+        const double step = 2.0 * kPi / static_cast<double>(n);
+        const double a = std::atan2(v.point.y, v.point.x) / step;
+        worst = std::max(worst, std::abs(a - std::round(a)) * step);
+    }
+    return worst;
+}
+
+}  // namespace
+
+// Ruling 24: about a revolve's axis (FacetResolution::aroundAxis) every circle round it and every
+// face turned about it are cut into the revolve's one count, whatever the chord tolerance would
+// give each radius, and a curve along the profile keeps stepsFor. A cylinder of radius 1 at a
+// chord tolerance of 0.01 (23 steps by its own radius) is cut 45 times round; a ring torus's
+// equator 20 times round while its tube keeps 8.
+TEST(FacetExact, RoundARevolvesAxisEveryCircleAndFaceTakesItsCount) {
+    const auto cylinder = exact::makeCylinder(geo::Frame{}, 1.0, 3.0);
+    ASSERT_NE(cylinder, nullptr);
+    const auto own = facetExact(*cylinder, FacetResolution{45, 0.01});
+    ASSERT_NE(own.solid, nullptr) << own.error;
+    EXPECT_EQ(own.solid->vertexCount(), 2u * 23u) << "each rim by its own radius";
+    const auto round = facetExact(*cylinder, roundZ(45, 0.01, 45));
+    ASSERT_NE(round.solid, nullptr) << round.error;
+    EXPECT_EQ(round.solid->vertexCount(), 2u * 45u);
+    EXPECT_EQ(round.solid->faceCount(), 45u + 2u);
+    EXPECT_LT(offTheAngles(*round.solid, 45), 1e-12);
+
+    const auto torus = exact::makeTorus(geo::Frame{}, 5.0, 1.0);
+    ASSERT_NE(torus, nullptr);
+    const auto bridge = facetExact(*torus, roundZ(8, 0.0, 20));
+    ASSERT_NE(bridge.solid, nullptr) << bridge.error;
+    EXPECT_EQ(bridge.solid->faceCount(), 20u * 8u);
+    EXPECT_LT(offTheAngles(*bridge.solid, 20), 1e-12);
+}
+
+// A NURBS surface of revolution's u is no angle between its rational arcs' knots, and a face of
+// one with a pole at each end (an apple) has no rim to take its columns from: cut evenly in u its
+// points miss the turned profile's. About the axis its points inside are its first meridian turned
+// to equal angles: every vertex of the apple's bridge lies at a twelfth of a turn, and on the face.
+TEST(FacetExact, AnAppleIsCutAtEqualAnglesRoundItsAxis) {
+    const auto apple = exact::makeTorus(geo::Frame{}, 1.0, 2.0);
+    ASSERT_NE(apple, nullptr);
+    const auto even = facetExact(*apple, FacetResolution{12, 0.0});
+    ASSERT_NE(even.solid, nullptr) << even.error;
+    EXPECT_GT(offTheAngles(*even.solid, 12), 1e-3) << "cut evenly in its u";
+    const auto round = facetExact(*apple, roundZ(12, 0.0, 12));
+    ASSERT_NE(round.solid, nullptr) << round.error;
+    EXPECT_EQ(round.solid->faceCount(), even.solid->faceCount());
+    EXPECT_LT(offTheAngles(*round.solid, 12), 1e-12);
+    const auto& surface = *apple->faces().front().exactSurface;
+    for (const auto& v : round.solid->vertices()) {
+        const auto uv = surface.invert(v.point);
+        EXPECT_LT((surface.evaluate(uv.x, uv.y) - v.point).length(), 1e-9);
+    }
+}
+
+namespace {
+
+/// The one solid @p text holds, read as File > Import > STEP reads it, in millimetres.
+std::unique_ptr<topo::Solid> readOne(const std::string& text) {
+    hz::io::StepReadOptions inMillimetres;
+    inMillimetres.unknownLengthUnit = hz::math::LengthUnit::Millimetre;
+    auto read = hz::io::StepFormat::fromString(text, nullptr, nullptr, inMillimetres);
+    EXPECT_EQ(read.size(), 1u) << hz::io::StepFormat::lastError();
+    return read.empty() ? nullptr : std::move(read.front());
+}
+
+/// Each face of @p solid as its name and its outer loop's corners, in order from its wire's
+/// start; sorted, so two solids sewn from the same facets compare equal.
+std::vector<std::pair<std::string, std::vector<std::array<double, 3>>>> facetsOf(
+    const topo::Solid& solid) {
+    std::vector<std::pair<std::string, std::vector<std::array<double, 3>>>> out;
+    for (const auto& f : solid.faces()) {
+        std::vector<std::array<double, 3>> corners;
+        const topo::HalfEdge* h = f.outerLoop->halfEdge;
+        do {
+            corners.push_back({h->origin->point.x, h->origin->point.y, h->origin->point.z});
+            h = h->next;
+        } while (h != f.outerLoop->halfEdge);
+        out.emplace_back(f.topoId.tag(), std::move(corners));
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+/// The farthest any point of @p solid's edges and faces strays inside the cylinder of radius
+/// @p radius about the z axis through @p centre, of those whose corners are all on it (within
+/// @p on): an edge's middle, the centre of a face along it (not across it, as a cap is). The sag
+/// of its chords and facets.
+double sagInside(const topo::Solid& solid, const Vec3& centre, double radius, double on) {
+    const auto off = [&](const Vec3& p) {
+        return radius - std::hypot(p.x - centre.x, p.y - centre.y);
+    };
+    double worst = 0.0;
+    for (const auto& e : solid.edges()) {
+        const Vec3 a = e.halfEdge->origin->point;
+        const Vec3 b = e.halfEdge->twin->origin->point;
+        if (std::abs(off(a)) > on || std::abs(off(b)) > on) continue;
+        worst = std::max(worst, off((a + b) * 0.5));
+    }
+    for (const auto& f : solid.faces()) {
+        Vec3 sum;
+        int n = 0;
+        bool onIt = true;
+        const topo::HalfEdge* h = f.outerLoop->halfEdge;
+        do {
+            onIt = onIt && std::abs(off(h->origin->point)) <= on;
+            sum = sum + h->origin->point;
+            ++n;
+            h = h->next;
+        } while (h != f.outerLoop->halfEdge);
+        const bool along = std::abs(topo::loopNormal(&f).normalized().z) < 0.5;
+        if (onIt && along) worst = std::max(worst, off(sum * (1.0 / n)));
+    }
+    return worst;
+}
+
+}  // namespace
+
+// Ruling 17: a face with a NURBS carrier is an import's, and the bridge cuts it as the import's
+// own bridge (facetCurved) does: at 32 a turn, the same facets, corner for corner, a curved face
+// that is no rectangle of its surface (a band between two rims, as Solid Edge and Alibre write a
+// cylinder's side) and a flat face included. Where it was refused, a part made of an import and
+// a primitive had no copy to draw.
+TEST(FacetExact, AFaceWithACarrierIsCutAsTheImportsBridgeCutsIt) {
+    const struct {
+        const char* what;
+        std::string text;
+    } imports[] = {
+        {"OpenCASCADE's cylinder", hz::step_text::externalStyleCylinder()},
+        {"a band between two rims", hz::step_text::bandCylinder()},
+        {"a cylinder cut on a slant", hz::step_text::slantCylinder(1.0, 2.0, 0.3)},
+        {"Alibre's tube", hz::step_text::alibreTube()},
+        {"a block with a ball out of it", hz::step_text::blockWithABall()},
+        {"a block", hz::step_text::block(false)},
+    };
+    for (const auto& i : imports) {
+        SCOPED_TRACE(i.what);
+        const auto solid = readOne(i.text);
+        ASSERT_NE(solid, nullptr);
+        const auto imported = facetCurved(*solid);
+        ASSERT_NE(imported.solid, nullptr) << imported.error;
+        const auto bridge = facetExact(*solid, FacetResolution{32, 0.0});
+        ASSERT_NE(bridge.solid, nullptr) << bridge.error;
+        EXPECT_FALSE(bridge.copied) << "an import's faces are sewn as its bridge sews them";
+        EXPECT_EQ(facetsOf(*bridge.solid), facetsOf(*imported.solid));
+        EXPECT_EQ(bridge.outlined, imported.outlined);
+        EXPECT_TRUE(bridge.solid->isValid()) << bridge.solid->validationReport();
+    }
+}
+
+// With a chord tolerance an import's faces are cut finer, to keep within it, as a drawing's copy
+// needs (0.01 mm on paper): the rims, and the lines and triangles across the side, each with its
+// corners on the cylinder, sag no more than it, on a band between two rims and on a side cut
+// within its trim (a cylinder cut on a slant). At 32 a turn alone they sag four times as much.
+// Each direction of the side is stepped by its own curvature (Ruling 30): round the cylinder as
+// finely as the tolerance asks, along it not at all, every point on a rim.
+TEST(FacetExact, AnImportsFacesAreCutWithinAChordTolerance) {
+    const struct {
+        const char* what;
+        std::string text;
+        double lean;  ///< of the top: it is at z = 2 + x tan(lean)
+    } imports[] = {
+        {"a band between two rims", hz::step_text::bandCylinder(), 0.0},
+        {"a cylinder cut on a slant", hz::step_text::slantCylinder(1.0, 2.0, 0.3), 0.3},
+    };
+    constexpr double kTolerance = 1e-3;
+    for (const auto& i : imports) {
+        SCOPED_TRACE(i.what);
+        const auto solid = readOne(i.text);
+        ASSERT_NE(solid, nullptr);
+        const auto coarse = facetExact(*solid, FacetResolution{32, 0.0});
+        ASSERT_NE(coarse.solid, nullptr) << coarse.error;
+        EXPECT_GT(sagInside(*coarse.solid, {}, 1.0, 1e-9), 4.0 * kTolerance);
+        const auto fine = facetExact(*solid, FacetResolution{32, kTolerance});
+        ASSERT_NE(fine.solid, nullptr) << fine.error;
+        EXPECT_TRUE(fine.solid->isValid()) << fine.solid->validationReport();
+        EXPECT_TRUE(fine.outlined.empty());
+        EXPECT_LE(sagInside(*fine.solid, {}, 1.0, 1e-9), kTolerance);
+        std::size_t onTheBottom = 0;
+        for (const auto& v : fine.solid->vertices()) {
+            const Vec3& p = v.point;
+            const bool bottom = std::abs(p.z) < 1e-9;
+            const bool top = std::abs(p.z - (2.0 + p.x * std::tan(i.lean))) < 1e-9;
+            EXPECT_TRUE(bottom || top)
+                << "a point inside, at " << p.x << ", " << p.y << ", " << p.z;
+            if (bottom) ++onTheBottom;
+        }
+        EXPECT_EQ(onTheBottom, 71u) << "pi / acos(1 - 0.001) = 70.2: 71 chords round, alike";
+        const double volume = MassPropertiesCalculator::compute(*fine.solid).volume;
+        EXPECT_NEAR(volume, 2.0 * kPi, 2.0 * kPi * 2.0 * kTolerance) << "within its sag";
+    }
+}
+
+// A part of an import and a primitive, as its exact part gathers them (Ruling 17): the import's
+// faces are cut as its bridge cuts them and the primitive's from their exact fields, each as it is
+// cut alone, in one copy.
+TEST(FacetExact, AnImportBesideABodyBuiltExactlyIsCutEachItsOwnWay) {
+    const auto band = readOne(hz::step_text::bandCylinder());
+    ASSERT_NE(band, nullptr);
+    const auto cylinder = exact::makeCylinder(geo::Frame::fromAxis({5, 0, 0}, {0, 0, 1}), 1.0, 2.0);
+    ASSERT_NE(cylinder, nullptr);
+    nameEdgesLogically(*cylinder);
+    topo::Solid both;
+    Pattern::append(both, *band, Mat4::identity());
+    Pattern::append(both, *cylinder, Mat4::identity());
+
+    const auto bridge = facetExact(both, FacetResolution{32, 0.0});
+    ASSERT_NE(bridge.solid, nullptr) << bridge.error;
+    EXPECT_TRUE(bridge.solid->isValid()) << bridge.solid->validationReport();
+    const auto imported = facetCurved(*band);
+    ASSERT_NE(imported.solid, nullptr) << imported.error;
+    const auto built = facetExact(*cylinder, FacetResolution{32, 0.0});
+    ASSERT_NE(built.solid, nullptr) << built.error;
+    auto expected = facetsOf(*imported.solid);
+    const auto own = facetsOf(*built.solid);
+    expected.insert(expected.end(), own.begin(), own.end());
+    std::sort(expected.begin(), expected.end());
+    EXPECT_EQ(facetsOf(*bridge.solid), expected);
+}
+
+// Ruling 32: an import is untrusted, and a tolerance may ask for any number of steps. A cylinder's
+// trimmed side cut to a nanometre asks for some 70,000 steps round it: it is cut at its grid's
+// cap, 400, its rims into 400 chords each and inside it no more steps either way, in a moment.
+// (Its rims cut into 4096 chords each, the most a curve is, the cut by ears of its outline took
+// 21 s in Debug.)
+TEST(FacetExact, AFaceAskingForMoreThanItsGridsCapIsCutWithinIt) {
+    const auto slant = readOne(hz::step_text::slantCylinder(1.0, 2.0, 0.3));
+    ASSERT_NE(slant, nullptr);
+    const auto started = std::chrono::steady_clock::now();
+    const auto fine = facetExact(*slant, FacetResolution{32, 1e-9});
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    ASSERT_NE(fine.solid, nullptr) << fine.error;
+    EXPECT_TRUE(fine.solid->isValid()) << fine.solid->validationReport();
+    EXPECT_TRUE(fine.outlined.empty());
+    // Two rims of 400 chords each, and no more inside than the cap's square.
+    std::size_t onTheBottom = 0;
+    for (const auto& v : fine.solid->vertices()) {
+        if (std::abs(v.point.z) < 1e-9) ++onTheBottom;
+    }
+    EXPECT_EQ(onTheBottom, 400u);
+    EXPECT_LE(fine.solid->vertexCount(), 2u * 400u + 400u * 400u);
+    std::printf("[   INFO   ] cut to a nanometre in %.3f s, %zu vertices\n", seconds,
+                fine.solid->vertexCount());
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 1.0);
+#else
+    EXPECT_LT(seconds, 10.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
+#endif
+#endif
+}
+
+// Ruling 32: a surface whose knots are finite but span no finite range (from -1e308 to 1e308) has
+// nothing to measure a cut by. Its face is refused, saying so, by both bridges; never a crash, nor
+// a grid without end.
+TEST(FacetExact, AFaceWithNoFiniteParameterRangeIsRefused) {
+    auto slant = readOne(hz::step_text::slantCylinder(1.0, 2.0, 0.3));
+    ASSERT_NE(slant, nullptr);
+    std::string side;
+    for (auto& face : slant->faces()) {
+        if (!face.exactSurface || face.exactSurface->kind() != geo::SurfaceKind::Cylinder) continue;
+        constexpr double kFar = 1e308;
+        face.surface = std::make_shared<geo::NurbsSurface>(
+            std::vector<std::vector<Vec3>>{{{1, 0, 0}, {1, 0, 2}}, {{0, 1, 0}, {0, 1.5, 2}}},
+            std::vector<std::vector<double>>{{1, 1}, {1, 1}},
+            std::vector<double>{-kFar, -kFar, kFar, kFar}, std::vector<double>{0, 0, 1, 1}, 1, 1);
+        side = face.topoId.tag();
+    }
+    ASSERT_FALSE(side.empty());
+    for (const double tolerance : {0.0, 1e-3}) {
+        SCOPED_TRACE(tolerance);
+        const auto bridge = facetExact(*slant, FacetResolution{32, tolerance});
+        EXPECT_EQ(bridge.solid, nullptr);
+        EXPECT_EQ(bridge.error, "face " + side + "'s surface has no finite parameter range");
+    }
+    const auto imported = facetCurved(*slant);
+    EXPECT_EQ(imported.solid, nullptr);
+    EXPECT_EQ(imported.error, "face " + side + "'s surface has no finite parameter range");
+}
+
+// Ruling 32: a face cut from pole to pole (a STEP ball's skin, a void in a block, one face
+// bounded by its seam there and back) takes its columns from its own turning. Under a tolerance
+// they went up to the most a curve is (4096), here 497 round a ball of radius 1 at 2e-5; finer,
+// columns times rows passed the cap's square and the face could not be cut at all, nor a drawing
+// of it opened. They stop at the cap, 400, and the face is cut there, valid and watertight with
+// its seam.
+TEST(FacetExact, AFaceFromPoleToPoleIsCutAtItsGridsCapUnderAFineTolerance) {
+    const auto block = readOne(hz::step_text::blockWithABall());
+    ASSERT_NE(block, nullptr);
+    // The ball's radius is 1: a turn asks for pi / acos(1 - 2e-5) = 497 chords.
+    const auto started = std::chrono::steady_clock::now();
+    const auto fine = facetExact(*block, FacetResolution{32, 2e-5});
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    ASSERT_NE(fine.solid, nullptr) << fine.error;
+    EXPECT_TRUE(fine.solid->isValid()) << fine.solid->validationReport();
+    EXPECT_TRUE(fine.outlined.empty());
+    // Round the ball's ring nearest its equator (z = 2): its columns, the cap's.
+    double nearest = 1.0;
+    for (const auto& v : fine.solid->vertices()) {
+        if (std::hypot(v.point.x - 2.0, v.point.y - 2.0) > 0.5) {
+            nearest = std::min(nearest, std::abs(v.point.z - 2.0));
+        }
+    }
+    std::size_t onTheRing = 0;
+    for (const auto& v : fine.solid->vertices()) {
+        if (std::hypot(v.point.x - 2.0, v.point.y - 2.0) > 0.5 &&
+            std::abs(std::abs(v.point.z - 2.0) - nearest) < 1e-9 && v.point.z >= 2.0 - 1e-9) {
+            ++onTheRing;
+        }
+    }
+    EXPECT_EQ(onTheRing, 400u);
+    std::printf("[   INFO   ] cut in %.3f s, %zu facets\n", seconds, fine.solid->faceCount());
+#if HZ_TIME_LIMITS
+#ifdef NDEBUG
+    EXPECT_LT(seconds, 2.0);
+#else
+    EXPECT_LT(seconds, 20.0 * HZ_UNOPTIMIZED_SLOWDOWN) << "unoptimized: a generous bound";
+#endif
+#endif
+}

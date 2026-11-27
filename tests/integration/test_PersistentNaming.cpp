@@ -178,7 +178,7 @@ TEST(PersistentNamingTest, SidesAreNamedAfterTheirSource) {
     EXPECT_EQ(edgeNames.size(), discSolid->edgeCount()) << "every edge named, none twice";
 }
 
-TEST(PersistentNamingTest, TheNamingSchemeIsSavedAndOlderFilesKeepTheirs) {
+TEST(PersistentNamingTest, TheNamingSchemeIsSavedAndAnOlderFileIsNamedStable) {
     Square part(NamingScheme::FromGeometry);
     nlohmann::json root =
         nlohmann::json::parse(hz::io::NativeFormat::documentToJson(part.doc, false));
@@ -193,19 +193,25 @@ TEST(PersistentNamingTest, TheNamingSchemeIsSavedAndOlderFilesKeepTheirs) {
     EXPECT_EQ(extrude->naming(), NamingScheme::FromGeometry);
 
     // A file from before persistent naming has no "naming": its references
-    // were made against positional names, which it keeps.
+    // were made against positional names. Since format 32 a part that old is
+    // migrated when it is read (io::migrateToExact): built exactly, which
+    // positional names cannot follow, and so named Stable, what referred to
+    // the old names reported (test_Migration.cpp).
     root.at("featureTree").at(0).erase("naming");
     root["version"] = 17;
     Document old;
     ASSERT_TRUE(hz::io::NativeFormat::documentFromJson(root.dump(), old, &error)) << error;
     const auto* oldExtrude = dynamic_cast<const ExtrudeFeature*>(old.featureTree().feature(0));
     ASSERT_NE(oldExtrude, nullptr);
-    EXPECT_EQ(oldExtrude->naming(), NamingScheme::Positional);
-    EXPECT_EQ(old.featureTree().feature(0)->naming(), NamingScheme::Positional)
+    EXPECT_EQ(oldExtrude->naming(), NamingScheme::Stable);
+    EXPECT_EQ(old.featureTree().feature(0)->naming(), NamingScheme::Stable)
         << "every feature of an older file, not only extrusions";
     ASSERT_TRUE(old.rebuildModel());
+    EXPECT_FALSE(hz::model::MateGeometry::findFace(
+        *old.solid(), TopologyID::make(oldExtrude->featureID(), "lateral_0")))
+        << "positional names are gone";
     EXPECT_TRUE(hz::model::MateGeometry::findFace(
-        *old.solid(), TopologyID::make(oldExtrude->featureID(), "lateral_0")));
+        *old.solid(), TopologyID::make(oldExtrude->featureID(), "cap_top")));
 }
 
 TEST(PersistentNamingTest, ABooleanNamesEachPieceOfASplitFace) {

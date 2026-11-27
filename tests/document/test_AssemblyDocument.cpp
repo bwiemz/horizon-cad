@@ -2,21 +2,34 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <numbers>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "horizon/document/AssemblyDocument.h"
 #include "horizon/document/AssemblyMates.h"
 #include "horizon/document/BillOfMaterials.h"
 #include "horizon/document/Document.h"
+#include "horizon/document/DocumentManager.h"
 #include "horizon/document/FeatureTree.h"
+#include "horizon/fileio/NativeFormat.h"
+#include "horizon/geometry/Frame.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/modeling/EdgeProjection.h"
+#include "horizon/modeling/ExactPrimitives.h"
+#include "horizon/modeling/MateGeometry.h"
+#include "horizon/modeling/Naming.h"
+#include "horizon/modeling/PrimitiveFactory.h"
 #include "horizon/modeling/ReferenceGeometry.h"
 #include "horizon/modeling/SolidTessellator.h"
+#include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Queries.h"
 #include "horizon/topology/Solid.h"
 
@@ -327,6 +340,39 @@ TEST(AssemblyDocumentTest, InterferenceIsMeasuredFromCopiesTheAssemblyCanChangeU
     EXPECT_TRUE(asmDoc.findInterference().pairs.empty()) << "and the assembly as it is now";
 }
 
+// Task 10: a pair the checker found but could not work out says why, as the
+// checker said it (InterferencePair::problem): here an exact cylinder whose
+// side the read point cannot mesh (a half-edge of it with no pcurve), placed
+// across a box. Reported, with no volume, never passed as clear.
+TEST(AssemblyDocument, AnInterferenceSaysWhyItWasNotMeasured) {
+    auto cylinder =
+        hz::model::exact::makeCylinder(hz::geo::Frame::fromAxis({0, 0, 0}, {0, 0, 1}), 2.0, 4.0);
+    std::string side;
+    for (auto& face : cylinder->faces()) {
+        if (face.topoId.tag().find("side") == std::string::npos) continue;
+        face.outerLoop->halfEdge->pcurve = nullptr;
+        side = face.topoId.tag();
+    }
+    ASSERT_FALSE(side.empty());
+    // The broad phase boxes a solid by its vertices: the cylinder's two lie on its seam, x = 2,
+    // y = 0, at z = 0 and 4. The box straddles that line.
+    AssemblyDocument::InterferenceInput input;
+    input.placed.push_back(std::move(cylinder));
+    input.placed.push_back(hz::model::PrimitiveFactory::makeBox(2, 2, 2));
+    for (auto& vertex : input.placed.back()->vertices()) {
+        vertex.point = vertex.point + Vec3(1, -1, 1);
+    }
+    input.ids = {7, 9};
+
+    const InterferenceReport report = AssemblyDocument::measureInterference(input);
+    ASSERT_EQ(report.pairs.size(), 1u);
+    const ComponentInterference& pair = report.pairs.front();
+    EXPECT_EQ(std::min(pair.componentA, pair.componentB), 7u);
+    EXPECT_EQ(std::max(pair.componentA, pair.componentB), 9u);
+    EXPECT_FALSE(pair.volumeResolved);
+    EXPECT_EQ(pair.problem.rfind(side + ": ", 0), 0u) << pair.problem;
+}
+
 // An assembly drawn is its components as one solid: each part placed, its
 // names its own (two instances of one part told apart), a suppressed one
 // left out, and one with no solid listed as missing.
@@ -422,6 +468,37 @@ TEST(AssemblyMatesTest, AMateOnAFaceThatIsGoneIsSaidSo) {
     EXPECT_FALSE(AssemblyMates::gather(asmDoc, &why).has_value());
     EXPECT_EQ(why,
               "mate " + std::to_string(id) + " references geometry that could not be resolved");
+}
+
+// Every mate whose geometry is not found is said, in the mates' order, as gather() says the first
+// it stops at; one that finds its faces, and a Fixed one, which names none, are not.
+TEST(AssemblyMatesTest, EveryMateThatFindsNothingIsSaid) {
+    AssemblyDocument asmDoc;
+    auto block = boxPart(10, 10, 10);
+    const uint64_t base = place(asmDoc, block, Vec3(0, 0, 0));
+    const uint64_t lid = place(asmDoc, block, Vec3(12, 0, 10));
+    const std::string top = block->solid()->faces().front().topoId.tag();
+    const auto mated = [&asmDoc](MateType type, uint64_t a, const std::string& onA, uint64_t b,
+                                 const std::string& onB) {
+        Mate mate;
+        mate.type = type;
+        mate.a = {a, hz::topo::TopologyID::fromTag(onA)};
+        mate.b = {b, hz::topo::TopologyID::fromTag(onB)};
+        return asmDoc.addMate(mate);
+    };
+    const uint64_t first = mated(MateType::Coincident, base, "nosuch/top", lid, top);
+    mated(MateType::Fixed, base, "nosuch/any", base, "");
+    mated(MateType::Parallel, base, top, lid, top);
+    const uint64_t last = mated(MateType::Coincident, base, top, lid, "nosuch/bottom");
+
+    const auto said = [](uint64_t id) {
+        return "mate " + std::to_string(id) + " references geometry that could not be resolved";
+    };
+    EXPECT_EQ(AssemblyMates::unresolved(asmDoc),
+              (std::vector<std::string>{said(first), said(last)}));
+    std::string why;
+    EXPECT_FALSE(AssemblyMates::gather(asmDoc, &why).has_value());
+    EXPECT_EQ(why, said(first));
 }
 
 namespace {
@@ -822,4 +899,169 @@ TEST(AssemblyDocumentTest, AMirroredComponentIsItsPartMirrored) {
     double widest = 0.0;
     for (const auto& v : placed.solid()->vertices()) widest = std::min(widest, v.point.x);
     EXPECT_NEAR(widest, -20.0, 1e-9) << "the new part, mirrored";
+}
+
+// ---------------------------------------------------------------------------
+// An old assembly's mates checked when it opens (stage 3, Task 12)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// A folder of a test's own, gone with it.
+class TempFolder {
+public:
+    explicit TempFolder(const std::string& name)
+        : m_path(std::filesystem::temp_directory_path() / ("hz_old_mates_" + name)) {
+        std::filesystem::remove_all(m_path);
+        std::filesystem::create_directories(m_path);
+    }
+    ~TempFolder() {
+        std::error_code ignored;
+        std::filesystem::remove_all(m_path, ignored);
+    }
+    TempFolder(const TempFolder&) = delete;
+    TempFolder& operator=(const TempFolder&) = delete;
+    std::string file(const std::string& name) const { return (m_path / name).string(); }
+
+private:
+    std::filesystem::path m_path;
+};
+
+/// @p text, a part's or an assembly's JSON, written at @p path as a file of format @p version.
+void writeAsFormat(const std::string& text, const std::string& path, int version) {
+    nlohmann::json root = nlohmann::json::parse(text);
+    root["version"] = version;
+    std::ofstream(path) << root.dump();
+}
+
+/// A cylinder of radius 5 and height 10, `primitive_1`, 32 facets round as master built it,
+/// named @p naming: the part.
+std::unique_ptr<Document> cylinderPart(hz::model::NamingScheme naming) {
+    auto part = std::make_unique<Document>();
+    part->setType(DocumentType::Part);
+    auto cylinder = PrimitiveFeature::makeCylinder(5.0, 10.0);
+    cylinder->restoreFeatureID("primitive_1");
+    cylinder->setNaming(naming);
+    part->featureTree().addFeature(std::move(cylinder));
+    return part;
+}
+
+/// Two components of the part at @p partPath, 20 apart along x, and a concentric mate of face
+/// @p a of the first and face @p b of the second: an assembly at @p path, of format @p version.
+/// The mate's id.
+uint64_t writeMated(const std::string& path, const std::string& partPath, const std::string& a,
+                    const std::string& b, int version) {
+    AssemblyDocument assembly;
+    ComponentInstance first;
+    first.name = "first";
+    first.partPath = partPath;
+    const uint64_t one = assembly.addComponent(first);
+    ComponentInstance second;
+    second.name = "second";
+    second.partPath = partPath;
+    second.transform = Mat4::translation(Vec3(20, 0, 0));
+    const uint64_t two = assembly.addComponent(second);
+    Mate mate;
+    mate.type = MateType::Concentric;
+    mate.a = {one, hz::topo::TopologyID::fromTag(a)};
+    mate.b = {two, hz::topo::TopologyID::fromTag(b)};
+    const uint64_t id = assembly.addMate(mate);
+    writeAsFormat(hz::io::NativeFormat::assemblyToJson(assembly, path), path, version);
+    return id;
+}
+
+/// Parts and assemblies read as the window reads them.
+void readNatively(DocumentManager& documents) {
+    documents.setPartLoader([](const std::string& path, Document& part) {
+        return hz::io::NativeFormat::load(path, part);
+    });
+    documents.setAssemblyLoader([](const std::string& path, AssemblyDocument& assembly) {
+        return hz::io::NativeFormat::loadAssembly(path, assembly);
+    });
+}
+
+std::string joined(const std::vector<std::string>& lines) {
+    std::string all;
+    for (const auto& line : lines) all += line + "\n";
+    return all;
+}
+
+}  // namespace
+
+// Review Focus 4, assembly side: an assembly saved before format 32, its mate on one facet of a
+// cylinder, `primitive_1/side/facet:7`, of a part saved then too. The bridge numbers the
+// cylinder's facets as master did (Ruling 21), and the name is kept as it is (Ruling 40): the mate
+// finds that facet, itself and not the side it is of, nothing is reported, and it is gathered.
+TEST(AssemblyDocument, AnOldMateOnAFacetResolves) {
+    const TempFolder folder("facet");
+    const std::string part = folder.file("cylinder.hzpart");
+    writeAsFormat(
+        hz::io::NativeFormat::documentToJson(*cylinderPart(hz::model::NamingScheme::Stable), false),
+        part, 31);
+    const std::string path = folder.file("old.hzasm");
+    const std::string facet = "primitive_1/side/facet:7";
+    writeMated(path, part, facet, "primitive_1/side/facet:3", 31);
+
+    DocumentManager documents;
+    readNatively(documents);
+    const auto assembly = documents.openAssembly(path);
+    ASSERT_NE(assembly, nullptr);
+    EXPECT_TRUE(assembly->migrated());
+    EXPECT_TRUE(assembly->leftOut().empty()) << joined(assembly->leftOut());
+    EXPECT_FALSE(assembly->readInPart());
+    std::string why;
+    EXPECT_TRUE(AssemblyMates::gather(*assembly, &why).has_value()) << why;
+
+    const ComponentInstance& first = assembly->components().front();
+    ASSERT_NE(first.solid(), nullptr) << "read whole, to find what its mate names";
+    const hz::topo::Face* found =
+        hz::model::MateGeometry::findFace(*first.solid(), hz::topo::TopologyID::fromTag(facet));
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->topoId.tag(), facet) << "the facet, not widened to its side";
+}
+
+// An assembly saved before format 32 is checked once its components are read: a mate on a face
+// its part, migrated (built exactly, its features named Stable), no longer has (the part's
+// cylinder named the old way, by position, then) is left out of it, said as a mate that cannot be
+// placed is, and the assembly is read in part; never solved on another face. The same assembly
+// saved at format 32 is not checked: a mate that cannot be placed says so when it is placed, as
+// before.
+TEST(AssemblyDocument, AnOldMateThatResolvesToNothingIsReported) {
+    const TempFolder folder("gone");
+    const auto old = cylinderPart(hz::model::NamingScheme::Positional);
+    ASSERT_TRUE(old->rebuildModel()) << old->lastBuildMessage();
+    // A face of its side as the old way named it, which Stable names do not.
+    std::string side;
+    for (const auto& face : old->solid()->faces()) {
+        if (face.topoId.tag().rfind("primitive_1/", 0) != 0) side = face.topoId.tag();
+    }
+    ASSERT_FALSE(side.empty()) << "named the old way";
+    const std::string part = folder.file("cylinder.hzpart");
+    writeAsFormat(hz::io::NativeFormat::documentToJson(*old, false), part, 31);
+
+    const std::string path = folder.file("old.hzasm");
+    const uint64_t mate = writeMated(path, part, side, "primitive_1/side/facet:3", 31);
+    const std::string line =
+        "mate " + std::to_string(mate) + " references geometry that could not be resolved";
+    {
+        DocumentManager documents;
+        readNatively(documents);
+        const auto assembly = documents.openAssembly(path);
+        ASSERT_NE(assembly, nullptr);
+        EXPECT_EQ(assembly->leftOut(), std::vector<std::string>{line});
+        EXPECT_TRUE(assembly->readInPart());
+        EXPECT_EQ(assembly->mates().size(), 1u) << "kept, to be saved as it was";
+        std::string why;
+        EXPECT_FALSE(AssemblyMates::gather(*assembly, &why).has_value());
+        EXPECT_EQ(why, line);
+    }
+
+    const std::string current = folder.file("current.hzasm");
+    writeMated(current, part, side, "primitive_1/side/facet:3", 32);
+    DocumentManager documents;
+    readNatively(documents);
+    const auto assembly = documents.openAssembly(current);
+    ASSERT_NE(assembly, nullptr);
+    EXPECT_FALSE(assembly->migrated());
+    EXPECT_TRUE(assembly->leftOut().empty()) << joined(assembly->leftOut());
 }

@@ -173,6 +173,10 @@ public:
     /// beside solid(), their faceted copy, while only bodies built exactly
     /// have made the part. Null when it has none.
     const topo::Solid* exactSolid() const;
+    /// exactSolid(), shared: for a reader on another thread (a measurement on
+    /// a worker), which keeps it while the part is rebuilt or closed. It is
+    /// never changed once made. Null with exactSolid().
+    std::shared_ptr<const topo::Solid> sharedExactSolid() const;
     /// Its mesh, made once by its build at its display tolerance
     /// (model::SolidTessellator::displayTolerance), as the display draws it:
     /// what the display draws, and anything else that shows the part, without
@@ -191,7 +195,12 @@ public:
     /// solid.
     std::shared_ptr<const geo::MeshData> exactOrFacetedMesh() const;
     /// Why the part has no exact counterpart where its bodies would give it
-    /// one (ExactCounterpart::note); empty otherwise.
+    /// one, as a kind, which the window says in its own words; None
+    /// otherwise.
+    ExactNoteKind exactNoteKind() const;
+    /// The note's detail, the technical reason (a face and why it could not
+    /// be meshed, or the two volumes that disagree), for a tooltip or a log;
+    /// the kind is said apart (exactNoteKind). Empty with None.
     const std::string& exactNote() const;
     /// The last counterpart a build made, shown or not (a feature after the
     /// bodies built exactly hides it, and its undo shows it again): what the
@@ -284,6 +293,25 @@ public:
     void setLeftOut(std::vector<std::string> items) { m_leftOut = std::move(items); }
     bool readInPart() const { return !m_leftOut.empty(); }
 
+    // --- Migrated (stage 3) ---
+
+    /// Read from a part of format 31 or older, built from facets, and migrated to format 32's
+    /// exact build as it was read (io::migrateToExact). Its first build applied is its first
+    /// exact one: one that fails (a feature on a reference its migration kept, which the exact
+    /// build does not have) is left out of it (leftOut), "after the exact rebuild: <why>", once,
+    /// and it is read in part. Not saved, nor copied with it: a copy, of format 32, is not
+    /// migrated.
+    bool migrated() const { return m_migrated; }
+    /// Mark it migrated once its features are read: its next build applied is its first exact
+    /// one, when it has features to build.
+    void setMigrated(bool migrated) {
+        m_migrated = migrated;
+        m_firstBuildPending = migrated && m_featureTree.featureCount() > 0;
+    }
+    /// Migrated, and its first exact build not yet applied: what that build fails on is still to
+    /// be said.
+    bool firstBuildPending() const { return m_firstBuildPending; }
+
     // --- Unit (Phase 154) ---
 
     /// The unit its lengths are shown and typed in, saved with it. The model
@@ -302,6 +330,8 @@ private:
     std::function<void()> m_onChange;
     std::string m_filePath;
     std::vector<std::string> m_leftOut;
+    bool m_migrated = false;
+    bool m_firstBuildPending = false;  ///< its first exact build not yet applied
     std::vector<std::shared_ptr<Sketch>> m_sketches;
     std::shared_ptr<Sketch> m_editedSketch;
     FeatureTree m_featureTree;

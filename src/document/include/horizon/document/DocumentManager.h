@@ -82,7 +82,11 @@ public:
     /// worker), as newDocument registers the documents it makes.
     void adoptDocument(std::shared_ptr<Document> document);
     /// Open an assembly file (deduplicated by canonical path). Returns
-    /// nullptr on load failure or when no assembly loader is set.
+    /// nullptr on load failure or when no assembly loader is set. One of
+    /// format 31 or older (AssemblyDocument::migrated) has the components its
+    /// mates name resolved, and each mate whose geometry they no longer have
+    /// added to what it left out (AssemblyMates::unresolved): it is read in
+    /// part.
     std::shared_ptr<AssemblyDocument> openAssembly(const std::string& path);
 
     /// Close (unregister) a document. Returns true if it was open.
@@ -137,6 +141,14 @@ public:
                           const std::string& assemblyDir = {}, std::string* why = nullptr,
                           const std::vector<std::string>& within = {});
 
+    /// Read the part at @p path into @p into, a document of the caller's own:
+    /// not registered, not kept, not built, and nothing a component holds
+    /// changed. For an export of an assembly, which builds a copy of each part
+    /// with its exact counterpart apart from the part the assembly draws,
+    /// mates and checks (Ruling 20). False when it cannot be read (or no part
+    /// loader is set).
+    bool readPart(const std::string& path, Document& into) const;
+
     /// Whether every file the assembly at @p path places, at any depth,
     /// passes @p allowed (given each one's path as resolveComponent would
     /// open it: @p allowed should resolve its links), read from the
@@ -186,6 +198,10 @@ private:
     std::shared_ptr<const geo::MeshData> sharedMesh(
         const std::string& key, std::uint64_t version,
         const std::function<std::shared_ptr<const geo::MeshData>()>& make);
+
+    /// Each mate of @p assembly, just read from a file of format 31 or older,
+    /// that finds nothing in its components resolved: added to its leftOut.
+    void noteUnresolvedMates(AssemblyDocument& assembly);
 
     /// resolveComponent for an assembly file at @p fullPath (@p key its
     /// canonical path). @p cycle is set when it fails for placing an

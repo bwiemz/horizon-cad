@@ -7,6 +7,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/ExactBuild.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
@@ -33,6 +34,11 @@ namespace hz::model {
 ///
 /// A full revolution of a profile that stays clear of the axis is a torus-like
 /// shell of genus 1.
+///
+/// That is master's faceted construction, which execute() builds under the older
+/// naming schemes. Under Stable naming (stage 3) the revolve is built exactly
+/// (exact()), and execute() gives its bridge copy: the same facets, cut from the
+/// exact faces.
 class Revolve {
 public:
     /// Angular steps around the axis for a full revolution.  A partial
@@ -63,16 +69,81 @@ public:
     /// @param chordTolerance When positive, profile arcs are instead faceted at
     ///                      the count their own radius needs to keep every
     ///                      chord within it.
-    /// @param naming        Stable: each band is named after the profile element
-    ///                      it sweeps, `revolved:<source>`, in facets, and the
-    ///                      edges logically. Otherwise by position, as before.
-    /// @return The revolved solid, or nullptr if the profile or angle is invalid.
+    /// @param naming        Stable: the solid is exact()'s bridge copy
+    ///                      (exactAndBridge()): master's facets, vertex for vertex,
+    ///                      each named for the exact face it lies on
+    ///                      (`revolved:<source>/facet:<k>`), numbered as master's;
+    ///                      a profile's holes are then inner loops or cavities, not
+    ///                      Booleans. FromGeometry and Positional build master's
+    ///                      faceted revolve as before, its bands named by position
+    ///                      under Positional.
+    /// @return The revolved solid, or nullptr if the profile or angle is invalid
+    ///         (or, under Stable naming, its exact form cannot be built or cut into
+    ///         facets: "could not be built exactly: <why>", "its exact form could not
+    ///         be cut into facets: <why>").
     static std::unique_ptr<topo::Solid> execute(
         const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
         const draft::SketchPlane& plane, const math::Vec3& axisPoint,
         const math::Vec3& axisDirection, double angle, const std::string& featureID,
         int segments = kDefaultSegments, double chordTolerance = 0.0, std::string* reason = nullptr,
         NamingScheme naming = NamingScheme::Positional);
+
+    /// The revolve built exactly (stage 3), from whole faces carrying exact geometry
+    /// (topo::Face::exactSurface, pcurves, topo::Edge::exactCurve) and no NURBS carrier. Each
+    /// curve of the profile (ExactProfile's loops) sweeps one face about the axis: a line square
+    /// to it a plane (a disc or a ring through a whole turn, a sector of one through part), a line
+    /// along it a cylinder, a line on it nothing, any other line a cone to the apex where it
+    /// meets the axis; an arc centred on the axis a sphere, an arc whose circle clears the axis a
+    /// torus, and one whose circle reaches it a NURBS surface of revolution (Ruling 2). Where the
+    /// profile meets the axis there is no edge: a face comes to a pole or an apex there, its loop
+    /// jumping along it in (u, v). Through a whole turn each curved face has a seam where the
+    /// profile lies, at u = 0 along the profile's side of the axis (where master's ring starts);
+    /// through part of one the profile caps it at each end, and the caps meet along the axis
+    /// where the profile ran along it. A hole in the profile is a cavity (a shell of its own)
+    /// through a whole turn, and an inner loop of each cap through part of one; each region is a
+    /// shell of its own. Nothing is a Boolean.
+    ///
+    /// Its faces have master's Stable logical names: `<featureID>/revolved:<entity>`
+    /// (ProfileValidationResult's edgeSources), `<featureID>/cap_start` and `/cap_end`, a hole's
+    /// faces `<featureID>~hole<k>/...` (k counted through the regions) and the faces of a region
+    /// after the first `<featureID>~region<r>/...`. Its edges are named after them
+    /// (model::nameEdgesLogically). Its vertices are where master's faceted revolve put each
+    /// loop's corners, at u = 0 and turned by the angle; where the sketch's curves miss a corner
+    /// (by no more than the profile's join tolerance), its vertices and the rim it traces carry
+    /// the gap as their tolerance.
+    ///
+    /// @return nullptr, with @p reason, where master refuses the profile, the angle or the axis
+    ///         (in master's words, as Revolve::execute gives them), or with "could not be built
+    ///         exactly: <why>" where only the exact construction cannot build it (an arc that
+    ///         reaches the axis between its ends, a horn's cusp; regions on both sides of the
+    ///         axis).
+    static std::unique_ptr<topo::Solid> exact(
+        const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+        const draft::SketchPlane& plane, const math::Vec3& axisPoint,
+        const math::Vec3& axisDirection, double angle, const std::string& featureID,
+        std::string* reason = nullptr);
+
+    /// exact()'s solid and its bridge copy, what Revolve::execute gives under Stable naming.
+    using ExactAndBridge = model::ExactAndBridge;
+
+    /// The revolve built exactly and its bridge copy (model::buildWithBridge: model::facetExact at
+    /// {segments, chordTolerance} and @p segments round the axis, master's one count for every
+    /// rim and every face turned about it, at master's angles (FacetResolution::aroundAxis, Ruling
+    /// 24), its edges named by model::nameBridgeEdges), numbered as master's
+    /// faceted revolve numbered the same places, facets, chords and seams (model::nameAsMasters,
+    /// Ruling 21): described from the polygons master's Stable revolve sewed, each region's outer
+    /// loop's and each hole's cutter's. A profile of several loops was then master's Booleans:
+    /// what they split or merged (a cap's pieces, the edges of a merged hole) keeps the bridge's
+    /// own numbers (Ruling 23). Through part of a turn a flat face is one facet, a sector (master
+    /// cut it into a quad a step). An exact seam of several chords is renamed with them, after
+    /// master's edge at its first chord. Both null, with @p reason as exact() and execute() give
+    /// it, where either cannot be made.
+    static ExactAndBridge exactAndBridge(
+        const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+        const draft::SketchPlane& plane, const math::Vec3& axisPoint,
+        const math::Vec3& axisDirection, double angle, const std::string& featureID,
+        int segments = kDefaultSegments, double chordTolerance = 0.0,
+        std::string* reason = nullptr);
 };
 
 }  // namespace hz::model

@@ -105,16 +105,6 @@ std::optional<Loop> chained(const ProfileValidationResult& loop, std::string* wh
     return out;
 }
 
-/// @p loop turned the other way round.
-void reverse(Loop& loop) {
-    loop.againstChain = !loop.againstChain;
-    std::reverse(loop.curves.begin(), loop.curves.end());
-    for (LoopCurve& c : loop.curves) {
-        std::swap(c.start, c.end);
-        if (c.curved()) c.forward = !c.forward;
-    }
-}
-
 /// @p loop with its material on its left: counter-clockwise for an outer loop, clockwise for a
 /// hole. Nullopt with @p why where it encloses no area.
 std::optional<Loop> oriented(const ProfileValidationResult& from, bool hole, std::string* why) {
@@ -134,6 +124,32 @@ std::optional<Loop> oriented(const ProfileValidationResult& from, bool hole, std
 }
 
 }  // namespace
+
+void reverse(Loop& loop) {
+    loop.againstChain = !loop.againstChain;
+    std::reverse(loop.curves.begin(), loop.curves.end());
+    for (LoopCurve& c : loop.curves) {
+        std::swap(c.start, c.end);
+        if (c.curved()) c.forward = !c.forward;
+    }
+}
+
+double cornerGap(const Loop& loop, std::size_t j) {
+    const std::size_t m = loop.curves.size();
+    const LoopCurve& leaving = loop.curves[j];
+    const LoopCurve& reaching = loop.curves[(j + m - 1) % m];
+    const Vec2 corner = leaving.start;
+    double gap = 0.0;
+    if (leaving.curved()) {
+        const Vec2 own = leaving.forward ? leaving.ownStartPoint() : leaving.ownEndPoint();
+        gap = std::max(gap, (own - corner).length());
+    }
+    if (reaching.curved()) {
+        const Vec2 own = reaching.forward ? reaching.ownEndPoint() : reaching.ownStartPoint();
+        gap = std::max(gap, (own - corner).length());
+    }
+    return gap;
+}
 
 Vec2 LoopCurve::ownStartPoint() const {
     if (!curved()) return start;

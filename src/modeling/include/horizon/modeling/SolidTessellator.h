@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <string>
+#include <vector>
 
 #include "horizon/geometry/MeshData.h"
 #include "horizon/topology/Solid.h"
@@ -26,8 +27,12 @@ public:
     /// kDisplayTolerance: the owner's choice. The mesh is cached in the part file and loaded for
     /// every part of an assembly, and at 0.1 a part metres across was hundreds of thousands of
     /// triangles, whatever the angle (the Moon buggy, 4.49 m across: 329k, its wheels' spheres
-    /// and tori alone 302k; 49k at 1.5e-4 of its diagonal).
+    /// and tori alone 302k; 49k at 1.5e-4 of its diagonal, 50k at the quarter-octave step below
+    /// it, displayTolerance()).
     static constexpr double kDisplayRelativeTolerance = 1.5e-4;
+    /// How many steps an octave of the display tolerance is cut into (Ruling 29): a large part's
+    /// tolerance is kDisplayTolerance x 2^(k / 4), the step at or below the owner's.
+    static constexpr double kDisplayStepsPerOctave = 4.0;
     /// The angle an exact face's mesh is drawn at (MeshOptions::maxAngle, between neighbouring
     /// triangles' normals), in radians: the owner's choice, coarser than the read point's 0.35.
     /// The mesh is cached in the part file and loaded for every part of an assembly, so it is
@@ -54,10 +59,27 @@ public:
     /// As above, at displayTolerance(@p solid): the part as it is drawn.
     static geo::MeshData tessellate(const topo::Solid& solid);
 
-    /// The chord tolerance @p solid is drawn at: kDisplayRelativeTolerance of its size
-    /// (topo::exactExtent, the diagonal of the box round its vertices and exact edges, the size
-    /// its model tolerance comes from), or kDisplayTolerance where that is larger.
+    /// The chord tolerance a part of size @p extent (topo::exactExtent, its diagonal) is drawn at.
+    /// The owner's choice is max(kDisplayTolerance, kDisplayRelativeTolerance x size): 0.1 up to
+    /// about 667 across, where 1.5e-4 of the size passes it, so that a large part's mesh, cached
+    /// in its part file and loaded for every part of an assembly, stays light. Above that it is
+    /// stepped down to a quarter octave (Ruling 29): kDisplayTolerance x 2^(k / 4), the largest
+    /// such step not above the owner's, so never coarser than it, and at most 19% finer. Each
+    /// step spans 19% of size, so a part a little larger or smaller (a body moved, a radius
+    /// edited) keeps its tolerance, and every other body of it its mesh (an exact part keeps each
+    /// body's mesh while its tolerance holds). A part up to about 667 across, or one whose size is
+    /// not a positive finite number, is drawn to kDisplayTolerance exactly.
+    static double displayTolerance(double extent);
+
+    /// The chord tolerance @p solid is drawn at: displayTolerance() of its size (topo::exactExtent,
+    /// the diagonal of the box round its vertices and exact edges, the size its model tolerance
+    /// comes from).
     static double displayTolerance(const topo::Solid& solid);
+
+    /// The chord tolerance a part of @p bodies is drawn at: displayTolerance of the solid they are
+    /// joined into, from the size of them all (topo::exactExtent of them together), found before
+    /// they are joined, so that each can be meshed on its own at the part's tolerance.
+    static double displayTolerance(const std::vector<const topo::Solid*>& bodies);
 };
 
 }  // namespace hz::model

@@ -126,11 +126,73 @@ double roundingChord(const std::vector<Vec3>& points) {
     return 1024.0 * std::numeric_limits<double>::epsilon() * largest;
 }
 
+/// The most chords one curve is cut into, as PrimitiveFactory::segmentsForTolerance stops.
+constexpr int kMostSteps = 4096;
+
+/// The most points a face cut within its trim is gridded with each way, and so the most steps its
+/// own curvature cuts it into each way under a chord tolerance (Ruling 32): a face that asks for
+/// more, however its curvature or the tolerance asks (an import is untrusted), is cut at it. A
+/// grid over a rectangle of a face's (u, v) has no more than its square of facets.
+constexpr std::size_t kGridCap = 400;
+
+/// The most pieces one edge of a region cut within its trim is cut into, bridging to a hole or
+/// listed in the cells of its grid (Ruling 32): past it the region is not cut so.
+constexpr double kMostAlong = 65536.0;
+
+/// The fewest pieces, @p least or more, that a curve from @p t0 to @p t1 (@p at its points) is cut
+/// into at equal steps of its parameter with no piece's chord sagging more than @p tolerance off
+/// it, each measured at points between its ends; at most @p most, searched no further (Ruling 32:
+/// an untrusted file's many edges each ask for no search past the cap). @p least itself where the
+/// tolerance is not positive, @p least is @p most or more, or its pieces keep within it.
+int piecesWithin(const std::function<Vec3(double)>& at, double t0, double t1, int least,
+                 double tolerance, int most = kMostSteps) {
+    if (!(tolerance > 0.0) || least >= most) return least;
+    // Whether cut into @p n, some chord sags more than the tolerance (each measured at points
+    // between its ends).
+    const auto sags = [&](int n) {
+        constexpr int kWithin = 8;
+        for (int k = 0; k < n; ++k) {
+            const double a = t0 + (t1 - t0) * k / n;
+            const double b = t0 + (t1 - t0) * (k + 1) / n;
+            const Vec3 p = at(a);
+            const Vec3 chord = at(b) - p;
+            const double length2 = chord.dot(chord);
+            for (int m = 1; m < kWithin; ++m) {
+                const Vec3 q = at(a + (b - a) * m / kWithin);
+                const double t =
+                    length2 > 0.0 ? std::clamp((q - p).dot(chord) / length2, 0.0, 1.0) : 0.0;
+                if ((q - (p + chord * t)).length() > tolerance) return true;
+            }
+        }
+        return false;
+    };
+    if (!sags(least)) return least;
+    int sagging = least;  // the most known to sag
+    int enough = least;   // the least known not to, once found
+    do {
+        sagging = enough;
+        enough = std::min(most, 2 * enough);
+    } while (enough < most && sags(enough));
+    if (enough == most && sags(enough)) return most;
+    while (enough - sagging > 1) {
+        const int middle = sagging + (enough - sagging) / 2;
+        if (sags(middle)) {
+            sagging = middle;
+        } else {
+            enough = middle;
+        }
+    }
+    return enough;
+}
+
 /// The points of an edge from its half-edge's origin to its end: along its
 /// curve, equal lengths apart, as many as keep each chord within
 /// @p maxAngle of turning, and at least @p least chords of a curve that
-/// turns at all; the ends its vertices.
-std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle, int least = 1) {
+/// turns at all; with a positive @p tolerance, as many more as keep each
+/// chord sagging no more than it (Ruling 17: a drawing's copy of an import),
+/// up to the grid's cap (kGridCap, Ruling 32). The ends its vertices.
+std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle, int least = 1,
+                             double tolerance = 0.0) {
     const Vec3 p = e.halfEdge->origin->point;
     const Vec3 q = e.halfEdge->next->origin->point;
     const geo::NurbsCurve* c = e.curve.get();
@@ -156,8 +218,21 @@ std::vector<Vec3> sampleEdge(const Edge& e, double maxAngle, int least = 1) {
         length[i] = length[i - 1] + (dense[i] - dense[i - 1]).length();
     }
     const double turn = turningOf(dense, roundingChord(dense));
-    const int n =
-        std::max(turn > 1e-9 ? least : 1, static_cast<int>(std::ceil(turn / maxAngle - 1e-9)));
+    int n = std::max(turn > 1e-9 ? least : 1, static_cast<int>(std::ceil(turn / maxAngle - 1e-9)));
+    if (tolerance > 0.0) {
+        // The point @p s of the way along it by length, as the points below are placed.
+        const auto along = [&](double s) {
+            const double target = length.back() * s;
+            const auto it = std::lower_bound(length.begin() + 1, length.end() - 1, target);
+            const auto i = static_cast<size_t>(it - length.begin());
+            const double span = length[i] - length[i - 1];
+            const double f = span > 0.0 ? (target - length[i - 1]) / span : 0.0;
+            return c->evaluate(ts[i - 1] + (ts[i] - ts[i - 1]) * f);
+        };
+        // No more than the grid's cap for the tolerance's sake (Ruling 32): an untrusted curve,
+        // or a tolerance however fine, asks for no more of its faces' outlines than that.
+        n = std::max(n, piecesWithin(along, 0.0, 1.0, n, tolerance, static_cast<int>(kGridCap)));
+    }
     std::vector<Vec3> out{p};
     size_t at = 1;
     for (int k = 1; k < n; ++k) {
@@ -471,9 +546,18 @@ std::optional<Rectangle> faceInUV(const std::vector<std::vector<Vec3>>& edges, S
 /// its edge a sphere's is a pole, all rounding). Its turning is measured on
 /// chords no shorter than sixteen times the precision points are found on
 /// the surface to (turningOf), or than rounding: a span shorter than that, a
-/// straight seam's few last bits of u, is one piece.
-size_t piecesAcross(const SurfaceMap& map, UV from, UV to, int dir, double maxAngle) {
+/// straight seam's few last bits of u, is one piece. With a positive
+/// @p tolerance, as many more as keep each piece's chord of it sagging no more
+/// than that, up to the grid's cap (kGridCap, Ruling 32).
+size_t piecesAcross(const SurfaceMap& map, UV from, UV to, int dir, double maxAngle,
+                    double tolerance) {
     constexpr int kDense = 256;
+    const auto along = [&map, &from, &to, dir](double s) {
+        UV uv = from;
+        coord(uv, dir) = coord(from, dir) + (coord(to, dir) - coord(from, dir)) * s;
+        coord(uv, 1 - dir) = 0.5 * (coord(from, 1 - dir) + coord(to, 1 - dir));
+        return map.at(uv);
+    };
     std::vector<Vec3> dense;
     for (int i = 0; i <= kDense; ++i) {
         UV uv = from;
@@ -482,11 +566,16 @@ size_t piecesAcross(const SurfaceMap& map, UV from, UV to, int dir, double maxAn
         dense.push_back(map.at(uv));
     }
     const double turn = turningOf(dense, std::max(16.0 * map.precision(), roundingChord(dense)));
-    return static_cast<size_t>(std::max(1, static_cast<int>(std::ceil(turn / maxAngle - 1e-9))));
+    const int pieces = std::max(1, static_cast<int>(std::ceil(turn / maxAngle - 1e-9)));
+    // For the tolerance's sake no more than the grid's cap (Ruling 32): a pole-to-pole face's
+    // columns and a band's seam ask for no more than its rows do.
+    return static_cast<size_t>(
+        piecesWithin(along, 0.0, 1.0, pieces, tolerance, static_cast<int>(kGridCap)));
 }
 
 std::optional<std::vector<std::vector<Vec3>>> gridFacets(const Rectangle& r, SurfaceMap& map,
-                                                         double size, double maxAngle) {
+                                                         double size, double maxAngle,
+                                                         double tolerance) {
     const auto degenerate = [](const std::vector<LoopPoint>& side) {
         for (const auto& p : side) {
             if ((p.point - side.front().point).length() > 0.0) return false;
@@ -506,13 +595,19 @@ std::optional<std::vector<std::vector<Vec3>>> gridFacets(const Rectangle& r, Sur
     // Corners (u0, v0) and (u1, v1): the bottom's first, the top's first.
     const UV low = bottom.front().uv;
     const UV high = top.front().uv;
-    const size_t nu = bottomPole && topPole ? piecesAcross(map, low, high, 0, maxAngle)
+    const size_t nu = bottomPole && topPole ? piecesAcross(map, low, high, 0, maxAngle, tolerance)
                                             : (bottomPole ? top.size() : bottom.size()) - 1;
-    const size_t nv = leftPole && rightPole ? piecesAcross(map, low, high, 1, maxAngle)
+    const size_t nv = leftPole && rightPole ? piecesAcross(map, low, high, 1, maxAngle, tolerance)
                                             : (leftPole ? right.size() : left.size()) - 1;
     if (!bottomPole && !topPole && bottom.size() != top.size()) return std::nullopt;
     if (!leftPole && !rightPole && left.size() != right.size()) return std::nullopt;
     if (nu < 1 || nv < 1) return std::nullopt;
+    // No more facets than the cap's square (Ruling 32): a face that asks for more, however its
+    // edges are cut, is cut within its trim instead, its points inside within the cap.
+    if (static_cast<double>(nu) * static_cast<double>(nv) >
+        static_cast<double>(kGridCap) * static_cast<double>(kGridCap)) {
+        return std::nullopt;
+    }
 
     // Each side by its index, bottom and top left to right, left and right
     // bottom to top (the loop runs top and left the other way); a pole's
@@ -669,11 +764,12 @@ struct Band {
 /// its own, from a point of the one straight to the nearest of the other in
 /// (u, v), it is one polygon: the one loop, the seam, the other loop, and the
 /// seam back a period away. The seam's points are on the surface, the same
-/// on both sides, as close as the surface turns by @p maxAngle. The face's
-/// other loops, which close, are its holes. It faces as its loops say, or,
-/// when they go the same way round, as its surface does. Nullopt when it is
-/// not a band.
-std::optional<Band> bandInUV(std::vector<UVChain> loops, SurfaceMap& map, double maxAngle) {
+/// on both sides, as close as the surface turns by @p maxAngle (and its chords
+/// sag by @p tolerance, where positive). The face's other loops, which close,
+/// are its holes. It faces as its loops say, or, when they go the same way
+/// round, as its surface does. Nullopt when it is not a band.
+std::optional<Band> bandInUV(std::vector<UVChain> loops, SurfaceMap& map, double maxAngle,
+                             double tolerance) {
     std::vector<std::size_t> winding;
     for (std::size_t k = 0; k < loops.size(); ++k) {
         if (loops[k].winds >= 0) winding.push_back(k);
@@ -779,8 +875,8 @@ std::optional<Band> bandInUV(std::vector<UVChain> loops, SurfaceMap& map, double
     const auto outlineWith = [&](const std::vector<LoopPoint>& back) {
         const UV a = from.uv;
         const UV b = back.back().uv;
-        const std::size_t pieces = std::max(piecesAcross(map, a, b, 1 - dir, maxAngle),
-                                            piecesAcross(map, a, b, dir, maxAngle));
+        const std::size_t pieces = std::max(piecesAcross(map, a, b, 1 - dir, maxAngle, tolerance),
+                                            piecesAcross(map, a, b, dir, maxAngle, tolerance));
         std::vector<LoopPoint> seam;  // from the one's start to the other's end, inside
         for (std::size_t k = 1; k < pieces; ++k) {
             const double t = static_cast<double>(k) / static_cast<double>(pieces);
@@ -967,8 +1063,9 @@ std::optional<Clipped> earClip(std::vector<RegionVertex>& vertices, std::vector<
         const RegionVertex mCopy = vertices[hole[mAt]];
         const RegionVertex toCopy = vertices[to];
         const double length = std::hypot(mCopy.x - toCopy.x, mCopy.y - toCopy.y);
-        const auto pieces =
-            spacing > 0.0 ? static_cast<std::size_t>(std::ceil(length / spacing)) : std::size_t{1};
+        const double wanted = spacing > 0.0 ? std::ceil(length / spacing) : 1.0;
+        if (!(wanted <= kMostAlong)) return std::nullopt;  // or not a number
+        const auto pieces = static_cast<std::size_t>(std::max(wanted, 1.0));
         const auto bridge = [&](bool back) {
             for (std::size_t k = 1; k < pieces; ++k) {
                 const double t =
@@ -1250,15 +1347,52 @@ void insertPoints(std::vector<RegionVertex>& vertices,
     }
 }
 
+/// The steps in u and in v over the box [@p u0, @p u1] x [@p v0, @p v1] of @p s within which a
+/// chord that way sags no more than @p tolerance off the surface (Ruling 30): sqrt(8 tolerance /
+/// k), k the most the second derivative that way leaves the surface (its part along the normal,
+/// |S_uu . n|, the normal curvature times the speed squared) at 9 x 9 points of the box. Infinite
+/// for a direction that does not curve (a cylinder's along its axis).
+std::pair<double, double> sagSteps(const geo::NurbsSurface& s, double u0, double u1, double v0,
+                                   double v1, double tolerance) {
+    constexpr int kSamples = 9;
+    double bendU = 0.0;
+    double bendV = 0.0;
+    for (int i = 0; i < kSamples; ++i) {
+        for (int j = 0; j < kSamples; ++j) {
+            const double u = u0 + (u1 - u0) * i / (kSamples - 1);
+            const double v = v0 + (v1 - v0) * j / (kSamples - 1);
+            const geo::SurfaceDerivatives d = s.derivatives(u, v);
+            const Vec3 normal = d.du.cross(d.dv);
+            const double length = normal.length();
+            if (!(length > 0.0)) continue;  // a pole: its neighbours say how it bends
+            const Vec3 n = normal * (1.0 / length);
+            bendU = std::max(bendU, std::abs(d.duu.dot(n)));
+            bendV = std::max(bendV, std::abs(d.dvv.dot(n)));
+        }
+    }
+    const auto step = [tolerance](double bend) {
+        return bend > 0.0 ? std::sqrt(8.0 * tolerance / bend)
+                          : std::numeric_limits<double>::infinity();
+    };
+    return {step(bendU), step(bendV)};
+}
+
 /// A curved face with any outline, and holes, cut into facets on its
 /// surface within it (Phase 152): the region in (u, v), scaled to about the
 /// surface's own lengths there, cut into triangles by ears, then points
-/// added inside as far apart as the outline's own, kept Delaunay. Its
-/// outline points are the edges' own, so the facets meet the faces beside.
-/// Nullopt when it cannot be (a pole on it, a hole across a seam).
+/// added inside as far apart as the outline's own, and as near as keeps the
+/// surface turning by no more than @p maxAngle between them across its middle,
+/// kept Delaunay. With a positive @p tolerance (a drawing's copy, Ruling 30),
+/// the region is measured in steps instead, one each way the step its chords
+/// that way sag no more than the tolerance by (sagSteps; no more than a turn
+/// of @p maxAngle, nor than the region), and the points go a step apart: a
+/// cylinder's side is cut round it as finely as the tolerance asks and along
+/// it not at all. Its outline points are the edges' own, so the facets meet
+/// the faces beside. Nullopt when it cannot be (a pole on it, a hole across a
+/// seam).
 std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
     std::vector<LoopPoint> outer, std::vector<std::vector<LoopPoint>> holes, SurfaceMap& map,
-    double maxAngle) {
+    double maxAngle, double tolerance) {
     const bool reversed = signedArea(outer) < 0.0;
     if (reversed) std::reverse(outer.begin(), outer.end());
     double u0 = 1e300, u1 = -1e300, v0 = 1e300, v1 = -1e300;
@@ -1287,17 +1421,46 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
         if (signedArea(hole) > 0.0) std::reverse(hole.begin(), hole.end());
     }
 
-    // Lengths on the surface per unit of u and of v, in the middle.
-    const UV mid{0.5 * (u0 + u1), 0.5 * (v0 + v1)};
-    const double du = 1e-4 * (u1 - u0);
-    const double dv = 1e-4 * (v1 - v0);
-    const double su =
-        (map.at({mid.first + du, mid.second}) - map.at({mid.first - du, mid.second})).length() /
-        (2.0 * du);
-    const double sv =
-        (map.at({mid.first, mid.second + dv}) - map.at({mid.first, mid.second - dv})).length() /
-        (2.0 * dv);
-    if (!(su > 0.0) || !(sv > 0.0)) return std::nullopt;
+    const UV low{u0, 0.5 * (v0 + v1)};
+    const UV high{u1, 0.5 * (v0 + v1)};
+    const UV lowV{0.5 * (u0 + u1), v0};
+    const UV highV{0.5 * (u0 + u1), v1};
+    // Lengths on the surface per unit of u and of v, in the middle; with a tolerance, steps per
+    // unit of each.
+    double su = 0.0;
+    double sv = 0.0;
+    if (tolerance > 0.0) {
+        // A region with no finite extent in (u, v) has no steps to take (Ruling 32).
+        for (const double c : {u0, u1, v0, v1, u1 - u0, v1 - v0}) {
+            if (!std::isfinite(c)) return std::nullopt;
+        }
+        const std::pair<double, double> steps = sagSteps(map.surface(), u0, u1, v0, v1, tolerance);
+        const auto turnsU = static_cast<double>(piecesAcross(map, low, high, 0, maxAngle, 0.0));
+        const auto turnsV = static_cast<double>(piecesAcross(map, lowV, highV, 1, maxAngle, 0.0));
+        // Steps across a range, as many as its curvature and turning ask, at least one and no
+        // more than the grid's cap; the cap where they ask for no number.
+        const auto count = [](double range, double step, double turns) {
+            const double n = std::ceil(std::max(range / step, turns) - 1e-9);
+            if (!std::isfinite(n) || !(n > 0.0)) return static_cast<double>(kGridCap);
+            return std::clamp(n, 1.0, static_cast<double>(kGridCap));
+        };
+        su = count(u1 - u0, steps.first, turnsU) / (u1 - u0);
+        sv = count(v1 - v0, steps.second, turnsV) / (v1 - v0);
+    } else {
+        const UV mid{0.5 * (u0 + u1), 0.5 * (v0 + v1)};
+        const double du = 1e-4 * (u1 - u0);
+        const double dv = 1e-4 * (v1 - v0);
+        su =
+            (map.at({mid.first + du, mid.second}) - map.at({mid.first - du, mid.second})).length() /
+            (2.0 * du);
+        sv =
+            (map.at({mid.first, mid.second + dv}) - map.at({mid.first, mid.second - dv})).length() /
+            (2.0 * dv);
+    }
+    // Finite too: a range of a few last bits gives no scale (Ruling 32).
+    if (!(su > 0.0) || !(sv > 0.0) || !std::isfinite(su) || !std::isfinite(sv)) {
+        return std::nullopt;
+    }
 
     std::vector<RegionVertex> vertices;
     const auto add = [&](const std::vector<LoopPoint>& loop) {
@@ -1340,14 +1503,17 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
                      lengths.begin() + static_cast<std::ptrdiff_t>(lengths.size() / 2),
                      lengths.end());
     double spacing = lengths.empty() ? 0.0 : lengths[lengths.size() / 2];
-    const UV low{u0, 0.5 * (v0 + v1)};
-    const UV high{u1, 0.5 * (v0 + v1)};
-    const UV lowV{0.5 * (u0 + u1), v0};
-    const UV highV{0.5 * (u0 + u1), v1};
-    const auto turnsU = piecesAcross(map, low, high, 0, maxAngle);
-    const auto turnsV = piecesAcross(map, lowV, highV, 1, maxAngle);
-    if (turnsU > 1) spacing = std::min(spacing, (u1 - u0) * su / static_cast<double>(turnsU));
-    if (turnsV > 1) spacing = std::min(spacing, (v1 - v0) * sv / static_cast<double>(turnsV));
+    if (tolerance > 0.0) {
+        // A step each way; and no nearer than the cap's grid, however densely the outline's
+        // points lie (Ruling 32), so a bridge or an edge listed in the grid is so many pieces.
+        const double widest = std::max((u1 - u0) * su, (v1 - v0) * sv);
+        spacing = std::min(1.0, std::max(spacing, widest / static_cast<double>(kGridCap)));
+    } else {
+        const auto turnsU = piecesAcross(map, low, high, 0, maxAngle, 0.0);
+        const auto turnsV = piecesAcross(map, lowV, highV, 1, maxAngle, 0.0);
+        if (turnsU > 1) spacing = std::min(spacing, (u1 - u0) * su / static_cast<double>(turnsU));
+        if (turnsV > 1) spacing = std::min(spacing, (v1 - v0) * sv / static_cast<double>(turnsV));
+    }
 
     const auto onSurface = [&](double x, double y) {
         const UV uv{x / su, y / sv};
@@ -1374,10 +1540,12 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
     std::vector<std::size_t> beside;
     const double x0 = u0 * su, x1 = u1 * su, y0 = v0 * sv, y1 = v1 * sv;
     const auto nx = spacing > 0.0
-                        ? static_cast<std::size_t>(std::min(400.0, std::floor((x1 - x0) / spacing)))
+                        ? static_cast<std::size_t>(std::min(static_cast<double>(kGridCap),
+                                                            std::floor((x1 - x0) / spacing)))
                         : 0;
     const auto ny = spacing > 0.0
-                        ? static_cast<std::size_t>(std::min(400.0, std::floor((y1 - y0) / spacing)))
+                        ? static_cast<std::size_t>(std::min(static_cast<double>(kGridCap),
+                                                            std::floor((y1 - y0) / spacing)))
                         : 0;
     if (nx > 1 && ny > 1) {
         const double cw = (x1 - x0) / static_cast<double>(nx);
@@ -1396,8 +1564,9 @@ std::optional<std::vector<std::vector<Vec3>>> trimmedFacets(
         for (const auto& edge : boundary) {
             const RegionVertex& p = vertices[edge.first];
             const RegionVertex& q = vertices[edge.second];
-            const auto pieces =
-                static_cast<std::size_t>(std::ceil(std::hypot(q.x - p.x, q.y - p.y) / step));
+            const double wanted = std::ceil(std::hypot(q.x - p.x, q.y - p.y) / step);
+            if (!(wanted <= kMostAlong)) return std::nullopt;  // or not a number
+            const auto pieces = static_cast<std::size_t>(wanted);
             for (std::size_t k = 0; k <= pieces; ++k) {
                 const double t =
                     pieces == 0 ? 0.0 : static_cast<double>(k) / static_cast<double>(pieces);
@@ -1579,12 +1748,149 @@ std::optional<std::vector<std::vector<Vec3>>> offPlaneFacets(
 
 namespace {
 
+/// How an import's bridge (facetCurved: Phases 141 and 152) cuts @p face into @p faces, the
+/// points along each half-edge of its loops given by @p along. A face on a curved NURBS carrier is
+/// a grid over a rectangle of its (u, v), else cut within its trim, else a band cut along a seam
+/// of its own: each facet `<face>/facet:<k>`, recording the carrier, with points inside as near as
+/// keep the surface turning no more than @p maxAngle between them and, with a positive
+/// @p tolerance, sagging no more than it (Ruling 17). One that cannot be cut is its outline, one
+/// facet, listed in @p outlined. A flat face, or one with no carrier, is one facet, its holes
+/// kept, or in triangles where its outline strays off its plane (offPlaneFacets, by the part's
+/// @p size). False, with @p error, where it has no boundary, or a curved one's outline meets
+/// itself.
+bool cutAsImported(const Face& face, const std::function<std::vector<Vec3>(const HalfEdge*)>& along,
+                   double size, double maxAngle, double tolerance,
+                   std::vector<SolidSewer::InputFace>& faces, std::vector<std::string>& outlined,
+                   std::string& error) {
+    const auto outer = loopOf(face.outerLoop);
+    if (outer.empty()) {
+        error = "a face has no boundary";
+        return false;
+    }
+    std::vector<std::vector<const HalfEdge*>> inner;
+    inner.reserve(face.innerLoops.size());
+    for (const Wire* w : face.innerLoops) inner.push_back(loopOf(w));
+    const auto polygon = [&along](const std::vector<const HalfEdge*>& loop) {
+        std::vector<Vec3> points;
+        for (const HalfEdge* he : loop) {
+            const auto s = along(he);
+            points.insert(points.end(), s.begin(), s.end() - 1);
+        }
+        return points;
+    };
+    const auto& surface = face.surface;
+    if (surface != nullptr) {
+        // A surface whose parameters span no finite range (an untrusted file's: its knots finite,
+        // their span not) has nothing to measure a cut by (Ruling 32).
+        const double spanU = surface->uMax() - surface->uMin();
+        const double spanV = surface->vMax() - surface->vMin();
+        if (!std::isfinite(spanU) || !std::isfinite(spanV) || !(spanU > 0.0) || !(spanV > 0.0)) {
+            error = "face " + face.topoId.tag() + "'s surface has no finite parameter range";
+            return false;
+        }
+    }
+    const bool curved = surface != nullptr && !isFlat(*surface);
+
+    if (curved) {
+        SurfaceMap map(*surface);
+        const auto edgesOf = [&along](const std::vector<const HalfEdge*>& loop) {
+            std::vector<std::vector<Vec3>> edges;
+            edges.reserve(loop.size());
+            for (const HalfEdge* he : loop) edges.push_back(along(he));
+            return edges;
+        };
+        const auto emit = [&](std::vector<std::vector<Vec3>> facets) {
+            for (size_t k = 0; k < facets.size(); ++k) {
+                SolidSewer::InputFace f;
+                f.points = std::move(facets[k]);
+                f.topoId =
+                    topo::TopologyID::fromTag(face.topoId.tag() + "/facet:" + std::to_string(k));
+                f.analyticSurface = surface;
+                faces.push_back(std::move(f));
+            }
+        };
+        const auto edges = edgesOf(outer);
+        if (inner.empty()) {
+            if (const auto rectangle = faceInUV(edges, map)) {
+                if (auto facets = gridFacets(*rectangle, map, size, maxAngle, tolerance)) {
+                    emit(std::move(*facets));
+                    return true;
+                }
+            }
+        }
+        // Any other outline, and holes: cut within its trim (Phase 152).
+        if (auto outline = loopInUV(edges, map)) {
+            std::vector<std::vector<LoopPoint>> holes;
+            bool read = true;
+            for (const auto& loop : inner) {
+                auto hole = loopInUV(edgesOf(loop), map);
+                if (!hole) {
+                    read = false;
+                    break;
+                }
+                holes.push_back(std::move(*hole));
+            }
+            if (read) {
+                if (auto facets = trimmedFacets(std::move(*outline), std::move(holes), map,
+                                                maxAngle, tolerance)) {
+                    emit(std::move(*facets));
+                    return true;
+                }
+            }
+        }
+        // A band round the surface between two loops that wind round it,
+        // with no seam: cut along a seam of its own.
+        std::vector<UVChain> chains;
+        if (auto chain = chainInUV(edges, map)) chains.push_back(std::move(*chain));
+        for (const auto& loop : inner) {
+            if (auto chain = chainInUV(edgesOf(loop), map)) chains.push_back(std::move(*chain));
+        }
+        if (chains.size() == inner.size() + 1) {
+            if (auto band = bandInUV(std::move(chains), map, maxAngle, tolerance)) {
+                if (auto facets = trimmedFacets(std::move(band->outline), std::move(band->holes),
+                                                map, maxAngle, tolerance)) {
+                    emit(std::move(*facets));
+                    return true;
+                }
+            }
+        }
+    }
+    SolidSewer::InputFace f;
+    f.points = polygon(outer);
+    for (const auto& loop : inner) f.holes.push_back(polygon(loop));
+    f.topoId = face.topoId;
+    if (!curved) {
+        if (auto facets = offPlaneFacets(f.points, f.holes, size)) {
+            for (std::size_t k = 0; k < facets->size(); ++k) {
+                SolidSewer::InputFace facet;
+                facet.points = std::move((*facets)[k]);
+                facet.topoId =
+                    topo::TopologyID::fromTag(face.topoId.tag() + "/facet:" + std::to_string(k));
+                faces.push_back(std::move(facet));
+            }
+            return true;
+        }
+    }
+    if (curved) {
+        // Its outline alone: a loop that meets itself (a seam) is no
+        // polygon, and cannot be one face.
+        std::map<Key, int> seen;
+        for (const Vec3& p : f.points) {
+            if (++seen[keyOf(p)] > 1) {
+                error = "the curved face " + face.topoId.tag() + " could not be cut into facets";
+                return false;
+            }
+        }
+        f.analyticSurface = surface;
+        outlined.push_back(face.topoId.tag());
+    }
+    faces.push_back(std::move(f));
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // The bridge from exact faces (stage 3): facetExact.
 // ---------------------------------------------------------------------------
-
-/// The most chords one curve is cut into, as PrimitiveFactory::segmentsForTolerance stops.
-constexpr int kMostSteps = 4096;
 
 /// How far off a side of a face's rectangle in (u, v) a pcurve's sample may be and still lie
 /// along it, relative to the larger of 1 and the coordinate's size: a guard on parameter
@@ -1662,50 +1968,81 @@ int stepsAlong(const std::function<Vec3(double)>& at, double t0, double t1,
     const double turn = turningOf(dense, roundingChord(dense));
     const int byTurning =
         std::clamp(static_cast<int>(std::ceil(turn / maxAngle - 1e-9)), 1, kMostSteps);
-    const double tolerance = resolution.chordTolerance;
-    if (!(tolerance > 0.0)) return byTurning;
-    // Whether cut into @p n, some chord sags more than the tolerance (each measured at points
-    // between its ends).
-    const auto sags = [&](int n) {
-        constexpr int kWithin = 8;
-        for (int k = 0; k < n; ++k) {
-            const double a = t0 + (t1 - t0) * k / n;
-            const double b = t0 + (t1 - t0) * (k + 1) / n;
-            const Vec3 p = at(a);
-            const Vec3 chord = at(b) - p;
-            const double length2 = chord.dot(chord);
-            for (int m = 1; m < kWithin; ++m) {
-                const Vec3 q = at(a + (b - a) * m / kWithin);
-                const double t =
-                    length2 > 0.0 ? std::clamp((q - p).dot(chord) / length2, 0.0, 1.0) : 0.0;
-                if ((q - (p + chord * t)).length() > tolerance) return true;
-            }
-        }
-        return false;
+    return piecesWithin(at, t0, t1, byTurning, resolution.chordTolerance);
+}
+
+/// Whether @p circle turns about @p resolution's axis (FacetResolution::aroundAxis): centred on it
+/// within @p within, in a plane square to it.
+bool aboutTheAxis(const geo::CircleCurve& circle, const FacetResolution& resolution,
+                  double within) {
+    if (!resolution.turnsAboutAnAxis()) return false;
+    const Vec3 axis = resolution.axisDirection.normalized();
+    const geo::Frame& f = circle.frame();
+    const Vec3 rel = f.origin - resolution.axisPoint;
+    const Vec3 off = rel - axis * rel.dot(axis);
+    return f.z.normalized().cross(axis).length() <= 1e-9 && off.length() <= within;
+}
+
+/// The angle a curved face turns through about @p resolution's axis from its rectangle's u0 to
+/// its u1, about the axis's direction, where it is a surface turned about that axis whose u runs
+/// round it (Ruling 24): each point of its iso-curves across u, sampled at three heights, as far
+/// from the axis and as high along it as the first (within @p within). Its size is u1 - u0 where
+/// that is the angle (an analytic surface's u, and a NURBS surface of revolution's from its start
+/// to its end), else as sampled. Nullopt where it is no such surface.
+std::optional<double> turnAbout(const geo::Surface& s, double u0, double u1, double v0, double v1,
+                                const FacetResolution& resolution, double within) {
+    if (!resolution.turnsAboutAnAxis()) return std::nullopt;
+    const Vec3 axis = resolution.axisDirection.normalized();
+    const Vec3& origin = resolution.axisPoint;
+    const auto radialOf = [&](const Vec3& p) {
+        const Vec3 rel = p - origin;
+        return rel - axis * rel.dot(axis);
     };
-    if (!sags(byTurning)) return byTurning;
-    int sagging = byTurning;  // the most known to sag
-    int enough = byTurning;   // the least known not to, once found
-    do {
-        sagging = enough;
-        enough = std::min(kMostSteps, 2 * enough);
-    } while (enough < kMostSteps && sags(enough));
-    if (enough == kMostSteps && sags(enough)) return kMostSteps;
-    while (enough - sagging > 1) {
-        const int middle = sagging + (enough - sagging) / 2;
-        if (sags(middle)) {
-            sagging = middle;
-        } else {
-            enough = middle;
+    constexpr int kSamples = 16;  // each step of a whole turn well under half of one
+    std::optional<double> sweep;
+    for (const double f : {0.5, 0.25, 0.75}) {
+        const double v = v0 + (v1 - v0) * f;
+        const Vec3 first = s.evaluate(u0, v);
+        Vec3 previous = radialOf(first);
+        const double radius = previous.length();
+        const double height = (first - origin).dot(axis);
+        if (!(radius > within)) continue;  // on the axis: a pole's height
+        double turned = 0.0;
+        for (int k = 1; k <= kSamples; ++k) {
+            const double u =
+                u0 + (u1 - u0) * static_cast<double>(k) / static_cast<double>(kSamples);
+            const Vec3 p = s.evaluate(u, v);
+            const Vec3 radial = radialOf(p);
+            if (!(std::abs(radial.length() - radius) <= within) ||
+                !(std::abs((p - origin).dot(axis) - height) <= within)) {
+                return std::nullopt;
+            }
+            turned += std::atan2(previous.cross(radial).dot(axis), previous.dot(radial));
+            previous = radial;
         }
+        if (sweep && !(std::abs(turned - *sweep) <= 1e-6)) return std::nullopt;
+        if (!sweep) sweep = turned;
     }
-    return enough;
+    if (!sweep || !(std::abs(*sweep) > 1e-9)) return std::nullopt;
+    const double span = std::abs(u1 - u0);
+    const double size = std::abs(std::abs(*sweep) - span) <= 1e-6 ? span : std::abs(*sweep);
+    return std::copysign(size, *sweep);
+}
+
+/// @p p turned by @p angle about the axis through @p origin along the unit @p axis (Rodrigues),
+/// as master's revolve turned its profile.
+Vec3 turnedAbout(const Vec3& p, const Vec3& origin, const Vec3& axis, double angle) {
+    const Vec3 rel = p - origin;
+    const double c = std::cos(angle);
+    const double sn = std::sin(angle);
+    return origin + rel * c + axis.cross(rel) * sn + axis * (axis.dot(rel) * (1.0 - c));
 }
 
 /// The chords @p e is cut into by its exact curve alone: a circle or an arc by stepsFor at equal
-/// angles, a line in one, an ellipse or a NURBS curve by stepsAlong. With no exact curve it is
-/// one chord, straight.
-int edgeSteps(const Edge& e, const FacetResolution& resolution) {
+/// angles (by stepsAround where it turns about the resolution's axis, within @p within of it), a
+/// line in one, an ellipse or a NURBS curve by stepsAlong. With no exact curve it is one chord,
+/// straight.
+int edgeSteps(const Edge& e, const FacetResolution& resolution, double within) {
     if (!e.exactCurve) return 1;
     const double sweep = std::abs(e.curveEnd - e.curveStart);
     switch (e.exactCurve->kind()) {
@@ -1713,6 +2050,9 @@ int edgeSteps(const Edge& e, const FacetResolution& resolution) {
             return 1;
         case geo::CurveKind::Circle:
             if (const auto* circle = dynamic_cast<const geo::CircleCurve*>(e.exactCurve.get())) {
+                if (aboutTheAxis(*circle, resolution, within)) {
+                    return std::min(kMostSteps, resolution.stepsAround(sweep));
+                }
                 return std::min(kMostSteps, resolution.stepsFor(circle->radius(), sweep));
             }
             break;
@@ -1996,123 +2336,13 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle) {
         if (he != he->edge->halfEdge) std::reverse(s.begin(), s.end());
         return s;
     };
-    const auto polygon = [&along](const std::vector<const HalfEdge*>& loop) {
-        std::vector<Vec3> points;
-        for (const HalfEdge* he : loop) {
-            const auto s = along(he);
-            points.insert(points.end(), s.begin(), s.end() - 1);
-        }
-        return points;
-    };
 
     std::vector<SolidSewer::InputFace> faces;
     for (const auto& face : exact.faces()) {
-        const auto outer = loopOf(face.outerLoop);
-        if (outer.empty()) {
-            result.error = "a face has no boundary";
+        if (!cutAsImported(face, along, size, maxAngle, 0.0, faces, result.outlined,
+                           result.error)) {
             return result;
         }
-        std::vector<std::vector<const HalfEdge*>> inner;
-        inner.reserve(face.innerLoops.size());
-        for (const Wire* w : face.innerLoops) inner.push_back(loopOf(w));
-        const auto& surface = face.surface;
-        const bool curved = surface != nullptr && !isFlat(*surface);
-
-        if (curved) {
-            SurfaceMap map(*surface);
-            const auto edgesOf = [&along](const std::vector<const HalfEdge*>& loop) {
-                std::vector<std::vector<Vec3>> edges;
-                edges.reserve(loop.size());
-                for (const HalfEdge* he : loop) edges.push_back(along(he));
-                return edges;
-            };
-            const auto emit = [&](std::vector<std::vector<Vec3>> facets) {
-                for (size_t k = 0; k < facets.size(); ++k) {
-                    SolidSewer::InputFace f;
-                    f.points = std::move(facets[k]);
-                    f.topoId = topo::TopologyID::fromTag(face.topoId.tag() +
-                                                         "/facet:" + std::to_string(k));
-                    f.analyticSurface = surface;
-                    faces.push_back(std::move(f));
-                }
-            };
-            const auto edges = edgesOf(outer);
-            if (inner.empty()) {
-                if (const auto rectangle = faceInUV(edges, map)) {
-                    if (auto facets = gridFacets(*rectangle, map, size, maxAngle)) {
-                        emit(std::move(*facets));
-                        continue;
-                    }
-                }
-            }
-            // Any other outline, and holes: cut within its trim (Phase 152).
-            if (auto outline = loopInUV(edges, map)) {
-                std::vector<std::vector<LoopPoint>> holes;
-                bool read = true;
-                for (const auto& loop : inner) {
-                    auto hole = loopInUV(edgesOf(loop), map);
-                    if (!hole) {
-                        read = false;
-                        break;
-                    }
-                    holes.push_back(std::move(*hole));
-                }
-                if (read) {
-                    if (auto facets =
-                            trimmedFacets(std::move(*outline), std::move(holes), map, maxAngle)) {
-                        emit(std::move(*facets));
-                        continue;
-                    }
-                }
-            }
-            // A band round the surface between two loops that wind round it,
-            // with no seam: cut along a seam of its own.
-            std::vector<UVChain> chains;
-            if (auto chain = chainInUV(edges, map)) chains.push_back(std::move(*chain));
-            for (const auto& loop : inner) {
-                if (auto chain = chainInUV(edgesOf(loop), map)) chains.push_back(std::move(*chain));
-            }
-            if (chains.size() == inner.size() + 1) {
-                if (auto band = bandInUV(std::move(chains), map, maxAngle)) {
-                    if (auto facets = trimmedFacets(std::move(band->outline),
-                                                    std::move(band->holes), map, maxAngle)) {
-                        emit(std::move(*facets));
-                        continue;
-                    }
-                }
-            }
-        }
-        SolidSewer::InputFace f;
-        f.points = polygon(outer);
-        for (const auto& loop : inner) f.holes.push_back(polygon(loop));
-        f.topoId = face.topoId;
-        if (!curved) {
-            if (auto facets = offPlaneFacets(f.points, f.holes, size)) {
-                for (std::size_t k = 0; k < facets->size(); ++k) {
-                    SolidSewer::InputFace facet;
-                    facet.points = std::move((*facets)[k]);
-                    facet.topoId = topo::TopologyID::fromTag(face.topoId.tag() +
-                                                             "/facet:" + std::to_string(k));
-                    faces.push_back(std::move(facet));
-                }
-                continue;
-            }
-        }
-        if (curved) {
-            // Its outline alone: a loop that meets itself (a seam) is no
-            // polygon, and cannot be one face.
-            std::map<Key, int> seen;
-            for (const Vec3& p : f.points) {
-                if (++seen[keyOf(p)] > 1) {
-                    result.error =
-                        "the curved face " + face.topoId.tag() + " could not be cut into facets";
-                    return result;
-                }
-            }
-            f.analyticSurface = surface;
-            result.outlined.push_back(face.topoId.tag());
-        }
-        faces.push_back(std::move(f));
     }
 
     auto solid = SolidSewer::sew(faces);
@@ -2138,6 +2368,17 @@ int FacetResolution::stepsFor(double radius, double sweep) const {
                             : segmentsPerTurn;
     const double steps = sweep / math::kTwoPi * static_cast<double>(std::max(perTurn, 3));
     return std::max(1, static_cast<int>(std::ceil(steps - 1e-9)));
+}
+
+int FacetResolution::stepsAround(double sweep) const {
+    const double steps = sweep / math::kTwoPi * static_cast<double>(std::max(aroundAxis, 3));
+    return std::max(1, static_cast<int>(std::ceil(steps - 1e-9)));
+}
+
+bool FacetResolution::turnsAboutAnAxis() const {
+    const double length = axisDirection.length();
+    return aroundAxis > 0 && length > 0.0 && std::isfinite(length) &&
+           std::isfinite(axisPoint.length());
 }
 
 namespace {
@@ -2301,7 +2542,11 @@ std::unique_ptr<topo::Solid> flatCopy(const topo::Solid& exact) {
 
 FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolution) {
     FacetedSolid result;
-    if (flatAndStraight(exact)) {
+    // A face with a NURBS carrier is an import's (Ruling 17): it is cut as the import's own
+    // bridge cuts it (facetCurved), and a polyhedron with one is too.
+    const auto imported = [](const Face& face) { return face.alive && face.surface != nullptr; };
+    const bool anyImported = std::any_of(exact.faces().begin(), exact.faces().end(), imported);
+    if (!anyImported && flatAndStraight(exact)) {
         // A polyhedron is its own bridge: its faces one facet each, its edges one chord.
         if (auto solid = flatCopy(exact)) {
             if (!solid->checkManifold()) {
@@ -2322,14 +2567,19 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         return refused;
     };
 
-    // Each face as it is cut: flat (one facet, its holes), or a curved face's rectangle.
+    // Each face as it is cut: flat (one facet, its holes), a curved face's rectangle, or as an
+    // import's.
     struct Plan {
         const Face* face = nullptr;
+        bool imported = false;                    ///< cut as its import's bridge cuts it
         std::optional<ExactRectangle> rectangle;  ///< a curved face's
         std::array<int, 2> steps{};               ///< its columns (along u) and rows (along v)
         std::array<int, 2> own{};  ///< where both sides across are poles: its surface's own
-        /// Where FacetResolution::minorSegments sets it (a sphere's v, a torus's): its count.
+        /// Where FacetResolution::minorSegments sets it (a sphere's v, a torus's): its count; and
+        /// its u's, where aroundAxis does.
         std::array<int, 2> fixed{};
+        /// Where it turns about FacetResolution's axis round u: the angle from u0 to u1 about it.
+        std::optional<double> turn;
     };
     std::vector<Plan> plans;
     for (const auto& face : exact.faces()) {
@@ -2339,27 +2589,92 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         }
         Plan plan;
         plan.face = &face;
-        if (face.exactSurface) {
+        if (imported(face)) {
+            plan.imported = true;
+        } else if (face.exactSurface) {
             if (face.exactSurface->kind() != geo::SurfaceKind::Plane) {
                 std::string why;
                 auto rectangle = rectangleOf(face, tolerance, limit, why);
                 if (!rectangle) return refuse(face, "cannot be cut into facets: " + why);
                 plan.rectangle = std::move(rectangle);
             }
-        } else if (face.surface) {
-            if (!isFlat(*face.surface)) return refuse(face, "has no exact surface to facet");
         } else if (!flatOutline(face, tolerance.linear)) {
             return refuse(face, "has no surface to facet");
         }
         plans.push_back(std::move(plan));
     }
 
-    // How many chords each edge is cut into: by its own curve, and then as many as the curved
-    // faces it is a side of need (each pair of opposite sides alike).
+    // Each edge's points once, so the faces either side share them, from its half-edge's origin
+    // to its end; each chord's edge, by its ends.
+    struct ChordOf {
+        const Edge* edge = nullptr;
+        int k = 0;
+        int of = 0;
+    };
+    std::unordered_map<const Edge*, std::vector<Vec3>> samples;
+    std::map<std::pair<Key, Key>, ChordOf> chordOf;
+    const auto chordsOf = [&chordOf](const Edge* edge, const std::vector<Vec3>& points) {
+        for (std::size_t k = 0; k + 1 < points.size(); ++k) {
+            auto a = keyOf(points[k]);
+            auto b = keyOf(points[k + 1]);
+            if (b < a) std::swap(a, b);
+            chordOf[{a, b}] = {edge, static_cast<int>(k), static_cast<int>(points.size()) - 1};
+        }
+    };
+
+    // The edges of a face cut as an import's are sampled as its bridge samples them (sampleEdge:
+    // equal lengths along their NURBS curves, within 2 pi / segmentsPerTurn of turning, two
+    // chords or more in a loop of two corners or fewer) and, with a chord tolerance, sagging no
+    // more than it. Whatever else they bound, they are cut so.
+    const double importAngle =
+        std::clamp(math::kTwoPi / static_cast<double>(std::max(resolution.segmentsPerTurn, 3)),
+                   1e-3, math::kPi / 2);
+    double importSize = 0.0;  // the part's size, as facetCurved measures it
+    std::unordered_set<const Edge*> importEdges;
+    if (anyImported) {
+        for (const auto& v : exact.vertices()) {
+            importSize = std::max(importSize, (v.point - exact.vertices().front().point).length());
+        }
+        for (const Plan& plan : plans) {
+            if (!plan.imported) continue;
+            std::vector<const Wire*> loops{plan.face->outerLoop};
+            loops.insert(loops.end(), plan.face->innerLoops.begin(), plan.face->innerLoops.end());
+            for (const Wire* wire : loops) {
+                for (const HalfEdge* he : loopOf(wire)) importEdges.insert(he->edge);
+            }
+        }
+        std::unordered_set<const Edge*> twoCorners;
+        for (const auto& face : exact.faces()) {
+            std::vector<const Wire*> loops{face.outerLoop};
+            loops.insert(loops.end(), face.innerLoops.begin(), face.innerLoops.end());
+            for (const Wire* wire : loops) {
+                const auto loop = loopOf(wire);
+                std::set<const topo::Vertex*> corners;
+                for (const HalfEdge* he : loop) corners.insert(he->origin);
+                if (corners.size() > 2) continue;
+                for (const HalfEdge* he : loop) twoCorners.insert(he->edge);
+            }
+        }
+        for (const auto& e : exact.edges()) {  // in order, as facetCurved samples them
+            if (importEdges.count(&e) == 0 || e.halfEdge == nullptr ||
+                e.halfEdge->origin == nullptr || e.halfEdge->next == nullptr ||
+                e.halfEdge->next->origin == nullptr) {
+                continue;
+            }
+            auto points = sampleEdge(e, importAngle, twoCorners.count(&e) != 0 ? 2 : 1,
+                                     resolution.chordTolerance);
+            chordsOf(&e, points);
+            samples.emplace(&e, std::move(points));
+        }
+    }
+
+    // How many chords each other edge is cut into: by its own curve, and then as many as the
+    // curved faces it is a side of need (each pair of opposite sides alike).
     std::unordered_map<const Edge*, int> steps;
     for (const auto& e : exact.edges()) {
         if (!e.alive || e.halfEdge == nullptr || e.halfEdge->origin == nullptr) continue;
-        int n = edgeSteps(e, resolution);
+        if (importEdges.count(&e) != 0) continue;
+        int n = edgeSteps(e, resolution, tolerance.linear);
         const bool curved = e.exactCurve && e.exactCurve->kind() != geo::CurveKind::Line;
         const HalfEdge* twin = e.halfEdge->twin;
         // A closed curve is no chord: three or more.
@@ -2398,17 +2713,33 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
             plan.own[1] = ownSteps(s, 1, r.u0, r.u1, r.v0, r.v1, resolution);
         }
         plan.fixed[1] = minorSteps(s, r, resolution);
+        // Turned about a revolve's axis: round it master's count, whatever its own curves give.
+        plan.turn = turnAbout(s, r.u0, r.u1, r.v0, r.v1, resolution, tolerance.linear);
+        if (const auto& turn = plan.turn) plan.fixed[0] = resolution.stepsAround(std::abs(*turn));
         // The edges along it cut so, whatever their own curve would give.
         for (const Side side : {kLeft, kRight}) {
-            if (plan.fixed[1] == 0 || r.pole[side] || r.sides[side].size() != 1) continue;
+            if (plan.fixed[1] == 0 || r.pole[side] || r.sides[side].size() != 1 ||
+                importEdges.count(r.sides[side].front()->edge) != 0) {
+                continue;
+            }
             steps[r.sides[side].front()->edge] = plan.fixed[1];
         }
+        for (const Side side : {kBottom, kTop}) {
+            if (plan.fixed[0] == 0 || r.pole[side] || r.sides[side].size() != 1 ||
+                importEdges.count(r.sides[side].front()->edge) != 0) {
+                continue;
+            }
+            steps[r.sides[side].front()->edge] = plan.fixed[0];
+        }
     }
-    const auto chordsOn = [&steps](const std::vector<const HalfEdge*>& side) {
+    const auto chordsOn = [&steps, &samples](const std::vector<const HalfEdge*>& side) {
         int total = 0;
         for (const HalfEdge* h : side) {
             const auto found = steps.find(h->edge);
-            total += found == steps.end() ? 1 : found->second;
+            const auto sampled = samples.find(h->edge);
+            total += found != steps.end()       ? found->second
+                     : sampled != samples.end() ? static_cast<int>(sampled->second.size()) - 1
+                                                : 1;
         }
         return total;
     };
@@ -2435,7 +2766,11 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
                 }
                 plan.steps[static_cast<std::size_t>(dir)] = n;
                 for (const Side side : across) {
-                    if (r.pole[side] || r.sides[side].size() != 1) continue;
+                    // An import's edge is not cut again, as a side of several edges is not.
+                    if (r.pole[side] || r.sides[side].size() != 1 ||
+                        importEdges.count(r.sides[side].front()->edge) != 0) {
+                        continue;
+                    }
                     int& count = steps[r.sides[side].front()->edge];
                     if (count < n) {
                         count = n;
@@ -2461,15 +2796,7 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         }
     }
 
-    // Each edge's points once, so the faces either side share them, from its half-edge's origin
-    // to its end, at equal steps of its exact curve's parameter; each chord's edge, by its ends.
-    struct ChordOf {
-        const Edge* edge = nullptr;
-        int k = 0;
-        int of = 0;
-    };
-    std::unordered_map<const Edge*, std::vector<Vec3>> samples;
-    std::map<std::pair<Key, Key>, ChordOf> chordOf;
+    // Each other edge's points, at equal steps of its exact curve's parameter.
     for (const auto& [edge, n] : steps) {
         const HalfEdge* he = edge->halfEdge;
         const topo::Vertex* end = he->twin != nullptr   ? he->twin->origin
@@ -2483,12 +2810,7 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
             points.push_back(edge->exactCurve->evaluate(t));
         }
         points.push_back(end->point);
-        for (std::size_t k = 0; k + 1 < points.size(); ++k) {
-            auto a = keyOf(points[k]);
-            auto b = keyOf(points[k + 1]);
-            if (b < a) std::swap(a, b);
-            chordOf[{a, b}] = {edge, static_cast<int>(k), static_cast<int>(points.size()) - 1};
-        }
+        chordsOf(edge, points);
         samples.emplace(edge, std::move(points));
     }
     const auto along = [&samples](const HalfEdge* he) {
@@ -2510,8 +2832,16 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
     };
 
     std::vector<SolidSewer::InputFace> faces;
+    const std::function<std::vector<Vec3>(const HalfEdge*)> alongEach = along;
     for (const Plan& plan : plans) {
         const Face& face = *plan.face;
+        if (plan.imported) {
+            if (!cutAsImported(face, alongEach, importSize, importAngle, resolution.chordTolerance,
+                               faces, result.outlined, result.error)) {
+                return result;
+            }
+            continue;
+        }
         const auto& rectangle = plan.rectangle;
         if (!rectangle) {
             SolidSewer::InputFace f;
@@ -2525,9 +2855,16 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         const geo::Surface& s = *face.exactSurface;
         const auto nu = static_cast<std::size_t>(plan.steps[0]);
         const auto nv = static_cast<std::size_t>(plan.steps[1]);
+        // A face turned about a revolve's axis (Ruling 24) has its points inside on its first
+        // meridian (its u0 side) turned to master's angles, not spread in (u, v).
+        const auto& turn = plan.turn;
+        const bool turned = turn.has_value() && !r.pole[kLeft];
+        const Vec3 axis =
+            resolution.turnsAboutAnAxis() ? resolution.axisDirection.normalized() : Vec3();
         // A side's points in order along it, each where it is in (u, v): its half-edges' points,
         // each found on the surface (its coordinate along the side; the other is the side's own),
-        // a period round to lie between its half-edge's ends.
+        // a period round to lie between its half-edge's ends. Where the face is turned, nothing
+        // inside reads (u, v), and each point is ordered where it lies along its half-edge.
         const auto pointsOn = [&](Side side) {
             const int running = side == kBottom || side == kTop ? 0 : 1;
             const double period = running == 0 ? topo::uPeriod(s) : topo::vPeriod(s);
@@ -2547,6 +2884,10 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
                     if (k != 0 && k != n) {
                         const double f = static_cast<double>(k) / static_cast<double>(n);
                         const math::Vec2 between = start + (finish - start) * f;
+                        if (turned) {
+                            out.push_back({points[k], between});
+                            continue;
+                        }
                         const math::Vec2 found = s.invert(points[k]);
                         double c = running == 0 ? found.x : found.y;
                         const double want = running == 0 ? between.x : between.y;
@@ -2606,7 +2947,7 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
         const auto& L = sides[kLeft];
         const auto& R = sides[kRight];
         // A Coons patch in (u, v) from its sides, each point inside on the surface: uniform in
-        // (u, v) where its sides are.
+        // (u, v) where its sides are; or, turned, its first meridian turned.
         std::vector<std::vector<Vec3>> grid(nu + 1, std::vector<Vec3>(nv + 1));
         for (std::size_t i = 0; i <= nu; ++i) {
             for (std::size_t j = 0; j <= nv; ++j) {
@@ -2618,6 +2959,10 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
                     grid[i][j] = L[j].point;
                 } else if (i == nu) {
                     grid[i][j] = R[j].point;
+                } else if (turned) {
+                    const double angle =
+                        turn.value_or(0.0) * static_cast<double>(i) / static_cast<double>(nu);
+                    grid[i][j] = turnedAbout(L[j].point, resolution.axisPoint, axis, angle);
                 } else {
                     const double a = static_cast<double>(i) / static_cast<double>(nu);
                     const double b = static_cast<double>(j) / static_cast<double>(nv);
@@ -2696,6 +3041,11 @@ FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolut
                            ? source.topoId
                            : topo::TopologyID::fromTag(source.topoId.tag() +
                                                        "/chord:" + std::to_string(chord.k));
+        }
+        if (importEdges.count(&source) != 0) {
+            // An import's chord records its edge's NURBS curve, as its bridge's does.
+            if (source.curve && source.curve->degree() > 1) e.analyticCurve = source.curve;
+            continue;
         }
         if (!source.exactCurve || source.exactCurve->kind() == geo::CurveKind::Line) continue;
         auto& ideal = ideals[&source];

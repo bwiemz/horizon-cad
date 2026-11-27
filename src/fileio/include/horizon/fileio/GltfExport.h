@@ -45,6 +45,13 @@ public:
     static bool saveSolid(const std::string& path, const topo::Solid& solid,
                           const render::Material& material, const std::string& name = "solid",
                           std::string* error = nullptr);
+    /// Export @p mesh as it is, with @p material: a mesh already made (the one
+    /// an exact part's build kept, Document::exactMesh, at the display's
+    /// tolerance), not meshed again. False, with why in @p error when given,
+    /// where it has no triangles or the file cannot be written.
+    static bool saveMesh(const std::string& path, const geo::MeshData& mesh,
+                         const render::Material& material, const std::string& name = "solid",
+                         std::string* error = nullptr);
 };
 
 }  // namespace hz::io

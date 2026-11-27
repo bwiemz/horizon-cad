@@ -6,6 +6,7 @@ add_executable(hz_fileio_tests
     test_LoadErrors.cpp
     test_MalformedInput.cpp
     test_PartFormat.cpp
+    test_Migration.cpp
     test_AssemblyFormat.cpp
     test_BinaryFormat.cpp
     test_StepFormat.cpp
@@ -14,6 +15,7 @@ add_executable(hz_fileio_tests
     test_StepCurved.cpp
     test_StepExact.cpp
     test_StepAssembly.cpp
+    test_AssemblyStepExport.cpp
     test_DocumentUnits.cpp
     test_ExpressionsIO.cpp
     test_SketchFollowIO.cpp
@@ -25,6 +27,7 @@ add_executable(hz_fileio_tests
     test_DxfText.cpp
     test_DrawingExport.cpp
     test_DrawingDocumentIO.cpp
+    test_DrawingExact.cpp
     test_DrawingDimensionRenderer.cpp
     test_GeometricToleranceRenderer.cpp
     test_BalloonRenderer.cpp

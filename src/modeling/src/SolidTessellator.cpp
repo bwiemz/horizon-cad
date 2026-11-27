@@ -259,8 +259,26 @@ void appendEdges(const topo::Solid& solid, double tolerance, geo::MeshData& out)
 
 }  // namespace
 
+double SolidTessellator::displayTolerance(double extent) {
+    // The owner's tolerance; a size that cannot be measured is drawn to the least.
+    const double owners = kDisplayRelativeTolerance * extent;
+    if (!(owners > kDisplayTolerance) || !std::isfinite(owners)) return kDisplayTolerance;
+    // Stepped down to the quarter octave below it (Ruling 29): log2 may round a size on a step
+    // either way, so one a last bit above the owner's is taken a step down.
+    const double steps = std::floor(kDisplayStepsPerOctave * std::log2(owners / kDisplayTolerance));
+    double stepped = kDisplayTolerance * std::exp2(steps / kDisplayStepsPerOctave);
+    if (stepped > owners) {
+        stepped = kDisplayTolerance * std::exp2((steps - 1.0) / kDisplayStepsPerOctave);
+    }
+    return stepped;
+}
+
 double SolidTessellator::displayTolerance(const topo::Solid& solid) {
-    return std::max(kDisplayTolerance, kDisplayRelativeTolerance * topo::exactExtent(solid));
+    return displayTolerance(topo::exactExtent(solid));
+}
+
+double SolidTessellator::displayTolerance(const std::vector<const topo::Solid*>& bodies) {
+    return displayTolerance(topo::exactExtent(bodies));
 }
 
 geo::MeshData SolidTessellator::tessellate(const topo::Solid& solid) {

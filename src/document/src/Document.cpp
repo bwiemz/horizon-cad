@@ -7,6 +7,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "ExactCounterpart.h"
 #include "horizon/document/Commands.h"
@@ -110,6 +111,8 @@ void Document::clear() {
     m_dirty = false;
     m_filePath.clear();
     m_leftOut.clear();
+    m_migrated = false;
+    m_firstBuildPending = false;
     m_lengthUnit = math::LengthUnit::Millimetre;
 
     m_editedSketch.reset();
@@ -139,6 +142,10 @@ const topo::Solid* Document::exactSolid() const {
     return m_exact ? m_exact->solid.get() : nullptr;
 }
 
+std::shared_ptr<const topo::Solid> Document::sharedExactSolid() const {
+    return m_exact ? m_exact->solid : nullptr;
+}
+
 std::shared_ptr<const geo::MeshData> Document::exactMesh() const {
     return m_exact ? m_exact->mesh : nullptr;
 }
@@ -147,6 +154,10 @@ std::shared_ptr<const geo::MeshData> Document::exactOrFacetedMesh() const {
     if (auto mesh = exactMesh()) return mesh;
     if (m_solid == nullptr) return nullptr;
     return std::make_shared<const geo::MeshData>(model::SolidTessellator::tessellate(*m_solid));
+}
+
+ExactNoteKind Document::exactNoteKind() const {
+    return m_exact ? m_exact->noteKind : ExactNoteKind::None;
 }
 
 const std::string& Document::exactNote() const {
@@ -259,6 +270,11 @@ bool Document::applyBuild(BuildResult result) {
     m_failedFeatureIndex = result.failedFeatureIndex;
     m_built = true;
     m_builtRevision = m_featureTree.revision();
+    // A migrated part's first exact build that fails: what it fails on is a reference no longer
+    // found, said once with what its reading left out (spec: Migration).
+    if (std::exchange(m_firstBuildPending, false) && m_failedFeatureIndex >= 0) {
+        m_leftOut.push_back("after the exact rebuild: " + m_lastBuildMessage);
+    }
     // Each sketch where the build placed it on its face (Phase 157): for a
     // build of a copy, the copy's were placed, not these.
     for (const auto& [id, plane] : result.placements) {

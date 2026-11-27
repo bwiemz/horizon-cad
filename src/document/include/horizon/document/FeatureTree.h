@@ -31,6 +31,18 @@ namespace hz::doc {
 class Sketch;
 struct ExactCounterpart;
 
+/// Why a part whose bodies would give it an exact counterpart is shown from its facets instead,
+/// as a kind (Document::exactNoteKind): the window says it in its own words, translated, and the
+/// note's detail (Document::exactNote) beside them. The kind is what is translated; the document
+/// builds no words for it. The detail stays a technical reason in English, as an import's report
+/// and a `problem` string are (Ruling 38): which face, and why, or the two volumes.
+enum class ExactNoteKind {
+    None,             ///< no note: the part is shown exactly, or has no counterpart by design
+    ShownFromFacets,  ///< its exact form could not be had, meshed or measured
+    NotChecked,       ///< its exact form could not be held to its facets (exactNote says why)
+    Disagrees,        ///< its exact form measures otherwise than its facets
+};
+
 /// Upper bounds on feature resolution and repetition. Feature parameters come
 /// from files as well as from the UI, and every step or instance costs memory
 /// and time in every later operation, so past these a value is clamped rather
@@ -53,6 +65,18 @@ enum class BodyOperation {
 const char* bodyOperationName(BodyOperation operation);
 /// Parse a persisted spelling; nullopt when it is not one of the four.
 std::optional<BodyOperation> bodyOperationFromName(std::string_view name);
+
+/// A face or an edge of the part a feature keeps by its name (format 32's migration): what an old
+/// part's migration judges, and drops where the name can no longer mean what it meant
+/// (io::migrateToExact).
+struct StoredReference {
+    enum class Kind { Face, Edge };
+    Kind kind = Kind::Face;
+    /// Its whole name (a TopologyID's tag); empty where none is kept there.
+    std::string name;
+    /// What it is to the feature, for a report: "the face it goes up to", "an edge it rounds".
+    std::string what;
+};
 
 /// Abstract base class for parametric modeling features.
 ///
@@ -214,6 +238,21 @@ public:
         (void)value;
         return false;
     }
+    /// Every face and edge of the part it refers to by name (format 32's migration), in a fixed
+    /// order: an extrusion's face to go up to; a hole's face, and its face to go up to; a
+    /// mirror's face; a shell's removed faces; a fillet's or a chamfer's edges. One for each place
+    /// it can keep one (an empty name: none kept there), and one for each of a list's. A face to
+    /// go up to is one only while the extent goes up to a face: kept beside another extent, it
+    /// refers to nothing. Its sketches' (the face one is on, the edges projected into one) are
+    /// theirs, not its.
+    virtual std::vector<StoredReference> storedReferences() const { return {}; }
+    /// Keep @p name in place of storedReferences()[@p index]; an empty one drops it: a place
+    /// keeps none, and a list is one shorter, so that the indices after it move down (drop from
+    /// the last to the first). An index it has not is passed over.
+    virtual void setStoredReference(std::size_t index, std::string name) {
+        (void)index;
+        (void)name;
+    }
 
     /// Whether vector @p name is a point (not a direction).
     static bool isPoint(const std::string& name) {
@@ -287,6 +326,8 @@ public:
         return {{"upToFace", m_upToFace}};
     }
     bool setReference(const std::string& name, const std::string& value) override;
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
 
     std::string name() const override;
     std::string featureID() const override;
@@ -355,8 +396,19 @@ public:
 
     std::string name() const override;
     std::string featureID() const override;
+    /// Its revolve in facets: under Stable naming, its exact revolve's bridge copy
+    /// (executeWithExact); under the older schemes, master's faceted revolve.
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
+    /// Its axis placed with its sketch as before; then, under Stable naming, built exactly (stage
+    /// 3): model::Revolve::exactAndBridge, its faces named for this feature, and its bridge copy
+    /// cut at facetResolution(), master's counts, numbered as master's revolve numbered its
+    /// facets, chords and seams (Ruling 21). A revolve only the exact construction cannot build
+    /// fails with "could not be built exactly: <why>". Under the older schemes, master's faceted
+    /// revolve and no exact body.
+    FeatureOutput executeWithExact(const BuildContext& context,
+                                   std::unique_ptr<topo::Solid> inputSolid,
+                                   std::string* reason = nullptr) const override;
     std::map<std::string, double> parameters() const override;
     bool setParameter(const std::string& name, double value) override;
     std::map<std::string, math::Vec3> vectors() const override;
@@ -383,7 +435,8 @@ public:
     /// count whose error grows with the radius.  0 means the count is used as
     /// given.  Setting the count explicitly returns to count mode.
     double chordTolerance() const { return m_chordTolerance; }
-    /// {segments(), chordTolerance()}: its profile's resolution, and its turn's.
+    /// {segments(), chordTolerance()}: its profile's resolution; and round its axis (as its
+    /// sketch places it) segments(), master's one count for every rim (Ruling 24).
     model::FacetResolution facetResolution() const override;
     void restoreFeatureID(const std::string& id) override;
 
@@ -515,6 +568,8 @@ public:
 
     double thickness() const { return m_thickness; }
     const std::vector<topo::TopologyID>& removedFaceIds() const { return m_removedFaceIds; }
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
     Method method() const { return m_method; }
 
 private:
@@ -542,6 +597,8 @@ public:
 
     double radius() const { return m_radius; }
     const std::vector<topo::TopologyID>& edgeIds() const { return m_edgeIds; }
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
 
     /// Chords across each blend arc, the "arcSegments" parameter.  A blend is
     /// faceted across its arc, so this is what decides how much material the
@@ -583,6 +640,8 @@ public:
 
     double distance() const { return m_distance; }
     const std::vector<topo::TopologyID>& edgeIds() const { return m_edgeIds; }
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
 
 private:
     std::vector<topo::TopologyID> m_edgeIds;
@@ -746,6 +805,8 @@ public:
         return {{"planeFace", m_face}};
     }
     bool setReference(const std::string& name, const std::string& value) override;
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
 
     const std::vector<std::string>& targets() const { return m_targets; }
     /// Each feature is mirrored once, however often it is listed.
@@ -798,10 +859,24 @@ public:
     /// Needs the part it is in (executeIn): alone, it says so.
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
-    /// The hole's body alone, to be cut: from the face of context.part.
+    /// The hole's body alone, to be cut: from the face of context.part (executeWithExact's
+    /// faceted body).
     std::unique_ptr<topo::Solid> executeIn(const BuildContext& context,
                                            std::unique_ptr<topo::Solid> inputSolid,
                                            std::string* reason = nullptr) const override;
+    /// Its half-section found from its face, its type and its extent as before, turned a whole
+    /// turn about its axis: under Stable naming built exactly (stage 3, model::
+    /// Revolve::exactAndBridge), its tool the bridge copy cut at facetResolution(), master's
+    /// counts and numbers (Ruling 21); under the older schemes, master's faceted revolve and no
+    /// exact body. Either way each surface is named for the line of the half-section it sweeps
+    /// (`top`, `wall`, `bottom`, `bore`, `boreFloor`, `sink`), the exact body's too. A hole stays a
+    /// Cut: the part after it is faceted, as on master.
+    FeatureOutput executeWithExact(const BuildContext& context,
+                                   std::unique_ptr<topo::Solid> inputSolid,
+                                   std::string* reason = nullptr) const override;
+    /// {segments, 0}, and segments round its axis (Ruling 24): its revolve's resolution. Its axis
+    /// is where its face puts it, passed as it is built.
+    model::FacetResolution facetResolution() const override;
 
     /// "type" and "extent" (choices), "diameter", "depth", "boreDiameter",
     /// "boreDepth", "sinkDiameter", "sinkAngle" and "pointAngle" (0: a flat
@@ -821,6 +896,8 @@ public:
         return {{"face", m_face}, {"upToFace", m_upToFace}};
     }
     bool setReference(const std::string& name, const std::string& value) override;
+    std::vector<StoredReference> storedReferences() const override;
+    void setStoredReference(std::size_t index, std::string name) override;
 
     Type type() const { return m_type; }
     Extent extent() const { return m_extent; }
@@ -859,6 +936,26 @@ private:
 /// the sheet's surface its thickness grows from; the material is to the left
 /// of the lines as they run, or to the right when flipped. Its flat pattern
 /// is strip() developed (model::developedLength, bendLinePositions).
+///
+/// Its names (Stable naming; Ruling 28), after its own sketch, so that they are
+/// the same in every build and every session: with S a segment of the sketch
+/// as the lines run, `e<id>` for a line and `e<id>.<k>` for a polyline's
+/// segment k (as a profile names them),
+///   - `<featureID>/flat:<S>`: the flat along S, its face on the sketch's side
+///     (the surface the thickness grows from); `<featureID>/flat:<S>:back`, its
+///     face a thickness away;
+///   - `<featureID>/bend:<S>-<S'>` and `<featureID>/bend:<S>-<S'>:back`: the
+///     bend round the corner from S to the next segment S', on the sketch's
+///     side (its outside where it bends toward the material, its inside where
+///     it bends away) and a thickness away;
+///   - `<featureID>/start:<S>` and `<featureID>/end:<S>`: the ends across the
+///     thickness, at the first segment's start and the last one's end;
+///   - `<featureID>/cap_bottom` and `<featureID>/cap_top`: the faces at the
+///     sketch and a width along its normal, as master named them.
+/// Edges are named after the faces they part (model::nameEdgesLogically); the
+/// bridge copy's facets, chords and seams after the face or edge they are of.
+/// Master named every other face after a line it made anew in each build, a
+/// name no two builds shared.
 class SheetMetalFeature : public Feature {
 public:
     SheetMetalFeature(std::shared_ptr<Sketch> sketch, double thickness, double bendRadius,
@@ -867,8 +964,31 @@ public:
     std::string name() const override;
     std::string featureID() const override;
     void restoreFeatureID(const std::string& id) override;
+    /// Its flange in facets: under Stable naming, its exact flange's bridge copy
+    /// (executeWithExact); under the older schemes, master's faceted flange.
     std::unique_ptr<topo::Solid> execute(std::unique_ptr<topo::Solid> inputSolid,
                                          std::string* reason = nullptr) const override;
+    /// Under Stable naming, built exactly (stage 3): the strip's exact profile
+    /// (model::SheetMetalSolid::profile), each bend an inside and an outside arc,
+    /// laid on the sketch as master laid its cross-section (its flats master's
+    /// very lines, in master's order, so the bridge's vertices and where its
+    /// caps' loops start are master's), and extruded by model::Extrude::exact,
+    /// so each bend is two cylinders; its faces named after the sketch (see the
+    /// class), its edges after them, and its bridge copy cut at
+    /// facetResolution() (model::buildWithBridge), its facets, chords and seams
+    /// numbered as the bridge numbers them (`/facet:<k>`, `/chord:<k>`,
+    /// `/seam:<k>`). One whose exact form cannot be built fails, with "could not
+    /// be built exactly: <why>". Under the older schemes, master's faceted flange
+    /// (each bend in segmentsPerBend() chords, every side face named after a
+    /// line made in that build) and no exact body.
+    FeatureOutput executeWithExact(const BuildContext& context,
+                                   std::unique_ptr<topo::Solid> inputSolid,
+                                   std::string* reason = nullptr) const override;
+    /// {4 x segmentsPerBend(), 0}: a 90-degree bend is cut into master's
+    /// segmentsPerBend() chords, a bend of another angle in proportion
+    /// (FacetResolution::stepsFor), where master cut every bend into
+    /// segmentsPerBend().
+    model::FacetResolution facetResolution() const override;
     std::vector<std::shared_ptr<Sketch>> sketches() const override { return {m_sketch}; }
     bool createsNewBody() const override { return true; }
     /// thickness, bendRadius, kFactor, width, bendSegments (chords per bend) and

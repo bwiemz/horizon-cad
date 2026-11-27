@@ -8,11 +8,14 @@
 #include <limits>
 #include <locale>
 #include <numbers>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "horizon/geometry/surfaces/NurbsSurface.h"
 #include "horizon/modeling/MateGeometry.h"
 #include "horizon/topology/Solid.h"
 
@@ -98,21 +101,31 @@ bool sameAxis(const Cylinder& c, const math::Vec3& origin, const math::Vec3& axi
 std::vector<std::pair<math::Vec2, math::Vec2>> centreLinesOf(const topo::Solid& solid,
                                                              const ViewProjection& projection) {
     std::vector<Cylinder> cylinders;
+    // Each surface's frame once, for all the facets that share it: fitted for each facet, a
+    // finely cut face (a drawing's copy of an exact part has tens of thousands) took seconds.
+    std::unordered_map<const geo::NurbsSurface*, std::optional<MateFrame>> frames;
     for (const topo::Face& face : solid.faces()) {
         if (!face.analyticSurface) continue;
-        const auto frame = MateGeometry::frameForFace(face);
-        if (!frame || frame->kind != MateFrameKind::Cylindrical || frame->radius <= 0.0) continue;
-        const double tol = kFitTolerance * std::max(1.0, frame->radius);
+        auto known = frames.find(face.analyticSurface.get());
+        if (known == frames.end()) {
+            known =
+                frames.emplace(face.analyticSurface.get(), MateGeometry::frameForFace(face)).first;
+        }
+        const std::optional<MateFrame>& cached = known->second;
+        if (!cached) continue;
+        const MateFrame frame = *cached;  // a few numbers: read once it is known to be there
+        if (frame.kind != MateFrameKind::Cylindrical || frame.radius <= 0.0) continue;
+        const double tol = kFitTolerance * std::max(1.0, frame.radius);
         Cylinder* into = nullptr;
         for (Cylinder& c : cylinders) {
-            if (std::abs(c.radius - frame->radius) <= tol &&
-                sameAxis(c, frame->origin, frame->direction, tol)) {
+            if (std::abs(c.radius - frame.radius) <= tol &&
+                sameAxis(c, frame.origin, frame.direction, tol)) {
                 into = &c;
                 break;
             }
         }
         if (into == nullptr) {
-            cylinders.push_back({frame->origin, frame->direction.normalized(), frame->radius, {}});
+            cylinders.push_back({frame.origin, frame.direction.normalized(), frame.radius, {}});
             into = &cylinders.back();
         }
         const topo::HalfEdge* start =

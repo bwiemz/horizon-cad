@@ -27,6 +27,7 @@
 #include "horizon/modeling/ChamferOp.h"
 #include "horizon/modeling/Draft.h"
 #include "horizon/modeling/EdgeProjection.h"
+#include "horizon/modeling/ExactBuild.h"
 #include "horizon/modeling/ExactPrimitives.h"
 #include "horizon/modeling/Extrude.h"
 #include "horizon/modeling/FacePlane.h"
@@ -113,6 +114,25 @@ void bumpCounter(math::IdCounter<int>& counter, const std::string& id, const std
     }
 }
 
+/// A list of faces or edges kept by name, as storedReferences() lists it: one for each.
+std::vector<StoredReference> storedList(const std::vector<topo::TopologyID>& ids,
+                                        StoredReference::Kind kind, const char* what) {
+    std::vector<StoredReference> references;
+    references.reserve(ids.size());
+    for (const auto& id : ids) references.push_back({kind, id.tag(), what});
+    return references;
+}
+
+/// setStoredReference() for such a list: entry @p index renamed, or dropped for an empty name.
+void setStoredListEntry(std::vector<topo::TopologyID>& ids, std::size_t index, std::string name) {
+    if (index >= ids.size()) return;
+    if (name.empty()) {
+        ids.erase(ids.begin() + static_cast<std::ptrdiff_t>(index));
+        return;
+    }
+    ids[index] = topo::TopologyID::fromTag(name);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -183,6 +203,17 @@ bool ExtrudeFeature::setReference(const std::string& name, const std::string& va
     if (name != "upToFace") return false;
     m_upToFace = value;
     return true;
+}
+
+std::vector<StoredReference> ExtrudeFeature::storedReferences() const {
+    // Its face to go up to while it goes up to one: kept otherwise (a file keeps it, and a change
+    // of extent leaves it), it refers to nothing.
+    if (m_extent != Extent::UpToFace) return {};
+    return {{StoredReference::Kind::Face, m_upToFace, "the face it goes up to"}};
+}
+
+void ExtrudeFeature::setStoredReference(std::size_t index, std::string name) {
+    if (index == 0 && m_extent == Extent::UpToFace) m_upToFace = std::move(name);
 }
 
 std::map<std::string, math::Vec3> ExtrudeFeature::vectors() const {
@@ -412,6 +443,13 @@ model::FacetResolution RevolveFeature::facetResolution() const {
     model::FacetResolution resolution;
     resolution.segmentsPerTurn = segments();
     resolution.chordTolerance = m_chordTolerance;
+    // Round its axis, as its sketch places it, segments() for every rim (Ruling 24).
+    resolution.aroundAxis = segments();
+    if (m_sketch) {
+        const math::Mat4 placement = m_sketch->placement();
+        resolution.axisPoint = placement.transformPoint(m_axisPoint);
+        resolution.axisDirection = placement.transformDirection(m_axisDir);
+    }
     return resolution;
 }
 
@@ -425,14 +463,34 @@ void RevolveFeature::restoreFeatureID(const std::string& id) {
     bumpCounter(s_nextID, id, "revolve_");
 }
 
-std::unique_ptr<topo::Solid> RevolveFeature::execute(std::unique_ptr<topo::Solid> /*inputSolid*/,
+std::unique_ptr<topo::Solid> RevolveFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
                                                      std::string* reason) const {
+    return executeWithExact(BuildContext{}, std::move(inputSolid), reason).faceted;
+}
+
+FeatureOutput RevolveFeature::executeWithExact(const BuildContext& /*context*/,
+                                               std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                               std::string* reason) const {
     // Placed on a face that has moved, the sketch takes its axis along.
     const math::Mat4 placement = m_sketch->placement();
-    return model::Revolve::execute(m_sketch->entities(), m_sketch->plane(),
-                                   placement.transformPoint(m_axisPoint),
-                                   placement.transformDirection(m_axisDir), m_angle, m_featureID,
-                                   segments(), m_chordTolerance, reason, naming());
+    const math::Vec3 axisPoint = placement.transformPoint(m_axisPoint);
+    const math::Vec3 axisDir = placement.transformDirection(m_axisDir);
+    FeatureOutput out;
+    if (naming() != model::NamingScheme::Stable) {
+        out.faceted = model::Revolve::execute(m_sketch->entities(), m_sketch->plane(), axisPoint,
+                                              axisDir, m_angle, m_featureID, segments(),
+                                              m_chordTolerance, reason, naming());
+        return out;
+    }
+    // Built exactly (stage 3); the faceted revolve every operation not yet converted reads is its
+    // bridge copy, master's facets named for the exact faces they lie on and numbered as master's
+    // (Ruling 21).
+    auto built =
+        model::Revolve::exactAndBridge(m_sketch->entities(), m_sketch->plane(), axisPoint, axisDir,
+                                       m_angle, m_featureID, segments(), m_chordTolerance, reason);
+    out.faceted = std::move(built.faceted);
+    out.exact = std::move(built.exact);
+    return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -694,6 +752,14 @@ void ShellFeature::restoreFeatureID(const std::string& id) {
     bumpCounter(s_nextID, id, "shell_");
 }
 
+std::vector<StoredReference> ShellFeature::storedReferences() const {
+    return storedList(m_removedFaceIds, StoredReference::Kind::Face, "a face it removes");
+}
+
+void ShellFeature::setStoredReference(std::size_t index, std::string name) {
+    setStoredListEntry(m_removedFaceIds, index, std::move(name));
+}
+
 std::map<std::string, double> ShellFeature::parameters() const {
     return {{"thickness", m_thickness}};
 }
@@ -751,6 +817,14 @@ void FilletFeature::restoreFeatureID(const std::string& id) {
     if (id.empty()) return;
     m_featureID = id;
     bumpCounter(s_nextID, id, "fillet_");
+}
+
+std::vector<StoredReference> FilletFeature::storedReferences() const {
+    return storedList(m_edgeIds, StoredReference::Kind::Edge, "an edge it rounds");
+}
+
+void FilletFeature::setStoredReference(std::size_t index, std::string name) {
+    setStoredListEntry(m_edgeIds, index, std::move(name));
 }
 
 std::map<std::string, double> FilletFeature::parameters() const {
@@ -818,6 +892,14 @@ void ChamferFeature::restoreFeatureID(const std::string& id) {
     if (id.empty()) return;
     m_featureID = id;
     bumpCounter(s_nextID, id, "chamfer_");
+}
+
+std::vector<StoredReference> ChamferFeature::storedReferences() const {
+    return storedList(m_edgeIds, StoredReference::Kind::Edge, "an edge it bevels");
+}
+
+void ChamferFeature::setStoredReference(std::size_t index, std::string name) {
+    setStoredListEntry(m_edgeIds, index, std::move(name));
 }
 
 std::map<std::string, double> ChamferFeature::parameters() const {
@@ -1355,11 +1437,11 @@ FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/
     // Built in the frame master's placement moves its primitive to: the seam along that frame's
     // x, where master's ring starts, so the bridge's vertices are master's.
     const geo::Frame frame = isPlaced() ? geo::Frame{}.transformed(placement()) : geo::Frame{};
-    std::unique_ptr<topo::Solid> exact;
-    std::string why =
-        "these dimensions do not make a solid: they must be positive (a cone may have one zero "
-        "radius)";
-    try {
+    const auto build = [&](std::string& why) {
+        why =
+            "these dimensions do not make a solid: they must be positive (a cone may have one "
+            "zero radius)";
+        std::unique_ptr<topo::Solid> exact;
         switch (m_kind) {
             case Kind::Box:
                 exact = exactBox(frame, m_p0, m_p1, m_p2);
@@ -1377,55 +1459,47 @@ FeatureOutput PrimitiveFeature::executeWithExact(const BuildContext& /*context*/
                 exact = model::exact::makeTorus(frame, m_p0, m_p1);
                 break;
         }
-    } catch (const std::exception& e) {
-        why = e.what();
-    }
-    if (!exact) {
-        if (reason) *reason = "could not be built exactly: " + why;
-        return out;
-    }
-    // This feature's names (`<featureID>/side`), its edges after the faces they part.
-    model::scopeToFeature(*exact, featureID());
-    model::nameEdgesLogically(*exact);
-    auto bridge = model::facetExact(*exact, facetResolution());
-    if (!bridge.solid) {
-        if (reason) *reason = "its exact form could not be cut into facets: " + bridge.error;
-        return out;
-    }
-    if (!bridge.copied) model::nameBridgeEdges(*bridge.solid, *exact);
+        if (!exact) return exact;
+        // This feature's names (`<featureID>/side`), its edges after the faces they part.
+        model::scopeToFeature(*exact, featureID());
+        model::nameEdgesLogically(*exact);
+        return exact;
+    };
     // Numbered as master's faceted primitive numbered the same places (Ruling 21): a box names
     // nothing by number.
-    std::vector<model::SolidSewer::InputFace> soup;
-    const char* curvedSide = "side";
-    const int n = segments();
-    switch (m_kind) {
-        case Kind::Box:
-            break;
-        case Kind::Cylinder:
-            soup = model::PrimitiveFactory::cylinderFaces(m_p0, m_p1, n);
-            curvedSide = "cylinder/side";
-            break;
-        case Kind::Sphere:
-            soup = model::PrimitiveFactory::sphereFaces(m_p0, n);
-            curvedSide = "sphere/band";
-            break;
-        case Kind::Cone:
-            soup = model::PrimitiveFactory::coneFaces(m_p0, m_p1, m_p2, n);
-            curvedSide = "cone/side";
-            break;
-        case Kind::Torus:
-            soup = model::PrimitiveFactory::torusFaces(m_p0, m_p1, n);
-            curvedSide = "torus/patch";
-            break;
-    }
-    if (!soup.empty()) {
-        model::nameAsMasters(
-            *bridge.solid, *exact,
-            model::mastersFacets(soup, curvedSide, featureID(),
-                                 isPlaced() ? placement() : math::Mat4::identity()));
-    }
-    out.faceted = std::move(bridge.solid);
-    out.exact = std::move(exact);
+    const auto masters = [&] {
+        std::vector<model::SolidSewer::InputFace> soup;
+        const char* curvedSide = "side";
+        const int n = segments();
+        switch (m_kind) {
+            case Kind::Box:
+                break;
+            case Kind::Cylinder:
+                soup = model::PrimitiveFactory::cylinderFaces(m_p0, m_p1, n);
+                curvedSide = "cylinder/side";
+                break;
+            case Kind::Sphere:
+                soup = model::PrimitiveFactory::sphereFaces(m_p0, n);
+                curvedSide = "sphere/band";
+                break;
+            case Kind::Cone:
+                soup = model::PrimitiveFactory::coneFaces(m_p0, m_p1, m_p2, n);
+                curvedSide = "cone/side";
+                break;
+            case Kind::Torus:
+                soup = model::PrimitiveFactory::torusFaces(m_p0, m_p1, n);
+                curvedSide = "torus/patch";
+                break;
+        }
+        return model::mastersFacets(soup, curvedSide, featureID(),
+                                    isPlaced() ? placement() : math::Mat4::identity());
+    };
+    // The faceted body is master's own primitive, as its Stable path built, named and placed it,
+    // named as the bridge names the same places (Ruling 44).
+    const auto own = [this](std::string& why) { return facetedAsMaster(&why); };
+    auto built = model::buildWithBridge(build, facetResolution(), masters, reason, own);
+    out.faceted = std::move(built.faceted);
+    out.exact = std::move(built.exact);
     return out;
 }
 
@@ -2147,6 +2221,14 @@ bool MirrorFeature::setReference(const std::string& name, const std::string& val
     return true;
 }
 
+std::vector<StoredReference> MirrorFeature::storedReferences() const {
+    return {{StoredReference::Kind::Face, m_face, "the face it mirrors in"}};
+}
+
+void MirrorFeature::setStoredReference(std::size_t index, std::string name) {
+    if (index == 0) m_face = std::move(name);
+}
+
 void MirrorFeature::setTargets(std::vector<std::string> targets) {
     m_targets.clear();
     for (auto& id : targets) {
@@ -2244,6 +2326,15 @@ void HoleFeature::restoreFeatureID(const std::string& id) {
     bumpCounter(s_nextID, id, "hole_");
 }
 
+model::FacetResolution HoleFeature::facetResolution() const {
+    model::FacetResolution resolution;
+    resolution.segmentsPerTurn = m_segments;
+    // Round its axis its segments (Ruling 24). The axis is where its face puts it, known only as
+    // it is built against the part: its build (Revolve::exactAndBridge) passes it.
+    resolution.aroundAxis = m_segments;
+    return resolution;
+}
+
 std::map<std::string, double> HoleFeature::parameters() const {
     return {{"type", static_cast<double>(m_type)},
             {"extent", static_cast<double>(m_extent)},
@@ -2323,6 +2414,24 @@ bool HoleFeature::setReference(const std::string& name, const std::string& value
     return false;
 }
 
+std::vector<StoredReference> HoleFeature::storedReferences() const {
+    std::vector<StoredReference> references = {
+        {StoredReference::Kind::Face, m_face, "the face it is drilled into"}};
+    // Its face to go up to while it goes up to one, as an extrusion's.
+    if (m_extent == Extent::UpToFace) {
+        references.push_back({StoredReference::Kind::Face, m_upToFace, "the face it goes up to"});
+    }
+    return references;
+}
+
+void HoleFeature::setStoredReference(std::size_t index, std::string name) {
+    if (index == 0) {
+        m_face = std::move(name);
+    } else if (index == 1 && m_extent == Extent::UpToFace) {
+        m_upToFace = std::move(name);
+    }
+}
+
 std::unique_ptr<topo::Solid> HoleFeature::execute(std::unique_ptr<topo::Solid> inputSolid,
                                                   std::string* reason) const {
     BuildContext context;
@@ -2379,15 +2488,25 @@ std::string holeName(const std::string& tag) {
 }  // namespace
 
 std::unique_ptr<topo::Solid> HoleFeature::executeIn(const BuildContext& context,
-                                                    std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                                    std::unique_ptr<topo::Solid> inputSolid,
                                                     std::string* reason) const {
+    return executeWithExact(context, std::move(inputSolid), reason).faceted;
+}
+
+FeatureOutput HoleFeature::executeWithExact(const BuildContext& context,
+                                            std::unique_ptr<topo::Solid> /*inputSolid*/,
+                                            std::string* reason) const {
+    const auto fail = [reason](std::string why) {
+        if (reason) *reason = std::move(why);
+        return FeatureOutput{};
+    };
     if (!context.part) {
-        return failWith(reason, "a hole is drilled into the part: there is no part before it");
+        return fail("a hole is drilled into the part: there is no part before it");
     }
-    if (m_face.empty()) return failWith(reason, "no face is chosen to drill into");
+    if (m_face.empty()) return fail("no face is chosen to drill into");
     std::string why;
     const auto face = model::planeOfFace(*context.part, m_face, &why);
-    if (!face) return failWith(reason, "the face it is drilled into (" + m_face + ") " + why);
+    if (!face) return fail("the face it is drilled into (" + m_face + ") " + why);
     const math::Vec3 n = face->normal.normalized();  // out of the part
     const math::Vec3 into = n * -1.0;
     // Where it is, on the face as the face now is.
@@ -2402,19 +2521,19 @@ std::unique_ptr<topo::Solid> HoleFeature::executeIn(const BuildContext& context,
         for (const auto& v : context.part->vertices()) {
             reach = std::max(reach, (v.point - at).dot(into));
         }
-        if (!(reach > 1e-9)) return failWith(reason, "the part is not behind its face");
+        if (!(reach > 1e-9)) return fail("the part is not behind its face");
         depth = reach * 1.01 + 1e-6;  // out of the far side
         pointed = false;
     } else if (m_extent == Extent::UpToFace) {
-        if (m_upToFace.empty()) return failWith(reason, "no face is chosen to go up to");
+        if (m_upToFace.empty()) return fail("no face is chosen to go up to");
         const std::string upTo = "the face it goes up to (" + m_upToFace + ")";
         const auto to = model::planeOfFace(*context.part, m_upToFace, &why);
-        if (!to) return failWith(reason, upTo + " " + why);
+        if (!to) return fail(upTo + " " + why);
         if (to->normal.cross(n).length() > 1e-9) {
-            return failWith(reason, upTo + " is at a slant to the face it is drilled into");
+            return fail(upTo + " is at a slant to the face it is drilled into");
         }
         depth = (to->origin - at).dot(to->normal) / into.dot(to->normal);
-        if (!(depth > 1e-9)) return failWith(reason, upTo + " is not behind the face");
+        if (!(depth > 1e-9)) return fail(upTo + " is not behind the face");
         pointed = false;
     }
 
@@ -2430,9 +2549,9 @@ std::unique_ptr<topo::Solid> HoleFeature::executeIn(const BuildContext& context,
             break;
         case Type::Counterbore: {
             const double rb = m_boreDiameter / 2.0;
-            if (!(rb > r)) return failWith(reason, "the counterbore must be wider than the hole");
+            if (!(rb > r)) return fail("the counterbore must be wider than the hole");
             if (!(m_boreDepth < depth)) {
-                return failWith(reason, "the counterbore must be shallower than the hole");
+                return fail("the counterbore must be shallower than the hole");
             }
             section.push_back({{rb, -lead}, Bore});
             section.push_back({{rb, m_boreDepth}, BoreFloor});
@@ -2441,11 +2560,11 @@ std::unique_ptr<topo::Solid> HoleFeature::executeIn(const BuildContext& context,
         }
         case Type::Countersink: {
             const double rs = m_sinkDiameter / 2.0;
-            if (!(rs > r)) return failWith(reason, "the countersink must be wider than the hole");
+            if (!(rs > r)) return fail("the countersink must be wider than the hole");
             const double slope = std::tan(m_sinkAngle / 2.0);  // across, per depth
             const double sinkDepth = (rs - r) / slope;
             if (!(sinkDepth < depth)) {
-                return failWith(reason, "the countersink must be shallower than the hole");
+                return fail("the countersink must be shallower than the hole");
             }
             section.push_back({{rs + lead * slope, -lead}, Sink});
             section.push_back({{r, sinkDepth}, Wall});
@@ -2468,16 +2587,31 @@ std::unique_ptr<topo::Solid> HoleFeature::executeIn(const BuildContext& context,
     const math::Vec3 seed = std::abs(n.x) < 0.9 ? math::Vec3::UnitX : math::Vec3::UnitY;
     const math::Vec3 across = (seed - n * seed.dot(n)).normalized();
     const draft::SketchPlane plane(at, across.cross(into), across);
-    auto hole = model::Revolve::execute(profile, plane, at, into, 2.0 * math::kPi, m_featureID,
-                                        m_segments, 0.0, &why, naming());
-    if (!hole) return failWith(reason, "the hole could not be made: " + why);
-    for (auto& f : hole->faces()) {
-        if (f.topoId.isValid()) f.topoId = topo::TopologyID::fromTag(holeName(f.topoId.tag()));
+    // Each surface named for what it is (`top`, `wall`, `bottom`, `bore`, `boreFloor`, `sink`).
+    const auto nameForItsLines = [](topo::Solid& solid) {
+        for (auto& f : solid.faces()) {
+            if (f.topoId.isValid()) f.topoId = topo::TopologyID::fromTag(holeName(f.topoId.tag()));
+        }
+        for (auto& e : solid.edges()) {
+            if (e.topoId.isValid()) e.topoId = topo::TopologyID::fromTag(holeName(e.topoId.tag()));
+        }
+    };
+    FeatureOutput out;
+    if (naming() != model::NamingScheme::Stable) {
+        out.faceted = model::Revolve::execute(profile, plane, at, into, 2.0 * math::kPi,
+                                              m_featureID, m_segments, 0.0, &why, naming());
+    } else {
+        // Built exactly (stage 3); the tool it cuts is the bridge copy, master's facets named and
+        // numbered as master's (Ruling 21). It is a Cut: the part after it is faceted.
+        auto built = model::Revolve::exactAndBridge(profile, plane, at, into, 2.0 * math::kPi,
+                                                    m_featureID, m_segments, 0.0, &why);
+        out.faceted = std::move(built.faceted);
+        out.exact = std::move(built.exact);
     }
-    for (auto& e : hole->edges()) {
-        if (e.topoId.isValid()) e.topoId = topo::TopologyID::fromTag(holeName(e.topoId.tag()));
-    }
-    return hole;
+    if (!out.faceted) return fail("the hole could not be made: " + why);
+    nameForItsLines(*out.faceted);
+    if (out.exact) nameForItsLines(*out.exact);
+    return out;
 }
 
 const char* bodyOperationName(BodyOperation operation) {

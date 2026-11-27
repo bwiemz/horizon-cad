@@ -12,6 +12,7 @@
 #include <QStringList>
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <utility>
 
 #include "horizon/document/AssemblyDocument.h"
@@ -26,7 +27,9 @@
 #include "horizon/fileio/GltfExport.h"
 #include "horizon/fileio/StlExport.h"
 #include "horizon/fileio/SvgExport.h"
+#include "horizon/geometry/MeshData.h"
 #include "horizon/modeling/Sheet.h"
+#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/Solid.h"
 #include "horizon/ui/AssemblyWorkbench.h"
 #include "horizon/ui/DrawingWorkbench.h"
@@ -39,6 +42,23 @@
 
 namespace hz::ui {
 
+namespace {
+
+/// The mesh @p part's build kept (Document::exactMesh, its exact counterpart's, made at the part's
+/// display tolerance, model::SolidTessellator::displayTolerance) where that is @p tolerance,
+/// compared exactly: what an export at that tolerance writes, not meshed again. Null otherwise.
+std::shared_ptr<const geo::MeshData> keptMeshAt(const doc::Document& part, double tolerance) {
+    const topo::Solid* exact = part.exactSolid();
+    std::shared_ptr<const geo::MeshData> mesh = part.exactMesh();
+    if (exact == nullptr || mesh == nullptr) return nullptr;
+    // The very tolerance it was meshed at, or not this mesh: compared exactly, not within a
+    // margin.
+    if (model::SolidTessellator::displayTolerance(*exact) != tolerance) return nullptr;
+    return mesh;
+}
+
+}  // namespace
+
 ExchangeCommands::ExchangeCommands(WorkbenchHost& host, AssemblyWorkbench& assemblies,
                                    DrawingWorkbench& drawings, QObject* parent)
     : QObject(parent), m_host(host), m_assemblies(assemblies), m_drawings(drawings) {}
@@ -48,6 +68,7 @@ ExchangeCommands::~ExchangeCommands() = default;
 void ExchangeCommands::cancelWork() {
     if (m_importTask) m_importTask->cancel();
     if (m_drawingTask) m_drawingTask->cancel();
+    if (m_stepExportTask) m_stepExportTask->cancel();
 }
 
 std::optional<ExchangeCommands::Progress> ExchangeCommands::progress() const {
@@ -438,22 +459,75 @@ void ExchangeCommands::onExportStep() {
 }
 
 void ExchangeCommands::exportAssemblyStep() {
-    // Each part once, and each component a use of it where it is placed.
-    const AssemblyWorkbench::StepExport gathered = m_assemblies.stepExport();
-    if (gathered.occurrences.empty()) {
+    const std::shared_ptr<doc::AssemblyDocument> assembly = m_host.currentAssembly();
+    const auto placed = [](const doc::ComponentInstance& comp) { return !comp.suppressed; };
+    if (std::none_of(assembly->components().begin(), assembly->components().end(), placed)) {
         m_host.showStatus(
             tr("STEP export writes an assembly's components; none of this one's parts can be "
                "read"));
+        return;
+    }
+    if (m_stepExportTask) {
+        m_host.showStatus(tr("A STEP export is already being written"));
         return;
     }
     const QString fileName =
         askExportPath(tr("STEP"), tr("STEP Files (*.step *.stp)"), QStringLiteral(".step"));
     if (fileName.isEmpty()) return;
     const QString title =
-        m_host.currentAssembly()->filePath().empty()
+        assembly->filePath().empty()
             ? tr("Assembly")
-            : QFileInfo(QString::fromStdString(m_host.currentAssembly()->filePath()))
-                  .completeBaseName();
+            : QFileInfo(QString::fromStdString(assembly->filePath())).completeBaseName();
+    // Each part once, and each component a use of it where it is placed: each part built for the
+    // export with its exact counterpart, in a copy of its own, never the part the assembly draws
+    // and mates (Ruling 20). Those builds go to a worker where the rebuild mode sends work there:
+    // in Auto, whenever there is one, its time not known, as an opened part's is not.
+    io::AssemblyStepJob job = io::prepareAssemblyStep(*assembly, m_host.documents());
+    if (!m_host.onWorker(job.builds() > 0)) {
+        writeAssemblyStep(fileName, title, io::finishAssemblyStep(std::move(job)));
+        return;
+    }
+    auto prepared = std::make_shared<io::AssemblyStepJob>(std::move(job));
+    m_stepExportTask = std::make_unique<BackgroundTask<io::AssemblyStepExport>>(
+        [prepared](const std::atomic<bool>& cancelled) {
+            return io::finishAssemblyStep(std::move(*prepared), &cancelled);
+        });
+    m_stepExportFile = fileName;
+    m_stepExportTitle = title;
+    m_stepExportTask->start([this] {
+        QMetaObject::invokeMethod(this, &ExchangeCommands::onStepExportFinished,
+                                  Qt::QueuedConnection);
+    });
+    m_host.setPrompt(tr("Building the parts to export..."));
+    m_host.backgroundWorkChanged();
+}
+
+void ExchangeCommands::onStepExportFinished() {
+    if (!m_stepExportTask || !m_stepExportTask->finished()) return;
+    const std::unique_ptr<BackgroundTask<io::AssemblyStepExport>> task =
+        std::move(m_stepExportTask);
+    m_host.backgroundWorkChanged();
+    m_host.setPrompt(tr("Ready"));
+    if (task->cancelled()) {
+        m_host.showStatus(tr("STEP export cancelled: nothing was written"), 10000);
+        return;
+    }
+    if (!task->error().empty()) {
+        m_host.reportFileError(tr("Could not export"), m_stepExportFile.toStdString(),
+                               task->error());
+        return;
+    }
+    writeAssemblyStep(m_stepExportFile, m_stepExportTitle, task->take());
+}
+
+void ExchangeCommands::writeAssemblyStep(const QString& fileName, const QString& title,
+                                         const io::AssemblyStepExport& gathered) {
+    if (gathered.occurrences.empty()) {
+        m_host.showStatus(
+            tr("STEP export writes an assembly's components; none of this one's parts can be "
+               "read"));
+        return;
+    }
     io::StepFormat::WriteReport report;
     if (!io::StepFormat::saveAssembly(fileName.toStdString(), title.toStdString(), gathered.parts,
                                       gathered.occurrences, {}, &report)) {
@@ -508,7 +582,11 @@ void ExchangeCommands::onExportStl() {
         askExportPath(tr("STL"), tr("STL Files (*.stl)"), QStringLiteral(".stl"));
     if (fileName.isEmpty()) return;
     std::string error;
-    if (!io::StlExport::save(fileName.toStdString(), *solid, &error)) {
+    // The part's kept mesh where it was made at STL's tolerance; else meshed now.
+    const auto kept = keptMeshAt(*m_host.currentDocument(), io::StlExport::kTolerance);
+    if (!kept) ++m_tessellations;
+    if (!(kept ? io::StlExport::save(fileName.toStdString(), *kept, &error)
+               : io::StlExport::save(fileName.toStdString(), *solid, &error))) {
         m_host.reportFileError(tr("Could not export"), fileName.toStdString(), error);
         return;
     }
@@ -524,9 +602,15 @@ void ExchangeCommands::onExportGltf() {
     const QString title = m_host.currentTitle();
     const std::string name = title.isEmpty() ? std::string("Part") : title.toStdString();
     std::string error;
-    if (!io::GltfExport::saveSolid(
-            fileName.toStdString(), *solid,
-            render::Material{math::Vec3{0.6, 0.75, 0.85}, 0.15f, 0.5f, 32.0f}, name, &error)) {
+    const render::Material material{math::Vec3{0.6, 0.75, 0.85}, 0.15f, 0.5f, 32.0f};
+    // As the display draws it (at the part's display tolerance): the part's kept mesh, which its
+    // build made at it; else meshed now.
+    const auto kept =
+        keptMeshAt(*m_host.currentDocument(), model::SolidTessellator::displayTolerance(*solid));
+    if (!kept) ++m_tessellations;
+    if (!(kept ? io::GltfExport::saveMesh(fileName.toStdString(), *kept, material, name, &error)
+               : io::GltfExport::saveSolid(fileName.toStdString(), *solid, material, name,
+                                           &error))) {
         m_host.reportFileError(tr("Could not export"), fileName.toStdString(), error);
         return;
     }

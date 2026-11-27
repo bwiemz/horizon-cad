@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QPointer>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -115,8 +116,15 @@ public:
     /// built): Auto builds it on a worker, as a slow one.
     static constexpr qint64 kBuildTimeUnknown = -1;
 
-    /// How many times a model has been tessellated for the view (for tests).
-    std::uint64_t tessellations() const { return m_tessellations; }
+    /// How many times a model has been tessellated for the view or for an
+    /// export (ExchangeCommands::tessellations), rather than drawn or written
+    /// with a mesh already made (for tests).
+    std::uint64_t tessellations() const;
+
+    /// The status line's words for a part's @p kind of exact note
+    /// (Document::exactNoteKind), translated; empty for None. The note's
+    /// detail, the technical reason, is its tooltip.
+    static QString exactNoteText(doc::ExactNoteKind kind);
     static constexpr qint64 kWorkerImportBytes =
         ExchangeCommands::kWorkerImportBytes;  ///< and a file opened
     /// Mass Properties measures the ideal on a worker, in Auto, for a part
@@ -289,6 +297,13 @@ private:
     /// ("'tagMSG': an undefined class", from its conversion to anything).
     nlohmann::json assistantSelection() const;
 
+    /// What a document's file lacks, kept to be said (showHeldReports): the file's name, and the
+    /// report.
+    struct HeldReport {
+        QString file;
+        io::ImportReport report;
+    };
+
     /// One open document tab. Part/drawing tabs hold `document`; assembly
     /// tabs additionally hold `assembly` (with `document` acting as a blank
     /// backing document so the shared viewport always has one).
@@ -316,6 +331,10 @@ private:
         /// Its model is out of date: a rebuild for it was dropped while
         /// another tab was shown.
         bool modelStale = false;
+        /// What is still to be said of what its document lacks: what reading a migrated part
+        /// left out, held while its first build runs, and what a build left out of it
+        /// (Document::migrated), said in one report once that build is applied.
+        std::optional<HeldReport> heldReport{};
     };
 
     void createMenus();
@@ -332,6 +351,11 @@ private:
 
     DocTab* activeTab();
     bool saveActiveDocument();
+    /// The active part's first exact build, if it is migrated and that build is still to come (on
+    /// a worker, or not yet started): made here, now, so that what it fails on is left out of the
+    /// part (Document::applyBuild) before Save or Save As decides where it is written, and the
+    /// file it was read from is not written over unasked (owner amendment A2).
+    void settleFirstBuild();
 
     /// File ▸ Open Recent, rebuilt each time it opens.
     void rebuildRecentMenu();
@@ -368,9 +392,32 @@ private:
     void onOpenFinished();
     /// Show @p document, just opened from @p fileName: in the tab already
     /// showing it if there is one, else a new tab; what could not be read of
-    /// it; and in the recent files.
+    /// it; and in the recent files. Of a migrated part whose first build
+    /// runs on a worker (Document::firstBuildPending), what could not be read
+    /// is said once that build is applied, with what it left out.
     void showOpened(std::shared_ptr<doc::Document> document, const QString& fileName,
                     const QString& fallbackTitle, io::ImportReport report);
+    /// A build of @p document was applied, its leftOut @p before items long before it: what the
+    /// build added (a migrated part's first exact build that failed, Document::applyBuild) is
+    /// held in its tab's report (DocTab::heldReport), its tab said to be incomplete, and the
+    /// report said soon after (showHeldReports). A document no tab shows keeps it: a tab that
+    /// opens it says it.
+    void noteBuildLeftOut(const doc::Document& document, std::size_t before);
+    /// Say the first tab's held report whose document's first build is not still to come (one
+    /// still runs, or waits for the one running): one box, and the rest after it.
+    void showHeldReports();
+    /// Whether any tab holds a report still to be said.
+    bool reportsHeld() const;
+    /// The Mass Properties box's text, given the measure (null: none yet, or
+    /// none, for the reason given).
+    using MassText = std::function<QString(const model::IdealMassProperties*, const QString&)>;
+    /// Measure @p solid ideally on a worker, as Mass Properties (@p verb)
+    /// asked: its box shown at once in @p text's words while it is measured,
+    /// and the measure filled in when it comes. @p solid is not changed while
+    /// it is measured: a copy, or the part's exact counterpart. Refused, and
+    /// said, while another is measured.
+    void measureOnWorker(const QString& verb, std::shared_ptr<const topo::Solid> solid,
+                         const std::optional<model::Material>& material, MassText text);
     void onMassPropertiesFinished();
 
     /// The window's size and position and where its docks are, kept across
@@ -432,8 +479,9 @@ private:
     void activateTabDocument();
     void rebuildScene() override;
     /// The status line's note of why the part in front has no exact
-    /// counterpart where its imports would give it one (Document::exactNote),
-    /// shown while it has one.
+    /// counterpart where its bodies would give it one: its kind in the
+    /// window's words (exactNoteText), its detail as the tooltip
+    /// (Document::exactNote), shown while it has one.
     void updateExactNote();
     void refreshAllPanels();
     void updateWindowTitle();
@@ -581,7 +629,7 @@ private:
     QPointer<QMessageBox> m_massBox;
     QPointer<HelpWindow> m_help;
     QPointer<GettingStartedTour> m_tour;
-    std::function<QString(const model::IdealMassProperties*, const QString&)> m_massText;
+    MassText m_massText;
 
     // Status bar widgets
     QLabel* m_statusCoords = nullptr;

@@ -7,19 +7,26 @@
 #include <gtest/gtest.h>
 
 #include <QAction>
+#include <QApplication>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QLabel>
 #include <QMessageBox>
 #include <QTemporaryDir>
+#include <QTranslator>
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -31,12 +38,14 @@
 #include "horizon/document/FeatureTree.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/fileio/StlExport.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Units.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/render/MeshPicker.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
@@ -110,6 +119,34 @@ void importInto(MainWindow& w, const QString& path) {
     ASSERT_NE(w.activeDocument()->solid(), nullptr) << w.activeDocument()->lastBuildMessage();
 }
 
+/// A cylinder of radius 5 and height 10, made with the Cylinder command: Stable, so exact (stage
+/// 3).
+void cylinderPrimitive(MainWindow& w) {
+    {
+        FormFiller filler(QStringLiteral("Cylinder"), FormAnswers()
+                                                          .number(QStringLiteral("size0"), 5.0)
+                                                          .number(QStringLiteral("size1"), 10.0));
+        trigger(w, "action_cylinder");
+        ASSERT_TRUE(filler.seen());
+    }
+    settle(w);
+    ASSERT_NE(w.activeDocument(), nullptr);
+    ASSERT_NE(w.activeDocument()->exactSolid(), nullptr) << w.activeDocument()->exactNote();
+}
+
+/// The Mass Properties box open now, not blocking (measured on a worker).
+QMessageBox* openMassBox() {
+    for (QWidget* widget : QApplication::topLevelWidgets()) {
+        auto* box = qobject_cast<QMessageBox*>(widget);
+        // By its name, not its title: macOS drops a message box's title.
+        if (box != nullptr && box->isVisible() &&
+            box->objectName() == QStringLiteral("massPropertiesBox")) {
+            return box;
+        }
+    }
+    return nullptr;
+}
+
 /// The mesh the window draws the part with.
 std::shared_ptr<const hz::geo::MeshData> shownMesh(MainWindow& w) {
     auto* view = w.findChild<hz::ui::ViewportWidget*>();
@@ -144,6 +181,49 @@ void expectOnTheCylinder(const hz::geo::MeshData& mesh, double within) {
         ASSERT_TRUE(onSide || onCap) << "(" << p.x << ", " << p.y << ", " << p.z << ")";
     }
 }
+
+/// A part saved before stage 2 whose body's STEP is not exact, written into @p dir: a box with one
+/// corner raised off its planes, kept as it was. Opened, it is shown from its facets.
+QString writeOldPart(const QTemporaryDir& dir) {
+    auto box = hz::model::PrimitiveFactory::makeBox(7.0, 11.0, 13.0);
+    std::string text = hz::io::StepFormat::toString({box.get()});
+    const std::string corner = "(7.,11.,13.)";
+    EXPECT_NE(text.find(corner), std::string::npos);
+    if (text.find(corner) == std::string::npos) return {};
+    text.replace(text.find(corner), corner.size(), "(7.,11.,13.2)");
+    hz::io::StepReadOptions keep;
+    keep.keepWhenNotExact = true;
+    auto solids = hz::io::StepFormat::fromString(text, nullptr, nullptr, keep);
+    EXPECT_EQ(solids.size(), 1u) << hz::io::StepFormat::lastError();
+    if (solids.size() != 1) return {};
+    Document old;
+    old.setType(hz::doc::DocumentType::Part);
+    old.featureTree().addFeature(std::make_unique<hz::doc::ImportedBodyFeature>(
+        std::shared_ptr<const hz::topo::Solid>(std::move(solids.front())), "creo.step"));
+    const QString path = dir.filePath(QStringLiteral("old.hzpart"));
+    std::string error;
+    EXPECT_TRUE(hz::io::NativeFormat::save(path.toStdString(), old, &error)) << error;
+    return path;
+}
+
+/// A catalog that translates the status line's words for each kind of exact note, each into
+/// itself in guillemets, and nothing else: what reaches the window through tr() shows so.
+class MarkingCatalog : public QTranslator {
+public:
+    static QString marked(const char* english) {
+        return QStringLiteral("\u00AB%1\u00BB").arg(QString::fromLatin1(english));
+    }
+    bool isEmpty() const override { return false; }
+    QString translate(const char* /*context*/, const char* sourceText,
+                      const char* /*disambiguation*/, int /*n*/) const override {
+        for (const char* english : kWords) {
+            if (std::string_view(sourceText) == english) return marked(english);
+        }
+        return {};
+    }
+    static constexpr const char* kWords[] = {"Shown from facets", "Exact form not checked",
+                                             "Exact form disagrees with its facets"};
+};
 
 }  // namespace
 
@@ -426,26 +506,13 @@ TEST(ExactDisplay, AFeatureAfterTheImportDrawsTheFacetsAndItsUndoTheExactFaces) 
 
 // A part whose imports would give it a counterpart, but cannot, says why on the status line; the
 // note goes with its part. Here a part saved before stage 2 whose body's STEP is not exact.
+// (Re-baselined for Task 10: the note is a kind and its detail; the tooltip is the detail, which
+// no longer begins with the kind's words.)
 TEST(ExactDisplay, WhyAPartIsShownFromFacetsIsOnTheStatusLine) {
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());
-    // A box with one corner raised off its planes: no exact form, kept as it was.
-    auto box = hz::model::PrimitiveFactory::makeBox(7.0, 11.0, 13.0);
-    std::string text = hz::io::StepFormat::toString({box.get()});
-    const std::string corner = "(7.,11.,13.)";
-    ASSERT_NE(text.find(corner), std::string::npos);
-    text.replace(text.find(corner), corner.size(), "(7.,11.,13.2)");
-    hz::io::StepReadOptions keep;
-    keep.keepWhenNotExact = true;
-    auto solids = hz::io::StepFormat::fromString(text, nullptr, nullptr, keep);
-    ASSERT_EQ(solids.size(), 1u) << hz::io::StepFormat::lastError();
-    Document old;
-    old.setType(hz::doc::DocumentType::Part);
-    old.featureTree().addFeature(std::make_unique<hz::doc::ImportedBodyFeature>(
-        std::shared_ptr<const hz::topo::Solid>(std::move(solids.front())), "creo.step"));
-    const QString oldPath = dir.filePath(QStringLiteral("old.hzpart"));
-    std::string error;
-    ASSERT_TRUE(hz::io::NativeFormat::save(oldPath.toStdString(), old, &error)) << error;
+    const QString oldPath = writeOldPart(dir);
+    ASSERT_FALSE(oldPath.isEmpty());
 
     MainWindow w;
     auto* note = w.findChild<QLabel*>(QStringLiteral("exactNote"));
@@ -455,7 +522,9 @@ TEST(ExactDisplay, WhyAPartIsShownFromFacetsIsOnTheStatusLine) {
     settle(w);
     ASSERT_NE(w.activeDocument()->solid(), nullptr);
     const std::string why = w.activeDocument()->exactNote();
-    ASSERT_EQ(why.rfind("shown from facets: ", 0), 0u) << why;
+    ASSERT_EQ(w.activeDocument()->exactNoteKind(), hz::doc::ExactNoteKind::ShownFromFacets) << why;
+    ASSERT_FALSE(why.empty());
+    EXPECT_EQ(why.find("shown from facets"), std::string::npos) << "the detail alone: " << why;
     EXPECT_FALSE(note->isHidden());
     EXPECT_EQ(note->text(), QStringLiteral("Shown from facets"));
     EXPECT_EQ(note->toolTip().toStdString(), why);
@@ -466,4 +535,260 @@ TEST(ExactDisplay, WhyAPartIsShownFromFacetsIsOnTheStatusLine) {
     importInto(w, step);
     ASSERT_NE(w.activeDocument()->exactSolid(), nullptr) << w.activeDocument()->exactNote();
     EXPECT_TRUE(note->isHidden());
+}
+
+// Task 10: the status line says the kind of note in the window's own words, through tr(), for
+// each kind; nothing it shows is English built in the document. Its tooltip is the note's detail,
+// the technical reason. Under a catalog that translates those words, the line shows them
+// translated.
+TEST(ExactDisplay, TheNoteIsTranslatable) {
+    MarkingCatalog catalog;
+    ASSERT_TRUE(QCoreApplication::installTranslator(&catalog));
+    struct Uninstalled {
+        QTranslator* catalog;
+        ~Uninstalled() { QCoreApplication::removeTranslator(catalog); }
+    } const uninstalled{&catalog};
+
+    using hz::doc::ExactNoteKind;
+    const std::vector<std::pair<ExactNoteKind, const char*>> kinds = {
+        {ExactNoteKind::ShownFromFacets, "Shown from facets"},
+        {ExactNoteKind::NotChecked, "Exact form not checked"},
+        {ExactNoteKind::Disagrees, "Exact form disagrees with its facets"},
+    };
+    for (const auto& kind : kinds) {
+        EXPECT_EQ(MainWindow::exactNoteText(kind.first), MarkingCatalog::marked(kind.second))
+            << kind.second;
+    }
+    EXPECT_TRUE(MainWindow::exactNoteText(ExactNoteKind::None).isEmpty());
+
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString oldPath = writeOldPart(dir);
+    ASSERT_FALSE(oldPath.isEmpty());
+    MainWindow w;
+    auto* note = w.findChild<QLabel*>(QStringLiteral("exactNote"));
+    ASSERT_NE(note, nullptr);
+    ASSERT_TRUE(w.openPath(oldPath));
+    settle(w);
+    ASSERT_EQ(w.activeDocument()->exactNoteKind(), ExactNoteKind::ShownFromFacets);
+    EXPECT_FALSE(note->isHidden());
+    EXPECT_EQ(note->text(), MarkingCatalog::marked("Shown from facets"));
+    EXPECT_EQ(note->toolTip().toStdString(), w.activeDocument()->exactNote());
+}
+
+// Task 10 (the Stable path, the default since stage 3): a cylinder made with the Cylinder command
+// is exact, and Mass Properties integrates its exact faces, here on the window's thread: 25 pi 10
+// and 150 pi, said as exact, and as integrated on its exact faces, not "as they were imported".
+TEST(ExactDisplay, MassPropertiesOfAPrimitiveIsExact) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Never);
+    cylinderPrimitive(w);
+
+    DialogResponder answer(QMessageBox::Ok, QStringLiteral("Mass Properties"));
+    FormFiller filler(
+        QStringLiteral("Mass Properties"),
+        FormAnswers().choose(QStringLiteral("material"), QStringLiteral("None (volume only)")));
+    trigger(w, "action_mass_properties");
+    ASSERT_TRUE(filler.seen());
+    ASSERT_TRUE(answer.seen());
+    const std::string text = answer.text().toStdString();
+    EXPECT_NE(text.find("Exact (integrated on its exact faces):"), std::string::npos) << text;
+    EXPECT_NE(text.find("Volume: 785.3982 "), std::string::npos) << "25 pi 10: " << text;
+    EXPECT_NE(text.find("Surface area: 471.2389 "), std::string::npos) << "150 pi: " << text;
+    EXPECT_EQ(text.find("imported"), std::string::npos) << "a primitive, built: " << text;
+    EXPECT_EQ(text.find("As modelled"), std::string::npos) << text;
+}
+
+// Task 10: an exact part is measured on a worker under the faceted path's rule (Always; Auto with
+// kWorkerIdealFaces or more curved faces): the box opens at once, not blocking, and the exact
+// measure comes into it through the task.
+TEST(ExactDisplay, ExactMassRunsOnAWorkerWhenAsked) {
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Always);
+    cylinderPrimitive(w);
+
+    FormFiller filler(QStringLiteral("Mass Properties"),
+                      FormAnswers().choose(QStringLiteral("material"), QStringLiteral("Steel")));
+    trigger(w, "action_mass_properties");
+    QMessageBox* box = openMassBox();
+    ASSERT_NE(box, nullptr) << "open while it is measured";
+    EXPECT_TRUE(box->text().contains(QStringLiteral("Measuring..."))) << box->text().toStdString();
+    EXPECT_FALSE(box->text().contains(QStringLiteral("Volume:"))) << box->text().toStdString();
+    EXPECT_TRUE(w.backgroundWorkRunning());
+    settle(w);
+    ASSERT_FALSE(w.backgroundWorkRunning());
+    const std::string text = box->text().toStdString();
+    EXPECT_NE(text.find("Exact (integrated on its exact faces):"), std::string::npos) << text;
+    EXPECT_NE(text.find("Volume: 785.3982 "), std::string::npos) << text;
+    EXPECT_NE(text.find("Mass: 6.165376 g"), std::string::npos) << "7.85 g/cm3: " << text;
+    EXPECT_NE(text.find("density 7.85 g/cm"), std::string::npos) << text;
+    EXPECT_EQ(text.find("Measuring..."), std::string::npos) << text;
+    box->accept();
+}
+
+// Task 10 (Task 13's floor note): a part whose estimate stops short of the tolerance asked for,
+// with every face taken as far as the integration goes, is said to be exact to within it, not
+// plainly "Exact", even where the estimate is under a billionth: a coin a thousandth as thick as
+// it is wide, its axis along (1, 1, 0), 1e-3 by 10 in radius.
+TEST(ExactDisplay, MassPropertiesSaysWhereAThinPartsEstimateStops) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    Document coin;
+    coin.setType(hz::doc::DocumentType::Part);
+    auto cylinder = hz::doc::PrimitiveFeature::makeCylinder(10.0, 1e-3);
+    ASSERT_TRUE(cylinder->setVector("axisDirection", Vec3(1, 1, 0)));
+    coin.featureTree().addFeature(std::move(cylinder));
+    const QString path = dir.filePath(QStringLiteral("coin.hzpart"));
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), coin, &error)) << error;
+
+    MainWindow w;
+    w.setRebuildMode(MainWindow::RebuildMode::Never);
+    ASSERT_TRUE(w.openPath(path));
+    settle(w);
+    ASSERT_NE(w.activeDocument()->exactSolid(), nullptr) << w.activeDocument()->exactNote();
+    const auto measured =
+        hz::model::MassPropertiesCalculator::computeIdeal(*w.activeDocument()->exactSolid());
+    ASSERT_FALSE(measured.note.empty()) << "its estimate stops short: " << measured.estimatedError;
+
+    DialogResponder answer(QMessageBox::Ok, QStringLiteral("Mass Properties"));
+    FormFiller filler(
+        QStringLiteral("Mass Properties"),
+        FormAnswers().choose(QStringLiteral("material"), QStringLiteral("None (volume only)")));
+    trigger(w, "action_mass_properties");
+    ASSERT_TRUE(answer.seen());
+    const std::string text = answer.text().toStdString();
+    EXPECT_NE(text.find("Exact (integrated on its exact faces; its volume and area to within "),
+              std::string::npos)
+        << text;
+    EXPECT_NE(text.find("Volume: 0.3141593 "), std::string::npos) << "pi 100 1e-3: " << text;
+}
+
+// Task 10: File > Export > STL and glTF write the mesh the part's build kept (Document::exactMesh)
+// where it was made at the export's tolerance (the part's display tolerance,
+// SolidTessellator::displayTolerance, compared exactly; STL's is 0.1, a 5 mm cylinder's): not
+// meshed again, so the window's count of tessellations does not move, and the STL's triangles are
+// the kept mesh's. A part with no exact counterpart is meshed for the export, and counted.
+TEST(ExactDisplay, StlExportReusesTheKeptMesh) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    MainWindow w;
+    cylinderPrimitive(w);
+    Document& part = *w.activeDocument();
+    ASSERT_NE(part.exactMesh(), nullptr);
+    ASSERT_EQ(hz::model::SolidTessellator::displayTolerance(*part.exactSolid()),
+              hz::io::StlExport::kTolerance);
+    const auto before = w.tessellations();
+
+    const QString stl = dir.filePath(QStringLiteral("part.stl"));
+    {
+        FilePicker picker(stl);
+        trigger(w, "export_stl");
+    }
+    EXPECT_EQ(w.tessellations(), before) << "the kept mesh, not meshed again";
+    QFile file(stl);
+    ASSERT_TRUE(file.open(QIODevice::ReadOnly));
+    const QByteArray bytes = file.readAll();
+    ASSERT_GE(bytes.size(), 84);
+    std::uint32_t triangles = 0;
+    std::memcpy(&triangles, bytes.constData() + 80, sizeof triangles);
+    EXPECT_EQ(triangles, part.exactMesh()->indices.size() / 3);
+    EXPECT_EQ(static_cast<std::size_t>(bytes.size()), 84 + 50 * std::size_t{triangles});
+
+    const QString glb = dir.filePath(QStringLiteral("part.glb"));
+    {
+        FilePicker picker(glb);
+        trigger(w, "export_gltf");
+    }
+    EXPECT_GT(QFileInfo(glb).size(), 0);
+    EXPECT_EQ(w.tessellations(), before) << "glTF writes it too";
+
+    // Named by position, as a part saved before persistent naming: no exact counterpart, so its
+    // facets are meshed for the export, and counted.
+    part.featureTree().feature(0)->setNaming(hz::model::NamingScheme::Positional);
+    part.featureTree().markChanged();
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    ASSERT_EQ(part.exactSolid(), nullptr);
+    const auto faceted = w.tessellations();
+    {
+        FilePicker picker(dir.filePath(QStringLiteral("faceted.stl")));
+        trigger(w, "export_stl");
+    }
+    EXPECT_EQ(w.tessellations(), faceted + 1) << "meshed for the export";
+    EXPECT_TRUE(QFileInfo::exists(dir.filePath(QStringLiteral("faceted.stl"))));
+}
+
+// Owner amendment A1 (Task 10): on an exact part, a chosen or hovered face is highlighted from its
+// faceted copy (Document::solid()), every face of it whose logical name is the pick's, not from
+// the exact mesh drawn, so a coarse part shows the facets a command on the face acts on. A
+// cylinder primitive cut in 6 round its axis: its side is drawn round, and highlighted as the
+// faceted copy's 6 flat facets, two triangles each, every corner one of theirs, filled where the
+// round side drawn is seen (its mask, a stencil: Ruling 39), as they lie inside it.
+TEST(ExactDisplay, AFaceHighlightIsDrawnFromTheFacetedCopy) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    Document coarse;
+    coarse.setType(hz::doc::DocumentType::Part);
+    auto made = hz::doc::PrimitiveFeature::makeCylinder(kRadius, kHeight);
+    ASSERT_TRUE(made->setParameter("segments", 6.0));
+    coarse.featureTree().addFeature(std::move(made));
+    const QString path = dir.filePath(QStringLiteral("coarse.hzpart"));
+    std::string error;
+    ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), coarse, &error)) << error;
+
+    MainWindow w;
+    ASSERT_TRUE(w.openPath(path));
+    settle(w);
+    const Document& part = *w.activeDocument();
+    ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+    const auto mesh = shownMesh(w);
+    ASSERT_NE(mesh, nullptr);
+    ASSERT_EQ(mesh, part.exactMesh()) << "drawn round";
+
+    // A click from +x, halfway up: the side.
+    const auto hit = hz::render::MeshPicker::pickFace(
+        *mesh, hz::math::Mat4::identity(), Vec3(5 * kRadius, 0.0, kHeight / 2), Vec3(-1, 0, 0));
+    ASSERT_TRUE(hit.has_value());
+    ASSERT_GE(hit->face, 0);
+    const std::string side =
+        hz::model::logicalFace(mesh->faceTags[static_cast<std::size_t>(hit->face)]);
+    std::size_t drawn = 0;
+    for (const std::uint32_t face : mesh->triangleFaces) {
+        drawn += hz::model::logicalFace(mesh->faceTags[face]) == side ? 1 : 0;
+    }
+    EXPECT_GT(drawn, 12u) << "the side drawn round, in more triangles than its facets'";
+
+    // The faceted copy's side: 6 facets, and their corners.
+    std::set<std::string> facets;
+    std::vector<Vec3> corners;
+    for (const auto& face : part.solid()->faces()) {
+        if (!face.alive || hz::model::logicalFace(face.topoId.tag()) != side) continue;
+        facets.insert(face.topoId.tag());
+        const hz::topo::HalfEdge* he = face.outerLoop->halfEdge;
+        do {
+            corners.push_back(he->origin->point);
+            he = he->next;
+        } while (he != face.outerLoop->halfEdge);
+    }
+    ASSERT_EQ(facets.size(), 6u);
+
+    auto* view = w.findChild<hz::ui::ViewportWidget*>();
+    ASSERT_NE(view, nullptr);
+    const auto highlight = view->faceHighlight({0, side, false});
+    EXPECT_EQ(distinct(highlight.faces), facets);
+    ASSERT_EQ(highlight.triangles.size(), 6u * 2u * 9u) << "two triangles a facet";
+    for (std::size_t i = 0; i + 2 < highlight.triangles.size(); i += 3) {
+        const Vec3 p(highlight.triangles[i], highlight.triangles[i + 1],
+                     highlight.triangles[i + 2]);
+        const bool atAFacetsCorner =
+            std::any_of(corners.begin(), corners.end(),
+                        [&p](const Vec3& c) { return (c - p).length() < 1e-4; });
+        EXPECT_TRUE(atAFacetsCorner) << "(" << p.x << ", " << p.y << ", " << p.z << ")";
+    }
+    // Filled where the side drawn is seen (Ruling 39): its mask is the round side as drawn, the
+    // exact mesh's triangles of it, every corner on the cylinder.
+    ASSERT_EQ(highlight.mask.size(), drawn * 9u);
+    for (std::size_t i = 0; i + 2 < highlight.mask.size(); i += 3) {
+        EXPECT_NEAR(std::hypot(highlight.mask[i], highlight.mask[i + 1]), kRadius, 1e-4);
+    }
 }

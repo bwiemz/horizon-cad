@@ -12,6 +12,7 @@
 
 #include <QAction>
 #include <QFile>
+#include <QMessageBox>
 #include <QRegularExpression>
 #include <QStatusBar>
 #include <QTabBar>
@@ -21,7 +22,9 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <utility>
@@ -432,6 +435,90 @@ void addDetailOfFront(MainWindow& w, const hz::model::DrawingView& front, const 
 }
 
 }  // namespace
+
+// Stage 3 (Task 12, Ruling 41): a sheet whose dimension names an edge the part no longer has
+// says so when it opens, whatever its file's age, in the report's own "Not drawn" lines. Its file
+// keeps the dimension, to be drawn again should the part have its edge again, so saving over it
+// loses nothing: the sheet is not read in part, its tab is not incomplete, and Save writes over
+// its file asking nothing, the dimension kept. Read again when its file changes, it says so again.
+// A sheet the reading left something out of (a dimension of a kind this version does not read) is
+// read in part as before, and says both.
+TEST(DrawingsTest, ASheetWhoseDimensionFindsNoEdgeSaysSoAndIsSavedOverItsFile) {
+    QTemporaryDir dir;
+    const QString block = dir.filePath(QStringLiteral("block.hzpart"));
+    saveBlock(block, 10);
+    hz::io::DrawingDocumentSpec spec;
+    spec.partPath = block.toStdString();
+    spec.views = hz::io::DrawingDocumentIO::viewsOf(layoutOf(block));
+    ASSERT_FALSE(spec.views.empty());
+    spec.views[0].dimensions.push_back(
+        {"primitive_1/edge:no|such", hz::io::DrawingDimensionSpec::Kind::Length});
+    const QString file = dir.filePath(QStringLiteral("block.hzdwg"));
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(file.toStdString(), spec));
+    const QString line =
+        QStringLiteral("Not drawn: view 1: a length on an edge the part no longer has");
+
+    MainWindow w;
+    hz::test::DialogResponder report(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+    ASSERT_TRUE(w.openPath(file));
+    report.waitForDialog(5000);
+    ASSERT_TRUE(report.seen()) << "the dimension not drawn is reported";
+    EXPECT_TRUE(report.detailedText().contains(line)) << report.detailedText().toStdString();
+    EXPECT_FALSE(report.detailedText().contains(QStringLiteral("Left out:")))
+        << report.detailedText().toStdString();
+    EXPECT_TRUE(report.informativeText().contains(QStringLiteral("saving keeps")))
+        << report.informativeText().toStdString();
+    hz::doc::Document* sheet = w.activeDocument();
+    EXPECT_FALSE(sheet->readInPart()) << "its file keeps what is not drawn";
+    EXPECT_FALSE(
+        tabBar(w)->tabText(tabBar(w)->currentIndex()).contains(QStringLiteral("(incomplete)")))
+        << tabBar(w)->tabText(tabBar(w)->currentIndex()).toStdString();
+    EXPECT_FALSE(sheet->isDirty());
+
+    // Saved over its file, asking nothing, and the dimension kept there.
+    sheet->setDirty(true);
+    {
+        hz::test::ModalCloser closer;
+        trigger(w, "action_save");
+        EXPECT_TRUE(closer.dismissed().isEmpty()) << closer.dismissed().join(", ").toStdString();
+    }
+    EXPECT_FALSE(sheet->isDirty()) << "saved";
+    EXPECT_EQ(sheet->filePath(), file.toStdString());
+    hz::io::DrawingDocumentSpec saved;
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::readSpec(file.toStdString(), saved));
+    ASSERT_FALSE(saved.views.empty());
+    ASSERT_EQ(saved.views[0].dimensions.size(), 1u) << "kept";
+    EXPECT_EQ(saved.views[0].dimensions[0].edge, "primitive_1/edge:no|such");
+
+    // Read again when its file changes on disk: said again, and still not read in part.
+    w.findChild<QTimer*>(QStringLiteral("partWatchTimer"))->setInterval(10);
+    saved.titleBlock.title = "Again";
+    hz::test::DialogResponder again(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+    ASSERT_TRUE(hz::io::DrawingDocumentIO::save(file.toStdString(), saved));
+    const std::filesystem::path changed(file.toStdString());
+    std::filesystem::last_write_time(
+        changed, std::filesystem::last_write_time(changed) + std::chrono::seconds(2));
+    again.waitForDialog(5000);
+    ASSERT_TRUE(again.seen()) << "read again, and said again";
+    EXPECT_TRUE(again.detailedText().contains(line)) << again.detailedText().toStdString();
+    EXPECT_TRUE(titleBlockText(*sheet).contains(QStringLiteral("Again")));
+    EXPECT_FALSE(sheet->readInPart());
+
+    // A dimension of a kind this version does not read is left out: read in part, as before.
+    nlohmann::json root =
+        nlohmann::json::parse(hz::io::DrawingDocumentIO::serialise(file.toStdString(), saved));
+    root["views"][0]["dimensions"].push_back({{"edge", "e"}, {"kind", "wingspan"}});
+    const QString unread = dir.filePath(QStringLiteral("unread.hzdwg"));
+    std::ofstream(unread.toStdString()) << root.dump();
+    hz::test::DialogResponder both(QMessageBox::Ok, QStringLiteral("Not Everything Was Read"));
+    ASSERT_TRUE(w.openPath(unread));
+    both.waitForDialog(5000);
+    ASSERT_TRUE(both.seen());
+    EXPECT_TRUE(both.detailedText().contains(line)) << both.detailedText().toStdString();
+    EXPECT_TRUE(both.detailedText().contains(QStringLiteral("Left out: view 1, dimension 2: ")))
+        << both.detailedText().toStdString();
+    EXPECT_TRUE(w.activeDocument()->readInPart());
+}
 
 // A section cut through the Front view: captioned, hatched, its cut marked
 // on Front, saved and opened again; a cut that misses the part is refused.
@@ -1341,4 +1428,69 @@ TEST(DrawingsTest, AHolesPositionIsTolerancedToADatum) {
     }
     EXPECT_TRUE(framed()) << toleranceTexts(*sheet).join(", ").toStdString();
     EXPECT_EQ(toleranceTexts(*sheet).count(QStringLiteral("A")), 2);
+}
+
+// ---------------------------------------------------------------------------
+// Drawings from the exact part (stage 3)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// The x of each straight upright line on @p sheet's Visible layer @p length long: a cylinder's
+/// outlines seen from the front and from the side, sorted.
+std::vector<double> uprights(const hz::doc::Document& sheet, double length) {
+    std::vector<double> xs;
+    for (const auto& entity : sheet.draftDocument().entities()) {
+        if (entity->layer() != "Visible") continue;
+        const auto* line = dynamic_cast<const hz::draft::DraftLine*>(entity.get());
+        if (line == nullptr) continue;
+        const auto a = line->start();
+        const auto b = line->end();
+        if (std::abs(a.x - b.x) < 1e-9 && std::abs(std::abs(a.y - b.y) - length) < 1e-6) {
+            xs.push_back(a.x);
+        }
+    }
+    std::sort(xs.begin(), xs.end());
+    return xs;
+}
+
+}  // namespace
+
+// A sheet of an exact part is drawn from its exact faces, cut for the scale it is drawn at, and
+// cut again when that changes: a cylinder of radius 50 and height 40, its faceted part 45 sides
+// round (whose front outline at -x lies 0.12 mm inside), has both outlines of its front and side
+// views within 0.01 mm on paper of 100 mm apart at 1:1, and of 200 mm at 2:1, where the copy
+// cut for 1:1 left the side view's 0.02 mm inside each.
+TEST(DrawingsTest, AnExactPartsSheetIsCutForTheScaleItIsDrawnAt) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("drum.hzpart"));
+    {
+        hz::doc::Document part;
+        part.setType(hz::doc::DocumentType::Part);
+        auto drum = hz::doc::PrimitiveFeature::makeCylinder(50, 40);
+        ASSERT_TRUE(drum->setParameter("segments", 45));
+        part.featureTree().addFeature(std::move(drum));
+        ASSERT_TRUE(part.rebuildModel());
+        ASSERT_NE(part.exactSolid(), nullptr);
+        ASSERT_TRUE(hz::io::NativeFormat::save(path.toStdString(), part));
+    }
+    MainWindow w;
+    hz::doc::Document* sheet = drawingOfOpenPart(w, path);
+    ASSERT_NE(sheet, nullptr);
+    for (const char* scale : {"1:1", "2:1"}) {
+        SCOPED_TRACE(scale);
+        {
+            FormFiller form(QStringLiteral("Drawing Scale"), FormAnswers().choose("scale", scale));
+            trigger(w, "action_drawing_scale");
+            ASSERT_TRUE(form.seen());
+        }
+        const double s = std::string(scale) == "1:1" ? 1.0 : 2.0;
+        const std::vector<double> xs = uprights(*sheet, 40.0 * s);
+        ASSERT_EQ(xs.size(), 4u) << "an outline each side, in the front view and the side view";
+        for (const std::size_t first : {0u, 2u}) {
+            const double apart = xs[first + 1] - xs[first];
+            EXPECT_LE(apart, 100.0 * s + 1e-9);
+            EXPECT_GE(apart, 100.0 * s - 2.0 * 0.01) << "within 0.01 mm on paper each side";
+        }
+    }
 }

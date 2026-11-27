@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "horizon/drafting/DraftEntity.h"
 #include "horizon/math/Vec2.h"
 #include "horizon/modeling/SheetMetal.h"
 #include "horizon/topology/Solid.h"
@@ -13,7 +14,8 @@ namespace hz::model {
 /// Folded 3D flange bodies from the Phase-62 sheet-metal strip model
 /// (Phase 61b). A strip of flat segments joined by bends becomes a solid
 /// plate: the folded side profile is swept (extruded) along the bend axis
-/// by the part width, with bends approximated by arc polylines.
+/// by the part width, with bends approximated by arc polylines
+/// (crossSection), or exactly, each bend two arcs (profile, stage 3).
 class SheetMetalSolid {
 public:
     /// Closed cross-section polygon of the folded strip, counter-clockwise:
@@ -26,6 +28,20 @@ public:
     static std::vector<math::Vec2> crossSection(const SheetMetalStrip& strip,
                                                 const SheetMetalParams& params,
                                                 int segmentsPerBend = 8);
+
+    /// The same fold exactly (stage 3): crossSection()'s outline with each
+    /// bend one arc on each boundary in place of its chords, the inside one
+    /// of the bend radius and the outside one of the radius and the
+    /// thickness, both about the bend's axis. In crossSection()'s order and
+    /// frame: the bottom boundary walked forward, a line across the far end,
+    /// the top boundary walked back and a line across the near end; each flat
+    /// a draft::DraftLine running the way its boundary is walked (along
+    /// crossSection()'s edge), each bend a draft::DraftArc (counter-clockwise,
+    /// as every arc is). A joint of no angle is no bend: its flats are two
+    /// lines in line, as crossSection() keeps their corner. Empty on invalid
+    /// input, as crossSection() is.
+    static std::vector<std::shared_ptr<draft::DraftEntity>> profile(const SheetMetalStrip& strip,
+                                                                    const SheetMetalParams& params);
 
     /// Base/edge flange body: the folded cross-section extruded to
     /// @p width along the bend axis. nullptr on invalid input.

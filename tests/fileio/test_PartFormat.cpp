@@ -22,11 +22,11 @@
 #include "horizon/fileio/ImportReport.h"
 #include "horizon/fileio/NativeFormat.h"
 #include "horizon/fileio/StepFormat.h"
+#include "horizon/geometry/MeshData.h"
 #include "horizon/geometry/surfaces/AnalyticSurfaces.h"
 #include "horizon/math/Constants.h"
 #include "horizon/modeling/MassProperties.h"
 #include "horizon/modeling/PrimitiveFactory.h"
-#include "horizon/modeling/SolidTessellator.h"
 #include "horizon/topology/ExactTolerance.h"
 #include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/Solid.h"
@@ -201,10 +201,15 @@ TEST(PartFormatTest, TessellationCacheIsWrittenForBuiltParts) {
     EXPECT_FALSE(mesh->indices.empty());
     EXPECT_EQ(mesh->positions.size() % 3, 0u);
     EXPECT_EQ(mesh->indices.size() % 3, 0u);
-    // With its faces and edges by name (Phase 143), as the solid's own mesh
-    // has them: a component drawn from the cache can be clicked.
+    // With its faces and edges by name (Phase 143), as the mesh the part is
+    // shown with has them: a component drawn from the cache can be clicked.
+    // (Re-baselined for Ruling 44: the mesh saved is the part as it is shown,
+    // Document::exactOrFacetedMesh, here its exact counterpart's, in the exact
+    // solid's order of faces; its faceted copy is master's prism, whose order
+    // is master's.)
     EXPECT_TRUE(mesh->hasFaces());
-    const auto own = hz::model::SolidTessellator::tessellate(*doc.solid());
+    ASSERT_NE(doc.exactOrFacetedMesh(), nullptr);
+    const hz::geo::MeshData& own = *doc.exactOrFacetedMesh();
     EXPECT_EQ(mesh->faceTags, own.faceTags);
     EXPECT_EQ(mesh->triangleFaces, own.triangleFaces);
     EXPECT_EQ(mesh->edges.size(), own.edges.size());
@@ -328,11 +333,11 @@ TEST(PartFormatTest, MalformedTypeFieldDoesNotThrow) {
 TEST(PartFormatTest, LoadPartMeshRejectsInvalidIndices) {
     // Out-of-range index (only 3 vertices, index 999) and negative index
     // must both be rejected instead of producing a mesh that crashes the
-    // renderer.
+    // renderer. (Format 32: a cache of 31 or older is not read at all.)
     std::string outOfRange = tempPath("hz_test_bad_indices.hzpart");
     {
         std::ofstream out(outOfRange);
-        out << R"({"version": 16, "type": "hzpart", "entities": [],
+        out << R"({"version": 32, "type": "hzpart", "entities": [],
                    "tessellationCache": {
                        "positions": [0,0,0, 1,0,0, 0,1,0],
                        "normals": [0,0,1, 0,0,1, 0,0,1],
@@ -343,7 +348,7 @@ TEST(PartFormatTest, LoadPartMeshRejectsInvalidIndices) {
     std::string negative = tempPath("hz_test_neg_indices.hzpart");
     {
         std::ofstream out(negative);
-        out << R"({"version": 16, "type": "hzpart", "entities": [],
+        out << R"({"version": 32, "type": "hzpart", "entities": [],
                    "tessellationCache": {
                        "positions": [0,0,0, 1,0,0, 0,1,0],
                        "normals": [0,0,1, 0,0,1, 0,0,1],
@@ -355,7 +360,7 @@ TEST(PartFormatTest, LoadPartMeshRejectsInvalidIndices) {
     std::string good = tempPath("hz_test_good_indices.hzpart");
     {
         std::ofstream out(good);
-        out << R"({"version": 16, "type": "hzpart", "entities": [],
+        out << R"({"version": 32, "type": "hzpart", "entities": [],
                    "tessellationCache": {
                        "positions": [0,0,0, 1,0,0, 0,1,0],
                        "normals": [0,0,1, 0,0,1, 0,0,1],

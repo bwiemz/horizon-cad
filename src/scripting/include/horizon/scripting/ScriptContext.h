@@ -64,7 +64,9 @@ public:
     // saying why) rather than report the box's results as the solid's.
 
     /// Mass properties of the current solid (volume/area/centroid/inertia/mass)
-    /// at the given density. `valid` is false when there is no solid.
+    /// at the given density, measured as the window measures it: its exact
+    /// counterpart where it has one (Document::exactOrFacetedSolid), else its
+    /// faceted solid. `valid` is false when there is no solid.
     model::MassProperties massProperties(double density = 1.0) const;
 
     /// Summary result of a linear-static finite-element analysis.

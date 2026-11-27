@@ -8,7 +8,10 @@
 #include <set>
 #include <string>
 #include <system_error>
+#include <utility>
+#include <vector>
 
+#include "horizon/document/AssemblyMates.h"
 #include "horizon/geometry/MeshData.h"
 
 namespace hz::doc {
@@ -120,7 +123,34 @@ std::shared_ptr<AssemblyDocument> DocumentManager::openAssembly(const std::strin
     m_assemblies.push_back(doc);
     m_assembliesByPath[key] = doc;
     watchFile(key);
+    // One of format 31 or older names its parts' faces as master's builds named them: what its
+    // mates no longer find in the parts as they are built now is said, never solved on another.
+    if (doc->migrated()) noteUnresolvedMates(*doc);
     return doc;
+}
+
+void DocumentManager::noteUnresolvedMates(AssemblyDocument& assembly) {
+    if (assembly.mates().empty()) return;
+    // Each component a mate names read whole: its faces, edges and datums are found there.
+    std::set<uint64_t> mated;
+    for (const Mate& mate : assembly.mates()) {
+        if (mate.type == MateType::Fixed) continue;
+        mated.insert(mate.a.componentId);
+        mated.insert(mate.b.componentId);
+    }
+    const std::string dir = fs::path(assembly.filePath()).parent_path().string();
+    // Not inside itself, at any depth.
+    const std::vector<std::string> within{canonicalPath(assembly.filePath())};
+    for (ComponentInstance& comp : assembly.components()) {
+        if (mated.count(comp.id) == 0 || comp.state == ComponentState::Resolved) continue;
+        resolveComponent(comp, ComponentState::Resolved, dir, nullptr, within);
+    }
+    std::vector<std::string> unresolved = AssemblyMates::unresolved(assembly);
+    if (unresolved.empty()) return;
+    std::vector<std::string> leftOut = assembly.leftOut();
+    leftOut.insert(leftOut.end(), std::make_move_iterator(unresolved.begin()),
+                   std::make_move_iterator(unresolved.end()));
+    assembly.setLeftOut(std::move(leftOut));
 }
 
 namespace {
@@ -325,6 +355,12 @@ bool DocumentManager::resolveComponent(ComponentInstance& instance, ComponentSta
         return true;
     }
     return false;
+}
+
+bool DocumentManager::readPart(const std::string& path, Document& into) const {
+    if (!m_partLoader || !m_partLoader(path, into)) return false;
+    into.setFilePath(path);
+    return true;
 }
 
 bool DocumentManager::resolveSubassembly(ComponentInstance& instance, ComponentState mode,

@@ -271,13 +271,13 @@ DrawingWorkbench::Sheet* DrawingWorkbench::activeSheet(const QString& verb) {
     return sheet;
 }
 
-const topo::Solid* DrawingWorkbench::partSolid(const std::string& path, doc::Document& holder,
-                                               std::string* error) {
+const doc::Document* DrawingWorkbench::partDocument(const std::string& path, doc::Document& holder,
+                                                    std::string* error) {
     // The part as it is now: its tab's document when it is open and built,
     // else its file.
     if (const auto open = m_host.documents().findByPath(path);
         open != nullptr && open->solid() != nullptr) {
-        return open->solid();
+        return open.get();
     }
     std::string reason;
     if (!io::NativeFormat::load(path, holder, &reason)) {
@@ -288,7 +288,7 @@ const topo::Solid* DrawingWorkbench::partSolid(const std::string& path, doc::Doc
         if (error != nullptr) *error = "its part did not rebuild";
         return nullptr;
     }
-    return holder.solid();
+    return &holder;
 }
 
 namespace {
@@ -306,20 +306,67 @@ void filesOf(const doc::AssemblyDocument& assembly, std::vector<std::string>& fi
 
 }  // namespace
 
-std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceOf(const std::string& path,
-                                                                           std::string* error) {
+double DrawingWorkbench::scaleOf(const io::DrawingDocumentSpec& spec, const Source& source) {
+    const bool laidOutAnew =
+        spec.version >= 2 && spec.views.empty() && !(std::isfinite(spec.scale) && spec.scale > 0.0);
+    if (!laidOutAnew) {
+        return io::DrawingDocumentIO::sheetScale(spec, *source.faceted, spec.titleBlock);
+    }
+    // The faceted part's layout chooses it, as before: once for each paper, title block and gap.
+    const std::array<double, 5> key{spec.sheet.widthMm(), spec.sheet.heightMm(), spec.sheet.margin,
+                                    spec.titleBlock.height, spec.gap};
+    const auto& laidOut = source.laidOut;
+    if (laidOut && laidOut->first == key) return laidOut->second;
+    const double scale = io::DrawingDocumentIO::sheetScale(spec, *source.faceted, spec.titleBlock);
+    source.laidOut = std::make_pair(key, scale);
+    return scale;
+}
+
+std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::cutFor(const Source& from,
+                                                                         double scale,
+                                                                         std::string* error) {
+    std::string why;
+    auto solid = io::DrawingDocumentIO::cutForSheet(*from.exact, scale, &why);
+    if (!solid) {
+        if (error != nullptr) *error = "its part could not be drawn: " + why;
+        return nullptr;
+    }
+    auto source = std::make_shared<Source>();
+    source->solid = std::move(solid);
+    source->exact = from.exact;
+    source->faceted = from.faceted;
+    source->scale = scale;
+    source->laidOut = from.laidOut;
+    source->partsList = from.partsList;
+    source->balloons = from.balloons;
+    source->files = from.files;
+    source->missing = from.missing;
+    source->holes = from.holes;
+    return source;
+}
+
+std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceOf(
+    const io::DrawingDocumentSpec& spec, std::string* error) {
+    const std::string& path = spec.partPath;
     auto source = std::make_shared<Source>();
     source->files = {path};
     if (!isAssemblyPath(path)) {
         doc::Document holder;
-        const topo::Solid* part = partSolid(path, holder, error);
+        const doc::Document* part = partDocument(path, holder, error);
         if (part == nullptr) return nullptr;
-        source->solid = model::Pattern::transformed(*part, math::Mat4::identity());  // its own copy
         // Its holes as the document drawn from has them: its tab's, or its file's.
-        const auto open = m_host.documents().findByPath(path);
-        source->holes = io::DrawingDocumentIO::holesOf(
-            open != nullptr && open->solid() != nullptr ? *open : holder);
-        return source;
+        source->holes = io::DrawingDocumentIO::holesOf(*part);
+        // Its own copies: its tab may rebuild meanwhile.
+        auto faceted = model::Pattern::transformed(*part->solid(), math::Mat4::identity());
+        const topo::Solid* exact = part->exactSolid();
+        if (exact == nullptr) {
+            source->solid = std::move(faceted);
+            return source;
+        }
+        // An exact part is drawn from its exact faces, cut for the sheet's largest scale.
+        source->exact = model::Pattern::transformed(*exact, math::Mat4::identity());
+        source->faceted = std::move(faceted);
+        return cutFor(*source, scaleOf(spec, *source), error);
     }
 
     // The assembly as it is now: its tab's when it is open, else its file's.
@@ -369,8 +416,11 @@ std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceOf(const
             source->files.push_back(file);
             return solid;
         }
+        // Each its faceted part: an assembly's sheet is drawn from its components as they
+        // resolve, without exact parts (stage 3).
         read.push_back(std::make_unique<doc::Document>());
-        const topo::Solid* solid = partSolid(file, *read.back(), nullptr);
+        const doc::Document* part = partDocument(file, *read.back(), nullptr);
+        const topo::Solid* solid = part != nullptr ? part->solid() : nullptr;
         parts.emplace(file, solid);
         source->files.push_back(file);
         return solid;
@@ -401,7 +451,18 @@ std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceOf(const
 
 std::shared_ptr<const DrawingWorkbench::Source> DrawingWorkbench::sourceFor(Sheet& sheet,
                                                                             std::string* error) {
-    if (!sheet.source) sheet.source = sourceOf(sheet.spec.partPath, error);
+    if (!sheet.source) {
+        sheet.source = sourceOf(sheet.spec, error);
+    } else if (sheet.source->exact) {
+        // Cut again where the sheet's largest scale has changed: no chord sags more than
+        // 0.01 mm on paper at the scale it is drawn at.
+        const double scale = scaleOf(sheet.spec, *sheet.source);
+        if (scale != sheet.source->scale) {
+            auto cut = cutFor(*sheet.source, scale, error);
+            if (!cut) return nullptr;
+            sheet.source = std::move(cut);
+        }
+    }
     return sheet.source;
 }
 
@@ -412,7 +473,8 @@ model::TitleBlock DrawingWorkbench::roomFor(const Sheet& sheet) {
 }
 
 void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& spec,
-                            const Source& source, model::Drawing* drawn) {
+                            const Source& source, model::Drawing* drawn,
+                            std::vector<std::string>* notDrawn) {
     const topo::Solid* solid = source.solid.get();
     const model::PartsList& partsList = source.partsList;
     // The views keep clear of the parts list, above the title block.
@@ -429,15 +491,19 @@ void DrawingWorkbench::draw(doc::Document& document, io::DrawingDocumentSpec& sp
         spec.views = io::DrawingDocumentIO::viewsOf(drawing);
         spec.version = 2;
     } else if (spec.views.empty()) {
+        // An exact part's cut copy at the scale its faceted part's layout chose (scaleOf).
         double chosen = 1.0;
         drawing = model::DrawingGenerator::sheetLayout(*solid, spec.sheet, room, spec.gap, &chosen,
-                                                       spec.scale);
+                                                       source.exact ? source.scale : spec.scale);
         titleBlock.scale = model::DrawingGenerator::scaleName(chosen);
     } else {
         std::vector<std::string> lost;
         drawing = io::DrawingDocumentIO::build(*solid, spec, &lost, &source.holes);
-        // Kept, and drawn again should the part have the edges again.
-        if (!lost.empty()) {
+        // Kept, and drawn again should the part have the edges again. A sheet read says them in
+        // its report (stage 3); its file keeps them, so it is not read in part (Ruling 41).
+        if (notDrawn != nullptr) {
+            *notDrawn = io::DrawingDocumentIO::notDrawnOf(lost);
+        } else if (!lost.empty()) {
             QStringList which;
             for (const std::string& l : lost) which << QString::fromStdString(l);
             m_host.showStatus(tr("Dimensions whose edges the part no longer has are not drawn: %1")
@@ -530,7 +596,7 @@ bool DrawingWorkbench::newDrawing(io::DrawingDocumentSpec spec, bool behind, QSt
                                   model::Drawing* drawn, std::string* error) {
     const QString stem = QFileInfo(QString::fromStdString(spec.partPath)).completeBaseName();
     if (spec.titleBlock.title.empty()) spec.titleBlock.title = stem.toStdString();
-    const auto source = sourceOf(spec.partPath, error);
+    const auto source = sourceOf(spec, error);
     if (!source) return false;
     auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
     model::Drawing drawing;
@@ -559,14 +625,15 @@ bool DrawingWorkbench::open(const QString& fileName) {
         m_host.reportFileError(tr("Could not open"), path, error);
         return false;
     }
-    const auto source = sourceOf(spec.partPath, &error);
+    const auto source = sourceOf(spec, &error);
     if (!source) {
         m_host.reportFileError(tr("Could not open"), path, error);
         return false;
     }
     auto document = m_host.documents().newDocument(doc::DocumentType::Drawing);
     model::Drawing drawing;
-    draw(*document, spec, *source, &drawing);
+    std::vector<std::string> notDrawn;
+    draw(*document, spec, *source, &drawing, &notDrawn);
     // What was drawn on it by hand, back where it was: the document holds it
     // from here on, and a save writes it from there.
     if (spec.annotations) {
@@ -590,8 +657,21 @@ bool DrawingWorkbench::open(const QString& fileName) {
                                       listedHeight(source->partsList), source}));
     m_host.documents().noteSaved(document);  // found by its path, and watched
     m_host.addTab(document, QFileInfo(fileName).fileName());
-    if (!leftOut.empty()) m_host.reportLeftOut(QFileInfo(fileName).fileName(), leftOut);
+    reportRead(QFileInfo(fileName).fileName(), leftOut, std::move(notDrawn));
     return true;
+}
+
+void DrawingWorkbench::reportRead(const QString& fileName, const std::vector<std::string>& leftOut,
+                                  std::vector<std::string> notDrawn) {
+    if (notDrawn.empty()) {
+        if (!leftOut.empty()) m_host.reportLeftOut(fileName, leftOut);
+        return;
+    }
+    io::ImportReport said;
+    said.skipped = leftOut;
+    said.notDrawn = std::move(notDrawn);
+    // Read in part for what its file has that it lacks alone: what is not drawn, both keep.
+    m_host.showImportReport(fileName, said, !said.skipped.empty());
 }
 
 bool DrawingWorkbench::save(doc::Document& document, const std::string& path, std::string* error) {
@@ -620,13 +700,13 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     std::string error;
     model::Drawing drawing;
     std::shared_ptr<const Source> source;
-    if (io::DrawingDocumentIO::readSpec(path, spec, &error))
-        source = sourceOf(spec.partPath, &error);
+    if (io::DrawingDocumentIO::readSpec(path, spec, &error)) source = sourceOf(spec, &error);
     if (!source) {
         m_host.reportFileError(tr("Could not read again"), path, error);
         return;
     }
-    draw(document, spec, *source, &drawing);
+    std::vector<std::string> notDrawn;
+    draw(document, spec, *source, &drawing, &notDrawn);
     // The file's hand-drawn entities in place of these, and no undoing back
     // into what was given up: read again is the file as it is.
     std::vector<uint64_t> byHand;
@@ -660,9 +740,7 @@ void DrawingWorkbench::readAgain(doc::Document& document) {
     m_host.refreshModifiedIndicators();
     // Its paper may be another size now.
     if (m_host.currentDocument() == &document) shown(document);
-    if (!leftOut.empty()) {
-        m_host.reportLeftOut(QFileInfo(QString::fromStdString(path)).fileName(), leftOut);
-    }
+    reportRead(QFileInfo(QString::fromStdString(path)).fileName(), leftOut, std::move(notDrawn));
 }
 
 void DrawingWorkbench::shown(doc::Document& document) {
@@ -1493,9 +1571,11 @@ bool DrawingWorkbench::layOutAgain(Sheet& sheet, double scale, bool* fits, std::
     spec.version = 3;
     const model::TitleBlock room = roomFor(sheet);
 
+    // Laid out as before, by the faceted part, an exact part's too: the scale chosen and the
+    // views' places are master's, and the views are drawn from the exact faces at that scale.
     double chosen = 1.0;
-    const model::Drawing layout =
-        model::DrawingGenerator::sheetLayout(*solid, spec.sheet, room, spec.gap, &chosen, scale);
+    const model::Drawing layout = model::DrawingGenerator::sheetLayout(
+        source->faceted ? *source->faceted : *solid, spec.sheet, room, spec.gap, &chosen, scale);
     // The standard views the sheet still has, laid out anew, each keeping
     // its switches and dimensions; one removed stays removed.
     const std::vector<io::DrawingViewSpec> before = spec.views;

@@ -1,6 +1,7 @@
 #include "horizon/modeling/SolidSewer.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -30,6 +31,14 @@ struct CellKeyHash {
     size_t operator()(const CellKey& k) const {
         const auto h = [](int64_t v) { return std::hash<int64_t>()(v); };
         return h(k.x) ^ (h(k.y) << 21) ^ (h(k.z) << 42);
+    }
+};
+
+/// A position's value, hashed: -0 and 0 alike, as they compare.
+struct SameHash {
+    size_t operator()(const std::array<double, 3>& p) const {
+        const std::hash<double> h;
+        return (h(p[0]) * 1000003u ^ h(p[1])) * 1000003u ^ h(p[2]);
     }
 };
 
@@ -67,13 +76,31 @@ public:
             m_parent[i] = i;
         }
 
+        // A position gathered again (a corner every face round it names) is the
+        // first gathering of it: joined to it, and not looked for again. The
+        // same value is within any tolerance, so the clusters are those the
+        // positions give one by one.
+        std::unordered_map<std::array<double, 3>, size_t, SameHash> same;
+        same.reserve(n);
+        std::vector<size_t> distinct;
+        distinct.reserve(n);
+        for (size_t i = 0; i < n; ++i) {
+            const Vec3& p = m_gathered[i];
+            const auto [it, fresh] = same.try_emplace(std::array<double, 3>{p.x, p.y, p.z}, i);
+            if (fresh) {
+                distinct.push_back(i);
+            } else {
+                join(it->second, i);
+            }
+        }
+
         // Each point against those in the cells around it, by index, so every
         // pair within the tolerance is joined however they were gathered.
         std::unordered_map<CellKey, std::vector<size_t>, CellKeyHash> grid;
-        for (size_t i = 0; i < n; ++i) {
+        for (const size_t i : distinct) {
             grid[keyFor(m_gathered[i])].push_back(i);
         }
-        for (size_t i = 0; i < n; ++i) {
+        for (const size_t i : distinct) {
             const CellKey base = keyFor(m_gathered[i]);
             for (int dx = -1; dx <= 1; ++dx) {
                 for (int dy = -1; dy <= 1; ++dy) {
@@ -285,18 +312,35 @@ void eliminateTJunctions(std::vector<IndexedFace>& faces, const std::vector<Vec3
                           std::min(a.z, b.z) - tol);
             const Vec3 hi(std::max(a.x, b.x) + tol, std::max(a.y, b.y) + tol,
                           std::max(a.z, b.z) + tol);
-            for (int64_t cx = cellOf(lo.x, bbMin.x); cx <= cellOf(hi.x, bbMin.x); ++cx) {
-                for (int64_t cy = cellOf(lo.y, bbMin.y); cy <= cellOf(hi.y, bbMin.y); ++cy) {
-                    for (int64_t cz = cellOf(lo.z, bbMin.z); cz <= cellOf(hi.z, bbMin.z); ++cz) {
-                        auto it = grid.find({cx, cy, cz});
-                        if (it == grid.end()) continue;
-                        for (size_t idx : it->second) {
-                            if (idx == ia || idx == ib) continue;
-                            const Vec3& p = pts[idx];
-                            const double t = (p - a).dot(d) / len2;
-                            if (t <= 1e-9 || t >= 1.0 - 1e-9) continue;
-                            const Vec3 proj = a + d * t;
-                            if (proj.distanceTo(p) <= tol) hits.push_back({t, idx});
+            const auto test = [&](size_t idx) {
+                if (idx == ia || idx == ib) return;
+                const Vec3& p = pts[idx];
+                const double t = (p - a).dot(d) / len2;
+                if (t <= 1e-9 || t >= 1.0 - 1e-9) return;
+                const Vec3 proj = a + d * t;
+                if (proj.distanceTo(p) <= tol) hits.push_back({t, idx});
+            };
+            // The cells round the segment, or, where they are more than the points (a long
+            // segment across the part: a cone's line to its apex crossed thousands), every point:
+            // either way each point within the tolerance of the segment is tested.
+            const int64_t cx0 = cellOf(lo.x, bbMin.x);
+            const int64_t cx1 = cellOf(hi.x, bbMin.x);
+            const int64_t cy0 = cellOf(lo.y, bbMin.y);
+            const int64_t cy1 = cellOf(hi.y, bbMin.y);
+            const int64_t cz0 = cellOf(lo.z, bbMin.z);
+            const int64_t cz1 = cellOf(hi.z, bbMin.z);
+            const double cells = static_cast<double>(cx1 - cx0 + 1) *
+                                 static_cast<double>(cy1 - cy0 + 1) *
+                                 static_cast<double>(cz1 - cz0 + 1);
+            if (cells > static_cast<double>(pts.size())) {
+                for (size_t idx = 0; idx < pts.size(); ++idx) test(idx);
+            } else {
+                for (int64_t cx = cx0; cx <= cx1; ++cx) {
+                    for (int64_t cy = cy0; cy <= cy1; ++cy) {
+                        for (int64_t cz = cz0; cz <= cz1; ++cz) {
+                            auto it = grid.find({cx, cy, cz});
+                            if (it == grid.end()) continue;
+                            for (size_t idx : it->second) test(idx);
                         }
                     }
                 }

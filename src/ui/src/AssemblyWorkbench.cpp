@@ -564,11 +564,6 @@ void AssemblyWorkbench::showPlacements(const doc::AssemblyDocument& asmDoc) {
     view.update();
 }
 
-AssemblyWorkbench::StepExport AssemblyWorkbench::stepExport() {
-    if (!assembly()) return {};
-    return io::gatherAssemblyStep(*assembly(), m_host.documents());
-}
-
 void AssemblyWorkbench::onCheckInterference() {
     if (!assembly()) {
         m_host.showStatus(tr("Check Interference is only available in an assembly document"));
@@ -639,10 +634,15 @@ void AssemblyWorkbench::showInterference(const doc::AssemblyDocument& assembly,
 
     QStringList lines;
     for (const auto& pair : report.pairs) {
-        const QString amount =
-            pair.volumeResolved
-                ? tr("%1 shared").arg(Preferences::current().formatVolume(pair.volume, unit))
-                : tr("overlap could not be measured");
+        QString amount;
+        if (pair.volumeResolved) {
+            amount = tr("%1 shared").arg(Preferences::current().formatVolume(pair.volume, unit));
+        } else if (!pair.problem.empty()) {
+            // Why, as the checker said it: a face the read point cannot mesh.
+            amount = tr("overlap not measured: %1").arg(QString::fromStdString(pair.problem));
+        } else {
+            amount = tr("overlap could not be measured");
+        }
         lines << tr("%1 and %2: %3").arg(nameOf(pair.componentA), nameOf(pair.componentB), amount);
     }
     for (uint64_t id : report.unchecked) {

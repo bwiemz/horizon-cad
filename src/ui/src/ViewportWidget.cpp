@@ -14,16 +14,23 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iterator>
 #include <limits>
+#include <string>
+#include <vector>
 
 #include "horizon/document/Document.h"
 #include "horizon/math/Constants.h"
 #include "horizon/math/Mat4.h"
 #include "horizon/math/Vec4.h"
+#include "horizon/modeling/BoundaryMesh.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/render/GLRenderer.h"
 #include "horizon/render/Grid.h"
 #include "horizon/render/MeshPicker.h"
+#include "horizon/topology/HalfEdge.h"
+#include "horizon/topology/Queries.h"
+#include "horizon/topology/Solid.h"
 #include "horizon/ui/ComponentDragger.h"
 #include "horizon/ui/Tool.h"
 
@@ -402,67 +409,201 @@ void ViewportWidget::drawDatums(QOpenGLExtraFunctions* gl) {
     m_renderer->drawLines(gl, m_camera, lines, math::Vec3(0.95, 0.75, 0.3), 1.5f, 2, 0.25f);
 }
 
+namespace {
+
+/// How many faces' highlights from the faceted copy are kept (ViewportWidget::m_facetedHighlights):
+/// the faces chosen and the one hovered, and a few hovered before.
+constexpr std::size_t kFacetedHighlightsKept = 16;
+
+/// The triangles of @p mesh's faces whose logical name is @p tag (all of them with @p whole), moved
+/// by @p model, after @p triangles (x, y, z a corner); each face's name after @p faces, when given.
+/// False when the mesh has none.
+bool appendFace(const render::MeshData& mesh, const math::Mat4& model, const std::string& tag,
+                bool whole, std::vector<float>& triangles, std::vector<std::string>* faces) {
+    if (!whole && !mesh.hasFaces()) return false;
+    // Every facet of the face picked.
+    std::vector<bool> picked(mesh.faceTags.size(), false);
+    bool any = whole;
+    for (size_t f = 0; f < mesh.faceTags.size() && !whole; ++f) {
+        picked[f] = model::logicalFace(mesh.faceTags[f]) == tag;
+        if (picked[f] && faces != nullptr) faces->push_back(mesh.faceTags[f]);
+        any = any || picked[f];
+    }
+    if (!any) return false;
+    for (size_t t = 0; t < mesh.indices.size() / 3; ++t) {
+        if (!whole && (t >= mesh.triangleFaces.size() || mesh.triangleFaces[t] >= picked.size() ||
+                       !picked[mesh.triangleFaces[t]])) {
+            continue;
+        }
+        for (size_t c = 0; c < 3; ++c) {
+            const size_t v = static_cast<size_t>(mesh.indices[t * 3 + c]) * 3;
+            if (v + 2 >= mesh.positions.size()) continue;
+            const math::Vec3 q = model.transformPoint(
+                math::Vec3(mesh.positions[v], mesh.positions[v + 1], mesh.positions[v + 2]));
+            triangles.insert(triangles.end(), {static_cast<float>(q.x), static_cast<float>(q.y),
+                                               static_cast<float>(q.z)});
+        }
+    }
+    return true;
+}
+
+/// The highlight of @p part's face @p tag (a logical face) drawn from its faceted copy, in the
+/// part's coordinates: each face of solid() of that logical name, triangulated as the faceted part
+/// is drawn (BoundaryMesh: its holes bridged in).
+ViewportWidget::FaceHighlight facetedHighlight(const doc::Document& part, const std::string& tag) {
+    ViewportWidget::FaceHighlight out;
+    for (const auto& face : part.solid()->faces()) {
+        if (!face.alive || model::logicalFace(face.topoId.tag()) != tag) continue;
+        std::vector<math::Vec3> points;
+        for (const topo::Vertex* vertex : topo::faceVertices(&face)) {
+            points.push_back(vertex->point);
+        }
+        if (points.size() < 3) continue;
+        std::vector<math::Vec3> polygon = points;
+        if (!face.innerLoops.empty()) {
+            std::vector<std::vector<math::Vec3>> holes;
+            for (const topo::Wire* inner : face.innerLoops) {
+                if (inner != nullptr) {
+                    holes.push_back(model::BoundaryMesh::loopPoints(*inner, true));
+                }
+            }
+            polygon = model::BoundaryMesh::keyholePolygon(points, std::move(holes));
+        }
+        for (const auto& triangle : model::BoundaryMesh::triangulatePolygon(polygon)) {
+            for (const math::Vec3& corner : triangle) {
+                out.triangles.insert(out.triangles.end(),
+                                     {static_cast<float>(corner.x), static_cast<float>(corner.y),
+                                      static_cast<float>(corner.z)});
+            }
+        }
+        out.faces.push_back(face.topoId.tag());
+    }
+    return out;
+}
+
+}  // namespace
+
+ViewportWidget::FaceHighlight ViewportWidget::faceHighlight(const ModelPick& pick) const {
+    FaceHighlight out;
+    if (pick.edge) return out;
+    for (const render::SceneNode* node : m_sceneGraph.collectVisibleMeshNodes()) {
+        if (node->ownerId() != pick.owner) continue;
+        const render::MeshData& mesh = node->mesh();
+        const math::Mat4 model = node->worldTransform();
+        // A pick with no face is the whole component (chosen in the assembly tree): every
+        // triangle of it.
+        const bool whole = pick.tag.empty();
+        // The part drawn exactly (its build's kept mesh): a face filled from its faceted copy,
+        // which the commands on it act on (A1), where the face drawn is seen.
+        const bool exactPart = pick.owner == 0 && m_document != nullptr &&
+                               m_document->solid() != nullptr &&
+                               m_document->exactSolid() != nullptr && node->sharedMesh() &&
+                               node->sharedMesh() == m_document->exactMesh();
+        if (!exactPart || whole) {
+            appendFace(mesh, model, pick.tag, whole, out.triangles, &out.faces);
+            continue;
+        }
+        if (!appendFace(mesh, model, pick.tag, false, out.mask, nullptr)) continue;
+        const std::uint64_t serial = m_document->serial();
+        const std::uint64_t builds = m_document->builds();
+        std::erase_if(m_facetedHighlights, [serial, builds](const FacetedHighlight& kept) {
+            return kept.serial != serial || kept.builds != builds;
+        });
+        auto found =
+            std::find_if(m_facetedHighlights.begin(), m_facetedHighlights.end(),
+                         [&pick](const FacetedHighlight& kept) { return kept.tag == pick.tag; });
+        if (found == m_facetedHighlights.end()) {
+            if (m_facetedHighlights.size() >= kFacetedHighlightsKept) {
+                m_facetedHighlights.erase(m_facetedHighlights.begin());
+            }
+            m_facetedHighlights.push_back(
+                {serial, builds, pick.tag, facetedHighlight(*m_document, pick.tag)});
+            found = std::prev(m_facetedHighlights.end());
+        }
+        const FaceHighlight& faceted = found->highlight;
+        for (std::size_t i = 0; i + 2 < faceted.triangles.size(); i += 3) {
+            const math::Vec3 q = model.transformPoint(math::Vec3(
+                faceted.triangles[i], faceted.triangles[i + 1], faceted.triangles[i + 2]));
+            out.triangles.insert(
+                out.triangles.end(),
+                {static_cast<float>(q.x), static_cast<float>(q.y), static_cast<float>(q.z)});
+        }
+        out.faces.insert(out.faces.end(), faceted.faces.begin(), faceted.faces.end());
+    }
+    return out;
+}
+
+bool ViewportWidget::hasStencil(QOpenGLExtraFunctions* gl) const {
+    // The framebuffer the view draws into (QOpenGLWidget's own): a stencil attached, and bits in
+    // it.
+    GLint type = GL_NONE;
+    gl->glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
+                                              GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type);
+    if (type == GL_NONE) return false;
+    GLint bits = 0;
+    gl->glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
+                                              GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &bits);
+    return bits > 0;
+}
+
 void ViewportWidget::drawModelHighlights(QOpenGLExtraFunctions* gl) {
     if (m_modelSelection.empty() && !m_modelHover) return;
     const auto draw = [&](const ModelPick& pick, const math::Vec3& colour, float alpha) {
+        if (!pick.edge) {
+            const FaceHighlight face = faceHighlight(pick);
+            if (face.mask.empty()) {
+                m_renderer->drawTriangles(gl, m_camera, face.triangles, math::Vec4(colour, alpha));
+                return;
+            }
+            if (!hasStencil(gl)) {
+                // No stencil to draw the facets through: the face as it is drawn, round.
+                m_renderer->drawTriangles(gl, m_camera, face.mask, math::Vec4(colour, alpha));
+                return;
+            }
+            // Ruling 39. Where the face drawn is seen, by the depth test as it is drawn: the
+            // stencil, and nothing drawn. Then its faceted copy's facets, filled there alone,
+            // whatever their depth (they lie inside the round face, behind it), each pixel once
+            // (front and back facets overlap on the screen): seen where the face is, hidden where
+            // anything stands in front of it, at any angle.
+            gl->glEnable(GL_STENCIL_TEST);
+            gl->glStencilMask(0xFF);
+            gl->glClearStencil(0);
+            gl->glClear(GL_STENCIL_BUFFER_BIT);
+            gl->glStencilFunc(GL_ALWAYS, 1, 0xFF);
+            gl->glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+            gl->glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+            m_renderer->drawTriangles(gl, m_camera, face.mask, math::Vec4(colour, alpha));
+            gl->glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+            gl->glStencilFunc(GL_EQUAL, 1, 0xFF);
+            gl->glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+            gl->glDisable(GL_DEPTH_TEST);
+            m_renderer->drawTriangles(gl, m_camera, face.triangles, math::Vec4(colour, alpha));
+            gl->glEnable(GL_DEPTH_TEST);
+            gl->glDisable(GL_STENCIL_TEST);
+            return;
+        }
         for (const render::SceneNode* node : m_sceneGraph.collectVisibleMeshNodes()) {
             if (node->ownerId() != pick.owner) continue;
             const render::MeshData& mesh = node->mesh();
             const math::Mat4 model = node->worldTransform();
-            const auto world = [&model](float x, float y, float z) {
-                return model.transformPoint(math::Vec3(x, y, z));
-            };
-            if (pick.edge) {
-                std::vector<float> lines;
-                for (const auto& edge : mesh.edges) {
-                    if (model::logicalEdge(edge.tag) != pick.tag) continue;  // every chord
-                    const auto& p = edge.points;
-                    for (size_t k = 0; k + 5 < p.size(); k += 3) {
-                        for (const size_t at : {k, k + 3}) {
-                            const math::Vec3 q = world(p[at], p[at + 1], p[at + 2]);
-                            lines.insert(lines.end(),
-                                         {static_cast<float>(q.x), static_cast<float>(q.y),
-                                          static_cast<float>(q.z), 0.0f});
-                        }
+            std::vector<float> lines;
+            for (const auto& edge : mesh.edges) {
+                if (model::logicalEdge(edge.tag) != pick.tag) continue;  // every chord
+                const auto& p = edge.points;
+                for (size_t k = 0; k + 5 < p.size(); k += 3) {
+                    for (const size_t at : {k, k + 3}) {
+                        const math::Vec3 q =
+                            model.transformPoint(math::Vec3(p[at], p[at + 1], p[at + 2]));
+                        lines.insert(lines.end(), {static_cast<float>(q.x), static_cast<float>(q.y),
+                                                   static_cast<float>(q.z), 0.0f});
                     }
                 }
-                // Over the part's own line for the edge, at the same depth: an
-                // equal depth must pass, or the highlight is hidden by it.
-                gl->glDepthFunc(GL_LEQUAL);
-                m_renderer->drawLines(gl, m_camera, lines, colour, 3.5f, 1, 1.0f, true);
-                gl->glDepthFunc(GL_LESS);
-                continue;
             }
-            // A pick with no face is the whole component (chosen in the
-            // assembly tree): every triangle of it.
-            const bool whole = pick.tag.empty();
-            if (!whole && !mesh.hasFaces()) continue;
-            // Every facet of the face picked.
-            std::vector<bool> picked(mesh.faceTags.size(), false);
-            bool any = whole;
-            for (size_t f = 0; f < mesh.faceTags.size() && !whole; ++f) {
-                picked[f] = model::logicalFace(mesh.faceTags[f]) == pick.tag;
-                any = any || picked[f];
-            }
-            if (!any) continue;
-            std::vector<float> triangles;
-            for (size_t t = 0; t < mesh.indices.size() / 3; ++t) {
-                if (!whole &&
-                    (t >= mesh.triangleFaces.size() || mesh.triangleFaces[t] >= picked.size() ||
-                     !picked[mesh.triangleFaces[t]])) {
-                    continue;
-                }
-                for (size_t c = 0; c < 3; ++c) {
-                    const size_t v = static_cast<size_t>(mesh.indices[t * 3 + c]) * 3;
-                    if (v + 2 >= mesh.positions.size()) continue;
-                    const math::Vec3 q =
-                        world(mesh.positions[v], mesh.positions[v + 1], mesh.positions[v + 2]);
-                    triangles.insert(triangles.end(),
-                                     {static_cast<float>(q.x), static_cast<float>(q.y),
-                                      static_cast<float>(q.z)});
-                }
-            }
-            m_renderer->drawTriangles(gl, m_camera, triangles, math::Vec4(colour, alpha));
+            // Over the part's own line for the edge, at the same depth: an
+            // equal depth must pass, or the highlight is hidden by it.
+            gl->glDepthFunc(GL_LEQUAL);
+            m_renderer->drawLines(gl, m_camera, lines, colour, 3.5f, 1, 1.0f, true);
+            gl->glDepthFunc(GL_LESS);
         }
     };
     for (const ModelPick& pick : m_modelSelection) draw(pick, math::Vec3(1.0, 0.55, 0.1), 0.45f);

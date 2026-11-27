@@ -7,6 +7,7 @@
 #include "horizon/drafting/DraftEntity.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Vec3.h"
+#include "horizon/modeling/ExactBuild.h"
 #include "horizon/modeling/Naming.h"
 #include "horizon/topology/Solid.h"
 
@@ -90,16 +91,23 @@ public:
         const draft::SketchPlane& plane, const math::Vec3& direction, double distance,
         const std::string& featureID, std::string* reason = nullptr);
 
-    /// exact()'s solid and its bridge copy, what Extrude::execute gives under Stable naming.
-    struct ExactAndBridge {
-        std::unique_ptr<topo::Solid> exact;
-        std::unique_ptr<topo::Solid> faceted;
-    };
+    /// Master's own faceted extrusion of a profile of one loop, its prism as its Stable path built
+    /// and named it (Ruling 44: the faceted body of a converted feature whose master construction
+    /// was one construction). Null, with @p reason, where master refuses it, or for a profile of
+    /// several loops, which master built with Booleans.
+    static std::unique_ptr<topo::Solid> mastersSolid(
+        const std::vector<std::shared_ptr<draft::DraftEntity>>& profile,
+        const draft::SketchPlane& plane, const math::Vec3& direction, double distance,
+        const std::string& featureID, int segments = kDefaultSegments, double chordTolerance = 0.0,
+        std::string* reason = nullptr);
 
-    /// The extrusion built exactly and its bridge copy (model::facetExact at {segments,
-    /// chordTolerance}), its edges named by model::nameBridgeEdges. A profile of one loop, which
-    /// master's faceted prism built, has its facets, chords and seams named as that prism named
-    /// the same places, numbers and all, so a saved name binds where it bound
+    /// exact()'s solid and its bridge copy, what Extrude::execute gives under Stable naming.
+    using ExactAndBridge = model::ExactAndBridge;
+
+    /// The extrusion built exactly and its bridge copy (model::buildWithBridge: model::facetExact
+    /// at {segments, chordTolerance}, its edges named by model::nameBridgeEdges). A profile of one
+    /// loop, which master's faceted prism built, has its facets, chords and seams named as that
+    /// prism named the same places, numbers and all, so a saved name binds where it bound
     /// (model::nameAsMasters, Ruling 21); an exact seam (a circle's line at its start) is renamed
     /// with them. Master made a profile of several loops with Booleans, whose numbers are theirs.
     /// Both null, with @p reason as exact() and execute() give it, where either cannot be made.

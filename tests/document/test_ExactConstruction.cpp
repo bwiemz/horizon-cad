@@ -37,7 +37,10 @@
 #include "horizon/modeling/Naming.h"
 #include "horizon/modeling/Pattern.h"
 #include "horizon/modeling/PrimitiveFactory.h"
+#include "horizon/modeling/Revolve.h"
 #include "horizon/modeling/SolidTessellator.h"
+#include "horizon/topology/ExactTolerance.h"
+#include "horizon/topology/ExactValidator.h"
 #include "horizon/topology/HalfEdge.h"
 #include "horizon/topology/Solid.h"
 
@@ -720,4 +723,240 @@ TEST(ExactConstruction, AFailedExactExtrudeFailsTheFeature) {
         << part.lastBuildMessage();
     EXPECT_EQ(part.solid(), nullptr);
     EXPECT_EQ(part.exactSolid(), nullptr);
+}
+
+namespace {
+
+/// A quarter circle of radius 3 about the origin from the axis at (0, -3) to (3, 0), then a line
+/// up to the axis at (0, 4), on @p sketch: a hemisphere under a cone, 30 pi a whole turn.
+void drawPoleAndApex(hz::doc::Sketch& sketch) {
+    sketch.addEntity(std::make_shared<hz::draft::DraftArc>(Vec2(0, 0), 3, -kPi / 2, 0));
+    sketch.addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(3, 0), Vec2(0, 4)));
+    sketch.addEntity(std::make_shared<hz::draft::DraftLine>(Vec2(0, 4), Vec2(0, -3)));
+}
+
+/// @p sketch turned by @p angle about its y axis, "revolve_1".
+std::unique_ptr<hz::doc::RevolveFeature> revolveOf(const std::shared_ptr<hz::doc::Sketch>& sketch,
+                                                   double angle) {
+    auto revolve =
+        std::make_unique<hz::doc::RevolveFeature>(sketch, Vec3(0, 0, 0), Vec3(0, 1, 0), angle);
+    revolve->restoreFeatureID("revolve_1");
+    return revolve;
+}
+
+}  // namespace
+
+// A revolve is exact (stage 3): a hemisphere under a cone (a pole and an apex), a whole turn and a
+// quarter, 30 pi and a quarter of it. Its faceted part is master's: its counts recorded at
+// 9314271e, before the revolve was exact (288 faces, 544 edges, 258 vertices a whole turn; 74, 146
+// and 74 a quarter), its logical faces master's logical names.
+TEST(ExactConstruction, ARevolveIsExact) {
+    struct Case {
+        double angle;
+        std::size_t faces, edges, vertices;
+        std::set<std::string> names;
+    };
+    const std::vector<Case> cases = {
+        {2 * kPi, 288, 544, 258, {"revolve_1/revolved:{0}", "revolve_1/revolved:{1}"}},
+        {kPi / 2,
+         74,
+         146,
+         74,
+         {"revolve_1/cap_end", "revolve_1/cap_start", "revolve_1/revolved:{0}",
+          "revolve_1/revolved:{1}"}}};
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.angle);
+        auto sketch = std::make_shared<hz::doc::Sketch>();
+        drawPoleAndApex(*sketch);
+        Document part;
+        part.setType(DocumentType::Part);
+        part.addSketch(sketch);
+        part.featureTree().addFeature(revolveOf(sketch, c.angle));
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        ASSERT_NE(part.exactSolid(), nullptr) << part.exactNote();
+        const double volume = 15.0 * c.angle;
+        EXPECT_NEAR(volumeOf(*part.exactSolid()), volume, volume * 1e-9);
+
+        const hz::topo::Solid& faceted = *part.solid();
+        EXPECT_EQ(faceted.faceCount(), c.faces);
+        EXPECT_EQ(faceted.edges().size(), c.edges);
+        EXPECT_EQ(faceted.vertices().size(), c.vertices);
+        EXPECT_EQ(logicalFaces(faceted), namedFor(c.names, *sketch));
+        expectNamedAsItsFacets(*part.exactSolid(), faceted);
+        expectMeshed(part, volume);
+    }
+}
+
+// A revolve named by position (a part saved before persistent naming) builds as master did: its
+// faceted revolve, `revolved_<i>_<k>`, and no exact part.
+TEST(ExactConstruction, APositionalRevolveBuildsAsMasterDid) {
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    drawPoleAndApex(*sketch);
+    auto revolve = revolveOf(sketch, kPi / 2);
+    revolve->setNaming(hz::model::NamingScheme::Positional);
+    hz::doc::FeatureOutput out = revolve->executeWithExact({}, nullptr, nullptr);
+    ASSERT_NE(out.faceted, nullptr);
+    EXPECT_EQ(out.exact, nullptr);
+    EXPECT_EQ(out.faceted->faceCount(), 74u);
+    EXPECT_EQ(faceNames(*out.faceted).count("revolve_1/revolved_0_0"), 1u);
+
+    Document part;
+    part.setType(DocumentType::Part);
+    part.addSketch(sketch);
+    part.featureTree().addFeature(std::move(revolve));
+    ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+    EXPECT_EQ(part.exactSolid(), nullptr);
+    EXPECT_TRUE(part.exactNote().empty()) << part.exactNote();
+}
+
+// Decision 1b: a revolve whose exact build fails fails, saying why; master's faceted construction
+// never builds it in its place. A disc that touches the axis turns to a horn, its cusp on the
+// axis, which master faceted and the exact revolve cannot build.
+TEST(ExactConstruction, AFailedExactRevolveFailsTheFeature) {
+    auto sketch = std::make_shared<hz::doc::Sketch>();
+    sketch->addEntity(std::make_shared<hz::draft::DraftCircle>(Vec2(1, 0), 1.0));
+    std::string masters;
+    EXPECT_NE(hz::model::Revolve::execute(sketch->entities(), sketch->plane(), Vec3(),
+                                          Vec3(0, 1, 0), 2 * kPi, "x", 32, 0.0, &masters,
+                                          hz::model::NamingScheme::FromGeometry),
+              nullptr)
+        << "master faceted it: " << masters;
+    auto revolve = revolveOf(sketch, 2 * kPi);
+    std::string why;
+    const hz::doc::FeatureOutput out = revolve->executeWithExact({}, nullptr, &why);
+    EXPECT_EQ(out.faceted, nullptr);
+    EXPECT_EQ(out.exact, nullptr);
+    EXPECT_EQ(why.rfind("could not be built exactly: ", 0), 0u) << why;
+
+    Document part;
+    part.setType(DocumentType::Part);
+    part.addSketch(sketch);
+    part.featureTree().addFeature(std::move(revolve));
+    EXPECT_FALSE(part.rebuildModel());
+    EXPECT_EQ(
+        part.lastBuildMessage().rfind("Feature 'Revolve' failed: could not be built exactly: ", 0),
+        0u)
+        << part.lastBuildMessage();
+    EXPECT_EQ(part.solid(), nullptr);
+    EXPECT_EQ(part.exactSolid(), nullptr);
+}
+
+namespace {
+
+/// A hole of @p type ("Simple", "Counterbore" or "Countersink") 5 across and 6 deep into the top
+/// of a 20 x 20 x 10 box at its middle, its point 118 degrees: "hole_1". A counterbore 9 across and
+/// 3 deep; a countersink 10 across at 90 degrees.
+std::unique_ptr<hz::doc::HoleFeature> holeOf(int type) {
+    auto hole = hz::doc::HoleFeature::make("primitive_1/top", Vec3(10, 10, 10), 5.0, 6.0);
+    hole->restoreFeatureID("hole_1");
+    if (type == 1) {
+        EXPECT_TRUE(hole->setParameter("type", 1));
+        EXPECT_TRUE(hole->setParameter("boreDiameter", 9.0));
+        EXPECT_TRUE(hole->setParameter("boreDepth", 3.0));
+    } else if (type == 2) {
+        EXPECT_TRUE(hole->setParameter("type", 2));
+        EXPECT_TRUE(hole->setParameter("sinkDiameter", 10.0));
+        EXPECT_TRUE(hole->setParameter("sinkAngle", kPi / 2));
+    }
+    return hole;
+}
+
+std::unique_ptr<PrimitiveFeature> boxToDrill() {
+    auto box = PrimitiveFeature::makeBox(20, 20, 10);
+    box->restoreFeatureID("primitive_1");
+    return box;
+}
+
+}  // namespace
+
+// Holes are exact tools (stage 3): each type's half-section turned exactly, its surfaces named for
+// what they are (`top`, `wall`, `bottom`, `bore`, `boreFloor`, `sink`), the exact tool valid and
+// measuring its closed form, the tool it cuts its bridge copy with master's counts (65, 98 and 97
+// faces). A hole stays a Cut, so the drilled part is faceted, as on master, and is master's: its
+// counts and volume recorded at 9314271e, before the hole's tool was exact.
+TEST(ExactConstruction, EachHoleToolIsExact) {
+    // The tool runs from a lead above the face (2% of the depth, and a micrometre) to the depth,
+    // and on to its point: a cone of 118 degrees.
+    const double lead = 0.02 * 6.0 + 1e-6;
+    const double r = 2.5;
+    const double tip = r / std::tan(118.0 * kPi / 360.0);
+    const double point = kPi * r * r * tip / 3.0;
+    const double sinkTop = 5.0 + lead;  // the countersink's slope is 1: 90 degrees across
+    struct Case {
+        const char* what;
+        double toolVolume;
+        std::set<std::string> faces;
+        std::size_t toolFaces, toolEdges, toolVertices;
+        std::size_t faces2, edges2, vertices2;
+        double partVolume;
+    };
+    const std::vector<Case> cases = {
+        {"simple",
+         kPi * r * r * (6.0 + lead) + point,
+         {"hole_1/bottom", "hole_1/top", "hole_1/wall"},
+         65,
+         128,
+         65,
+         71,
+         144,
+         75,
+         3873.1772991525818},
+        {"counterbore",
+         kPi * 4.5 * 4.5 * (3.0 + lead) + kPi * r * r * 3.0 + point,
+         {"hole_1/bore", "hole_1/boreFloor", "hole_1/bottom", "hole_1/top", "hole_1/wall"},
+         98,
+         224,
+         129,
+         105,
+         242,
+         139,
+         3742.0766027577433},
+        {"countersink",
+         kPi * (2.5 + lead) * (sinkTop * sinkTop + sinkTop * r + r * r) / 3.0 + kPi * r * r * 3.5 +
+             point,
+         {"hole_1/bottom", "hole_1/sink", "hole_1/top", "hole_1/wall"},
+         97,
+         192,
+         97,
+         103,
+         208,
+         107,
+         3808.1471918138723}};
+    for (std::size_t type = 0; type < cases.size(); ++type) {
+        const Case& c = cases[type];
+        SCOPED_TRACE(c.what);
+        std::string why;
+        const auto box = boxToDrill()->execute(nullptr, &why);
+        ASSERT_NE(box, nullptr) << why;
+        hz::doc::BuildContext context;
+        context.part = box.get();
+        const auto hole = holeOf(static_cast<int>(type));
+        const hz::doc::FeatureOutput tool = hole->executeWithExact(context, nullptr, &why);
+        ASSERT_NE(tool.faceted, nullptr) << why;
+        ASSERT_NE(tool.exact, nullptr) << why;
+        EXPECT_TRUE(tool.exact->isValid()) << tool.exact->validationReport();
+        const auto issues =
+            hz::topo::validateExact(*tool.exact, hz::topo::exactTolerance(*tool.exact));
+        EXPECT_TRUE(issues.empty())
+            << issues.size()
+            << " issues, the first: " << (issues.empty() ? "" : issues.front().detail);
+        EXPECT_NEAR(volumeOf(*tool.exact), c.toolVolume, c.toolVolume * 1e-9);
+        EXPECT_EQ(faceNames(*tool.exact), c.faces);
+        EXPECT_EQ(tool.faceted->faceCount(), c.toolFaces);
+        EXPECT_EQ(tool.faceted->edges().size(), c.toolEdges);
+        EXPECT_EQ(tool.faceted->vertices().size(), c.toolVertices);
+        expectNamedAsItsFacets(*tool.exact, *tool.faceted);
+
+        Document part;
+        part.setType(DocumentType::Part);
+        part.featureTree().addFeature(boxToDrill());
+        part.featureTree().addFeature(holeOf(static_cast<int>(type)));
+        ASSERT_TRUE(part.rebuildModel()) << part.lastBuildMessage();
+        EXPECT_EQ(part.exactSolid(), nullptr) << "a cut drops the exact part";
+        ASSERT_NE(part.solid(), nullptr);
+        EXPECT_EQ(part.solid()->faceCount(), c.faces2);
+        EXPECT_EQ(part.solid()->edges().size(), c.edges2);
+        EXPECT_EQ(part.solid()->vertices().size(), c.vertices2);
+        EXPECT_NEAR(volumeOf(*part.solid()), c.partVolume, c.partVolume * 1e-9);
+    }
 }

@@ -1,7 +1,11 @@
 #include "horizon/modeling/SheetMetalSolid.h"
 
 #include <cmath>
+#include <memory>
+#include <utility>
+#include <vector>
 
+#include "horizon/drafting/DraftArc.h"
 #include "horizon/drafting/DraftLine.h"
 #include "horizon/drafting/SketchPlane.h"
 #include "horizon/math/Constants.h"
@@ -78,6 +82,51 @@ std::vector<Vec2> walkBoundary(const SheetMetalStrip& strip, const SheetMetalPar
     return points;
 }
 
+/// One boundary of the folded strip as walkBoundary walks it, exactly: each straight span a line
+/// from where it starts to where it ends, each bend an arc about its centre from where it starts
+/// through its whole angle (counter-clockwise from its start for a positive bend, from its end
+/// for a negative one), where walkBoundary cuts it into chords.
+std::vector<std::shared_ptr<draft::DraftEntity>> walkExactly(const SheetMetalStrip& strip,
+                                                             const SheetMetalParams& params,
+                                                             double offset) {
+    std::vector<std::shared_ptr<draft::DraftEntity>> pieces;
+    Vec2 p(0.0, offset);
+    Vec2 d(1.0, 0.0);
+    for (size_t i = 0; i < strip.segments.size(); ++i) {
+        const Vec2 q = p + d * strip.segments[i];
+        pieces.push_back(std::make_shared<draft::DraftLine>(p, q));
+        p = q;
+
+        if (i >= strip.bendAngles.size()) continue;
+        const double angle = strip.bendAngles[i];
+        if (angle == 0.0) continue;
+
+        // As walkBoundary bends: about the centre on the side the bend turns to, the inside
+        // surface at the bend radius and the outside one a thickness further.
+        const double sign = angle > 0.0 ? 1.0 : -1.0;
+        const bool boundaryIsInside = (angle > 0.0) == (offset > 0.0);
+        const double radius =
+            boundaryIsInside ? params.bendRadius : params.bendRadius + params.thickness;
+        const Vec2 left(-d.y, d.x);
+        const Vec2 center = p + left * (sign * radius);
+        const Vec2 end = center + rotated(p - center, angle);
+        const Vec2 first = angle > 0.0 ? p : end;  // where it starts counter-clockwise
+        const Vec2 last = angle > 0.0 ? end : p;
+        pieces.push_back(std::make_shared<draft::DraftArc>(
+            center, radius, std::atan2(first.y - center.y, first.x - center.x),
+            std::atan2(last.y - center.y, last.x - center.x)));
+        p = end;
+        d = rotated(d, angle);
+    }
+    return pieces;
+}
+
+/// Where a boundary walkExactly walked ends: its last flat's end (every boundary ends in a flat).
+Vec2 boundaryEnd(const std::vector<std::shared_ptr<draft::DraftEntity>>& boundary) {
+    const auto* last = dynamic_cast<const draft::DraftLine*>(boundary.back().get());
+    return last != nullptr ? last->end() : Vec2();
+}
+
 }  // namespace
 
 std::vector<Vec2> SheetMetalSolid::crossSection(const SheetMetalStrip& strip,
@@ -89,6 +138,30 @@ std::vector<Vec2> SheetMetalSolid::crossSection(const SheetMetalStrip& strip,
     const std::vector<Vec2> top = walkBoundary(strip, params, params.thickness, segmentsPerBend);
     polygon.insert(polygon.end(), top.rbegin(), top.rend());
     return polygon;
+}
+
+std::vector<std::shared_ptr<draft::DraftEntity>> SheetMetalSolid::profile(
+    const SheetMetalStrip& strip, const SheetMetalParams& params) {
+    if (!stripIsFoldable(strip, params)) return {};
+    std::vector<std::shared_ptr<draft::DraftEntity>> bottom = walkExactly(strip, params, 0.0);
+    std::vector<std::shared_ptr<draft::DraftEntity>> top =
+        walkExactly(strip, params, params.thickness);
+    // The top walked back: its pieces in reverse, each line from its end to its start (an arc
+    // has no way of its own to turn).
+    std::vector<std::shared_ptr<draft::DraftEntity>> outline = std::move(bottom);
+    const Vec2 farBottom = boundaryEnd(outline);
+    const Vec2 farTop = boundaryEnd(top);
+    outline.push_back(std::make_shared<draft::DraftLine>(farBottom, farTop));
+    for (auto piece = top.rbegin(); piece != top.rend(); ++piece) {
+        if (auto* line = dynamic_cast<draft::DraftLine*>(piece->get())) {
+            const Vec2 from = line->start();
+            line->setStart(line->end());
+            line->setEnd(from);
+        }
+        outline.push_back(*piece);
+    }
+    outline.push_back(std::make_shared<draft::DraftLine>(Vec2(0.0, params.thickness), Vec2()));
+    return outline;
 }
 
 std::unique_ptr<topo::Solid> SheetMetalSolid::fold(const SheetMetalStrip& strip,

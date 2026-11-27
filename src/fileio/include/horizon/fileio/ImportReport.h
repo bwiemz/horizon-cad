@@ -15,8 +15,13 @@ struct ImportReport {
     /// Changes made on the way in that lose nothing, such as a drawing in
     /// inches scaled into millimetres. empty() and summary() leave these out.
     std::vector<std::string> converted;
+    /// Items read and kept, but not shown: a sheet's dimension whose edge the
+    /// part no longer has (DrawingDocumentSpec::notDrawn). The document and
+    /// its file keep them, so saving over the file loses nothing: said, but
+    /// no reason to keep the document from being saved over it.
+    std::vector<std::string> notDrawn;
 
-    bool empty() const { return skipped.empty() && approximated.empty(); }
+    bool empty() const { return skipped.empty() && approximated.empty() && notDrawn.empty(); }
 
     /// "2 items were left out, and 1 was approximated."
     std::string summary() const {
@@ -30,6 +35,10 @@ struct ImportReport {
         if (!approximated.empty()) {
             if (!text.empty()) text += ", and ";
             text += count(approximated.size(), "item was", "items were") + " approximated";
+        }
+        if (!notDrawn.empty()) {
+            if (!text.empty()) text += ", and ";
+            text += count(notDrawn.size(), "item is", "items are") + " not drawn";
         }
         return text.empty() ? text : text + ".";
     }

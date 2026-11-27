@@ -3,6 +3,8 @@
 // The size of a solid with exact geometry, and so its model tolerance, in one place: the mesher,
 // the read point and the exact validator's callers all take it from here.
 
+#include <vector>
+
 #include "horizon/math/ModelTolerance.h"
 #include "horizon/topology/Solid.h"
 
@@ -15,6 +17,11 @@ bool hasExactFaces(const Solid& solid);
 /// live edges' exact curves (17 on each, both ends included), for a round part's vertices may
 /// be one point on a circle. 0 when nothing live gives a point, or the box is not finite.
 double exactExtent(const Solid& solid);
+
+/// The size of @p solids together: exactExtent of one solid that holds them all (the diagonal of
+/// the box around all their live vertices and points along their live exact edges), found without
+/// joining them. 0 for none, as for a solid with nothing live; a null entry adds nothing.
+double exactExtent(const std::vector<const Solid*>& solids);
 
 /// The model tolerance of @p solid: ModelTolerance::forExtent(exactExtent(solid)).
 math::ModelTolerance exactTolerance(const Solid& solid);

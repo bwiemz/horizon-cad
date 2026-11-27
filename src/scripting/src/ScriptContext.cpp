@@ -26,16 +26,21 @@ using hz::math::Vec3;
 
 namespace {
 
-/// Why the finite-element analyses cannot run on @p solid, or "" if they can.
-/// They mesh its bounding box, so they run only on a solid that fills it: its
-/// volume must be its box's, to within rounding.
-std::string analysisRefusal(const topo::Solid* solid) {
+/// Why the finite-element analyses cannot run on @p document's part, or "" if
+/// they can. They mesh its faceted solid's bounding box (its corners are the
+/// faceted solid's vertices), so they run only on a part that fills it: the
+/// part's volume, measured as it is shown and measured (its exact counterpart
+/// where it has one, Document::exactOrFacetedSolid), must be the box's, to
+/// within rounding.
+std::string analysisRefusal(const doc::Document& document) {
+    const topo::Solid* solid = document.solid();
     if (solid == nullptr) return "there is no solid; add a feature and rebuild";
     const sim::Aabb box = sim::solidAabb(*solid);
     const double boxVolume =
         (box.max.x - box.min.x) * (box.max.y - box.min.y) * (box.max.z - box.min.z);
     if (!box.valid || !(boxVolume > 0.0)) return "the solid has no volume";
-    const double volume = model::MassPropertiesCalculator::compute(*solid).volume;
+    const double volume =
+        model::MassPropertiesCalculator::compute(*document.exactOrFacetedSolid()).volume;
     if (std::abs(volume - boxVolume) > 1e-9 * boxVolume) {
         const int percent = static_cast<int>(std::lround(100.0 * volume / boxVolume));
         return "the analysis meshes the solid's bounding box, so it runs only on an axis-aligned "
@@ -136,7 +141,8 @@ void ScriptContext::addDatumPoint(const Vec3& position) {
 }
 
 model::MassProperties ScriptContext::massProperties(double density) const {
-    const auto* solid = m_document.solid();
+    // As the window measures it: its exact counterpart where it has one.
+    const auto* solid = m_document.exactOrFacetedSolid();
     if (!solid) return {};
     const model::Material material{"custom", density};
     return model::MassPropertiesCalculator::compute(*solid, &material);
@@ -148,7 +154,7 @@ ScriptContext::StaticAnalysisResult ScriptContext::staticAnalysis(double force,
                                                                   int resolution) const {
     StaticAnalysisResult out;
     const auto* solid = m_document.solid();
-    out.error = analysisRefusal(solid);
+    out.error = analysisRefusal(m_document);
     if (!out.error.empty() || axis < 0 || axis > 2 || resolution < 1) return out;
 
     sim::TetMesh mesh = sim::meshSolidBoundingBox(*solid, resolution, resolution, resolution);
@@ -186,7 +192,7 @@ ScriptContext::ModalAnalysisResult ScriptContext::modalAnalysis(double youngsMod
                                                                 int resolution) const {
     ModalAnalysisResult out;
     const auto* solid = m_document.solid();
-    out.error = analysisRefusal(solid);
+    out.error = analysisRefusal(m_document);
     if (!out.error.empty() || axis < 0 || axis > 2 || numModes < 1 || resolution < 1) return out;
 
     sim::TetMesh mesh = sim::meshSolidBoundingBox(*solid, resolution, resolution, resolution);
@@ -216,7 +222,7 @@ ScriptContext::ThermalAnalysisResult ScriptContext::thermalAnalysis(double condu
                                                                     int resolution) const {
     ThermalAnalysisResult out;
     const auto* solid = m_document.solid();
-    out.error = analysisRefusal(solid);
+    out.error = analysisRefusal(m_document);
     if (!out.error.empty() || axis < 0 || axis > 2 || resolution < 1 || conductivity <= 0.0) {
         return out;
     }

@@ -1,7 +1,10 @@
 #include "horizon/document/AssemblyMates.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
+#include <string>
+#include <vector>
 
 #include "horizon/document/Document.h"
 #include "horizon/document/DocumentManager.h"
@@ -41,6 +44,20 @@ std::optional<model::MateFrame> frameOf(const AssemblyDocument& assembly,
     const topo::Face* face = model::MateGeometry::findFace(*solid, ref.faceId);
     if (face == nullptr) return std::nullopt;
     return model::MateGeometry::frameForFace(*face);
+}
+
+/// How a mate whose geometry is not found is said.
+std::string unresolvedMate(uint64_t id) {
+    return "mate " + std::to_string(id) + " references geometry that could not be resolved";
+}
+
+/// Whether @p mate is on a pattern's instance (gather() refuses it).
+bool onPatternInstance(const AssemblyDocument& assembly, const Mate& mate) {
+    for (const uint64_t side : {mate.a.componentId, mate.b.componentId}) {
+        const ComponentInstance* comp = assembly.component(side);
+        if (comp != nullptr && comp->isPatternInstance()) return true;
+    }
+    return false;
 }
 
 }  // namespace
@@ -110,10 +127,7 @@ std::optional<AssemblyMates> AssemblyMates::gather(const AssemblyDocument& assem
             const auto a = frameOf(assembly, mate.a);
             const auto b = a ? frameOf(assembly, mate.b) : std::nullopt;
             if (!a || !b) {
-                if (why != nullptr) {
-                    *why = "mate " + std::to_string(mate.id) +
-                           " references geometry that could not be resolved";
-                }
+                if (why != nullptr) *why = unresolvedMate(mate.id);
                 return std::nullopt;
             }
             sm.frameA = *a;
@@ -122,6 +136,17 @@ std::optional<AssemblyMates> AssemblyMates::gather(const AssemblyDocument& assem
         out.m_mates.push_back(sm);
     }
     return out;
+}
+
+std::vector<std::string> AssemblyMates::unresolved(const AssemblyDocument& assembly) {
+    std::vector<std::string> lost;
+    for (const auto& mate : assembly.mates()) {
+        if (mate.type == MateType::Fixed || onPatternInstance(assembly, mate)) continue;
+        if (!frameOf(assembly, mate.a) || !frameOf(assembly, mate.b)) {
+            lost.push_back(unresolvedMate(mate.id));
+        }
+    }
+    return lost;
 }
 
 model::AssemblySolveResult AssemblyMates::solve(const Options& options) const {

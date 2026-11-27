@@ -58,9 +58,22 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle = math::kTwoP
 /// (topo::Face::exactSurface, pcurves, topo::Edge::exactCurve) and no NURBS
 /// carrier, as planar facets at a feature's own @p resolution, so that a
 /// part built exactly has the faces, edges and vertices master's faceted
-/// construction gave it. Every face is cut from its exact fields; a NURBS
-/// carrier (topo::Face::surface) is not read, and an import's faceted copy
-/// stays facetCurved's.
+/// construction gave it. Every face is cut from its exact fields, but a face
+/// with a NURBS carrier (topo::Face::surface), which only an import has.
+///
+/// - A face with a NURBS carrier is an import's (Ruling 17), and is cut as
+///   facetCurved cuts it, at 2π/segmentsPerTurn of turning, its edges with
+///   it; at no chord tolerance, as facetCurved's facets, corner for corner.
+///   With one, each of its edges is cut so that no chord sags more than it,
+///   and a face cut within its trim is stepped each way of its (u, v) by
+///   that way's own greatest normal curvature over it, so that a chord that
+///   way sags no more than it either (Ruling 30): a cylinder's side round it
+///   as finely as the tolerance asks, along it not at all. A face of an import
+///   bounded by a rectangle of its (u, v) is a grid whose lines run between
+///   its edges' points. A curved face of an import that
+///   cannot be cut is its outline, and is listed (`outlined`), as
+///   facetCurved's is. An exact part of imports and constructed bodies (a
+///   drawing's copy of it) is so cut each its own way.
 ///
 /// - Each edge is cut into chords along its exact curve: a circle or an arc
 ///   into `stepsFor(radius, sweep)` at equal angles, a line into one, an
@@ -93,16 +106,17 @@ FacetedSolid facetCurved(const topo::Solid& exact, double maxAngle = math::kTwoP
 ///   are named as SolidSewer names them: a caller that names edges its own
 ///   way (model::nameEdgesLogically) does so after, as for facetCurved.
 ///
-/// A polyhedron (every face on a plane, every edge a line) is its own bridge: its topology is
-/// copied as the sewing of its faces' outlines would make it (the same faces, loops, vertices,
-/// edges and shells, in the same order, each face's carrier the sewer's planar patch), without
-/// welding or pairing anything again, and the result says so (`copied`).
+/// A polyhedron (every face on a plane, every edge a line) with no face of an import's is its own
+/// bridge: its topology is copied as the sewing of its faces' outlines would make it (the same
+/// faces, loops, vertices, edges and shells, in the same order, each face's carrier the sewer's
+/// planar patch), without welding or pairing anything again, and the result says so (`copied`).
 ///
 /// No solid, and the error says why, where a face has no boundary, a curved
-/// face has no exact surface (`face <tag> has no surface to facet`, as for
-/// facetCurved, or `face <tag> has no exact surface to facet` where it has a
-/// carrier), a curved face is not such a rectangle or has holes, its
-/// opposite sides cannot be cut alike, or the facets do not close.
+/// face has no surface (`face <tag> has no surface to facet`, as for
+/// facetCurved), a curved face with no carrier is not such a rectangle or has
+/// holes, its opposite sides cannot be cut alike, an import's curved face
+/// cannot be cut even as its outline (as for facetCurved), or the facets do
+/// not close.
 FacetedSolid facetExact(const topo::Solid& exact, const FacetResolution& resolution);
 
 /// Whether @p solid is described by curves, as a STEP file describes one: an

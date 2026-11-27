@@ -20,6 +20,8 @@ add_executable(hz_document_tests
     test_ExactCounterpart.cpp
     test_ExactConstruction.cpp
     test_BridgeNumbering.cpp
+    test_RegressionSet.cpp
+    test_DownstreamNumbering.cpp
 )
 
 target_link_libraries(hz_document_tests
@@ -30,9 +32,12 @@ target_link_libraries(hz_document_tests
         GTest::gtest_main
 )
 
-# The STEP text the reader's tests write, for parts of bodies imported as they are read.
+# The STEP text the reader's tests write, for parts of bodies imported as they are read; and the
+# part's exact counterpart as a build makes it (src/document/src/ExactCounterpart.h), for a test of
+# the bodies' meshes it keeps.
 target_include_directories(hz_document_tests
     PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/document/src
         ${CMAKE_SOURCE_DIR}/tests/fileio
 )
 

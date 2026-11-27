@@ -10,7 +10,7 @@ user can reach it in the application.
 | Area | What users of SolidWorks / AutoCAD expect | What Horizon has | Gap |
 |------|------------------------------------------|------------------|-----|
 | **AI** | Neither has an assistant that builds parts or edits drawings from a request. | Claude, GPT, Gemini and local models; tools for parts, assemblies, drawings (made and edited), views of the model; every change one undo step; `horizon-mcp` for outside AI clients. | **Ahead.** Keep widening the tools as features land. |
-| **Geometry kernel** | Exact B-Rep (Parasolid / ACIS): true cylinders, fillets and NURBS, booleans on exact surfaces. | A B-Rep whose faces are facets that record their true surface; booleans on the facets. Volumes converge with resolution. Beside it, the first two stages of an exact kernel: its foundations (typed analytic and NURBS surfaces and curves, pcurves, one tolerance model, exact predicates, an exact validator, watertight meshing of trimmed faces), and exact exchange. A STEP import keeps its faces exact, and an imported part is drawn, measured and exported from them, its mass exact; features still work on its facets. | **Largest gap**, being closed in-house in seven stages; stages 1 and 2 are done, and stage 3 (exact construction) makes the parts Horizon builds exact. |
+| **Geometry kernel** | Exact B-Rep (Parasolid / ACIS): true cylinders, fillets and NURBS, booleans on exact surfaces. | An exact kernel three of its seven stages in, beside a B-Rep whose faces are facets that record their true surface. Primitives, extrusions, revolves, holes' tools and sheet-metal bends build exact faces, and a STEP import keeps its faces exact. A part made only of these is exact: a cylinder is three faces, its volume exact, and the part is drawn, measured, exported and put on drawing sheets (smooth silhouettes) from its true faces. Old parts are rebuilt exactly when they open (native format 32), saying what changed. Booleans (holes among them), fillets and every other operation still work on the faceted copy, whose volumes converge with resolution: a part with a Boolean is faceted after it until stage 5, and fillets wait for stage 6. | **Largest gap**, being closed in-house in seven stages; stages 1 to 3 are done, and stages 4 and 5 (exact intersection, exact Booleans) make holes and Booleans exact. |
 | **Part features** | Extrude, revolve, sweep, loft, fillet, chamfer, shell, draft, hole wizard, patterns, mirror, ribs, configurations. | All of these but ribs; configurations; variables. Fillet and loft are experimental on hard inputs. | Small in breadth; robustness on hard inputs. |
 | **Sheet metal** | Base flange from an open sketch, edge flanges, hems, bend tables, flat pattern to DXF for cutting. | A folded-strip library (bends, K-factor, bend allowance, flat-pattern length), **not reachable** in the application. | **Large and cheap to start**: the maths exists. Next step. |
 | **Assemblies** | Mates, subassemblies, patterns, interference, exploded views, BOM, motion. | All, motion as studies of a mate driven through a range. Experimental. | Moderate: flexible subassemblies; motion over time, with forces. |
@@ -47,6 +47,12 @@ exchange, is done too, and is the first the application sees: a STEP import
 keeps its faces exact (62 of the interop corpus's 64 solids; the other two
 are left out with why), and an imported part is drawn, measured and exported
 from its exact faces, while every feature still works on its faceted copy.
-The parts Horizon builds stay faceted until stage 3, exact construction. Until
-then the facets-with-true-surfaces kernel keeps their volumes, masses and
+Stage 3, exact construction, is done: primitives, extrusions, revolves,
+holes' tools and sheet-metal bends build exact faces, so a part made only of
+them and of imports is exact in its display, mass, exports and drawings, and
+an old part is rebuilt exactly when it opens (native format 32), saying what
+changed. Booleans, holes, fillets and every other operation still work on a
+faceted copy: a part is faceted after its first Boolean until stage 5, exact
+Booleans, and its fillets until stage 6, exact blends. Until then the
+facets-with-true-surfaces kernel keeps those parts' volumes, masses and
 exports right to a chosen accuracy, which is what most parts need.
